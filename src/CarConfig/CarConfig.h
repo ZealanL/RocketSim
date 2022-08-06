@@ -11,7 +11,7 @@ struct WheelPair {
 	// How much force do these wheels push with
 	float drivePushForce;
 
-	// How fast do they spin
+	// How fast do these wheels spin
 	float spinRate;
 };
 
