@@ -1,7 +1,7 @@
 #pragma once
 #include "../BaseInc.h"
 
-struct WheelPair {
+struct WheelPairConfig {
 	// Radius of both wheels
 	float wheelRadius;
 
@@ -20,5 +20,5 @@ struct CarConfig {
 	Vec hitboxMin, hitboxMax;
 
 	// Front and back wheel pairs
-	WheelPair wheelPairs[2]; 
+	WheelPairConfig wheelPairs[2];
 };
