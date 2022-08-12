@@ -46,5 +46,7 @@ typedef uint8_t byte;
 #define MAX(a, b) ((a > b) ? a : b)
 #define MIN(a, b) ((a < b) ? a : b)
 
+#define CLAMP(val, min, max) MIN(MAX(val, min), max)
+
 #define LOG(s) { std::cout << std::dec << s << std::endl; }
 #define STR(s) ([=]{ std::stringstream __macroStream; __macroStream << s; return __macroStream.str(); }())
