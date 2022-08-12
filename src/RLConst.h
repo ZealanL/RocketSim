@@ -9,9 +9,7 @@ namespace RLConst {
 
 	constexpr float BOOST_MAX = 100.f;
 	constexpr float BOOST_USED_PER_SECOND = BOOST_MAX / 3;
-	constexpr float BOOST_FORCE = 178500.f;
 	constexpr float BOOST_MIN_TIME = 0.1f; // Minimum time we can be boosting for
-
 	
 	// Speed needed to begin being supersonic
 	constexpr float SUPERSONIC_START_SPEED = 2200.f; 
@@ -22,4 +20,17 @@ namespace RLConst {
 
 	// How long we can maintain supersonic status while (speed >= SUPERSONIC_MAINTAIN_MIN_SPEED and < SUPERSONIC_START_SPEED)
 	constexpr float SUPERSONIC_MAINTAIN_MAX_TIME = 1.f; 
+
+	// Powerslide is actually an analog value from 0-1
+	// When held, powerslide goes up by 0.05, and it drops by 0.02 each tick once released
+	// Thanks to Rangler for this one :P
+	constexpr float 
+		POWERSLIDE_RATIO_RISE = 0.05f, 
+		POWERSLIDE_RATIO_FALL = 0.02f;
+
+	// Rocket League uses BulletPhysics, so I'd imagine they use a variation of the btRaycastVehicle
+	// These are those vehicle's settings
+	namespace BTVehicle {
+
+	}
 }
