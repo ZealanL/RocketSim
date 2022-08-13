@@ -158,6 +158,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="src\Sim\Car\Car.cpp" />
     <ClCompile Include="src\Sim\btVehicleRL\btVehicleRL.cpp" />
     <ClCompile Include="src\CarConfig\CarConfig.cpp" />
     <ClCompile Include="libsrc\bullet3-3.24\BulletCollision\BroadphaseCollision\btAxisSweep3.cpp" />
@@ -316,6 +317,7 @@
     <ClCompile Include="src\Math\Math.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\Sim\Car\Car.h" />
     <ClInclude Include="src\Sim\btVehicleRL\btVehicleRL.h" />
     <ClInclude Include="src\BaseInc.h" />
     <ClInclude Include="src\CarConfig\CarConfig.h" />
