@@ -17,6 +17,5 @@ public:
 	BallState GetState();
 	void SetState(const BallState& state);
 
-protected:
-	btRigidBody* rigidBody;
+	btRigidBody* _rigidBody;
 };

@@ -42,10 +42,9 @@ public:
 	CarState GetState();
 	void SetState(const CarState& state);
 
-protected:
-	btVehicleRL bulletVehicle;
+	btVehicleRL _bulletVehicle;
 	
 	// NOTE: Not all values are updated because they are unneeded for internal simulation
 	// Those values are only updated when GetState() is called
-	CarState internalState;
+	CarState _internalState;
 };
