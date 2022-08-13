@@ -33,4 +33,8 @@ namespace RLConst {
 	namespace BTVehicle {
 
 	}
+
+	constexpr float
+		BALL_COLLISION_RADIUS_NORMAL = 93.15f, // Soccar, Hoops, etc.
+		BALL_COLLISION_RADIUS_DROPSHOT = 103.6f;
 }
