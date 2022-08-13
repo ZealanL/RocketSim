@@ -17,5 +17,5 @@ typedef btVector3 Vec;
 
 // NOTE: Values should be in radians
 struct EulerAngle {
-	float pitch, yaw, roll;
+	float yaw, pitch, roll;
 };
