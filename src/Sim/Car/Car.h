@@ -39,6 +39,10 @@ public:
 	CarConfig config;
 	Team team;
 
+	// Each car is given a unique ID when created by the arena
+	// Will always be >0 (unless you somehow reach integer overflow)
+	uint32_t id;
+
 	CarState GetState();
 	void SetState(const CarState& state);
 
