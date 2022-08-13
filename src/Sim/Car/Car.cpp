@@ -32,3 +32,13 @@ void Car::SetState(const CarState& state) {
 
 	this->_internalState = state;
 }
+
+Car* Car::_AllocateCar() {
+	return new Car();
+}
+
+Car::~Car() {
+	delete _rigidBody;
+	delete _compoundShape;
+	delete _baseHitboxShape;
+}

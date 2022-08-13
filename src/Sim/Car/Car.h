@@ -43,6 +43,10 @@ public:
 	// Will always be >0 (unless you somehow reach integer overflow)
 	uint32_t id;
 
+	// No copy/move constructors
+	Car(const Car& other) = delete;
+	Car(Car&& other) = delete;
+
 	CarState GetState();
 	void SetState(const CarState& state);
 
@@ -54,4 +58,12 @@ public:
 	// NOTE: Not all values are updated because they are unneeded for internal simulation
 	// Those values are only updated when GetState() is called
 	CarState _internalState;
+
+	~Car();
+
+	// For construction by Arena
+	static Car* _AllocateCar();
+
+private:
+	Car() {};
 };

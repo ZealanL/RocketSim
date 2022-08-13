@@ -16,3 +16,12 @@ void Ball::SetState(const BallState& state) {
 	_rigidBody->setLinearVelocity(state.vel * UU_TO_BT);
 	_rigidBody->setAngularVelocity(state.angVel);
 }
+
+Ball* Ball::_AllocBall() {
+	return new Ball();
+}
+
+Ball::~Ball() {
+	delete _rigidBody;
+	delete _collisionShape;
+}
