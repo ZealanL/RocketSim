@@ -8,3 +8,14 @@
 #include "../libsrc/bullet3-3.24/BulletDynamics/Dynamics/btRigidBody.h"
 
 typedef btVector3 Vec;
+
+//  BulletPhysics Units (1m) to Unreal Units (2cm) conversion scale
+#define BT_TO_UU (50.f)
+
+// Unreal Units (2cm) to BulletPhysics Units (1m) conversion scale
+#define UU_TO_BT (1.f/50.f)
+
+// NOTE: Values should be in radians
+struct EulerAngle {
+	float pitch, yaw, roll;
+};
