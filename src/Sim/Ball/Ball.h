@@ -18,4 +18,5 @@ public:
 	void SetState(const BallState& state);
 
 	btRigidBody* _rigidBody;
+	btSphereShape* _collisionShape;
 };
