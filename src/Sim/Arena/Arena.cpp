@@ -71,21 +71,20 @@ Car* Arena::AddCar(Team team, const CarConfig& config) {
 					radius * UU_TO_BT, tuning, true);
 
 				{ // Fix wheel info data
-					// TODO: These values might change from car to car...? Need to check!
-					constexpr float SUS_SCALE_FRONT = 54.f + (1.f / 4.f) + (1.5f / 100.f);
-					constexpr float SUS_SCALE_BACK = 36.f - (1.f/4.f);
-					float suspensionScale = front ? SUS_SCALE_FRONT : SUS_SCALE_BACK;
+					using namespace RLConst::BTVehicle;
+
+					float suspensionScale = 
+						front ? SUSPENSION_FORCE_SCALE_FRONT : SUSPENSION_FORCE_SCALE_BACK;
 
 					btWheelInfoRL& wheelInfo = car->_bulletVehicle->m_wheelInfo[i];
-					wheelInfo.m_suspensionStiffness =		500 * suspensionScale;
-					wheelInfo.m_wheelsDampingCompression =	25 * suspensionScale;
-					wheelInfo.m_wheelsDampingRelaxation =	40 * suspensionScale;
-					wheelInfo.m_maxSuspensionTravelCm = (12 * UU_TO_BT) * 100; // Same for all cars (hopefully)
+					wheelInfo.m_suspensionStiffness =		500 * SUSPENSION_STIFFNESS;
+					wheelInfo.m_wheelsDampingCompression =	25 * WHEELS_DAMPING_COMPRESSION;
+					wheelInfo.m_wheelsDampingRelaxation =	40 * WHEELS_DAMPING_RELAXATION;
+					wheelInfo.m_maxSuspensionTravelCm = (MAX_SUSPENSION_TRAVEL * UU_TO_BT) * 100; // Same for all cars (hopefully)
 					wheelInfo.m_maxSuspensionForce = FLT_MAX; // Don't think there's a limit
 					wheelInfo.m_bIsFrontWheel = front;
 
-					// TODO: Check this, forget how I got this number
-					wheelInfo.m_frictionSlip = 2.f;
+					wheelInfo.m_frictionSlip = FRICTION_SLIP_AMOUNT;
 				}
 			}
 		}

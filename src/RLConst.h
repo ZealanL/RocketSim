@@ -34,7 +34,17 @@ namespace RLConst {
 	// Rocket League uses BulletPhysics, so I'd imagine they use a variation of the btRaycastVehicle
 	// These are those vehicle's settings
 	namespace BTVehicle {
+		// TODO: These values might change from car to car...? Need to check!
+		constexpr float 
+			SUSPENSION_FORCE_SCALE_FRONT = 54.f + (1.f / 4.f) + (1.5f / 100.f),
+			SUSPENSION_FORCE_SCALE_BACK = 36.f - (1.f / 4.f);
 
+		constexpr float
+			SUSPENSION_STIFFNESS = 500.f,
+			WHEELS_DAMPING_COMPRESSION = 25.f,
+			WHEELS_DAMPING_RELAXATION = 40.f,
+			MAX_SUSPENSION_TRAVEL = 12.f, // TODO: Are we sure this is the same for all cars?
+			FRICTION_SLIP_AMOUNT = 2.f; // TODO: Where did I get this number?
 	}
 
 	// TODO: Got these from https://github.com/samuelpmish/RLUtilities/blob/develop/src/simulation/ball.cc, but I should check them just in case?
