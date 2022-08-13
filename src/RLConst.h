@@ -37,7 +37,11 @@ namespace RLConst {
 
 	}
 
+	// TODO: Got these from https://github.com/samuelpmish/RLUtilities/blob/develop/src/simulation/ball.cc, but I should check them just in case?
 	constexpr float
 		BALL_COLLISION_RADIUS_NORMAL = 93.15f, // Soccar, Hoops, etc.
 		BALL_COLLISION_RADIUS_DROPSHOT = 103.6f;
+
+	constexpr float SOCCAR_GOAL_SCORE_BASE_THRESHOLD_Y = 5121.75f;
+	constexpr float SOCCAR_BALL_SCORE_THRESHOLD_Y = SOCCAR_GOAL_SCORE_BASE_THRESHOLD_Y + BALL_COLLISION_RADIUS_NORMAL;
 }
