@@ -10,7 +10,7 @@ CarState Car::GetState() {
 
 	rbTransform.getRotation().getEulerZYX(internalState.angles.yaw, internalState.angles.pitch, internalState.angles.roll);
 	
-	internalState.vel = rb->getLinearVelocity();
+	internalState.vel = rb->getLinearVelocity() * BT_TO_UU;
 
 	internalState.angVel = rb->getAngularVelocity();
 
@@ -28,7 +28,7 @@ void Car::SetState(const CarState& state) {
 	quat.setEulerZYX(state.angles.yaw, state.angles.pitch, state.angles.roll);
 	rbTransform.setRotation(quat);
 
-	rb->setLinearVelocity(state.vel);
+	rb->setLinearVelocity(state.vel * UU_TO_BT);
 
 	rb->setAngularVelocity(state.angVel);
 
