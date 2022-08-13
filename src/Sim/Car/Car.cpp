@@ -3,12 +3,12 @@
 // Update our internal state from bullet and return it
 CarState Car::GetState() {
 
-	btRigidBody* rb = bulletVehicle.getRigidBody();
+	btRigidBody* rb = _bulletVehicle.getRigidBody();
 	btTransform rbTransform = rb->getWorldTransform();
 
-	internalState.pos = rbTransform.getOrigin() * BT_TO_UU;
+	_internalState.pos = rbTransform.getOrigin() * BT_TO_UU;
 
-	rbTransform.getRotation().getEulerZYX(internalState.angles.yaw, internalState.angles.pitch, internalState.angles.roll);
+	rbTransform.getRotation().getEulerZYX(_internalState.angles.yaw, _internalState.angles.pitch, _internalState.angles.roll);
 	
 	internalState.vel = rb->getLinearVelocity() * BT_TO_UU;
 
@@ -19,7 +19,7 @@ CarState Car::GetState() {
 
 // Update our bullet stuff to this new state, replace our internal state with it
 void Car::SetState(const CarState& state) { 
-	btRigidBody* rb = bulletVehicle.getRigidBody();
+	btRigidBody* rb = _bulletVehicle.getRigidBody();
 	btTransform rbTransform = rb->getWorldTransform();
 
 	rbTransform.setOrigin(state.pos * UU_TO_BT);
@@ -32,5 +32,5 @@ void Car::SetState(const CarState& state) {
 
 	rb->setAngularVelocity(state.angVel);
 
-	this->internalState = state;
+	this->_internalState = state;
 }
