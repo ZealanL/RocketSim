@@ -39,7 +39,8 @@ Car* Car::_AllocateCar() {
 
 Car::~Car() {
 	delete _bulletVehicle;
+	delete _bulletVehicleRaycaster;
 	delete _rigidBody;
 	delete _compoundShape;
-	delete _baseHitboxShape;
+	delete _childHitboxShape;
 }

@@ -51,9 +51,10 @@ public:
 	void SetState(const CarState& state);
 
 	btVehicleRL* _bulletVehicle;
+	btVehicleRaycaster* _bulletVehicleRaycaster;
 	btRigidBody* _rigidBody;
 	btCompoundShape* _compoundShape;
-	btBoxShape* _baseHitboxShape;
+	btBoxShape* _childHitboxShape;
 
 	// NOTE: Not all values are updated because they are unneeded for internal simulation
 	// Those values are only updated when GetState() is called
