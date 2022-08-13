@@ -4,6 +4,9 @@
 // Constant/default values from the game
 
 namespace RLConst {
+	constexpr float CAR_MASS = 180.f;
+	constexpr float BALL_MASS = CAR_MASS / 6.f; // Ref: https://www.reddit.com/r/RocketLeague/comments/bmje9l/comment/emxkwrl/?context=3
+
 	constexpr float BALL_MAX_SPEED = 6000.f;
 	constexpr float CAR_MAX_SPEED = 2300.f;
 
