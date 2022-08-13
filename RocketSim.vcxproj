@@ -158,6 +158,8 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="src\Sim\Arena\Arena.cpp" />
+    <ClCompile Include="src\Sim\Ball\Ball.cpp" />
     <ClCompile Include="src\Sim\Car\Car.cpp" />
     <ClCompile Include="src\Sim\btVehicleRL\btVehicleRL.cpp" />
     <ClCompile Include="src\Sim\Car\CarConfig\CarConfig.cpp" />
@@ -317,6 +319,8 @@
     <ClCompile Include="src\Math\Math.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\Sim\Arena\Arena.h" />
+    <ClInclude Include="src\Sim\Ball\Ball.h" />
     <ClInclude Include="src\Sim\Car\Car.h" />
     <ClInclude Include="src\Sim\btVehicleRL\btVehicleRL.h" />
     <ClInclude Include="src\BaseInc.h" />
