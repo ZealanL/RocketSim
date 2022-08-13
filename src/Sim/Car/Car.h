@@ -50,7 +50,7 @@ public:
 	CarState GetState();
 	void SetState(const CarState& state);
 
-	btVehicleRL _bulletVehicle;
+	btVehicleRL* _bulletVehicle;
 	btRigidBody* _rigidBody;
 	btCompoundShape* _compoundShape;
 	btBoxShape* _baseHitboxShape;
