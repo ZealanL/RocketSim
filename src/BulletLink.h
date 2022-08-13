@@ -15,6 +15,9 @@ typedef btVector3 Vec;
 // Unreal Units (2cm) to BulletPhysics Units (1m) conversion scale
 #define UU_TO_BT (1.f/50.f)
 
+#define TICKRATE 120
+#define TICKTIME (1.f/TICKRATE)
+
 // NOTE: Values should be in radians
 struct EulerAngle {
 	float yaw, pitch, roll;
