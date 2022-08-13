@@ -1,5 +1,5 @@
 #pragma once
-#include "../../CarConfig/CarConfig.h"
+#include "CarConfig/CarConfig.h"
 class Car {
 	CarConfig config;
 };
