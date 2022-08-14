@@ -39,9 +39,9 @@ namespace RLConst {
 		BRAKE_TORQUE_AMOUNT = CAR_MASS_BT * (14.25f + (1.f/3.f));
 		
 	constexpr float
-		STOPPING_FORWARD_VEL = 25.f,
-		COASTING_BRAKE_FACTOR = 0.15f,
-		THROTTLE_DEADZONE = 0.001f;
+		STOPPING_FORWARD_VEL = 25.f, // If we are costing with less than this forward vel, we full-brake
+		COASTING_BRAKE_FACTOR = 0.15f, // How much the brake is applied when costing
+		THROTTLE_DEADZONE = 0.001f; // Throttle input of less than this is ignored
 
 	// Rocket League uses BulletPhysics, so I'd imagine they use a variation of the btRaycastVehicle
 	// These are those vehicle's settings
