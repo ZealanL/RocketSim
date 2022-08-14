@@ -18,6 +18,9 @@ struct CarState {
 	bool isOnGround;
 	bool hasJumped, hasDoubleJumped;
 
+	// Set once we jump/flip, counts down from there
+	float jumpTimer, flipTimer;
+
 	// Goes from 0 to 100
 	float boost;
 
