@@ -24,9 +24,11 @@ struct CarState {
 	// This is a state variable due to the supersonic maintain time (see RLConst.h)
 	bool isSupersonic;
 
-	// The most recent controls this car was simulated with
-	// Required for jumping/flipping, the last value of the jump button is required, because jumping occurs on press only
+	// The controls to simulate the car with
 	CarControls controls;
+
+	// Controls from last tick, set to this->controls after simulation
+	CarControls lastControls; 
 };
 
 enum class Team {
