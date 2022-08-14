@@ -24,6 +24,9 @@ struct CarState {
 	// This is a state variable due to the supersonic maintain time (see RLConst.h)
 	bool isSupersonic;
 
+	// This is a state variable due to the rise/fall rate of handbrake inputs (see RLConst.h)
+	float handbrakeVal;
+
 	// The controls to simulate the car with
 	CarControls controls;
 
