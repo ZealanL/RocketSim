@@ -27,11 +27,8 @@ struct CarState {
 	// This is a state variable due to the rise/fall rate of handbrake inputs (see RLConst.h)
 	float handbrakeVal;
 
-	// The controls to simulate the car with
-	CarControls controls;
-
 	// Controls from last tick, set to this->controls after simulation
-	CarControls lastControls; 
+	CarControls lastControls;
 };
 
 enum class Team {
@@ -47,6 +44,9 @@ public:
 	// Each car is given a unique ID when created by the arena
 	// Will always be >0 (unless you somehow reach integer overflow)
 	uint32_t id;
+
+	// The controls to simulate the car with
+	CarControls controls;
 
 	// No copy/move constructors
 	Car(const Car& other) = delete;
@@ -66,6 +66,10 @@ public:
 	CarState _internalState;
 
 	~Car();
+
+	void _PreTickUpdate();
+
+	void _PostTickUpdate();
 
 	// For construction by Arena
 	static Car* _AllocateCar();

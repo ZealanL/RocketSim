@@ -33,6 +33,11 @@ void Car::SetState(const CarState& state) {
 	this->_internalState = state;
 }
 
+void Car::_PostTickUpdate() {
+	_bulletVehicle->updateVehicle(TICKTIME);
+	this->_internalState.lastControls = this->controls;
+}
+
 Car* Car::_AllocateCar() {
 	return new Car();
 }
@@ -43,4 +48,11 @@ Car::~Car() {
 	delete _rigidBody;
 	delete _compoundShape;
 	delete _childHitboxShape;
+}
+
+void Car::_PreTickUpdate() {
+	float forwardSpeed = _bulletVehicle->getForwardSpeed();
+
+	// Update inputs
+
 }
