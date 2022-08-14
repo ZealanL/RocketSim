@@ -50,3 +50,6 @@ typedef uint8_t byte;
 
 #define LOG(s) { std::cout << std::dec << s << std::endl; }
 #define STR(s) ([=]{ std::stringstream __macroStream; __macroStream << s; return __macroStream.str(); }())
+
+// Returns sign of number (1 if positive, -1 if negative, and 0 if 0)
+#define SGN(val) ((val > 0) - (val < 0))

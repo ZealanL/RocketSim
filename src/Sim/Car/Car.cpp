@@ -54,12 +54,48 @@ Car::~Car() {
 
 void Car::_PreTickUpdate() {
 	float forwardSpeed = _bulletVehicle->getForwardSpeed();
+	float absForwardSpeed = abs(forwardSpeed);
 
 	bool jumpPressed = controls.jump && !_internalState.lastControls.jump;
 
 	{ // Update steering
-		float steerAngle = RLConst::STEER_ANGLE_FROM_SPEED_CURVE.GetOutput(abs(forwardSpeed) * BT_TO_UU) * controls.steer;
+		float steerAngle = RLConst::STEER_ANGLE_FROM_SPEED_CURVE.GetOutput(absForwardSpeed * BT_TO_UU) * controls.steer;
 		_bulletVehicle->m_wheelInfo[0].m_steerAngle = steerAngle;
 		_bulletVehicle->m_wheelInfo[1].m_steerAngle = steerAngle;
+	}
+
+
+	{ // Update throttle/brake forces
+		float driveSpeedScale = RLConst::DRIVE_SPEED_TORQUE_FACTOR_CURVE.GetOutput(absForwardSpeed * BT_TO_UU);
+
+		float realThrottle = controls.throttle;
+		float realBrake = 0;
+
+		if (controls.handbrake) {
+			// Real throttle is unchanged from the input throttle when powersliding
+		} else {
+			float absThrottle = abs(controls.throttle);
+			
+			if (absThrottle >= RLConst::THROTTLE_DEADZONE) {
+				if (absForwardSpeed > 0 && SGN(controls.throttle) != SGN(forwardSpeed)) {
+					// Brake is applied if we are trying to drive in the opposite direction
+					realBrake = 1;
+				}
+			} else {
+				// No throttle, we are coasting
+				realThrottle = 0;
+
+				// Apply coasting relevant brake
+				bool shouldFullStop = (absForwardSpeed < RLConst::STOPPING_FORWARD_VEL* UU_TO_BT);
+				realBrake = shouldFullStop ? 1 : RLConst::COASTING_BRAKE_FACTOR;
+			}
+		}
+
+		float driveEngineForce = realThrottle * (RLConst::THROTTLE_TORQUE_AMOUNT * UU_TO_BT) * driveSpeedScale;
+		float driveBrakeForce = realBrake * (RLConst::BRAKE_TORQUE_AMOUNT * UU_TO_BT);
+		for (int i = 0; i < 4; i++) {
+			_bulletVehicle->m_wheelInfo[i].m_engineForce = driveEngineForce;
+			_bulletVehicle->m_wheelInfo[i].m_brake = driveBrakeForce;
+		}
 	}
 }
