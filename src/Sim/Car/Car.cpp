@@ -1,4 +1,5 @@
 #include "Car.h"
+#include "../../RLConst.h"
 
 // Update our internal state from bullet and return it
 CarState Car::GetState() {
@@ -52,10 +53,13 @@ Car::~Car() {
 }
 
 void Car::_PreTickUpdate() {
-	float forwardSpeed = _bulletVehicle->getForwardSpeedAbs();
+	float forwardSpeed = _bulletVehicle->getForwardSpeed();
 
 	bool jumpPressed = controls.jump && !_internalState.lastControls.jump;
 
-	// Update from inputs
-
+	{ // Update steering
+		float steerAngle = RLConst::STEER_ANGLE_FROM_SPEED_CURVE.GetOutput(abs(forwardSpeed) * BT_TO_UU) * controls.steer;
+		_bulletVehicle->m_wheelInfo[0].m_steerAngle = steerAngle;
+		_bulletVehicle->m_wheelInfo[1].m_steerAngle = steerAngle;
+	}
 }
