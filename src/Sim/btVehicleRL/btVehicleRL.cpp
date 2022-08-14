@@ -493,7 +493,10 @@ Vec btVehicleRL::getDownwardsDirFromWheelContacts() {
 		return sumContactDir.normalized();
 	}
 }
+float btVehicleRL::getForwardSpeed() {
+	Vec vel = m_chassisBody->getLinearVelocity();
+	Vec forwardDir = getForwardVector();
+	Vec forwardDirVel = vel * forwardDir;
 
-float btVehicleRL::getForwardSpeedAbs() {
-	return (m_chassisBody->getLinearVelocity() * getForwardVector()).norm();
+	return forwardDirVel.x() + forwardDirVel.y() + forwardDirVel.z();
 }

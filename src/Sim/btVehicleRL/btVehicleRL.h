@@ -189,5 +189,5 @@ public:
 
 	// Extra funcs added by Zealan
 	Vec getDownwardsDirFromWheelContacts();
-	float getForwardSpeedAbs();
+	float getForwardSpeed();
 };
