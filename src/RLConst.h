@@ -56,7 +56,7 @@ namespace RLConst {
 			WHEELS_DAMPING_COMPRESSION = 25.f,
 			WHEELS_DAMPING_RELAXATION = 40.f,
 			MAX_SUSPENSION_TRAVEL = 12.f, // TODO: Are we sure this is the same for all cars?
-			FRICTION_SLIP_AMOUNT = 2.f; // TODO: Where did I get this number?
+			FRICTION_SLIP_AMOUNT = 20.f; // TODO: Find actual value
 	}
 
 	// TODO: Got these from https://github.com/samuelpmish/RLUtilities/blob/develop/src/simulation/ball.cc, but I should check them just in case?

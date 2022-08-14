@@ -4,6 +4,7 @@
 // This is a modified version of btWheelInfo to more accurately follow Rocket League
 struct btWheelInfoRL : public btWheelInfo {
 	bool m_isInContactWithWorld = false;
+	float m_steerAngle = 0;
 
 	btWheelInfoRL(btWheelInfoConstructionInfo& constructionInfo) : btWheelInfo(constructionInfo) {}
 };
@@ -188,5 +189,5 @@ public:
 
 	// Extra funcs added by Zealan
 	Vec getDownwardsDirFromWheelContacts();
-	float getForwardSpeed();
+	float getForwardSpeedAbs();
 };

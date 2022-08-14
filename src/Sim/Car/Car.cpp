@@ -52,10 +52,10 @@ Car::~Car() {
 }
 
 void Car::_PreTickUpdate() {
-	float forwardSpeed = _bulletVehicle->getForwardSpeed();
+	float forwardSpeed = _bulletVehicle->getForwardSpeedAbs();
 
 	bool jumpPressed = controls.jump && !_internalState.lastControls.jump;
 
-	// Update inputs
+	// Update from inputs
 
 }

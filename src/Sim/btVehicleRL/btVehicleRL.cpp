@@ -64,14 +64,8 @@ void btVehicleRL::updateWheelTransform(int wheelIndex) {
 	//	up = right.cross(fwd);
 	//	up.normalize();
 
-	//rotate around steering over de wheelAxleWS
-	btScalar steering = wheel.m_steering;
-
-	btQuaternion steeringOrn(up, steering);  //wheel.m_steering);
+	btQuaternion steeringOrn(up, wheel.m_steerAngle);
 	btMatrix3x3 steeringMat(steeringOrn);
-
-	btQuaternion rotatingOrn(right, -wheel.m_rotation);
-	btMatrix3x3 rotatingMat(rotatingOrn);
 
 	btMatrix3x3 basis2;
 	basis2[0][m_indexRightAxis] = -right[0];
@@ -86,7 +80,7 @@ void btVehicleRL::updateWheelTransform(int wheelIndex) {
 	basis2[1][m_indexForwardAxis] = fwd[1];
 	basis2[2][m_indexForwardAxis] = fwd[2];
 
-	wheel.m_worldTransform.setBasis(steeringMat * rotatingMat * basis2);
+	wheel.m_worldTransform.setBasis(steeringMat * basis2);
 	wheel.m_worldTransform.setOrigin(
 		wheel.m_raycastInfo.m_hardPointWS + wheel.m_raycastInfo.m_wheelDirectionWS * wheel.m_raycastInfo.m_suspensionLength);
 }
@@ -190,6 +184,7 @@ const btTransform& btVehicleRL::getChassisWorldTransform() const {
 }
 
 void btVehicleRL::updateVehicle(btScalar step) {
+
 	for (int i = 0; i < getNumWheels(); i++)
 		updateWheelTransform(i);
 
@@ -499,6 +494,6 @@ Vec btVehicleRL::getDownwardsDirFromWheelContacts() {
 	}
 }
 
-float btVehicleRL::getForwardSpeed() {
+float btVehicleRL::getForwardSpeedAbs() {
 	return (m_chassisBody->getLinearVelocity() * getForwardVector()).norm();
 }
