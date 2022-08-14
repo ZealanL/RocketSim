@@ -136,7 +136,7 @@ Arena::Arena(GameMode gameMode) {
 		ball->_collisionShape = new btSphereShape(radius);
 
 		btRigidBody::btRigidBodyConstructionInfo constructionInfo = 
-			btRigidBody::btRigidBodyConstructionInfo(RLConst::BALL_MASS, NULL, ball->_collisionShape);
+			btRigidBody::btRigidBodyConstructionInfo(RLConst::BALL_MASS_BT, NULL, ball->_collisionShape);
 
 		constructionInfo.m_startWorldTransform.setIdentity();
 		constructionInfo.m_startWorldTransform.setOrigin(btVector3(0, 0, radius));
