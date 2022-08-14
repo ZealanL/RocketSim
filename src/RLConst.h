@@ -1,5 +1,6 @@
 #pragma once
 #include "BaseInc.h"
+#include "Math/Math.h"
 
 // Constant/default values from the game
 
@@ -64,5 +65,26 @@ namespace RLConst {
 	constexpr float SOCCAR_GOAL_SCORE_BASE_THRESHOLD_Y = 5121.75f;
 	constexpr float SOCCAR_BALL_SCORE_THRESHOLD_Y = SOCCAR_GOAL_SCORE_BASE_THRESHOLD_Y + BALL_COLLISION_RADIUS_NORMAL;
 
-	inline float 
+	// Input: Forward car speed
+	// Output: Max steering angle
+	const static LinearPieceCurve STEER_ANGLE_FROM_SPEED_CURVE = {
+		{
+			{0,		0.53355587898f},
+			{500,	0.31929576934f},
+			{1000,	0.182030859666},
+			{1500,	0.105695219639},
+			{1750,	0.0850682204068},
+			{3000,	0.0345432074896}
+		}
+	};
+
+	// Input: ABS Forward car speed 
+	// Output: Torque factor
+	const static LinearPieceCurve DRIVE_SPEED_TORQUE_FACTOR_CURVE = {
+		{
+			{0,		1.0f},
+			{1400,	0.1f},
+			{1410,	0.0f}
+		}
+	};
 }
