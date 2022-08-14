@@ -26,8 +26,9 @@ void Car::SetState(const CarState& state) {
 	quat.setEulerZYX(state.angles.yaw, state.angles.pitch, state.angles.roll);
 	rbTransform.setRotation(quat);
 
-	_rigidBody->setLinearVelocity(state.vel * UU_TO_BT);
+	_rigidBody->setWorldTransform(rbTransform);
 
+	_rigidBody->setLinearVelocity(state.vel * UU_TO_BT);
 	_rigidBody->setAngularVelocity(state.angVel);
 
 	this->_internalState = state;
@@ -52,6 +53,8 @@ Car::~Car() {
 
 void Car::_PreTickUpdate() {
 	float forwardSpeed = _bulletVehicle->getForwardSpeed();
+
+	bool jumpPressed = controls.jump && !_internalState.lastControls.jump;
 
 	// Update inputs
 

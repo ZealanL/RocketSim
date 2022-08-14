@@ -18,16 +18,18 @@ Car* Arena::AddCar(Team team, const CarConfig& config) {
 		hitboxOffsetTransform.setOrigin(config.hitboxPosOffset * UU_TO_BT);
 		car->_compoundShape->addChildShape(hitboxOffsetTransform, car->_childHitboxShape);
 
-		btRigidBody::btRigidBodyConstructionInfo rbInfo
-			= btRigidBody::btRigidBodyConstructionInfo(RLConst::CAR_MASS, NULL, car->_compoundShape);
+		btVector3 localInertia(0, 0, 0);
+		car->_compoundShape->calculateLocalInertia(RLConst::CAR_MASS_BT, localInertia);
 
+		btRigidBody::btRigidBodyConstructionInfo rbInfo
+			= btRigidBody::btRigidBodyConstructionInfo(RLConst::CAR_MASS_BT, NULL, car->_compoundShape, localInertia);
 
 		btTransform carTransform = btTransform();
 		carTransform.setIdentity();
 		rbInfo.m_startWorldTransform = carTransform;
 
 		car->_rigidBody = new btRigidBody(rbInfo);
-
+		car->_rigidBody->setDeactivationTime(FLT_MAX);
 	}
 
 	// Add rigidbody to world
@@ -77,9 +79,9 @@ Car* Arena::AddCar(Team team, const CarConfig& config) {
 						front ? SUSPENSION_FORCE_SCALE_FRONT : SUSPENSION_FORCE_SCALE_BACK;
 
 					btWheelInfoRL& wheelInfo = car->_bulletVehicle->m_wheelInfo[i];
-					wheelInfo.m_suspensionStiffness =		500 * SUSPENSION_STIFFNESS;
-					wheelInfo.m_wheelsDampingCompression =	25 * WHEELS_DAMPING_COMPRESSION;
-					wheelInfo.m_wheelsDampingRelaxation =	40 * WHEELS_DAMPING_RELAXATION;
+					wheelInfo.m_suspensionStiffness =		SUSPENSION_STIFFNESS * suspensionScale;
+					wheelInfo.m_wheelsDampingCompression =	WHEELS_DAMPING_COMPRESSION * suspensionScale;
+					wheelInfo.m_wheelsDampingRelaxation =	WHEELS_DAMPING_RELAXATION * suspensionScale;
 					wheelInfo.m_maxSuspensionTravelCm = (MAX_SUSPENSION_TRAVEL * UU_TO_BT) * 100; // Same for all cars (hopefully)
 					wheelInfo.m_maxSuspensionForce = FLT_MAX; // Don't think there's a limit
 					wheelInfo.m_bIsFrontWheel = front;
@@ -157,10 +159,25 @@ Arena::Arena(GameMode gameMode) {
 			_bulletWorldParams.constraintSolver,
 			_bulletWorldParams.collisionConfig
 		);
+
+		_bulletWorld->setGravity(btVector3(0, 0, RLConst::GRAVITY_Z * UU_TO_BT));
 	}
 
 	// Add ball to world
 	_bulletWorld->addRigidBody(ball->_rigidBody);
+}
+
+void Arena::Step(int ticksToSimulate) {
+	for (int i = 0; i < ticksToSimulate; i++) {
+		for (Car* car : _carsList)
+			car->_PreTickUpdate();
+
+		// Update world
+		_bulletWorld->stepSimulation(TICKTIME, 0, TICKTIME);
+
+		for (Car* car : _carsList)
+			car->_PostTickUpdate();
+	}
 }
 
 Arena::~Arena() {

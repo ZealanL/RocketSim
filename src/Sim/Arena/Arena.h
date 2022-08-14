@@ -46,6 +46,9 @@ public:
 
 	Arena(GameMode gameMode);
 
+	// Simulate everything in the arena for a given number of ticks
+	void Step(int ticksToSimulate = 1);
+
 	// Free all associated memory
 	~Arena();
 };
