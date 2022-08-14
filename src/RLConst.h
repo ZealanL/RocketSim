@@ -5,8 +5,10 @@
 // Constant/default values from the game
 
 namespace RLConst {
-	constexpr float CAR_MASS = 180.f;
-	constexpr float BALL_MASS = CAR_MASS / 6.f; // Ref: https://www.reddit.com/r/RocketLeague/comments/bmje9l/comment/emxkwrl/?context=3
+	constexpr float GRAVITY_Z = -650.f;
+
+	constexpr float CAR_MASS_BT = 180.f;
+	constexpr float BALL_MASS_BT = CAR_MASS_BT / 6.f; // Ref: https://www.reddit.com/r/RocketLeague/comments/bmje9l/comment/emxkwrl/?context=3
 
 	constexpr float BALL_MAX_SPEED = 6000.f;
 	constexpr float CAR_MAX_SPEED = 2300.f;
@@ -33,8 +35,8 @@ namespace RLConst {
 		POWERSLIDE_RATIO_FALL = 0.02f;
 
 	constexpr float
-		THROTTLE_TORQUE_AMOUNT = CAR_MASS * 400.f,
-		BRAKE_TORQUE_AMOUNT = CAR_MASS * (14.25f + (1.f/3.f));
+		THROTTLE_TORQUE_AMOUNT = CAR_MASS_BT * 400.f,
+		BRAKE_TORQUE_AMOUNT = CAR_MASS_BT * (14.25f + (1.f/3.f));
 		
 	constexpr float
 		STOPPING_FORWARD_VEL = 25.f,
