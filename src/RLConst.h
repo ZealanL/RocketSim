@@ -31,6 +31,15 @@ namespace RLConst {
 		POWERSLIDE_RATIO_RISE = 0.05f, 
 		POWERSLIDE_RATIO_FALL = 0.02f;
 
+	constexpr float
+		THROTTLE_TORQUE_AMOUNT = CAR_MASS * 400.f,
+		BRAKE_TORQUE_AMOUNT = CAR_MASS * (14.25f + (1.f/3.f));
+		
+	constexpr float
+		STOPPING_FORWARD_VEL = 25.f,
+		COASTING_BRAKE_FACTOR = 0.15f,
+		THROTTLE_DEADZONE = 0.001f;
+
 	// Rocket League uses BulletPhysics, so I'd imagine they use a variation of the btRaycastVehicle
 	// These are those vehicle's settings
 	namespace BTVehicle {
@@ -54,4 +63,6 @@ namespace RLConst {
 
 	constexpr float SOCCAR_GOAL_SCORE_BASE_THRESHOLD_Y = 5121.75f;
 	constexpr float SOCCAR_BALL_SCORE_THRESHOLD_Y = SOCCAR_GOAL_SCORE_BASE_THRESHOLD_Y + BALL_COLLISION_RADIUS_NORMAL;
+
+	inline float 
 }
