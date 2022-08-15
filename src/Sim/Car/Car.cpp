@@ -53,6 +53,10 @@ Car::~Car() {
 }
 
 void Car::_PreTickUpdate() {
+
+	// Prevent the car's RB from becoming inactive
+	_rigidBody->setActivationState(ACTIVE_TAG);
+
 	float forwardSpeed = _bulletVehicle->getForwardSpeed();
 	float absForwardSpeed = abs(forwardSpeed);
 

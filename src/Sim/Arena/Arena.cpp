@@ -29,7 +29,6 @@ Car* Arena::AddCar(Team team, const CarConfig& config) {
 		rbInfo.m_startWorldTransform = carTransform;
 
 		car->_rigidBody = new btRigidBody(rbInfo);
-		car->_rigidBody->setDeactivationTime(FLT_MAX);
 	}
 
 	// Add rigidbody to world
