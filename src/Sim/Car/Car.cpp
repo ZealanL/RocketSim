@@ -38,6 +38,14 @@ void Car::SetState(const CarState& state) {
 void Car::_PostTickUpdate() {
 	_bulletVehicle->updateVehicle(TICKTIME);
 	this->_internalState.lastControls = this->controls;
+
+	// Limit linear vel
+	if (_rigidBody->getLinearVelocity().length2() > (RLConst::CAR_MAX_SPEED * RLConst::CAR_MAX_SPEED)) 
+		_rigidBody->setLinearVelocity(_rigidBody->getLinearVelocity().normalized() * RLConst::CAR_MAX_SPEED);
+	
+	// Limit angular vel
+	if (_rigidBody->getAngularVelocity().length2() > (RLConst::CAR_MAX_ANG_SPEED * RLConst::CAR_MAX_ANG_SPEED))
+		_rigidBody->setAngularVelocity(_rigidBody->getAngularVelocity().normalized() * RLConst::CAR_MAX_ANG_SPEED);
 }
 
 Car* Car::_AllocateCar() {
@@ -63,8 +71,26 @@ void Car::_PreTickUpdate() {
 
 	bool jumpPressed = controls.jump && !_internalState.lastControls.jump;
 
+	{ // Increase/decrease handbrake value from input
+		if (controls.handbrake) {
+			_internalState.handbrakeVal += RLConst::POWERSLIDE_RISE_RATE * TICKTIME;
+		} else {
+			_internalState.handbrakeVal -= RLConst::POWERSLIDE_FALL_RATE * TICKTIME;
+		}
+		_internalState.handbrakeVal = CLAMP(_internalState.handbrakeVal, 0, 1);
+	}
+
 	{ // Update steering
-		float steerAngle = RLConst::STEER_ANGLE_FROM_SPEED_CURVE.GetOutput(absForwardSpeed * BT_TO_UU) * controls.steer;
+		float absForwardSpeedUU = absForwardSpeed * BT_TO_UU;
+		float steerAngle = RLConst::STEER_ANGLE_FROM_SPEED_CURVE.GetOutput(absForwardSpeedUU);
+
+		if (_internalState.handbrakeVal) {
+			steerAngle += 
+				(RLConst::POWERSLIDE_STEER_ANGLE_FROM_SPEED_CURVE.GetOutput(absForwardSpeedUU) - steerAngle)
+				* _internalState.handbrakeVal;
+		}
+
+		steerAngle *= controls.steer;
 		_bulletVehicle->m_wheelInfo[0].m_steerAngle = steerAngle;
 		_bulletVehicle->m_wheelInfo[1].m_steerAngle = steerAngle;
 	}
@@ -97,13 +123,11 @@ void Car::_PreTickUpdate() {
 				float latFriction = 1 - CLAMP(latFrictionSlip, 0, 1)*0.8f;
 				float longFriction; 
 
-				// TODO: Powerslide is an analog value that climbs up and down
-				if (this->controls.handbrake) {
-					// TODO: ...
-					float handbrakeAmount = this->controls.handbrake;
+				if (_internalState.handbrakeVal) {
+					float handbrakeAmount = _internalState.handbrakeVal;
 					float handbrakeLatFriction = latFriction / 10;
 					latFriction *= (handbrakeLatFriction - 1) * handbrakeAmount + 1;
-					longFriction *= (RLConst::HANDBRAKE_LONG_FRICTION_FACTOR_CURVE.GetOutput(baseFriction) - 1) * handbrakeAmount + 1;
+					longFriction = (RLConst::HANDBRAKE_LONG_FRICTION_FACTOR_CURVE.GetOutput(baseFriction) - 1) * handbrakeAmount + 1;
 				} else {
 					longFriction = 1; // If we aren't powersliding, it's not scaled down
 				}
@@ -149,6 +173,13 @@ void Car::_PreTickUpdate() {
 			}
 		}
 
+		int numWheelsInContact = 0;
+		for (int i = 0; i < 4; i++)
+			numWheelsInContact += _bulletVehicle->m_wheelInfo[i].m_raycastInfo.m_isInContact;
+
+		if (numWheelsInContact < 3)
+			driveSpeedScale /= 4;
+		
 		float driveEngineForce = realThrottle * (RLConst::THROTTLE_TORQUE_AMOUNT * UU_TO_BT) * driveSpeedScale;
 		float driveBrakeForce = realBrake * (RLConst::BRAKE_TORQUE_AMOUNT * UU_TO_BT);
 		for (int i = 0; i < 4; i++) {

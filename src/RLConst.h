@@ -11,12 +11,14 @@ namespace RLConst {
 	constexpr float BALL_MASS_BT = CAR_MASS_BT / 6.f; // Ref: https://www.reddit.com/r/RocketLeague/comments/bmje9l/comment/emxkwrl/?context=3
 
 	constexpr float BALL_MAX_SPEED = 6000.f;
-	constexpr float CAR_MAX_SPEED = 2300.f;
+	constexpr float CAR_MAX_SPEED = 2300.f; // Car can never exceed this velocity
 
 	constexpr float BOOST_MAX = 100.f;
 	constexpr float BOOST_USED_PER_SECOND = BOOST_MAX / 3;
 	constexpr float BOOST_MIN_TIME = 0.1f; // Minimum time we can be boosting for
-	
+
+	constexpr float CAR_MAX_ANG_SPEED = M_PI * 1.75f; // Car can never exceed this angular velocity (radians/s)
+
 	// Speed needed to begin being supersonic
 	constexpr float SUPERSONIC_START_SPEED = 2200.f; 
 	
@@ -28,12 +30,11 @@ namespace RLConst {
 	constexpr float SUPERSONIC_MAINTAIN_MAX_TIME = 1.f; 
 
 	// Powerslide is actually an analog value from 0-1
-	// When held, powerslide goes up by 0.05 each tick, and it drops by 0.02 each tick once released
 	// These values are are in powerslide-per-second rates for rise and fall
-	// Thanks to Rangler for this one :P
+	// Thanks to Rangler for this one! (I did later stumble upon it myself but Rangler already knew about it)
 	constexpr float 
-		POWERSLIDE_RISE_RATE = 6, 
-		POWERSLIDE_FALL_RATE = 2.4f;
+		POWERSLIDE_RISE_RATE = 5, 
+		POWERSLIDE_FALL_RATE = 2;
 
 	constexpr float
 		THROTTLE_TORQUE_AMOUNT = CAR_MASS_BT * 400.f,
@@ -68,7 +69,7 @@ namespace RLConst {
 	constexpr float SOCCAR_BALL_SCORE_THRESHOLD_Y = SOCCAR_GOAL_SCORE_BASE_THRESHOLD_Y + BALL_COLLISION_RADIUS_NORMAL;
 
 	// Input: Forward car speed
-	// Output: Max steering angle
+	// Output: Max steering angle (radians)
 	const static LinearPieceCurve STEER_ANGLE_FROM_SPEED_CURVE = {
 		{
 			{0,		0.53355587898f},
@@ -81,11 +82,11 @@ namespace RLConst {
 	};
 
 	// Input: Forward car speed 
-	// Output: Max steering angle
+	// Output: Extended steering angle (radians)
 	const static LinearPieceCurve POWERSLIDE_STEER_ANGLE_FROM_SPEED_CURVE = {
 		{
-			{0,		22.48f},
-			{2500,	7.225},
+			{0,		0.39235002f},
+			{2500,	0.12610004f},
 		}
 	};
 

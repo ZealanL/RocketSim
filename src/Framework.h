@@ -19,6 +19,9 @@
 #include <functional>
 #include <chrono>
 
+#define _USE_MATH_DEFINES // for M_PI and similar
+#include <cmath>
+
 // Remove need for std namespace scope for very common datatypes
 using std::vector;
 using std::map;
