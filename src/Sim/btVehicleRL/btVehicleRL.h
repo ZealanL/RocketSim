@@ -5,13 +5,14 @@
 struct btWheelInfoRL : public btWheelInfo {
 	bool m_isInContactWithWorld = false;
 	float m_steerAngle = 0;
+	float m_latFriction = 0, m_longFriction = 0;
 
 	btWheelInfoRL(btWheelInfoConstructionInfo& constructionInfo) : btWheelInfo(constructionInfo) {}
 };
 
 // This is a modified version of btRaycastVehicle to more accurately follow Rocket League
-class btVehicleRL : public btActionInterface
-{
+class btVehicleRL : public btActionInterface {
+public:
 	btAlignedObjectArray<Vec> m_forwardWS;
 	btAlignedObjectArray<Vec> m_axle;
 	btAlignedObjectArray<btScalar> m_forwardImpulse;
@@ -21,7 +22,7 @@ class btVehicleRL : public btActionInterface
 	int m_userConstraintType;
 	int m_userConstraintId;
 
-public:
+
 	class btVehicleTuning
 	{
 	public:
@@ -41,7 +42,6 @@ public:
 		btScalar m_maxSuspensionForce;
 	};
 
-private:
 	btVehicleRaycaster* m_vehicleRaycaster;
 	btScalar m_pitchControl;
 	btScalar m_steeringValue;
@@ -54,7 +54,6 @@ private:
 
 	void defaultInit(const btVehicleTuning& tuning);
 
-public:
 	//constructor to create a car from an existing rigidbody
 	btVehicleRL(const btVehicleTuning& tuning, btRigidBody* chassis, btVehicleRaycaster* raycaster);
 

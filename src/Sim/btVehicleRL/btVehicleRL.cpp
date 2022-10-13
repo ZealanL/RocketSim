@@ -324,157 +324,85 @@ btScalar _calcRollingFriction(btWheelContactPoint& contactPoint, int numWheelsOn
 	return j1;
 }
 
-//btScalar sideFrictionStiffness2 = 1;
 void btVehicleRL::updateFriction(btScalar timeStep) {
-	//calculate the impulse, so that the wheels don't move sidewards
-	int numWheel = getNumWheels();
-	if (!numWheel)
-		return;
 
-	m_forwardWS.resize(numWheel);
-	m_axle.resize(numWheel);
-	m_forwardImpulse.resize(numWheel);
-	m_sideImpulse.resize(numWheel);
+	float frictionScale = m_chassisBody->getMass() / 3;
 
-	int numWheelsOnGround = 0;
+	// The friction force each wheel will produce
+	Vec wheelImpulses[4];
 
-	//collapse all those loops into one!
-	for (int i = 0; i < getNumWheels(); i++) {
-		btWheelInfoRL& wheelInfo = m_wheelInfo[i];
-		class btRigidBody* groundObject = (class btRigidBody*)wheelInfo.m_raycastInfo.m_groundObject;
-		if (groundObject)
-			numWheelsOnGround++;
-		m_sideImpulse[i] = 0;
-		m_forwardImpulse[i] = 0;
-	}
+	// Determine impulses
+	for (int i = 0; i < 4; i++) {
+		btWheelInfoRL& wheel = m_wheelInfo[i];
 
-	{
-		for (int i = 0; i < getNumWheels(); i++) {
-			btWheelInfoRL& wheelInfo = m_wheelInfo[i];
+		btRigidBody* groundObject = (btRigidBody*)wheel.m_raycastInfo.m_groundObject;
+		if (groundObject) {
+			// Axle direction (includes steering turn)
+			btVector3 axleDir = wheel.m_worldTransform.getBasis().getColumn(m_indexRightAxis);
 
-			class btRigidBody* groundObject = (class btRigidBody*)wheelInfo.m_raycastInfo.m_groundObject;
+			btVector3 surfNormalWS = wheel.m_raycastInfo.m_contactNormalWS;
+			float proj = axleDir.dot(surfNormalWS);
+			axleDir -= surfNormalWS * proj;
+			axleDir = axleDir.normalized();
 
-			if (groundObject) {
-				const btTransform& wheelTrans = getWheelTransformWS(i);
+			// Wheel forwards direction
+			btVector3 forwardDir = surfNormalWS.cross(axleDir).normalized();
 
-				btMatrix3x3 wheelBasis0 = wheelTrans.getBasis();
-				m_axle[i] = -Vec(
-					wheelBasis0[0][m_indexRightAxis],
-					wheelBasis0[1][m_indexRightAxis],
-					wheelBasis0[2][m_indexRightAxis]);
+			float sideImpulse;
 
-				const Vec& surfNormalWS = wheelInfo.m_raycastInfo.m_contactNormalWS;
-				btScalar proj = m_axle[i].dot(surfNormalWS);
-				m_axle[i] -= surfNormalWS * proj;
-				m_axle[i] = m_axle[i].normalize();
+			// Get sideways friction force
+			resolveSingleBilateral(
+				*m_chassisBody, wheel.m_raycastInfo.m_contactPointWS,
+				*groundObject, wheel.m_raycastInfo.m_contactPointWS,
+				0,
+				axleDir,
+				sideImpulse,
+				timeStep
+			);
 
-				m_forwardWS[i] = surfNormalWS.cross(m_axle[i]);
-				m_forwardWS[i].normalize();
+			float rollingFriction;
+			if (wheel.m_engineForce == 0) {
+				if (wheel.m_brake) {
+					// Simplified variation of calcRollingFriction()
+					btVector3 contactPoint = wheel.m_raycastInfo.m_contactPointWS;
+					btVector3 carRelContactPoint = contactPoint - m_chassisBody->getCenterOfMassPosition();
+					btVector3 groundObRelContactPoint = contactPoint - groundObject->getCenterOfMassPosition();
 
-				resolveSingleBilateral(*m_chassisBody, wheelInfo.m_raycastInfo.m_contactPointWS,
-					*groundObject, wheelInfo.m_raycastInfo.m_contactPointWS,
-					0, m_axle[i], m_sideImpulse[i], timeStep);
+					btVector3
+						v1 = m_chassisBody->getVelocityInLocalPoint(carRelContactPoint),
+						v2 = groundObject->getVelocityInLocalPoint(carRelContactPoint);
+					btVector3 contactVel = v1 - v2;
+					float relVel = contactVel.dot(forwardDir);
 
-				m_sideImpulse[i] *= 1;
-			}
-		}
-	}
+					// TODO: No idea where this number comes from or how it was calculated lol
+					constexpr float ROLLING_FRICTION_SCALE_MAGIC = 113.73963f;
 
-	btScalar sideFactor = 1;
-	btScalar fwdFactor = 0.5;
-
-	bool sliding = false;
-	{
-		for (int wheel = 0; wheel < getNumWheels(); wheel++) {
-			btWheelInfoRL& wheelInfo = m_wheelInfo[wheel];
-			class btRigidBody* groundObject = (class btRigidBody*)wheelInfo.m_raycastInfo.m_groundObject;
-
-			btScalar rollingFriction = 0.f;
-
-			if (groundObject) {
-				if (wheelInfo.m_engineForce != 0.f) {
-					rollingFriction = wheelInfo.m_engineForce * timeStep;
+					rollingFriction = CLAMP(-relVel * ROLLING_FRICTION_SCALE_MAGIC, -wheel.m_brake, wheel.m_brake);
 				} else {
-					btScalar defaultRollingFrictionImpulse = 0.f;
-					btScalar maxImpulse = wheelInfo.m_brake ? wheelInfo.m_brake : defaultRollingFrictionImpulse;
-					btWheelContactPoint contactPt(m_chassisBody, groundObject, wheelInfo.m_raycastInfo.m_contactPointWS, m_forwardWS[wheel], maxImpulse);
-					btAssert(numWheelsOnGround > 0);
-					rollingFriction = _calcRollingFriction(contactPt, numWheelsOnGround);
+					// Don't apply friction when driving with no brake
+					rollingFriction = 0;
 				}
+			} else {
+				// Engine force already accounts for our mass, so we will cancel out the friction scale multiplication at the end
+				rollingFriction = -wheel.m_engineForce / frictionScale;
 			}
 
-			//switch between active rolling (throttle), braking and non-active rolling friction (no throttle/break)
-
-			m_forwardImpulse[wheel] = 0;
-			m_wheelInfo[wheel].m_skidInfo = 1;
-
-			if (groundObject) {
-				m_wheelInfo[wheel].m_skidInfo = 1;
-
-				btScalar maximp = wheelInfo.m_wheelsSuspensionForce * timeStep * wheelInfo.m_frictionSlip;
-				btScalar maximpSide = maximp;
-
-				btScalar maximpSquared = maximp * maximpSide;
-
-				m_forwardImpulse[wheel] = rollingFriction;  //wheelInfo.m_engineForce* timeStep;
-
-				btScalar x = (m_forwardImpulse[wheel]) * fwdFactor;
-				btScalar y = (m_sideImpulse[wheel]) * sideFactor;
-
-				btScalar impulseSquared = (x * x + y * y);
-
-				if (impulseSquared > maximpSquared) {
-					sliding = true;
-
-					btScalar factor = maximp / btSqrt(impulseSquared);
-
-					m_wheelInfo[wheel].m_skidInfo *= factor;
-				}
-			}
+			btVector3 totalFrictionForce = (forwardDir * rollingFriction * wheel.m_longFriction) + (axleDir * sideImpulse * wheel.m_latFriction);
+			wheelImpulses[i] = totalFrictionForce * frictionScale;
+		} else {
+			wheelImpulses[i] = { 0,0,0 };
 		}
 	}
 
-	if (sliding) {
-		for (int wheel = 0; wheel < getNumWheels(); wheel++) {
-			if (m_sideImpulse[wheel] != 0) {
-				if (m_wheelInfo[wheel].m_skidInfo < 1) {
-					m_forwardImpulse[wheel] *= m_wheelInfo[wheel].m_skidInfo;
-					m_sideImpulse[wheel] *= m_wheelInfo[wheel].m_skidInfo;
-				}
-			}
-		}
-	}
-
-	// apply the impulses
-	{
-		for (int wheel = 0; wheel < getNumWheels(); wheel++) {
-			btWheelInfoRL& wheelInfo = m_wheelInfo[wheel];
-
-			Vec rel_pos = wheelInfo.m_raycastInfo.m_contactPointWS -
-				m_chassisBody->getCenterOfMassPosition();
-
-			if (m_forwardImpulse[wheel] != 0) {
-				m_chassisBody->applyImpulse(m_forwardWS[wheel] * (m_forwardImpulse[wheel]), rel_pos);
-			}
-			if (m_sideImpulse[wheel] != 0) {
-				class btRigidBody* groundObject = (class btRigidBody*)m_wheelInfo[wheel].m_raycastInfo.m_groundObject;
-
-				Vec rel_pos2 = wheelInfo.m_raycastInfo.m_contactPointWS -
-					groundObject->getCenterOfMassPosition();
-
-				Vec sideImp = m_axle[wheel] * m_sideImpulse[wheel];
-
-#if defined ROLLING_INFLUENCE_FIX  // fix. It only worked if car's up was along Y - VT.
-				Vec vChassisWorldUp = getRigidBody()->getCenterOfMassTransform().getBasis().getColumn(m_indexUpAxis);
-				rel_pos -= vChassisWorldUp * (vChassisWorldUp.dot(rel_pos) * (1.f - wheelInfo.m_rollInfluence));
-#else
-				rel_pos[m_indexUpAxis] *= wheelInfo.m_rollInfluence;
-#endif
-				m_chassisBody->applyImpulse(sideImp, rel_pos);
-
-				//apply friction impulse on the ground
-				groundObject->applyImpulse(-sideImp, rel_pos2);
-			}
+	// Apply impulses
+	btVector3 upDir = m_chassisBody->getWorldTransform().getBasis().getColumn(m_indexUpAxis);
+	for (int i = 0; i < 4; i++) {
+		btWheelInfoRL& wheel = m_wheelInfo[i];
+		{ // todo: aaa
+			btVector3 wheelContactOffset = wheel.m_raycastInfo.m_contactPointWS - m_chassisBody->getWorldTransform().getOrigin();
+			float contactUpDot = upDir.dot(wheelContactOffset);
+			btVector3 wheelRelPos = wheelContactOffset - upDir * contactUpDot;
+			m_chassisBody->applyImpulse(wheelImpulses[i] * timeStep, wheelRelPos);
 		}
 	}
 }
@@ -493,10 +421,7 @@ Vec btVehicleRL::getDownwardsDirFromWheelContacts() {
 		return sumContactDir.normalized();
 	}
 }
-float btVehicleRL::getForwardSpeed() {
-	Vec vel = m_chassisBody->getLinearVelocity();
-	Vec forwardDir = getForwardVector();
-	Vec forwardDirVel = vel * forwardDir;
 
-	return forwardDirVel.x() + forwardDirVel.y() + forwardDirVel.z();
+float btVehicleRL::getForwardSpeed() {
+	return m_chassisBody->getLinearVelocity().dot(getForwardVector());
 }
