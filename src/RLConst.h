@@ -55,8 +55,7 @@ namespace RLConst {
 			SUSPENSION_STIFFNESS = 500.f,
 			WHEELS_DAMPING_COMPRESSION = 25.f,
 			WHEELS_DAMPING_RELAXATION = 40.f,
-			MAX_SUSPENSION_TRAVEL = 12.f, // TODO: Are we sure this is the same for all cars?
-			FRICTION_SLIP_AMOUNT = 20.f; // TODO: Find actual value
+			MAX_SUSPENSION_TRAVEL = 12.f; // TODO: Are we sure this is the same for all cars?
 	}
 
 	// TODO: Got these from https://github.com/samuelpmish/RLUtilities/blob/develop/src/simulation/ball.cc, but I should check them just in case?
@@ -80,13 +79,37 @@ namespace RLConst {
 		}
 	};
 
-	// Input: ABS Forward car speed 
+	// Input: Forward car speed 
+	// Output: Max steering angle
+	const static LinearPieceCurve POWERSLIDE_STEER_ANGLE_FROM_SPEED_CURVE = {
+		{
+			{0,		22.48f},
+			{2500,	7.225},
+		}
+	};
+
+	// Input: Forward car speed 
 	// Output: Torque factor
 	const static LinearPieceCurve DRIVE_SPEED_TORQUE_FACTOR_CURVE = {
 		{
 			{0,		1.0f},
 			{1400,	0.1f},
 			{1410,	0.0f}
+		}
+	};
+
+	const static LinearPieceCurve NON_STICKY_FRICTION_FACTOR_CURVE = {
+		{
+			{0,			0.1f},
+			{0.7075f,	0.5f},
+			{1,			1.0f}
+		}
+	};
+
+	const static LinearPieceCurve HANDBRAKE_LONG_FRICTION_FACTOR_CURVE = {
+		{
+			{0,	0.5f},
+			{1,	0.9f}
 		}
 	};
 }
