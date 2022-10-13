@@ -28,11 +28,12 @@ namespace RLConst {
 	constexpr float SUPERSONIC_MAINTAIN_MAX_TIME = 1.f; 
 
 	// Powerslide is actually an analog value from 0-1
-	// When held, powerslide goes up by 0.05, and it drops by 0.02 each tick once released
+	// When held, powerslide goes up by 0.05 each tick, and it drops by 0.02 each tick once released
+	// These values are are in powerslide-per-second rates for rise and fall
 	// Thanks to Rangler for this one :P
 	constexpr float 
-		POWERSLIDE_RATIO_RISE = 0.05f, 
-		POWERSLIDE_RATIO_FALL = 0.02f;
+		POWERSLIDE_RISE_RATE = 6, 
+		POWERSLIDE_FALL_RATE = 2.4f;
 
 	constexpr float
 		THROTTLE_TORQUE_AMOUNT = CAR_MASS_BT * 400.f,
