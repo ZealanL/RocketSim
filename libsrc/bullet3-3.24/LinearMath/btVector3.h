@@ -580,6 +580,15 @@ public:
 	/**@brief Return the w value */
 	SIMD_FORCE_INLINE const btScalar& w() const { return m_floats[3]; }
 
+	/**@brief Return the x value */
+	SIMD_FORCE_INLINE btScalar& x() { return m_floats[0]; }
+	/**@brief Return the y value */
+	SIMD_FORCE_INLINE btScalar& y() { return m_floats[1]; }
+	/**@brief Return the z value */
+	SIMD_FORCE_INLINE btScalar& z() { return m_floats[2]; }
+	/**@brief Return the w value */
+	SIMD_FORCE_INLINE btScalar& w() { return m_floats[3]; }
+
 	//SIMD_FORCE_INLINE btScalar&       operator[](int i)       { return (&m_floats[0])[i];	}
 	//SIMD_FORCE_INLINE const btScalar& operator[](int i) const { return (&m_floats[0])[i]; }
 	///operator btScalar*() replaces operator[], using implicit conversion. We added operator != and operator == to avoid pointer comparisons.
