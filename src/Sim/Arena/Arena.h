@@ -2,6 +2,7 @@
 #include "../../BaseInc.h"
 #include "../Car/Car.h"
 #include "../Ball/Ball.h"
+#include "../MeshLoader/MeshLoader.h"
 
 enum class GameMode {
 	SOCCAR,
@@ -18,6 +19,9 @@ public:
 	uint32_t _lastCarID = 0;
 	list<Car*> _carsList; // Using list so that elements do not change address
 	Ball* ball;
+
+	// Total ticks this arena instance has been simulated for, never resets
+	uint64_t tickCount = 0;
 
 	const list<Car*>& GetCars() { return _carsList; }
 
@@ -39,6 +43,7 @@ public:
 
 	vector<btRigidBody*> _worldCollisionRBs;
 	vector<btCollisionShape*> _worldCollisionShapes;
+	vector<btTriangleMesh*> _arenaTriMeshes;
 
 	typedef std::function<void(Team goalTeam)> GoalScoreEventFn;
 	vector<GoalScoreEventFn> _goalScoreCallbacks;
@@ -51,4 +56,10 @@ public:
 
 	// Free all associated memory
 	~Arena();
+
+	// NOTE: Passed shape pointer will be freed when arena is deconstructed
+	void _AddStaticCollisionShape(btCollisionShape* shape, btVector3 pos = btVector3(0,0,0));
+
+	void _AddStaticCollisionTris(MeshLoader::Mesh& mesh, btVector3 scale = btVector3(1,1,1), btVector3 pos = btVector3(0, 0, 0));
+	void _SetupArenaCollisionShapes();
 };

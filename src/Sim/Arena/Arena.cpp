@@ -1,5 +1,6 @@
 #include "Arena.h"
 #include "../../RLConst.h"
+#include "../MeshLoader/MeshLoader.h"
 
 Car* Arena::AddCar(Team team, const CarConfig& config) {
 	Car* car = Car::_AllocateCar();
@@ -84,8 +85,6 @@ Car* Arena::AddCar(Team team, const CarConfig& config) {
 					wheelInfo.m_maxSuspensionTravelCm = (MAX_SUSPENSION_TRAVEL * UU_TO_BT) * 100; // Same for all cars (hopefully)
 					wheelInfo.m_maxSuspensionForce = FLT_MAX; // Don't think there's a limit
 					wheelInfo.m_bIsFrontWheel = front;
-
-					wheelInfo.m_frictionSlip = FRICTION_SLIP_AMOUNT;
 				}
 			}
 		}
@@ -122,31 +121,9 @@ void Arena::RegisterGoalScoreCallback(GoalScoreEventFn callbackFunc) {
 Arena::Arena(GameMode gameMode) {
 	this->gameMode = gameMode;
 
-	{ // Initialize ball
-		ball = Ball::_AllocBall();
-
-		float radius;
-		switch (gameMode) {
-		default:
-			radius = RLConst::BALL_COLLISION_RADIUS_NORMAL;
-			break;
-		}
-
-		ball->_collisionShape = new btSphereShape(radius);
-
-		btRigidBody::btRigidBodyConstructionInfo constructionInfo = 
-			btRigidBody::btRigidBodyConstructionInfo(RLConst::BALL_MASS_BT, NULL, ball->_collisionShape);
-
-		constructionInfo.m_startWorldTransform.setIdentity();
-		constructionInfo.m_startWorldTransform.setOrigin(btVector3(0, 0, radius));
-
-		// TODO: Set other values in constructionInfo to match RL
-
-		ball->_rigidBody = new btRigidBody(constructionInfo);
-	}
-
 	{ // Initialize world
 
+		
 		 _bulletWorldParams.collisionConfig = new btDefaultCollisionConfiguration();
 		 _bulletWorldParams.collisionDispatcher = new btCollisionDispatcher(_bulletWorldParams.collisionConfig);
 		 _bulletWorldParams.constraintSolver = new btSequentialImpulseConstraintSolver;
@@ -160,6 +137,56 @@ Arena::Arena(GameMode gameMode) {
 		);
 
 		_bulletWorld->setGravity(btVector3(0, 0, RLConst::GRAVITY_Z * UU_TO_BT));
+	}
+
+	_SetupArenaCollisionShapes();
+#if 0
+	{ // Initialize arena collision mesh
+		_arenaTriMesh = ArenaMesh::GenerateTriMesh();
+		btBvhTriangleMeshShape* triMeshShape = new btBvhTriangleMeshShape(_arenaTriMesh, true);
+		triMeshShape->buildOptimizedBvh();
+		_worldCollisionShapes.push_back(triMeshShape);
+		btRigidBody::btRigidBodyConstructionInfo constructionInfo =
+			btRigidBody::btRigidBodyConstructionInfo(0, NULL, triMeshShape);
+
+		constructionInfo.m_startWorldTransform.setIdentity();
+		constructionInfo.m_startWorldTransform.setOrigin({0, 0, 0});
+	
+		btRigidBody* arenaStaticRB = new btRigidBody(constructionInfo);
+		_worldCollisionRBs.push_back(arenaStaticRB);
+		_bulletWorld->addRigidBody(arenaStaticRB);
+
+		arenaStaticRB->setCollisionFlags(1);
+	}
+#endif
+
+	{ // Initialize ball
+		ball = Ball::_AllocBall();
+
+		float radius;
+		switch (gameMode) {
+		default:
+			radius = RLConst::BALL_COLLISION_RADIUS_NORMAL;
+			break;
+		}
+		radius *= UU_TO_BT;
+
+		ball->_collisionShape = new btSphereShape(radius);
+
+		btRigidBody::btRigidBodyConstructionInfo constructionInfo =
+			btRigidBody::btRigidBodyConstructionInfo(RLConst::BALL_MASS_BT, NULL, ball->_collisionShape);
+
+		constructionInfo.m_startWorldTransform.setIdentity();
+		constructionInfo.m_startWorldTransform.setOrigin(btVector3(0, 0, radius));
+
+		constructionInfo.m_angularSleepingThreshold = 0;
+		constructionInfo.m_linearSleepingThreshold = 0.001;
+		constructionInfo.m_linearDamping = RLConst::BALL_DRAG;
+
+		constructionInfo.m_rollingFriction = constructionInfo.m_friction = 0;
+		constructionInfo.m_restitution = 0.6f;
+
+		ball->_rigidBody = new btRigidBody(constructionInfo);
 	}
 
 	// Add ball to world
@@ -176,6 +203,24 @@ void Arena::Step(int ticksToSimulate) {
 
 		for (Car* car : _carsList)
 			car->_PostTickUpdate();
+
+		{ // Limit ball's linear/angular velocity
+			using namespace RLConst;
+
+			btVector3 ballVel = ball->_rigidBody->getLinearVelocity();
+			btVector3 ballAngVel = ball->_rigidBody->getAngularVelocity();
+
+			if (ballVel.length2() > (BALL_MAX_SPEED * BALL_MAX_SPEED))
+				ballVel = ballVel.normalized() * BALL_MAX_SPEED;
+
+			if (ballAngVel.length2() > (BALL_MAX_ANG_SPEED * BALL_MAX_ANG_SPEED))
+				ballVel = ballVel.normalized() * BALL_MAX_ANG_SPEED;
+
+			ball->_rigidBody->setLinearVelocity(ballVel);
+			ball->_rigidBody->setAngularVelocity(ballAngVel);
+		}
+
+		tickCount++;
 	}
 }
 
@@ -205,4 +250,93 @@ Arena::~Arena() {
 
 	// Remove ball
 	delete ball;
+
+	// Remove arena collision meshes
+	for (btTriangleMesh* mesh : _arenaTriMeshes) {
+		delete mesh;
+	}
+}
+
+void Arena::_AddStaticCollisionShape(btCollisionShape* shape, btVector3 pos) {
+	_worldCollisionShapes.push_back(shape);
+
+	btRigidBody* shapeRB = new btRigidBody(0, NULL, shape);
+	shapeRB->setWorldTransform(btTransform(btMatrix3x3::getIdentity(), pos));
+	_worldCollisionRBs.push_back(shapeRB);
+
+	_bulletWorld->addRigidBody(shapeRB);
+}
+
+void Arena::_AddStaticCollisionTris(MeshLoader::Mesh& mesh, btVector3 scale, btVector3 pos) {
+	auto triMesh = mesh.MakeBulletMesh(scale);
+	_arenaTriMeshes.push_back(triMesh);
+
+	auto bvt = new btBvhTriangleMeshShape(triMesh, false);
+	bvt->buildOptimizedBvh();
+	_AddStaticCollisionShape(bvt, pos);
+}
+
+void Arena::_SetupArenaCollisionShapes() {
+	// TODO: This is just for soccar arena
+	assert(gameMode == GameMode::SOCCAR);
+
+	string basePath = "assets/soccar_field/";
+
+	if (!std::filesystem::exists(basePath)) {
+		ERR_CLOSE(
+			"Failed to find soccar field asset files at \"" << basePath
+			<< "\", the assets folder should be in our current directory " << std::filesystem::current_path() << ".")
+	}
+
+	// Create triangle meshes
+	MeshLoader::Mesh
+		cornerMesh	= MeshLoader::LoadMeshFromFiles(basePath + "soccar_corner", 2),
+		goalMesh	= MeshLoader::LoadMeshFromFiles(basePath + "soccar_goal", 2),
+		rampsMeshA	= MeshLoader::LoadMeshFromFiles(basePath + "soccar_ramps_0", 2),
+		rampsMeshB	= MeshLoader::LoadMeshFromFiles(basePath + "soccar_ramps_1", 2);
+
+	constexpr float PLANE_THICKNESS = 10;
+	constexpr float WALL_SIZE = 120;
+	
+	constexpr float EXTENT_X = 4096 * UU_TO_BT;
+	constexpr float EXTENT_Y = 5120 * UU_TO_BT;
+	constexpr float EXTENT_Z = 2048 * UU_TO_BT;
+
+	// Floor
+	_AddStaticCollisionShape(
+		new btBoxShape({ WALL_SIZE, WALL_SIZE, PLANE_THICKNESS }),
+		{ 0, 0, -PLANE_THICKNESS }
+	);
+
+	// Ceiling
+	_AddStaticCollisionShape(
+		new btBoxShape({ WALL_SIZE, WALL_SIZE, PLANE_THICKNESS }),
+		{ 0, 0, EXTENT_Z + PLANE_THICKNESS }
+	);
+
+	// Side walls
+	_AddStaticCollisionShape(
+		new btBoxShape({ PLANE_THICKNESS, WALL_SIZE, WALL_SIZE }),
+		{ -(EXTENT_X + PLANE_THICKNESS), 0, EXTENT_Z / 2 }
+	);
+	_AddStaticCollisionShape(
+		new btBoxShape({ PLANE_THICKNESS, WALL_SIZE, WALL_SIZE }),
+		{ (EXTENT_X + PLANE_THICKNESS), 0, EXTENT_Z / 2 }
+	);
+
+	// Add vertical corners
+	_AddStaticCollisionTris(cornerMesh, btVector3(1, 1, 1));
+	_AddStaticCollisionTris(cornerMesh, btVector3(-1, 1, 1));
+	_AddStaticCollisionTris(cornerMesh, btVector3(1, -1, 1));
+	_AddStaticCollisionTris(cornerMesh, btVector3(-1, -1, 1));
+
+	// Add goals
+	_AddStaticCollisionTris(goalMesh, btVector3(1, 1, 1), btVector3(0, -EXTENT_Y, 0));
+	_AddStaticCollisionTris(goalMesh, btVector3(1, -1, 1), btVector3(0, EXTENT_Y, 0));
+
+	// Add sidewall ramps
+	_AddStaticCollisionTris(rampsMeshA, btVector3(1, 1, 1));
+	_AddStaticCollisionTris(rampsMeshA, btVector3(-1, 1, 1));
+	_AddStaticCollisionTris(rampsMeshB, btVector3(1, 1, 1));
+	_AddStaticCollisionTris(rampsMeshB, btVector3(-1, 1, 1));
 }
