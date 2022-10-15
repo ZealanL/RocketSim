@@ -39,13 +39,15 @@ void Car::_PostTickUpdate() {
 	_bulletVehicle->updateVehicle(TICKTIME);
 	this->_internalState.lastControls = this->controls;
 
-	// Limit linear vel
-	if (_rigidBody->getLinearVelocity().length2() > (RLConst::CAR_MAX_SPEED * RLConst::CAR_MAX_SPEED)) 
-		_rigidBody->setLinearVelocity(_rigidBody->getLinearVelocity().normalized() * RLConst::CAR_MAX_SPEED);
-	
-	// Limit angular vel
-	if (_rigidBody->getAngularVelocity().length2() > (RLConst::CAR_MAX_ANG_SPEED * RLConst::CAR_MAX_ANG_SPEED))
-		_rigidBody->setAngularVelocity(_rigidBody->getAngularVelocity().normalized() * RLConst::CAR_MAX_ANG_SPEED);
+	{ // Limit velocities
+		using namespace RLConst;
+
+		if (_rigidBody->getLinearVelocity().length2() > (CAR_MAX_SPEED * CAR_MAX_SPEED))
+			_rigidBody->setLinearVelocity(_rigidBody->getLinearVelocity().normalized() * RLConst::CAR_MAX_SPEED);
+
+		if (_rigidBody->getAngularVelocity().length2() > (CAR_MAX_ANG_SPEED * CAR_MAX_ANG_SPEED))
+			_rigidBody->setAngularVelocity(_rigidBody->getAngularVelocity().normalized() * CAR_MAX_ANG_SPEED);
+	}
 }
 
 Car* Car::_AllocateCar() {
