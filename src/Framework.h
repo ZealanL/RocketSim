@@ -18,6 +18,7 @@
 #include <unordered_set>
 #include <functional>
 #include <chrono>
+#include <filesystem>
 
 #define _USE_MATH_DEFINES // for M_PI and similar
 #include <cmath>
@@ -44,7 +45,7 @@ typedef int64_t int64;	typedef uint64_t uint64;
 typedef uint8_t byte;
 
 // Current millisecond time
-#define CUR_MS() (std::chrono::duration_cast<std::chrono::miliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count())
+#define CUR_MS() (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count())
 
 #define MAX(a, b) ((a > b) ? a : b)
 #define MIN(a, b) ((a < b) ? a : b)
@@ -56,3 +57,5 @@ typedef uint8_t byte;
 
 // Returns sign of number (1 if positive, -1 if negative, and 0 if 0)
 #define SGN(val) ((val > 0) - (val < 0))
+
+#define ERR_CLOSE(s) { LOG("FATAL ERROR: " << s); exit(EXIT_FAILURE); }
