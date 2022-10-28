@@ -7,7 +7,7 @@ struct CarState {
 	// Position in world space
 	Vec pos;
 
-	EulerAngle angles;
+	Angle angles;
 
 	// Linear velocity
 	Vec vel;
@@ -18,8 +18,11 @@ struct CarState {
 	bool isOnGround;
 	bool hasJumped, hasDoubleJumped;
 
-	// Set once we jump/flip, counts down from there
+	// Reset once we jump/flip
 	float jumpTimer, flipTimer;
+
+	// True during a jump (not double jumps or a flip)
+	bool isJumping;
 
 	// Goes from 0 to 100
 	float boost;
