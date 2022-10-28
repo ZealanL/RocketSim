@@ -53,23 +53,21 @@ Car* Arena::AddCar(Team team, const CarConfig& config) {
 				bool front = i < 2;
 				bool left = i % 2;
 
-				float x = front ? 51.25f : -33.75f;
-				float y = left ? 29.5f : -29.5f;
-				float rayStartZ = 20.755f;
+				
+				float radius = front ? config.frontWheels.wheelRadius : config.backWheels.wheelRadius;
+				btVector3 wheelRayStartOffset = front ? config.frontWheels.connectionPointOffset : config.backWheels.connectionPointOffset;
 
-				// These numbers??? where they from???
-				float wheelRestZ = front ? -4.f : -2.3f;
+				if (left)
+					wheelRayStartOffset.y() *= -1;
 
-				float radius = front ? 12.5f : 15.f;
-				btVector3 wheelRestOffset = btVector3(x, y, wheelRestZ) * UU_TO_BT;
-				btVector3 wheelRayStartOffset = btVector3(x, y, rayStartZ) * UU_TO_BT;
+				float suspensionRestLength = front ? config.frontWheels.suspensionRestLength : config.backWheels.suspensionRestLength;
 
-				float suspensionRestLength = wheelRayStartOffset.z() - wheelRestOffset.z();
+				suspensionRestLength -= RLConst::BTVehicle::MAX_SUSPENSION_TRAVEL;
 
 				car->_bulletVehicle->addWheel(
-					wheelRayStartOffset,
+					wheelRayStartOffset * UU_TO_BT,
 					wheelDirectionCS, wheelAxleCS,
-					suspensionRestLength,
+					suspensionRestLength * UU_TO_BT,
 					radius * UU_TO_BT, tuning, true);
 
 				{ // Fix wheel info data
