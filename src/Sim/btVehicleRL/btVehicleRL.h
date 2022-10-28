@@ -5,7 +5,10 @@
 struct btWheelInfoRL : public btWheelInfo {
 	bool m_isInContactWithWorld = false;
 	float m_steerAngle = 0;
+
+	// lat = sideways, long = forward
 	float m_latFriction = 0, m_longFriction = 0;
+	btVector3 m_impulse;
 
 	btWheelInfoRL(btWheelInfoConstructionInfo& constructionInfo) : btWheelInfo(constructionInfo) {}
 };
@@ -15,8 +18,8 @@ class btVehicleRL : public btActionInterface {
 public:
 	btAlignedObjectArray<Vec> m_forwardWS;
 	btAlignedObjectArray<Vec> m_axle;
-	btAlignedObjectArray<btScalar> m_forwardImpulse;
-	btAlignedObjectArray<btScalar> m_sideImpulse;
+	btAlignedObjectArray<float> m_forwardImpulse;
+	btAlignedObjectArray<float> m_sideImpulse;
 
 	///backwards compatibility
 	int m_userConstraintType;
@@ -27,24 +30,24 @@ public:
 	{
 	public:
 		btVehicleTuning()
-			: m_suspensionStiffness(btScalar(5.88)),
-			m_suspensionCompression(btScalar(0.83)),
-			m_suspensionDamping(btScalar(0.88)),
-			m_maxSuspensionTravelCm(btScalar(500.)),
-			m_frictionSlip(btScalar(10.5)),
-			m_maxSuspensionForce(btScalar(6000.)) {
+			: m_suspensionStiffness(float(5.88)),
+			m_suspensionCompression(float(0.83)),
+			m_suspensionDamping(float(0.88)),
+			m_maxSuspensionTravelCm(float(500.)),
+			m_frictionSlip(float(10.5)),
+			m_maxSuspensionForce(float(6000.)) {
 		}
-		btScalar m_suspensionStiffness;
-		btScalar m_suspensionCompression;
-		btScalar m_suspensionDamping;
-		btScalar m_maxSuspensionTravelCm;
-		btScalar m_frictionSlip;
-		btScalar m_maxSuspensionForce;
+		float m_suspensionStiffness;
+		float m_suspensionCompression;
+		float m_suspensionDamping;
+		float m_maxSuspensionTravelCm;
+		float m_frictionSlip;
+		float m_maxSuspensionForce;
 	};
 
 	btVehicleRaycaster* m_vehicleRaycaster;
-	btScalar m_pitchControl;
-	btScalar m_steeringValue;
+	float m_pitchControl;
+	float m_steeringValue;
 
 	btRigidBody* m_chassisBody;
 
@@ -60,32 +63,32 @@ public:
 	virtual ~btVehicleRL();
 
 	///btActionInterface interface
-	virtual void updateAction(btCollisionWorld* collisionWorld, btScalar step) {
+	virtual void updateAction(btCollisionWorld* collisionWorld, float step) {
 		(void)collisionWorld;
 		updateVehicle(step);
 	}
 
 	const btTransform& getChassisWorldTransform() const;
 
-	btScalar rayCast(btWheelInfoRL& wheel);
+	float rayCast(btWheelInfoRL& wheel);
 
-	virtual void updateVehicle(btScalar step);
+	virtual void updateVehicle(float step);
 
 	void resetSuspension();
 
-	btScalar getSteeringValue(int wheel) const;
+	float getSteeringValue(int wheel) const;
 
-	void setSteeringValue(btScalar steering, int wheel);
+	void setSteeringValue(float steering, int wheel);
 
-	void applyEngineForce(btScalar force, int wheel);
+	void applyEngineForce(float force, int wheel);
 
 	const btTransform& getWheelTransformWS(int wheelIndex) const;
 
 	void updateWheelTransform(int wheelIndex);
 
-	//	void	setRaycastWheelInfo( int wheelIndex , bool isInContact, const Vec& hitPoint, const Vec& hitNormal,btScalar depth);
+	//	void	setRaycastWheelInfo( int wheelIndex , bool isInContact, const Vec& hitPoint, const Vec& hitNormal,float depth);
 
-	btWheelInfoRL& addWheel(const Vec& connectionPointCS0, const Vec& wheelDirectionCS0, const Vec& wheelAxleCS, btScalar suspensionRestLength, btScalar wheelRadius, const btVehicleTuning& tuning, bool isFrontWheel);
+	btWheelInfoRL& addWheel(const Vec& connectionPointCS0, const Vec& wheelDirectionCS0, const Vec& wheelAxleCS, float suspensionRestLength, float wheelRadius, const btVehicleTuning& tuning, bool isFrontWheel);
 
 	inline int getNumWheels() const {
 		return int(m_wheelInfo.size());
@@ -99,15 +102,16 @@ public:
 
 	void updateWheelTransformsWS(btWheelInfoRL& wheel);
 
-	void setBrake(btScalar brake, int wheelIndex);
+	void setBrake(float brake, int wheelIndex);
 
-	void setPitchControl(btScalar pitch) {
+	void setPitchControl(float pitch) {
 		m_pitchControl = pitch;
 	}
 
-	void updateSuspension(btScalar deltaTime);
+	void updateSuspension(float deltaTime);
 
-	virtual void updateFriction(btScalar timeStep);
+	virtual void calcFrictionImpulses(float timeStep);
+	void applyFrictionImpulses(float timeStep);
 
 	inline btRigidBody* getRigidBody() {
 		return m_chassisBody;
@@ -186,7 +190,7 @@ public:
 
 	virtual void debugDraw(btIDebugDraw* debugDrawer) {}
 
-	// Extra funcs added by Zealan
+    // Extra utility funcs
 	Vec getDownwardsDirFromWheelContacts();
 	float getForwardSpeed();
 };
