@@ -47,13 +47,19 @@ namespace RLConst {
 		COASTING_BRAKE_FACTOR = 0.15f, // How much the brake is applied when costing
 		THROTTLE_DEADZONE = 0.001f; // Throttle input of less than this is ignored
 
+	constexpr float
+		JUMP_ACCEL = 4375.f / 3.f,
+		JUMP_IMMEDIATE_FORCE = 875.f / 3.f,
+		JUMP_MIN_TIME = 0.025f,
+		JUMP_MAX_TIME = 0.2f;
+
 	// Rocket League uses BulletPhysics, so I'd imagine they use a variation of the btRaycastVehicle
 	// These are those vehicle's settings
 	namespace BTVehicle {
 		// TODO: These values might change from car to car...? Need to check!
 		constexpr float 
-			SUSPENSION_FORCE_SCALE_FRONT = 54.f + (1.f / 4.f) + (1.5f / 100.f),
-			SUSPENSION_FORCE_SCALE_BACK = 36.f - (1.f / 4.f);
+			SUSPENSION_FORCE_SCALE_FRONT = 36.f - (1.f / 4.f),
+			SUSPENSION_FORCE_SCALE_BACK = 54.f + (1.f / 4.f) + (1.5f / 100.f);
 
 		constexpr float
 			SUSPENSION_STIFFNESS = 500.f,
@@ -62,6 +68,11 @@ namespace RLConst {
 			MAX_SUSPENSION_TRAVEL = 12.f; // TODO: Are we sure this is the same for all cars?
 	}
 
+	// NOTE: Angle order is PYR
+	const static Vec
+		CAR_AIR_CONTROL_TORQUE = Vec(130, 95, 400),
+		CAR_AIR_CONTROL_DAMPING = Vec(30, 20, 50);
+
 	// TODO: Got these from https://github.com/samuelpmish/RLUtilities/blob/develop/src/simulation/ball.cc, but I should check them just in case?
 	constexpr float
 		BALL_COLLISION_RADIUS_NORMAL = 93.15f, // Soccar, Hoops, etc.
@@ -69,6 +80,8 @@ namespace RLConst {
 
 	constexpr float SOCCAR_GOAL_SCORE_BASE_THRESHOLD_Y = 5121.75f;
 	constexpr float SOCCAR_BALL_SCORE_THRESHOLD_Y = SOCCAR_GOAL_SCORE_BASE_THRESHOLD_Y + BALL_COLLISION_RADIUS_NORMAL;
+
+	constexpr float CAR_TORQUE_SCALE = 0.09587379924f;
 
 	// Input: Forward car speed
 	// Output: Max steering angle (radians)
