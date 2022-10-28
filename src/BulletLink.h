@@ -19,6 +19,6 @@ typedef btVector3 Vec;
 #define TICKTIME (1.f/TICKRATE)
 
 // NOTE: Values should be in radians
-struct EulerAngle {
+struct Angle {
 	float yaw, pitch, roll;
 };
