@@ -138,25 +138,11 @@ Arena::Arena(GameMode gameMode) {
 	}
 
 	_SetupArenaCollisionShapes();
-#if 0
-	{ // Initialize arena collision mesh
-		_arenaTriMesh = ArenaMesh::GenerateTriMesh();
-		btBvhTriangleMeshShape* triMeshShape = new btBvhTriangleMeshShape(_arenaTriMesh, true);
-		triMeshShape->buildOptimizedBvh();
-		_worldCollisionShapes.push_back(triMeshShape);
-		btRigidBody::btRigidBodyConstructionInfo constructionInfo =
-			btRigidBody::btRigidBodyConstructionInfo(0, NULL, triMeshShape);
 
-		constructionInfo.m_startWorldTransform.setIdentity();
-		constructionInfo.m_startWorldTransform.setOrigin({0, 0, 0});
-	
-		btRigidBody* arenaStaticRB = new btRigidBody(constructionInfo);
-		_worldCollisionRBs.push_back(arenaStaticRB);
-		_bulletWorld->addRigidBody(arenaStaticRB);
-
-		arenaStaticRB->setCollisionFlags(1);
-	}
-#endif
+	// Make every arena surface 100% restitution
+	// Dynamic rigid bodies will control their own restitution
+	for (auto rb : _worldCollisionRBs)
+		rb->setRestitution(1);
 
 	{ // Initialize ball
 		ball = Ball::_AllocBall();
@@ -212,7 +198,7 @@ void Arena::Step(int ticksToSimulate) {
 				ballVel = ballVel.normalized() * BALL_MAX_SPEED;
 
 			if (ballAngVel.length2() > (BALL_MAX_ANG_SPEED * BALL_MAX_ANG_SPEED))
-				ballVel = ballVel.normalized() * BALL_MAX_ANG_SPEED;
+				ballAngVel = ballAngVel.normalized() * BALL_MAX_ANG_SPEED;
 
 			ball->_rigidBody->setLinearVelocity(ballVel);
 			ball->_rigidBody->setAngularVelocity(ballAngVel);
