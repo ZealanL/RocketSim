@@ -121,7 +121,6 @@ Arena::Arena(GameMode gameMode) {
 
 	{ // Initialize world
 
-		
 		 _bulletWorldParams.collisionConfig = new btDefaultCollisionConfiguration();
 		 _bulletWorldParams.collisionDispatcher = new btCollisionDispatcher(_bulletWorldParams.collisionConfig);
 		 _bulletWorldParams.constraintSolver = new btSequentialImpulseConstraintSolver;
@@ -139,10 +138,15 @@ Arena::Arena(GameMode gameMode) {
 
 	_SetupArenaCollisionShapes();
 
-	// Make every arena surface 100% restitution
+	// Make every arena surface 100% restitution/frictions
 	// Dynamic rigid bodies will control their own restitution
-	for (auto rb : _worldCollisionRBs)
+	for (auto rb : _worldCollisionRBs) {
 		rb->setRestitution(1);
+		rb->setFriction(1);
+		rb->setRollingFriction(1);
+		rb->setSpinningFriction(1);
+		rb->setAnisotropicFriction({ 1, 1, 1 }, btCollisionObject::CF_ANISOTROPIC_ROLLING_FRICTION);
+	}
 
 	{ // Initialize ball
 		ball = Ball::_AllocBall();
@@ -166,11 +170,12 @@ Arena::Arena(GameMode gameMode) {
 		constructionInfo.m_angularSleepingThreshold = 0;
 		constructionInfo.m_linearSleepingThreshold = 0.001;
 		constructionInfo.m_linearDamping = RLConst::BALL_DRAG;
+		constructionInfo.m_friction = RLConst::BALL_FRICTION;
+		constructionInfo.m_restitution = RLConst::BALL_RESTITUTION;
 
-		constructionInfo.m_rollingFriction = constructionInfo.m_friction = 0;
-		constructionInfo.m_restitution = 0.6f;
+		constructionInfo.m_friction = 0.35f;
 
-		ball->_rigidBody = new btRigidBody(constructionInfo);
+		ball->_rigidBody = new btRigidBody(constructionInfo);		
 	}
 
 	// Add ball to world
@@ -236,9 +241,8 @@ Arena::~Arena() {
 	delete ball;
 
 	// Remove arena collision meshes
-	for (btTriangleMesh* mesh : _arenaTriMeshes) {
+	for (btTriangleMesh* mesh : _arenaTriMeshes)
 		delete mesh;
-	}
 }
 
 void Arena::_AddStaticCollisionShape(btCollisionShape* shape, btVector3 pos) {
