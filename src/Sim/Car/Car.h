@@ -16,7 +16,8 @@ struct CarState {
 	Vec angVel;
 
 	bool isOnGround;
-	bool hasJumped, hasDoubleJumped;
+	bool hasJumped, hasDoubleJumped, hasFlipped;
+	Vec lastDodgeTorque;
 
 	// Reset once we jump/flip
 	float jumpTimer, flipTimer;

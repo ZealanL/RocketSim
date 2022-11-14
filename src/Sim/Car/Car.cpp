@@ -84,6 +84,15 @@ void Car::_PostTickUpdate() {
 		}
 	}
 
+	{ // Update flip/double jump
+		using namespace RLConst;
+		if (_internalState.isOnGround) {
+			_internalState.hasDoubleJumped = false;
+			_internalState.hasFlipped = false;
+		} else {
+			// TODO: ...
+		}
+	}
 	_internalState.lastControls = controls;
 
 	{ // Limit velocities
