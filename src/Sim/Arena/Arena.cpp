@@ -138,14 +138,11 @@ Arena::Arena(GameMode gameMode) {
 
 	_SetupArenaCollisionShapes();
 
-	// Make every arena surface 100% restitution/frictions
-	// Dynamic rigid bodies will control their own restitution
+	// Give arena collision shapes the proper restitution/friction values
 	for (auto rb : _worldCollisionRBs) {
-		rb->setRestitution(1);
-		rb->setFriction(1);
-		rb->setRollingFriction(1);
-		rb->setSpinningFriction(1);
-		rb->setAnisotropicFriction({ 1, 1, 1 }, btCollisionObject::CF_ANISOTROPIC_ROLLING_FRICTION);
+		rb->setRestitution(1.f);
+		rb->setFriction(1.f);
+		rb->setRollingFriction(0.f);
 	}
 
 	{ // Initialize ball
@@ -164,16 +161,21 @@ Arena::Arena(GameMode gameMode) {
 		btRigidBody::btRigidBodyConstructionInfo constructionInfo =
 			btRigidBody::btRigidBodyConstructionInfo(RLConst::BALL_MASS_BT, NULL, ball->_collisionShape);
 
+		// TODO: Move this code to Ball.cpp
+		// TODO: Ball simulation is a tiny bit off when it comes to angular velocity loss on impact
+
 		constructionInfo.m_startWorldTransform.setIdentity();
 		constructionInfo.m_startWorldTransform.setOrigin(btVector3(0, 0, radius));
 
+		btVector3 localInertial;
+		ball->_collisionShape->calculateLocalInertia(RLConst::BALL_MASS_BT, localInertial);
+
+		constructionInfo.m_localInertia = localInertial;
 		constructionInfo.m_angularSleepingThreshold = 0;
 		constructionInfo.m_linearSleepingThreshold = 0.001;
 		constructionInfo.m_linearDamping = RLConst::BALL_DRAG;
 		constructionInfo.m_friction = RLConst::BALL_FRICTION;
 		constructionInfo.m_restitution = RLConst::BALL_RESTITUTION;
-
-		constructionInfo.m_friction = 0.35f;
 
 		ball->_rigidBody = new btRigidBody(constructionInfo);		
 	}
