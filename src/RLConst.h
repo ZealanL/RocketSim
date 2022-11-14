@@ -76,9 +76,9 @@ namespace RLConst {
 		CAR_AIR_CONTROL_TORQUE = Vec(130, 95, 400),
 		CAR_AIR_CONTROL_DAMPING = Vec(30, 20, 50);
 
-	// TODO: Got these from https://github.com/samuelpmish/RLUtilities/blob/develop/src/simulation/ball.cc, but I should check them just in case?
+	// TODO: Dropshot one may be a little off, will check at some future point
 	constexpr float
-		BALL_COLLISION_RADIUS_NORMAL = 93.15f, // Soccar, Hoops, etc.
+		BALL_COLLISION_RADIUS_NORMAL = 92.25f, // Soccar, Hoops, etc.
 		BALL_COLLISION_RADIUS_DROPSHOT = 103.6f;
 
 	constexpr float SOCCAR_GOAL_SCORE_BASE_THRESHOLD_Y = 5121.75f;
