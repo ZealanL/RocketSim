@@ -226,6 +226,9 @@ void Car::_PreTickUpdate() {
 				if (absForwardSpeed > 0 && SGN(controls.throttle) != SGN(forwardSpeed)) {
 					// Full brake is applied if we are trying to drive in the opposite direction
 					realBrake = 1;
+
+					// Kill actual throttle (we can't throttle and break at the same time, even backwards)
+					realThrottle = 0;
 				}
 			} else {
 				// No throttle, we are coasting
