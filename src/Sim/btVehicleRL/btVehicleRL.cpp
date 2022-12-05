@@ -113,7 +113,7 @@ float btVehicleRL::rayCast(btWheelInfoRL& wheel) {
 	float depth = -1;
 
 	float suspensionTravel = wheel.m_maxSuspensionTravelCm / 100;
-	float rayLength = wheel.getSuspensionRestLength()/* + suspensionTravel*/ + wheel.m_wheelsRadius;
+	float rayLength = wheel.getSuspensionRestLength() + suspensionTravel + wheel.m_wheelsRadius;
 
 	Vec source = wheel.m_raycastInfo.m_hardPointWS;
 	Vec target = source + (wheel.m_raycastInfo.m_wheelDirectionWS * rayLength);
@@ -169,8 +169,7 @@ float btVehicleRL::rayCast(btWheelInfoRL& wheel) {
 			wheel.m_clippedInvContactDotSuspension = inv;
 		}
 	} else {
-		//put wheel info as in rest position
-		wheel.m_raycastInfo.m_suspensionLength = wheel.getSuspensionRestLength();
+		wheel.m_raycastInfo.m_suspensionLength = wheel.getSuspensionRestLength() + suspensionTravel;
 		wheel.m_suspensionRelativeVelocity = 0;
 		wheel.m_raycastInfo.m_contactNormalWS = -wheel.m_raycastInfo.m_wheelDirectionWS;
 		wheel.m_clippedInvContactDotSuspension = 1;
