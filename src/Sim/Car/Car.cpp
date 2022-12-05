@@ -161,31 +161,29 @@ void Car::_PreTickUpdate() {
 		for (int i = 0; i < 4; i++) {
 			auto& wheel = _bulletVehicle->m_wheelInfo[i];
 			if (wheel.m_raycastInfo.m_groundObject) {
-
-				// TODO: Implement
-				bool isContactSticky = true;
-
+				
 				Vec
 					vel = _rigidBody->getLinearVelocity(),
 					angularVel = _rigidBody->getAngularVelocity();
 
 				Vec
-					latDir = wheel.m_worldTransform.getBasis().getColumn(2),
+					latDir = wheel.m_worldTransform.getBasis().getColumn(1),
 					longDir = latDir.cross(wheel.m_raycastInfo.m_contactNormalWS);
 
 				float latFrictionSlip = 0;
 
-				Vec wheelDelta = wheel.m_raycastInfo.m_hardPointWS - wheel.m_worldTransform.getOrigin();
+				Vec wheelDelta = wheel.m_raycastInfo.m_hardPointWS - _rigidBody->getWorldTransform().getOrigin();
 
 				auto crossVec = (angularVel.cross(wheelDelta) + vel) * BT_TO_UU;
-				float baseFriction = abs(crossVec.dot(wheelDelta));
+
+				float baseFriction = abs(crossVec.dot(latDir));
 
 				// Significant friction results in lateral slip
 				if (baseFriction > 5)
 					latFrictionSlip = baseFriction / (abs(crossVec.dot(longDir)) + baseFriction);
 
 				float latFriction = 1 - CLAMP(latFrictionSlip, 0, 1) * 0.8f;
-				float longFriction;
+				float longFriction = 0;
 
 				if (_internalState.handbrakeVal) {
 					float handbrakeAmount = _internalState.handbrakeVal;
@@ -195,6 +193,8 @@ void Car::_PreTickUpdate() {
 				} else {
 					longFriction = 1; // If we aren't powersliding, it's not scaled down
 				}
+
+				bool isContactSticky = controls.throttle != 0;
 
 				if (isContactSticky) {
 					// Keep current friction values
@@ -253,11 +253,9 @@ void Car::_PreTickUpdate() {
 
 	if (numWheelsInContact >= 3) { // Grounded, apply sticky forces
 		Vec downwardsDir = _bulletVehicle->getDownwardsDirFromWheelContacts();
-		float stickyForceScale = 0.5f + (1 - abs(downwardsDir.z()));
 
-		// When barely moving, and not trying to move, force sticky force to the minimum
-		if (controls.throttle == 0 && absForwardSpeed <= 25)
-			stickyForceScale = 0.5f;
+		bool sticky = controls.throttle != 0 || absForwardSpeed > 25;
+		float stickyForceScale = sticky ? (-abs(downwardsDir.z()) + 1.5f) : 0.5f;
 
 		_rigidBody->applyImpulse(downwardsDir * stickyForceScale * -RLConst::GRAVITY_Z * UU_TO_BT, btVector3(0, 0, 0));
 
