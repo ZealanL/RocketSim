@@ -1,6 +1,6 @@
 #include "Math.h"
 
-float LinearPieceCurve::GetOutput(float input) const {
+float LinearPieceCurve::GetOutput(float input, float defaultOutput) const {
 	float output = input;
 
 	if (!valueMappings.empty()) {
@@ -25,6 +25,16 @@ float LinearPieceCurve::GetOutput(float input) const {
 
 		// Must be beyond the largest input mapping, return that
 		return std::prev(valueMappings.end())->second;
+	} else {
+		return defaultOutput;
 	}
+
 	return output;
+}
+
+btVector3 Math::RoundVec(btVector3 vec, float precision) {
+	vec.x() = roundf(vec.x() / precision) * precision;
+	vec.y() = roundf(vec.y() / precision) * precision;
+	vec.z() = roundf(vec.z() / precision) * precision;
+	return vec;
 }
