@@ -53,9 +53,19 @@ typedef uint8_t byte;
 #define CLAMP(val, min, max) MIN(MAX(val, min), max)
 
 #define LOG(s) { std::cout << std::dec << s << std::endl; }
-#define STR(s) ([=]{ std::stringstream __macroStream; __macroStream << s; return __macroStream.str(); }())
+#define STR(s) ([&]{ std::stringstream __macroStream; __macroStream << s; return __macroStream.str(); }())
 
 // Returns sign of number (1 if positive, -1 if negative, and 0 if 0)
 #define SGN(val) ((val > 0) - (val < 0))
 
 #define ERR_CLOSE(s) { LOG("FATAL ERROR: " << s); exit(EXIT_FAILURE); }
+
+#if 0 // FOR FUTURE USE: Exports/imports setup
+#ifdef ROCKETSIM_EXPORTS
+#define RSAPI __declspec(dllexport)
+#else
+#define RSAPI __declspec(dllimport)
+#endif
+#else
+#define RSAPI
+#endif

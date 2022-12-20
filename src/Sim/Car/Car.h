@@ -59,8 +59,8 @@ public:
 	Car(const Car& other) = delete;
 	Car(Car&& other) = delete;
 
-	CarState GetState();
-	void SetState(const CarState& state);
+	RSAPI CarState GetState();
+	RSAPI void SetState(const CarState& state);
 
 	btVehicleRL* _bulletVehicle;
 	btVehicleRaycaster* _bulletVehicleRaycaster;
@@ -75,6 +75,8 @@ public:
 	~Car();
 
 	void _PreTickUpdate();
+
+	void _ApplyPhysicsRounding();
 
 	void _PostTickUpdate();
 
