@@ -126,6 +126,25 @@ namespace RLConst {
 		}
 	};
 
+	const static LinearPieceCurve LAT_FRICTION_CURVE = {
+		{
+			{0,	1.0f},
+			{1,	0.2f},
+		}
+	};
+
+	const static LinearPieceCurve LONG_FRICTION_CURVE = {
+		{
+			// Empty curve
+		}
+	};
+
+	const static LinearPieceCurve HANDBRAKE_LAT_FRICTION_FACTOR_CURVE = {
+		{
+			{0,	0.1f},
+		}
+	};
+
 	const static LinearPieceCurve HANDBRAKE_LONG_FRICTION_FACTOR_CURVE = {
 		{
 			{0,	0.5f},
