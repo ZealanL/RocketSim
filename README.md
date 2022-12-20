@@ -3,7 +3,7 @@
 
 **Example Usage:**
 ```cpp
-#include "/RocketSim/src/Sim/Arena/Arena.h"
+#include "./RocketSim/src/Sim/Arena/Arena.h"
 
 // Make an arena instance (this is where our simulation takes place, has its own btDynamicsWorld instance)
 Arena* arena = new Arena(GameMode::SOCCAR);
