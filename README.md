@@ -1,6 +1,10 @@
 # RocketSim
  A C++ library for simulating Rocket League games at maximum efficiency
 
+**Accuracy:**
+RocketSim is not perfectly accurate, but it's close enough that it shouldnt matter.
+Bots that work well in RocketSim will work well in the actual game, and visa-versa.
+
 **Example Usage:**
 ```cpp
 #include "./RocketSim/src/Sim/Arena/Arena.h"
