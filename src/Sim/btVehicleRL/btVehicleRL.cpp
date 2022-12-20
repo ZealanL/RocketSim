@@ -79,7 +79,6 @@ void btVehicleRL::updateWheelTransform(int wheelIndex) {
 	basis2[0][m_indexForwardAxis] = fwd[0];
 	basis2[1][m_indexForwardAxis] = fwd[1];
 	basis2[2][m_indexForwardAxis] = fwd[2];
-
 	wheel.m_worldTransform.setBasis(steeringMat * basis2);
 	wheel.m_worldTransform.setOrigin(
 		wheel.m_raycastInfo.m_hardPointWS + wheel.m_raycastInfo.m_wheelDirectionWS * wheel.m_raycastInfo.m_suspensionLength);
@@ -128,6 +127,12 @@ float btVehicleRL::rayCast(btWheelInfoRL& wheel) {
 	wheel.m_raycastInfo.m_groundObject = 0;
 
 	if (object) {
+		bool hitGround = abs(rayResults.m_hitPointInWorld.z()) < 0.01f
+			&& rayResults.m_hitNormalInWorld.z() > 0.995f;
+		if (hitGround)
+			rayResults.m_hitPointInWorld.z() = 0; // Make sure ground is at exactly 0
+
+		wheel.m_raycastInfo.m_contactPointWS = rayResults.m_hitPointInWorld;
 		float fraction = rayResults.m_distFraction;
 		depth = rayLength * rayResults.m_distFraction;
 		wheel.m_raycastInfo.m_contactNormalWS = rayResults.m_hitNormalInWorld;
@@ -136,10 +141,13 @@ float btVehicleRL::rayCast(btWheelInfoRL& wheel) {
 		wheel.m_raycastInfo.m_groundObject = &getFixedBody();  ///@todo for driving on dynamic/movable objects!;
 		//wheel.m_raycastInfo.m_groundObject = object;
 
-		float hitDistance = fraction * rayLength;
-		wheel.m_raycastInfo.m_suspensionLength = hitDistance - wheel.m_wheelsRadius;
-		//clamp on max suspension travel
+		btMatrix3x3 bodyBasis = m_chassisBody->getWorldTransform().getBasis();
+		btVector3 basisColumn = bodyBasis.getRow(2);
+		btVector3 wheelTraceDistVec = (wheel.m_raycastInfo.m_hardPointWS - wheel.m_raycastInfo.m_contactPointWS) * basisColumn;
+		float susLength = wheelTraceDistVec.x() + wheelTraceDistVec.y() + wheelTraceDistVec.z();
+		wheel.m_raycastInfo.m_suspensionLength = susLength - wheel.m_wheelsRadius;
 
+		//clamp on max suspension travel
 		float minSuspensionLen = wheel.getSuspensionRestLength() - suspensionTravel;
 		float maxSuspensionLen = wheel.getSuspensionRestLength() + suspensionTravel;
 		wheel.m_raycastInfo.m_suspensionLength =
@@ -149,7 +157,6 @@ float btVehicleRL::rayCast(btWheelInfoRL& wheel) {
 				wheel.getSuspensionRestLength() + suspensionTravel
 			);
 
-		wheel.m_raycastInfo.m_contactPointWS = rayResults.m_hitPointInWorld;
 
 		float denominator = wheel.m_raycastInfo.m_contactNormalWS.dot(wheel.m_raycastInfo.m_wheelDirectionWS);
 
@@ -208,9 +215,6 @@ void btVehicleRL::updateVehicle(float step) {
 
 		float suspensionForce = wheel.m_wheelsSuspensionForce;
 
-		if (suspensionForce > wheel.m_maxSuspensionForce) {
-			suspensionForce = wheel.m_maxSuspensionForce;
-		}
 		Vec impulse = wheel.m_raycastInfo.m_contactNormalWS * suspensionForce * step;
 		Vec relpos = wheel.m_raycastInfo.m_contactPointWS - getRigidBody()->getCenterOfMassPosition();
 
@@ -263,12 +267,13 @@ void btVehicleRL::updateSuspension(float deltaTime) {
 		if (wheel_info.m_raycastInfo.m_isInContact) {
 			float force =
 				(wheel_info.getSuspensionRestLength() - wheel_info.m_raycastInfo.m_suspensionLength)
-				* wheel_info.m_suspensionStiffness;
-
+				* wheel_info.m_suspensionStiffness * wheel_info.m_clippedInvContactDotSuspension;
+			
 			float dampingVelScale = (wheel_info.m_suspensionRelativeVelocity < 0) ? wheel_info.m_wheelsDampingCompression : wheel_info.m_wheelsDampingRelaxation;
 
-			wheel_info.m_wheelsSuspensionForce = force - wheel_info.m_suspensionRelativeVelocity * dampingVelScale;
-
+			wheel_info.m_wheelsSuspensionForce = force - (dampingVelScale * wheel_info.m_suspensionRelativeVelocity);
+			wheel_info.m_wheelsSuspensionForce *= wheel_info.m_suspensionForceScale;
+			
 			// RL never uses downwards suspension forces
 			if (wheel_info.m_wheelsSuspensionForce < 0)
 				wheel_info.m_wheelsSuspensionForce = 0;

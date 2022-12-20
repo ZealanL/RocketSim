@@ -10,6 +10,8 @@ struct btWheelInfoRL : public btWheelInfo {
 	float m_latFriction = 0, m_longFriction = 0;
 	btVector3 m_impulse;
 
+	float m_suspensionForceScale;
+
 	btWheelInfoRL(btWheelInfoConstructionInfo& constructionInfo) : btWheelInfo(constructionInfo) {}
 };
 

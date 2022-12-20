@@ -35,94 +35,13 @@ void Car::SetState(const CarState& state) {
 	_internalState = state;
 }
 
-void Car::_PostTickUpdate() {
-
-	_bulletVehicle->updateVehicle(TICKTIME);
-
-	{ // Update isOnGround
-		int wheelsWithContact = 0;
-		for (int i = 0; i < 4; i++)
-			wheelsWithContact += _bulletVehicle->m_wheelInfo[i].m_raycastInfo.m_isInContact;
-
-		_internalState.isOnGround = wheelsWithContact >= 3;
-	}
-
-	{ // Update jump
-		using namespace RLConst;
-		if (_internalState.isOnGround && !_internalState.isJumping)
-			_internalState.hasJumped = false;
-
-		if (_internalState.isJumping) {
-			if (controls.jump) { // Jump held
-				if (_internalState.jumpTimer < JUMP_MAX_TIME) {
-					// Continue jump
-				} else {
-					_internalState.isJumping = false;
-				}
-			} else { // Jump released
-				// We must remain jumping for at least JUMP_MIN_TIME
-				_internalState.isJumping = _internalState.jumpTimer <= JUMP_MIN_TIME;
-			}
-		} else if (_internalState.isOnGround && controls.jump && !_internalState.lastControls.jump) {
-			// Start jumping
-			_internalState.isJumping = true;
-			_internalState.jumpTimer = 0;
-			btVector3 jumpStartForce = _bulletVehicle->getUpVector() * JUMP_IMMEDIATE_FORCE * UU_TO_BT;
-			_rigidBody->applyCentralImpulse(jumpStartForce * CAR_MASS_BT);
-		}
-
-		if (_internalState.isJumping) {
-			_internalState.jumpTimer += TICKTIME;
-
-			if (_internalState.jumpTimer > JUMP_MIN_TIME) {
-				// Apply extra long-jump force
-				btVector3 extraJumpForce = _bulletVehicle->getUpVector() * JUMP_ACCEL * UU_TO_BT * TICKTIME;
-				_rigidBody->applyCentralImpulse(extraJumpForce * CAR_MASS_BT);
-			}
-		} else {
-			_internalState.jumpTimer = 0;
-		}
-	}
-
-	{ // Update flip/double jump
-		using namespace RLConst;
-		if (_internalState.isOnGround) {
-			_internalState.hasDoubleJumped = false;
-			_internalState.hasFlipped = false;
-		} else {
-			// TODO: ...
-		}
-	}
-	_internalState.lastControls = controls;
-
-	{ // Limit velocities
-		using namespace RLConst;
-
-		if (_rigidBody->getLinearVelocity().length2() > (CAR_MAX_SPEED * CAR_MAX_SPEED))
-			_rigidBody->setLinearVelocity(_rigidBody->getLinearVelocity().normalized() * RLConst::CAR_MAX_SPEED);
-
-		if (_rigidBody->getAngularVelocity().length2() > (CAR_MAX_ANG_SPEED * CAR_MAX_ANG_SPEED))
-			_rigidBody->setAngularVelocity(_rigidBody->getAngularVelocity().normalized() * CAR_MAX_ANG_SPEED);
-	}
-}
-
-Car* Car::_AllocateCar() {
-	return new Car();
-}
-
-Car::~Car() {
-	delete _bulletVehicle;
-	delete _bulletVehicleRaycaster;
-	delete _rigidBody;
-	delete _compoundShape;
-	delete _childHitboxShape;
-}
-
 void Car::_PreTickUpdate() {
 	assert(_bulletVehicle->getNumWheels() == 4);
 
 	// Prevent the car's RB from becoming inactive
 	_rigidBody->setActivationState(ACTIVE_TAG);
+
+	_bulletVehicle->updateVehicle(TICKTIME);
 
 	float forwardSpeed = _bulletVehicle->getForwardSpeed();
 	float absForwardSpeed = abs(forwardSpeed);
@@ -161,7 +80,7 @@ void Car::_PreTickUpdate() {
 		for (int i = 0; i < 4; i++) {
 			auto& wheel = _bulletVehicle->m_wheelInfo[i];
 			if (wheel.m_raycastInfo.m_groundObject) {
-				
+
 				Vec
 					vel = _rigidBody->getLinearVelocity(),
 					angularVel = _rigidBody->getAngularVelocity();
@@ -170,7 +89,7 @@ void Car::_PreTickUpdate() {
 					latDir = wheel.m_worldTransform.getBasis().getColumn(1),
 					longDir = latDir.cross(wheel.m_raycastInfo.m_contactNormalWS);
 
-				float latFrictionSlip = 0;
+				float frictionCurveInput = 0;
 
 				Vec wheelDelta = wheel.m_raycastInfo.m_hardPointWS - _rigidBody->getWorldTransform().getOrigin();
 
@@ -180,16 +99,16 @@ void Car::_PreTickUpdate() {
 
 				// Significant friction results in lateral slip
 				if (baseFriction > 5)
-					latFrictionSlip = baseFriction / (abs(crossVec.dot(longDir)) + baseFriction);
+					frictionCurveInput = baseFriction / (abs(crossVec.dot(longDir)) + baseFriction);
 
-				float latFriction = 1 - CLAMP(latFrictionSlip, 0, 1) * 0.8f;
-				float longFriction = 0;
+				float latFriction = RLConst::LAT_FRICTION_CURVE.GetOutput(frictionCurveInput);
+				float longFriction = RLConst::LONG_FRICTION_CURVE.GetOutput(frictionCurveInput);
 
 				if (_internalState.handbrakeVal) {
 					float handbrakeAmount = _internalState.handbrakeVal;
-					float handbrakeLatFriction = latFriction / 10;
-					latFriction *= (handbrakeLatFriction - 1) * handbrakeAmount + 1;
-					longFriction = (RLConst::HANDBRAKE_LONG_FRICTION_FACTOR_CURVE.GetOutput(baseFriction) - 1) * handbrakeAmount + 1;
+
+					latFriction *= (RLConst::HANDBRAKE_LAT_FRICTION_FACTOR_CURVE.GetOutput(latFriction) - 1) * handbrakeAmount + 1;
+					longFriction *= (RLConst::HANDBRAKE_LONG_FRICTION_FACTOR_CURVE.GetOutput(frictionCurveInput) - 1) * handbrakeAmount + 1;
 				} else {
 					longFriction = 1; // If we aren't powersliding, it's not scaled down
 				}
@@ -227,8 +146,10 @@ void Car::_PreTickUpdate() {
 					// Full brake is applied if we are trying to drive in the opposite direction
 					realBrake = 1;
 
-					// Kill actual throttle (we can't throttle and break at the same time, even backwards)
-					realThrottle = 0;
+					if (absForwardSpeed > 0.01f) {
+						// Kill actual throttle (we can't throttle and break at the same time, even backwards)
+						realThrottle = 0;
+					}
 				}
 			} else {
 				// No throttle, we are coasting
@@ -298,6 +219,95 @@ void Car::_PreTickUpdate() {
 		_rigidBody->setAngularVelocity(
 			_rigidBody->getAngularVelocity() + (torque - damping) * CAR_TORQUE_SCALE * TICKTIME
 		);
-
 	}
+}
+
+void Car::_ApplyPhysicsRounding() {
+	_internalState = GetState();
+
+	_internalState.pos = Math::RoundVec(_internalState.pos, 0.01);
+	_internalState.vel = Math::RoundVec(_internalState.vel, 0.01);
+	_internalState.angVel = Math::RoundVec(_internalState.angVel, 0.00001);
+	
+	SetState(_internalState);
+}
+
+void Car::_PostTickUpdate() {
+	{ // Update isOnGround
+		int wheelsWithContact = 0;
+		for (int i = 0; i < 4; i++)
+			wheelsWithContact += _bulletVehicle->m_wheelInfo[i].m_raycastInfo.m_isInContact;
+
+		_internalState.isOnGround = wheelsWithContact >= 3;
+	}
+
+	{ // Update jump
+		using namespace RLConst;
+		if (_internalState.isOnGround && !_internalState.isJumping)
+			_internalState.hasJumped = false;
+
+		if (_internalState.isJumping) {
+			if (controls.jump) { // Jump held
+				if (_internalState.jumpTimer <= JUMP_MAX_TIME) {
+					// Continue jump
+				} else {
+					_internalState.isJumping = false;
+				}
+			} else { // Jump released
+				// We must remain jumping for at least JUMP_MIN_TIME
+				_internalState.isJumping = _internalState.jumpTimer <= JUMP_MIN_TIME;
+			}
+		} else if (_internalState.isOnGround && controls.jump && !_internalState.lastControls.jump) {
+			// Start jumping
+			_internalState.isJumping = true;
+			_internalState.jumpTimer = 0;
+			btVector3 jumpStartForce = _bulletVehicle->getUpVector() * JUMP_IMMEDIATE_FORCE * UU_TO_BT;
+			_rigidBody->applyCentralImpulse(jumpStartForce * CAR_MASS_BT);
+		}
+
+		if (_internalState.isJumping) {
+			_internalState.jumpTimer += TICKTIME;
+
+			if (_internalState.jumpTimer > JUMP_MIN_TIME) {
+				// Apply extra long-jump force
+				btVector3 extraJumpForce = _bulletVehicle->getUpVector() * JUMP_ACCEL * UU_TO_BT * TICKTIME;
+				_rigidBody->applyCentralImpulse(extraJumpForce * CAR_MASS_BT);
+			}
+		} else {
+			_internalState.jumpTimer = 0;
+		}
+	}
+
+	{ // Update flip/double jump
+		using namespace RLConst;
+		if (_internalState.isOnGround) {
+			_internalState.hasDoubleJumped = false;
+			_internalState.hasFlipped = false;
+		} else {
+			// TODO: ...
+		}
+	}
+	_internalState.lastControls = controls;
+
+	{ // Limit velocities
+		using namespace RLConst;
+
+		if (_rigidBody->getLinearVelocity().length2() > (CAR_MAX_SPEED * CAR_MAX_SPEED))
+			_rigidBody->setLinearVelocity(_rigidBody->getLinearVelocity().normalized() * RLConst::CAR_MAX_SPEED);
+
+		if (_rigidBody->getAngularVelocity().length2() > (CAR_MAX_ANG_SPEED * CAR_MAX_ANG_SPEED))
+			_rigidBody->setAngularVelocity(_rigidBody->getAngularVelocity().normalized() * CAR_MAX_ANG_SPEED);
+	}
+}
+
+Car* Car::_AllocateCar() {
+	return new Car();
+}
+
+Car::~Car() {
+	delete _bulletVehicle;
+	delete _bulletVehicleRaycaster;
+	delete _rigidBody;
+	delete _compoundShape;
+	delete _childHitboxShape;
 }

@@ -14,8 +14,8 @@ struct BallState {
 
 class Ball {
 public:
-	BallState GetState();
-	void SetState(const BallState& state);
+	RSAPI BallState GetState();
+	RSAPI void SetState(const BallState& state);
 
 	// No copy/move constructor
 	Ball(const Ball& other) = delete;
@@ -24,7 +24,7 @@ public:
 	btRigidBody* _rigidBody;
 	btSphereShape* _collisionShape;
 
-	float GetRadius() {
+	RSAPI float GetRadius() {
 		return _collisionShape->getRadius();
 	}
 

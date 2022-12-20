@@ -73,16 +73,14 @@ Car* Arena::AddCar(Team team, const CarConfig& config) {
 				{ // Fix wheel info data
 					using namespace RLConst::BTVehicle;
 
-					float suspensionScale = 
-						front ? SUSPENSION_FORCE_SCALE_FRONT : SUSPENSION_FORCE_SCALE_BACK;
-
 					btWheelInfoRL& wheelInfo = car->_bulletVehicle->m_wheelInfo[i];
-					wheelInfo.m_suspensionStiffness =		SUSPENSION_STIFFNESS * suspensionScale;
-					wheelInfo.m_wheelsDampingCompression =	WHEELS_DAMPING_COMPRESSION * suspensionScale;
-					wheelInfo.m_wheelsDampingRelaxation =	WHEELS_DAMPING_RELAXATION * suspensionScale;
+					wheelInfo.m_suspensionStiffness =		SUSPENSION_STIFFNESS;
+					wheelInfo.m_wheelsDampingCompression =	WHEELS_DAMPING_COMPRESSION;
+					wheelInfo.m_wheelsDampingRelaxation =	WHEELS_DAMPING_RELAXATION;
 					wheelInfo.m_maxSuspensionTravelCm = (MAX_SUSPENSION_TRAVEL * UU_TO_BT) * 100; // Same for all cars (hopefully)
 					wheelInfo.m_maxSuspensionForce = FLT_MAX; // Don't think there's a limit
 					wheelInfo.m_bIsFrontWheel = front;
+					wheelInfo.m_suspensionForceScale = front ? SUSPENSION_FORCE_SCALE_FRONT : SUSPENSION_FORCE_SCALE_BACK;
 				}
 			}
 		}
@@ -186,14 +184,18 @@ Arena::Arena(GameMode gameMode) {
 
 void Arena::Step(int ticksToSimulate) {
 	for (int i = 0; i < ticksToSimulate; i++) {
-		for (Car* car : _carsList)
+		for (Car* car : _carsList) {
 			car->_PreTickUpdate();
+			car->_ApplyPhysicsRounding();
+		}
 
 		// Update world
 		_bulletWorld->stepSimulation(TICKTIME, 0, TICKTIME);
 
-		for (Car* car : _carsList)
+		for (Car* car : _carsList) {
+			car->_ApplyPhysicsRounding();
 			car->_PostTickUpdate();
+		}
 
 		{ // Limit ball's linear/angular velocity
 			using namespace RLConst;

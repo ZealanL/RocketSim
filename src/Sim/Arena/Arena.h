@@ -23,15 +23,15 @@ public:
 	// Total ticks this arena instance has been simulated for, never resets
 	uint64_t tickCount = 0;
 
-	const list<Car*>& GetCars() { return _carsList; }
+	RSAPI const list<Car*>& GetCars() { return _carsList; }
 
-	Car* AddCar(Team team, const CarConfig& config = CAR_CONFIG_OCTANE);
+	RSAPI Car* AddCar(Team team, const CarConfig& config = CAR_CONFIG_OCTANE);
 
 	// Returns false if the car was not found in the cars list
 	// NOTE: If the car was removed, the car will be freed and the pointer will be made invalid
-	bool RemoveCar(Car* car); 
+	RSAPI bool RemoveCar(Car* car);
 
-	Car* GetCarFromID(uint32_t id);
+	RSAPI Car* GetCarFromID(uint32_t id);
 
 	btDiscreteDynamicsWorld* _bulletWorld;
 	struct {
@@ -49,13 +49,13 @@ public:
 	vector<GoalScoreEventFn> _goalScoreCallbacks;
 	void RegisterGoalScoreCallback(GoalScoreEventFn callbackFunc);
 
-	Arena(GameMode gameMode);
+	RSAPI Arena(GameMode gameMode);
 
 	// Simulate everything in the arena for a given number of ticks
-	void Step(int ticksToSimulate = 1);
+	RSAPI void Step(int ticksToSimulate = 1);
 
 	// Free all associated memory
-	~Arena();
+	RSAPI ~Arena();
 
 	// NOTE: Passed shape pointer will be freed when arena is deconstructed
 	void _AddStaticCollisionShape(btCollisionShape* shape, btVector3 pos = btVector3(0,0,0));
