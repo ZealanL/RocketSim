@@ -22,3 +22,9 @@ typedef btVector3 Vec;
 struct Angle {
 	float yaw, pitch, roll;
 };
+
+// For easy printing of bullet vectors
+inline std::ostream& operator <<(std::ostream& stream, btVector3 v) {
+	stream << "[ " << v.x() << ", " << v.y() << ", " << v.z() << " ]";
+	return stream;
+}
