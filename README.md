@@ -35,5 +35,5 @@ car->controls.boost = 1;
 arena.Step(100);
 
 // Lets see where our car went!
-std::cout << "After " << arena->tickCount << "ticks, our car is at: " << car->GetState().pos << std::endl;
+std::cout << "After " << arena.tickCount << "ticks, our car is at: " << car->GetState().pos << std::endl;
 ```
