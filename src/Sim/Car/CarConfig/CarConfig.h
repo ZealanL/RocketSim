@@ -22,6 +22,9 @@ struct CarConfig {
 	Vec hitboxPosOffset;
 
 	WheelPairConfig frontWheels, backWheels;
+
+	// abs(yaw or pitch or roll) input will need to be >= this in order to flip
+	float dodgeDeadzone = 0.5f;
 };
 
 // Global car configurations for all car type presets

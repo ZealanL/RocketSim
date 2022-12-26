@@ -189,36 +189,65 @@ void Car::_PreTickUpdate() {
 			yawDir = basis.getColumn(2),
 			rollDir = -basis.getColumn(0);
 
-		// Net torque to apply to the car
-		btVector3 torque;
+		if (_internalState.hasFlipped && _internalState.flipTimer < FLIP_TORQUE_TIME) {
 
-		if (controls.handbrake) {
-			std::swap(controls.roll, controls.yaw);
-		}
+			btVector3 relDodgeTorque = _internalState.lastRelDodgeTorque;
 
-		if (controls.pitch || controls.yaw || controls.roll) {
-			torque =
-				controls.pitch * pitchDir * CAR_AIR_CONTROL_TORQUE.x() +
-				controls.yaw * yawDir * CAR_AIR_CONTROL_TORQUE.y() +
-				controls.roll * rollDir * CAR_AIR_CONTROL_TORQUE.z();
+			// Flip cancel
+			float pitchScale = 1;
+			if (relDodgeTorque.y() != 0 && controls.pitch != 0) {
+				pitchScale = SGN(relDodgeTorque.y()) != SGN(controls.pitch);
+				if (pitchScale == 0) {
+					pitchScale = 0;
+				}
+			}
+
+			relDodgeTorque.y() *= pitchScale;
+
+			btVector3 dodgeTorque = _rigidBody->getWorldTransform().getBasis() * (relDodgeTorque * btVector3(FLIP_TORQUE_X, FLIP_TORQUE_Y, 0));;
+			_rigidBody->setAngularVelocity(
+				_rigidBody->getAngularVelocity() + dodgeTorque * TICKTIME
+			);
 		} else {
-			torque = { 0, 0, 0 };
+
+			// Net torque to apply to the car
+			btVector3 torque;
+
+			if (controls.handbrake) {
+				std::swap(controls.roll, controls.yaw);
+			}
+
+			if (controls.pitch || controls.yaw || controls.roll) {
+
+				float pitchScale = 1;
+				//if (_internalState.hasFlipped && _internalState.flipTimer < FLIP_TORQUE_TIME)
+					//pitchScale = 0;
+
+				// TODO: Use dot(,)
+				btVector3 relTorque = (controls.pitch * pitchDir * pitchScale * CAR_AIR_CONTROL_TORQUE.x()) +
+					(controls.yaw * yawDir * CAR_AIR_CONTROL_TORQUE.y()) +
+					(controls.roll * rollDir * CAR_AIR_CONTROL_TORQUE.z());
+
+				torque = relTorque;
+			} else {
+				torque = { 0, 0, 0 };
+			}
+
+			auto angVel = _rigidBody->getAngularVelocity();
+			float
+				dampPitch = pitchDir.dot(angVel) * CAR_AIR_CONTROL_DAMPING.x() * (1 - abs(controls.pitch)),
+				dampYaw = yawDir.dot(angVel) * CAR_AIR_CONTROL_DAMPING.y() * (1 - abs(controls.yaw)),
+				dampRoll = rollDir.dot(angVel) * CAR_AIR_CONTROL_DAMPING.z();
+
+			btVector3 damping =
+				(yawDir * dampYaw) +
+				(pitchDir * dampPitch) +
+				(rollDir * dampRoll);
+
+			_rigidBody->setAngularVelocity(
+				_rigidBody->getAngularVelocity() + (torque - damping) * CAR_TORQUE_SCALE * TICKTIME
+			);
 		}
-
-		auto angVel = _rigidBody->getAngularVelocity();
-		float
-			dampPitch = pitchDir.dot(angVel) * CAR_AIR_CONTROL_DAMPING.x() * (1 - abs(controls.pitch)),
-			dampYaw = yawDir.dot(angVel) * CAR_AIR_CONTROL_DAMPING.y() * (1 - abs(controls.yaw)),
-			dampRoll = rollDir.dot(angVel) * CAR_AIR_CONTROL_DAMPING.z();
-
-		btVector3 damping =
-			(yawDir * dampYaw) +
-			(pitchDir * dampPitch) +
-			(rollDir * dampRoll);
-
-		_rigidBody->setAngularVelocity(
-			_rigidBody->getAngularVelocity() + (torque - damping) * CAR_TORQUE_SCALE * TICKTIME
-		);
 	}
 }
 
@@ -241,23 +270,22 @@ void Car::_PostTickUpdate() {
 		_internalState.isOnGround = wheelsWithContact >= 3;
 	}
 
+	bool jumpPressed = controls.jump && !_internalState.lastControls.jump;
+
 	{ // Update jump
 		using namespace RLConst;
 		if (_internalState.isOnGround && !_internalState.isJumping)
 			_internalState.hasJumped = false;
 
 		if (_internalState.isJumping) {
-			if (controls.jump) { // Jump held
-				if (_internalState.jumpTimer <= JUMP_MAX_TIME) {
+			if (_internalState.jumpTimer < JUMP_MIN_TIME || controls.jump && _internalState.jumpTimer < JUMP_MAX_TIME) {
 					// Continue jump
-				} else {
-					_internalState.isJumping = false;
-				}
-			} else { // Jump released
-				// We must remain jumping for at least JUMP_MIN_TIME
-				_internalState.isJumping = _internalState.jumpTimer <= JUMP_MIN_TIME;
+				_internalState.isJumping = true;
+			} else {
+				// We can't keep jumping any longer
+				_internalState.isJumping = _internalState.jumpTimer < JUMP_MIN_TIME;
 			}
-		} else if (_internalState.isOnGround && controls.jump && !_internalState.lastControls.jump) {
+		} else if (_internalState.isOnGround && jumpPressed) {
 			// Start jumping
 			_internalState.isJumping = true;
 			_internalState.jumpTimer = 0;
@@ -266,13 +294,17 @@ void Car::_PostTickUpdate() {
 		}
 
 		if (_internalState.isJumping) {
+			_internalState.hasJumped = true;
 			_internalState.jumpTimer += TICKTIME;
 
-			if (_internalState.jumpTimer > JUMP_MIN_TIME) {
-				// Apply extra long-jump force
-				btVector3 extraJumpForce = _bulletVehicle->getUpVector() * JUMP_ACCEL * UU_TO_BT * TICKTIME;
-				_rigidBody->applyCentralImpulse(extraJumpForce * CAR_MASS_BT);
+			// Apply extra long-jump force
+			btVector3 extraJumpForce = _bulletVehicle->getUpVector() * JUMP_ACCEL;
+
+			if (_internalState.jumpTimer < JUMP_MIN_TIME) {
+				extraJumpForce *= 0.75f;
 			}
+
+			_rigidBody->applyCentralImpulse(extraJumpForce * CAR_MASS_BT * UU_TO_BT * TICKTIME);
 		} else {
 			_internalState.jumpTimer = 0;
 		}
@@ -283,8 +315,90 @@ void Car::_PostTickUpdate() {
 		if (_internalState.isOnGround) {
 			_internalState.hasDoubleJumped = false;
 			_internalState.hasFlipped = false;
+			_internalState.airTimeSinceJump = false;
 		} else {
-			// TODO: ...
+			if (_internalState.hasJumped && !_internalState.isJumping) {
+				_internalState.airTimeSinceJump += TICKTIME;
+			} else {
+				_internalState.airTimeSinceJump = 0;
+			}
+			
+			if (_internalState.hasJumped && jumpPressed && _internalState.airTimeSinceJump < DOUBLEJUMP_MAX_DELAY) {
+				if (!_internalState.hasDoubleJumped && !_internalState.hasFlipped) {
+					bool shouldFlip = MAX(MAX(abs(controls.yaw), abs(controls.pitch)), abs(controls.roll)) >= config.dodgeDeadzone;
+
+					if (shouldFlip) {
+						// Begin flipping
+						_internalState.flipTimer = 0;
+						_internalState.hasFlipped = true;
+
+						// Apply initial dodge vel and set later dodge vel
+						// Replicated based on https://github.com/samuelpmish/RLUtilities/blob/develop/src/simulation/car.cc
+						{
+							btVector3 forwardDir = _bulletVehicle->getForwardVector();
+							float forwardSpeed = forwardDir.dot(_rigidBody->getLinearVelocity()) * BT_TO_UU;
+							float forwardSpeedRatio = abs(forwardSpeed) / CAR_MAX_SPEED;
+
+							btVector3 dodgeDir = btVector3(-controls.pitch, controls.yaw + controls.roll, 0).normalize();
+							_internalState.lastRelDodgeTorque = btVector3(-dodgeDir.y(), dodgeDir.x(), 0);
+
+							if (abs(dodgeDir.x()) < 0.1f) dodgeDir.x() = 0;
+							if (abs(dodgeDir.y()) < 0.1f) dodgeDir.y() = 0;
+
+							if (!dodgeDir.fuzzyZero()) {
+								bool shouldDodgeBackwards;
+
+								if (abs(forwardSpeed) < 100.0f)
+									shouldDodgeBackwards = dodgeDir.x() < 0.0f;
+								else
+									shouldDodgeBackwards = (dodgeDir.x() >= 0.0f) != (dodgeDir.x() > 0.0f);
+
+								btVector3 initalDodgeVel = dodgeDir * FLIP_INITIAL_VEL_SCALE;
+
+								if (shouldDodgeBackwards)
+									initalDodgeVel.x() *= (16.f / 15.f) * (1.5F * forwardSpeedRatio + 1.f);
+								initalDodgeVel.y() *= (0.9f * forwardSpeedRatio) + 1.f;
+
+								float forwardAng = atan2f(forwardDir.y(), forwardDir.x());
+
+								btVector3
+									xVelDir = { cosf(forwardAng), -sinf(forwardAng), 0.f },
+									yVelDir = { sinf(forwardAng), cosf(forwardAng), 0.f };
+
+								btVector3 finalDeltaVel = {
+									initalDodgeVel.dot(xVelDir),
+									initalDodgeVel.dot(yVelDir),
+									0.f
+								};
+
+								_rigidBody->applyCentralImpulse(finalDeltaVel * UU_TO_BT * CAR_MASS_BT);
+							}
+						}
+
+					} else {
+						// Double jump, add upwards velocity
+						btVector3 jumpStartForce = _bulletVehicle->getUpVector() * JUMP_IMMEDIATE_FORCE * UU_TO_BT;
+						_rigidBody->applyCentralImpulse(jumpStartForce * CAR_MASS_BT);
+
+						_internalState.hasDoubleJumped = true;
+					}
+				}
+			}
+		}
+
+		if (_internalState.hasFlipped) {
+			// Replicated from https://github.com/samuelpmish/RLUtilities/blob/develop/src/mechanics/dodge.cc
+			_internalState.flipTimer += TICKTIME;
+			if (_internalState.flipTimer <= FLIP_TORQUE_TIME) {
+
+				btVector3 vel = _rigidBody->getLinearVelocity();
+				if (_internalState.flipTimer >= FLIP_Z_DAMP_START && (vel.z() < 0 || _internalState.flipTimer < FLIP_Z_DAMP_END)) {
+					vel.z() *= powf(1 - FLIP_Z_DAMP_120, TICKTIME / (1 / 120.f));
+					_rigidBody->setLinearVelocity(vel);
+				}
+				
+			}
+			
 		}
 	}
 	_internalState.lastControls = controls;

@@ -17,13 +17,16 @@ struct CarState {
 
 	bool isOnGround;
 	bool hasJumped, hasDoubleJumped, hasFlipped;
-	Vec lastDodgeTorque;
+	Vec lastRelDodgeTorque;
 
-	// Reset once we jump/flip
+	// Active during the duration of a jump or flip
 	float jumpTimer, flipTimer;
 
 	// True during a jump (not double jumps or a flip)
 	bool isJumping;
+
+	// Time spent in the air once !isJumping
+	float airTimeSinceJump;
 
 	// Goes from 0 to 100
 	float boost;
