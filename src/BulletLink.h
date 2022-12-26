@@ -18,6 +18,9 @@ typedef btVector3 Vec;
 #define TICKRATE 120
 #define TICKTIME (1.f/TICKRATE)
 
+static_assert(TICKRATE <= 120, "Tick rate is too high, must be from 1-120");
+static_assert(TICKRATE >= 1, "Tick rate is too low, must be from 1-120");
+
 // NOTE: Values should be in radians
 struct Angle {
 	float yaw, pitch, roll;
