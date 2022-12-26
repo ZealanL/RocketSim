@@ -208,19 +208,6 @@ void btVehicleRL::updateVehicle(float step) {
 	calcFrictionImpulses(step);
 
 	updateSuspension(step);
-
-	for (i = 0; i < m_wheelInfo.size(); i++) {
-		//apply suspension force
-		btWheelInfoRL& wheel = m_wheelInfo[i];
-
-		float suspensionForce = wheel.m_wheelsSuspensionForce;
-
-		Vec impulse = wheel.m_raycastInfo.m_contactNormalWS * suspensionForce * step;
-		Vec relpos = wheel.m_raycastInfo.m_contactPointWS - getRigidBody()->getCenterOfMassPosition();
-
-		getRigidBody()->applyImpulse(impulse, relpos);
-	}
-
 	applyFrictionImpulses(step);
 }
 
@@ -280,6 +267,17 @@ void btVehicleRL::updateSuspension(float deltaTime) {
 
 		} else {
 			wheel_info.m_wheelsSuspensionForce = 0;
+		}
+	}
+
+	for (int i = 0; i < getNumWheels(); i++) {
+		//apply suspension force
+		btWheelInfoRL& wheel = m_wheelInfo[i];
+		if (wheel.m_wheelsSuspensionForce != 0) {
+			Vec contactPointOffset = wheel.m_raycastInfo.m_contactPointWS - getRigidBody()->getCenterOfMassPosition();
+			float baseForceScale = (wheel.m_wheelsSuspensionForce * deltaTime); // TODO: Include ramp factor thing
+			Vec force = wheel.m_raycastInfo.m_contactNormalWS * baseForceScale;
+			m_chassisBody->applyImpulse(force, contactPointOffset);
 		}
 	}
 }
