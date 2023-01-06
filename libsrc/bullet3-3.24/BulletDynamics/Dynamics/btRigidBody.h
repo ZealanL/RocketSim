@@ -58,6 +58,7 @@ enum btRigidBodyFlags
 ///Deactivated (sleeping) rigid bodies don't take any processing time, except a minor broadphase collision detection impact (to allow active objects to activate/wake up sleeping objects)
 class btRigidBody : public btCollisionObject
 {
+public:
 	btMatrix3x3 m_invInertiaTensorWorld;
 	btVector3 m_linearVelocity;
 	btVector3 m_angularVelocity;
@@ -92,7 +93,7 @@ class btRigidBody : public btCollisionObject
 
 	int m_debugBodyId;
 
-protected:
+public:
 	ATTRIBUTE_ALIGNED16(btVector3 m_deltaLinearVelocity);
 	btVector3 m_deltaAngularVelocity;
 	btVector3 m_angularFactor;

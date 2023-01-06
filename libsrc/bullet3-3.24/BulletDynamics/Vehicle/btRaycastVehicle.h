@@ -204,9 +204,9 @@ public:
 
 class btDefaultVehicleRaycaster : public btVehicleRaycaster
 {
+public:
 	btDynamicsWorld* m_dynamicsWorld;
 
-public:
 	btDefaultVehicleRaycaster(btDynamicsWorld* world)
 		: m_dynamicsWorld(world)
 	{
