@@ -2,9 +2,8 @@
 #include "../../../libsrc/bullet3-3.24/BulletDynamics/ConstraintSolver/btContactConstraint.h"
 #define ROLLING_INFLUENCE_FIX
 
-btVehicleRL::btVehicleRL(const btVehicleTuning& tuning, btRigidBody* chassis, btVehicleRaycaster* raycaster)
-	: m_vehicleRaycaster(raycaster),
-	m_pitchControl(0) {
+btVehicleRL::btVehicleRL(const btVehicleTuning& tuning, btRigidBody* chassis, btVehicleRaycaster* raycaster, btDynamicsWorld* world)
+	: m_vehicleRaycaster(raycaster), m_pitchControl(0),  m_dynamicsWorld(world) {
 	m_chassisBody = chassis;
 	m_indexRightAxis = 0;
 	m_indexUpAxis = 2;
@@ -92,8 +91,8 @@ void btVehicleRL::resetSuspension() {
 		wheel.m_suspensionRelativeVelocity = 0;
 
 		wheel.m_raycastInfo.m_contactNormalWS = -wheel.m_raycastInfo.m_wheelDirectionWS;
-		//wheel_info.setContactFriction(0);
 		wheel.m_clippedInvContactDotSuspension = 1;
+		wheel.m_extraPushback = 0;
 	}
 }
 
@@ -106,16 +105,19 @@ void btVehicleRL::updateWheelTransformsWS(btWheelInfoRL& wheel) {
 	wheel.m_raycastInfo.m_wheelAxleWS = chassisTrans.getBasis() * wheel.m_wheelAxleCS;
 }
 
+
+
 float btVehicleRL::rayCast(btWheelInfoRL& wheel) {
 	updateWheelTransformsWS(wheel);
 
 	float depth = -1;
 
 	float suspensionTravel = wheel.m_maxSuspensionTravelCm / 100;
-	float rayLength = wheel.getSuspensionRestLength() + suspensionTravel + wheel.m_wheelsRadius;
+	float magicSubtractionNumber = 0.05f; // TODO: Add to RLConst
+	float realRayLength = wheel.getSuspensionRestLength() + suspensionTravel + wheel.m_wheelsRadius - magicSubtractionNumber;
 
 	Vec source = wheel.m_raycastInfo.m_hardPointWS;
-	Vec target = source + (wheel.m_raycastInfo.m_wheelDirectionWS * rayLength);
+	Vec target = source + (wheel.m_raycastInfo.m_wheelDirectionWS * realRayLength);
 	wheel.m_raycastInfo.m_contactPointWS = target;
 
 	btVehicleRaycaster::btVehicleRaycasterResult rayResults;
@@ -134,7 +136,7 @@ float btVehicleRL::rayCast(btWheelInfoRL& wheel) {
 
 		wheel.m_raycastInfo.m_contactPointWS = rayResults.m_hitPointInWorld;
 		float fraction = rayResults.m_distFraction;
-		depth = rayLength * rayResults.m_distFraction;
+		depth = realRayLength * rayResults.m_distFraction;
 		wheel.m_raycastInfo.m_contactNormalWS = rayResults.m_hitNormalInWorld;
 		wheel.m_raycastInfo.m_isInContact = true;
 
@@ -144,8 +146,8 @@ float btVehicleRL::rayCast(btWheelInfoRL& wheel) {
 		btMatrix3x3 bodyBasis = m_chassisBody->getWorldTransform().getBasis();
 		btVector3 basisColumn = bodyBasis.getRow(2);
 		btVector3 wheelTraceDistVec = (wheel.m_raycastInfo.m_hardPointWS - wheel.m_raycastInfo.m_contactPointWS) * basisColumn;
-		float susLength = wheelTraceDistVec.x() + wheelTraceDistVec.y() + wheelTraceDistVec.z();
-		wheel.m_raycastInfo.m_suspensionLength = susLength - wheel.m_wheelsRadius;
+		float wheelTraceLenSq = wheelTraceDistVec.x() + wheelTraceDistVec.y() + wheelTraceDistVec.z();
+		wheel.m_raycastInfo.m_suspensionLength = wheelTraceLenSq - wheel.m_wheelsRadius;
 
 		//clamp on max suspension travel
 		float minSuspensionLen = wheel.getSuspensionRestLength() - suspensionTravel;
@@ -156,7 +158,6 @@ float btVehicleRL::rayCast(btWheelInfoRL& wheel) {
 				wheel.getSuspensionRestLength() - suspensionTravel,
 				wheel.getSuspensionRestLength() + suspensionTravel
 			);
-
 
 		float denominator = wheel.m_raycastInfo.m_contactNormalWS.dot(wheel.m_raycastInfo.m_wheelDirectionWS);
 
@@ -175,11 +176,32 @@ float btVehicleRL::rayCast(btWheelInfoRL& wheel) {
 			wheel.m_suspensionRelativeVelocity = projVel * inv;
 			wheel.m_clippedInvContactDotSuspension = inv;
 		}
+
+		{ // Compute m_extraPushback
+
+			// Temporarily disable factors
+			// This will prevent resolveSingleCollision from actually applying force to us
+			// TODO: This is sorta hacky, we should just make our own version of resolveSingleCollision or something
+			m_chassisBody->setLinearFactor({ 0,0,0 });
+			m_chassisBody->setAngularFactor({ 0,0,0 });
+
+			float susRayDeltaDist = wheelTraceLenSq - (realRayLength - wheel.m_wheelsRadius);
+			
+			float collisionResult = resolveSingleCollision(m_chassisBody, (btCollisionObject*)object, rayResults.m_hitPointInWorld, rayResults.m_hitNormalInWorld, m_dynamicsWorld->getSolverInfo(), susRayDeltaDist);
+			float pushBackScale = (1 / 1.5f);
+			wheel.m_extraPushback = (collisionResult * pushBackScale) / getNumWheels();
+
+			// Restore factors 
+			m_chassisBody->setLinearFactor({ 1,1,1 });
+			m_chassisBody->setAngularFactor({ 1,1,1 });
+		}
+
 	} else {
 		wheel.m_raycastInfo.m_suspensionLength = wheel.getSuspensionRestLength() + suspensionTravel;
 		wheel.m_suspensionRelativeVelocity = 0;
 		wheel.m_raycastInfo.m_contactNormalWS = -wheel.m_raycastInfo.m_wheelDirectionWS;
 		wheel.m_clippedInvContactDotSuspension = 1;
+		wheel.m_extraPushback = 0;
 	}
 
 	return depth;
@@ -275,7 +297,7 @@ void btVehicleRL::updateSuspension(float deltaTime) {
 		btWheelInfoRL& wheel = m_wheelInfo[i];
 		if (wheel.m_wheelsSuspensionForce != 0) {
 			Vec contactPointOffset = wheel.m_raycastInfo.m_contactPointWS - getRigidBody()->getCenterOfMassPosition();
-			float baseForceScale = (wheel.m_wheelsSuspensionForce * deltaTime); // TODO: Include ramp factor thing
+			float baseForceScale = (wheel.m_wheelsSuspensionForce * deltaTime) + wheel.m_extraPushback;
 			Vec force = wheel.m_raycastInfo.m_contactNormalWS * baseForceScale;
 			m_chassisBody->applyImpulse(force, contactPointOffset);
 		}

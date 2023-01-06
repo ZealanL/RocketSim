@@ -12,6 +12,9 @@ struct btWheelInfoRL : public btWheelInfo {
 
 	float m_suspensionForceScale;
 
+	// Extra force applied when compressed significantly
+	float m_extraPushback = 0;
+
 	btWheelInfoRL(btWheelInfoConstructionInfo& constructionInfo) : btWheelInfo(constructionInfo) {}
 };
 
@@ -22,6 +25,8 @@ public:
 	btAlignedObjectArray<Vec> m_axle;
 	btAlignedObjectArray<float> m_forwardImpulse;
 	btAlignedObjectArray<float> m_sideImpulse;
+
+	btDynamicsWorld* m_dynamicsWorld;
 
 	///backwards compatibility
 	int m_userConstraintType;
@@ -60,7 +65,7 @@ public:
 	void defaultInit(const btVehicleTuning& tuning);
 
 	//constructor to create a car from an existing rigidbody
-	btVehicleRL(const btVehicleTuning& tuning, btRigidBody* chassis, btVehicleRaycaster* raycaster);
+	btVehicleRL(const btVehicleTuning& tuning, btRigidBody* chassis, btVehicleRaycaster* raycaster, btDynamicsWorld* world);
 
 	virtual ~btVehicleRL();
 

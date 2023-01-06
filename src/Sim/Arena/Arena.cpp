@@ -40,7 +40,7 @@ Car* Arena::AddCar(Team team, const CarConfig& config) {
 
 		btVehicleRL::btVehicleTuning tuning = btVehicleRL::btVehicleTuning();
 
-		car->_bulletVehicle = new btVehicleRL(tuning, car->_rigidBody, car->_bulletVehicleRaycaster);
+		car->_bulletVehicle = new btVehicleRL(tuning, car->_rigidBody, car->_bulletVehicleRaycaster, _bulletWorld);
 
 		// Match RL with X forward, Y right, Z up
 		car->_bulletVehicle->setCoordinateSystem(1, 2, 0);
