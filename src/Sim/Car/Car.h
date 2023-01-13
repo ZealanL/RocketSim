@@ -12,7 +12,7 @@ struct CarState {
 	// Linear velocity
 	Vec vel;
 
-	// Angular velocity (axis-angle)
+	// Angular velocity (rad/s)
 	Vec angVel;
 
 	bool isOnGround;
