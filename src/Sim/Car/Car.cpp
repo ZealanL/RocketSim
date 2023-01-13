@@ -175,10 +175,13 @@ void Car::_PreTickUpdate() {
 	if (numWheelsInContact >= 3) { // Grounded, apply sticky forces
 		Vec downwardsDir = _bulletVehicle->getDownwardsDirFromWheelContacts();
 
-		bool sticky = controls.throttle != 0 || absForwardSpeed > 25;
-		float stickyForceScale = sticky ? (-abs(downwardsDir.z()) + 1.5f) : 0.5f;
+		bool fullStick = controls.throttle != 0 || absForwardSpeed > 25;
 
-		_rigidBody->applyCentralForce(downwardsDir * stickyForceScale * -RLConst::GRAVITY_Z * UU_TO_BT);
+		float stickyForceScale = 0.5f;
+		if (fullStick)
+			stickyForceScale += 1 - abs(downwardsDir.z());
+
+		_rigidBody->applyCentralForce(downwardsDir * stickyForceScale * (-RLConst::GRAVITY_Z * UU_TO_BT) * RLConst::CAR_MASS_BT);
 
 	} else { // Not grounded, apply air control
 		using namespace RLConst;
