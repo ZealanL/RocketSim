@@ -48,10 +48,11 @@ const btSimdFloat4 ATTRIBUTE_ALIGNED16(v0010) = {0.0f, 0.0f, 1.0f, 0.0f};
 ATTRIBUTE_ALIGNED16(class)
 btMatrix3x3
 {
+public:
+
 	///Data storage for the matrix, each vector is a row of the matrix
 	btVector3 m_el[3];
 
-public:
 	/** @brief No initializaion constructor */
 	btMatrix3x3() {}
 
