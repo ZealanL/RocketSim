@@ -189,7 +189,7 @@ void Arena::Step(int ticksToSimulate) {
 	for (int i = 0; i < ticksToSimulate; i++) {
 		for (Car* car : _carsList) {
 			car->_PreTickUpdate();
-			//car->_ApplyPhysicsRounding();
+			car->_ApplyPhysicsRounding();
 		}
 
 		// Update world
