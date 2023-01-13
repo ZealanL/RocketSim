@@ -143,10 +143,7 @@ float btVehicleRL::rayCast(btWheelInfoRL& wheel) {
 		wheel.m_raycastInfo.m_groundObject = &getFixedBody();  ///@todo for driving on dynamic/movable objects!;
 		//wheel.m_raycastInfo.m_groundObject = object;
 
-		btMatrix3x3 bodyBasis = m_chassisBody->getWorldTransform().getBasis();
-		btVector3 basisColumn = bodyBasis.getRow(2);
-		btVector3 wheelTraceDistVec = (wheel.m_raycastInfo.m_hardPointWS - wheel.m_raycastInfo.m_contactPointWS) * basisColumn;
-		float wheelTraceLenSq = wheelTraceDistVec.x() + wheelTraceDistVec.y() + wheelTraceDistVec.z();
+		float wheelTraceLenSq = (wheel.m_raycastInfo.m_hardPointWS - wheel.m_raycastInfo.m_contactPointWS).dot(getUpVector());
 		wheel.m_raycastInfo.m_suspensionLength = wheelTraceLenSq - wheel.m_wheelsRadius;
 
 		//clamp on max suspension travel
