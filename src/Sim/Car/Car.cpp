@@ -178,16 +178,16 @@ void Car::_PreTickUpdate() {
 		bool sticky = controls.throttle != 0 || absForwardSpeed > 25;
 		float stickyForceScale = sticky ? (-abs(downwardsDir.z()) + 1.5f) : 0.5f;
 
-		_rigidBody->applyImpulse(downwardsDir * stickyForceScale * -RLConst::GRAVITY_Z * UU_TO_BT, btVector3(0, 0, 0));
+		_rigidBody->applyCentralForce(downwardsDir * stickyForceScale * -RLConst::GRAVITY_Z * UU_TO_BT);
 
 	} else { // Not grounded, apply air control
 		using namespace RLConst;
 
-		auto basis = _rigidBody->getWorldTransform().getBasis();
+		btMatrix3x3 basis = _rigidBody->getWorldTransform().getBasis();
 		btVector3
-			pitchDir = -basis.getColumn(1),
-			yawDir = basis.getColumn(2),
-			rollDir = -basis.getColumn(0);
+			dirPitch_right = -basis.getColumn(1),
+			dirYaw_up = basis.getColumn(2),
+			dirRoll_forward = -basis.getColumn(0);
 
 		if (_internalState.hasFlipped && _internalState.flipTimer < FLIP_TORQUE_TIME) {
 
@@ -213,36 +213,37 @@ void Car::_PreTickUpdate() {
 			// Net torque to apply to the car
 			btVector3 torque;
 
+			// TODO: Use seperate powerslide field instead of handbrake?
 			if (controls.handbrake) {
-				std::swap(controls.roll, controls.yaw);
+				controls.roll = controls.yaw;
+				controls.yaw = 0;
 			}
 
 			if (controls.pitch || controls.yaw || controls.roll) {
 
 				float pitchScale = 1;
-				//if (_internalState.hasFlipped && _internalState.flipTimer < FLIP_TORQUE_TIME)
-					//pitchScale = 0;
+				if (_internalState.hasFlipped && _internalState.flipTimer < FLIP_TORQUE_TIME)
+					pitchScale = 0;
 
 				// TODO: Use dot(,)
-				btVector3 relTorque = (controls.pitch * pitchDir * pitchScale * CAR_AIR_CONTROL_TORQUE.x()) +
-					(controls.yaw * yawDir * CAR_AIR_CONTROL_TORQUE.y()) +
-					(controls.roll * rollDir * CAR_AIR_CONTROL_TORQUE.z());
-
-				torque = relTorque;
+				torque = (controls.pitch * dirPitch_right * pitchScale * CAR_AIR_CONTROL_TORQUE.x()) +
+					(controls.yaw * dirYaw_up * CAR_AIR_CONTROL_TORQUE.y()) +
+					(controls.roll * dirRoll_forward * CAR_AIR_CONTROL_TORQUE.z());
 			} else {
 				torque = { 0, 0, 0 };
 			}
 
 			auto angVel = _rigidBody->getAngularVelocity();
+
 			float
-				dampPitch = pitchDir.dot(angVel) * CAR_AIR_CONTROL_DAMPING.x() * (1 - abs(controls.pitch)),
-				dampYaw = yawDir.dot(angVel) * CAR_AIR_CONTROL_DAMPING.y() * (1 - abs(controls.yaw)),
-				dampRoll = rollDir.dot(angVel) * CAR_AIR_CONTROL_DAMPING.z();
+				dampPitch = dirPitch_right.dot(angVel) * CAR_AIR_CONTROL_DAMPING.x() * (1 - abs(controls.pitch)),
+				dampYaw = dirYaw_up.dot(angVel) * CAR_AIR_CONTROL_DAMPING.y() * (1 - abs(controls.yaw)),
+				dampRoll = dirRoll_forward.dot(angVel) * CAR_AIR_CONTROL_DAMPING.z();
 
 			btVector3 damping =
-				(yawDir * dampYaw) +
-				(pitchDir * dampPitch) +
-				(rollDir * dampRoll);
+				(dirYaw_up * dampYaw) +
+				(dirPitch_right * dampPitch) +
+				(dirRoll_forward * dampRoll);
 
 			_rigidBody->setAngularVelocity(
 				_rigidBody->getAngularVelocity() + (torque - damping) * CAR_TORQUE_SCALE * TICKTIME
@@ -405,12 +406,16 @@ void Car::_PostTickUpdate() {
 
 	{ // Limit velocities
 		using namespace RLConst;
+		btVector3 
+			vel = _rigidBody->getLinearVelocity(), 
+			angVel = _rigidBody->getAngularVelocity();
 
-		if (_rigidBody->getLinearVelocity().length2() > (CAR_MAX_SPEED * CAR_MAX_SPEED))
-			_rigidBody->setLinearVelocity(_rigidBody->getLinearVelocity().normalized() * RLConst::CAR_MAX_SPEED);
+		if (vel.length2() > CAR_MAX_SPEED)
+			vel = vel.normalize() * CAR_MAX_SPEED;
+		_rigidBody->setLinearVelocity(vel);
 
-		if (_rigidBody->getAngularVelocity().length2() > (CAR_MAX_ANG_SPEED * CAR_MAX_ANG_SPEED))
-			_rigidBody->setAngularVelocity(_rigidBody->getAngularVelocity().normalized() * CAR_MAX_ANG_SPEED);
+		angVel = angVel / MAX(1, angVel.length() / CAR_MAX_ANG_SPEED);
+		_rigidBody->setAngularVelocity(angVel);
 	}
 }
 

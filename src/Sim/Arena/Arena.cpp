@@ -20,7 +20,7 @@ Car* Arena::AddCar(Team team, const CarConfig& config) {
 		car->_compoundShape->addChildShape(hitboxOffsetTransform, car->_childHitboxShape);
 
 		btVector3 localInertia(0, 0, 0);
-		car->_compoundShape->calculateLocalInertia(RLConst::CAR_MASS_BT, localInertia);
+		car->_childHitboxShape->calculateLocalInertia(RLConst::CAR_MASS_BT, localInertia);
 
 		btRigidBody::btRigidBodyConstructionInfo rbInfo
 			= btRigidBody::btRigidBodyConstructionInfo(RLConst::CAR_MASS_BT, NULL, car->_compoundShape, localInertia);
@@ -28,8 +28,11 @@ Car* Arena::AddCar(Team team, const CarConfig& config) {
 		btTransform carTransform = btTransform();
 		carTransform.setIdentity();
 		rbInfo.m_startWorldTransform = carTransform;
-
+		
 		car->_rigidBody = new btRigidBody(rbInfo);
+
+		// Disable gyroscopic force (shoutout to Allah for this one)
+		car->_rigidBody->m_rigidbodyFlags = 0;
 	}
 
 	// Add rigidbody to world
@@ -186,7 +189,7 @@ void Arena::Step(int ticksToSimulate) {
 	for (int i = 0; i < ticksToSimulate; i++) {
 		for (Car* car : _carsList) {
 			car->_PreTickUpdate();
-			car->_ApplyPhysicsRounding();
+			//car->_ApplyPhysicsRounding();
 		}
 
 		// Update world
