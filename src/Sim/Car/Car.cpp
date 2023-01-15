@@ -43,6 +43,8 @@ void Car::_PreTickUpdate() {
 
 	_bulletVehicle->updateVehicle(TICKTIME);
 
+	Vec forwardDir = _bulletVehicle->getForwardVector();
+
 	float forwardSpeed = _bulletVehicle->getForwardSpeed();
 	float absForwardSpeed = abs(forwardSpeed);
 
@@ -192,44 +194,47 @@ void Car::_PreTickUpdate() {
 			dirYaw_up = basis.getColumn(2),
 			dirRoll_forward = -basis.getColumn(0);
 
+		bool doAirControl = false;
 		if (_internalState.hasFlipped && _internalState.flipTimer < FLIP_TORQUE_TIME) {
 
 			btVector3 relDodgeTorque = _internalState.lastRelDodgeTorque;
 
-			// Flip cancel
-			float pitchScale = 1;
-			if (relDodgeTorque.y() != 0 && controls.pitch != 0) {
-				pitchScale = SGN(relDodgeTorque.y()) != SGN(controls.pitch);
-				if (pitchScale == 0) {
-					pitchScale = 0;
+			if (!_internalState.lastRelDodgeTorque.isZero()) {
+				// Flip cancel check
+				float pitchScale = 1;
+				if (relDodgeTorque.y() != 0 && controls.pitch != 0) {
+					if (SGN(relDodgeTorque.y()) == SGN(controls.pitch)) {
+						pitchScale = 0;
+						doAirControl = true;
+					}
 				}
+
+				relDodgeTorque.y() *= pitchScale;
+
+				btVector3 dodgeTorque = _rigidBody->getWorldTransform().getBasis() * (relDodgeTorque * btVector3(FLIP_TORQUE_X, FLIP_TORQUE_Y, 0));;
+				_rigidBody->setAngularVelocity(
+					_rigidBody->getAngularVelocity() + dodgeTorque * TICKTIME
+				);
+			} else {
+				// Stall, allow air control
+				doAirControl = true;
 			}
-
-			relDodgeTorque.y() *= pitchScale;
-
-			btVector3 dodgeTorque = _rigidBody->getWorldTransform().getBasis() * (relDodgeTorque * btVector3(FLIP_TORQUE_X, FLIP_TORQUE_Y, 0));;
-			_rigidBody->setAngularVelocity(
-				_rigidBody->getAngularVelocity() + dodgeTorque * TICKTIME
-			);
 		} else {
+			doAirControl = true;
+		}
 
+		if (doAirControl) {
 			// Net torque to apply to the car
 			btVector3 torque;
 
-			// TODO: Use seperate powerslide field instead of handbrake?
-			if (controls.handbrake) {
-				controls.roll = controls.yaw;
-				controls.yaw = 0;
-			}
-
+			float pitchTorqueScale = 1;
 			if (controls.pitch || controls.yaw || controls.roll) {
 
-				float pitchScale = 1;
-				if (_internalState.hasFlipped && _internalState.flipTimer < FLIP_TORQUE_TIME)
-					pitchScale = 0;
+				if (_internalState.hasFlipped && _internalState.flipTimer < FLIP_PITCHLOCK_TIME)
+					pitchTorqueScale = 0;
 
-				// TODO: Use dot(,)
-				torque = (controls.pitch * dirPitch_right * pitchScale * CAR_AIR_CONTROL_TORQUE.x()) +
+				// TODO: Use actual dot product operator functions (?)
+				torque = (controls.pitch * dirPitch_right * pitchTorqueScale * CAR_AIR_CONTROL_TORQUE.x()) +
 					(controls.yaw * dirYaw_up * CAR_AIR_CONTROL_TORQUE.y()) +
 					(controls.roll * dirRoll_forward * CAR_AIR_CONTROL_TORQUE.z());
 			} else {
@@ -238,9 +243,10 @@ void Car::_PreTickUpdate() {
 
 			auto angVel = _rigidBody->getAngularVelocity();
 
+			// TODO: Use actual dot product operator functions (?)
 			float
-				dampPitch = dirPitch_right.dot(angVel) * CAR_AIR_CONTROL_DAMPING.x() * (1 - abs(controls.pitch)),
-				dampYaw = dirYaw_up.dot(angVel) * CAR_AIR_CONTROL_DAMPING.y() * (1 - abs(controls.yaw)),
+				dampPitch = dirPitch_right.dot(angVel) * CAR_AIR_CONTROL_DAMPING.x() * (1 - abs(doAirControl ? (controls.pitch * pitchTorqueScale) : 0)),
+				dampYaw = dirYaw_up.dot(angVel) * CAR_AIR_CONTROL_DAMPING.y() * (1 - abs(doAirControl ? controls.yaw : 0)),
 				dampRoll = dirRoll_forward.dot(angVel) * CAR_AIR_CONTROL_DAMPING.z();
 
 			btVector3 damping =
@@ -251,6 +257,11 @@ void Car::_PreTickUpdate() {
 			_rigidBody->setAngularVelocity(
 				_rigidBody->getAngularVelocity() + (torque - damping) * CAR_TORQUE_SCALE * TICKTIME
 			);
+		}
+
+		// Throttle in air
+		if (controls.throttle != 0) {
+			_rigidBody->applyCentralImpulse(forwardDir * controls.throttle * RLConst::THROTTLE_AIR_FORCE * TICKTIME);
 		}
 	}
 }

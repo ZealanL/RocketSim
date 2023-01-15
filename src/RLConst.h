@@ -48,7 +48,8 @@ namespace RLConst {
 	constexpr float
 		STOPPING_FORWARD_VEL = 25.f, // If we are costing with less than this forward vel, we full-brake
 		COASTING_BRAKE_FACTOR = 0.15f, // How much the brake is applied when costing
-		THROTTLE_DEADZONE = 0.001f; // Throttle input of less than this is ignored
+		THROTTLE_DEADZONE = 0.001f, // Throttle input of less than this is ignored
+		THROTTLE_AIR_FORCE = 200.f / 3.f;
 
 	constexpr float
 		JUMP_ACCEL = 4375.f / 3.f,
@@ -67,7 +68,7 @@ namespace RLConst {
 		FLIP_Z_DAMP_END = 0.21f,
 		FLIP_TORQUE_TIME = 0.65f,
 		FLIP_TORQUE_MIN_TIME = 0.41f,
-		FLIP_PITCHLOCK_TIME = 0.3f,
+		FLIP_PITCHLOCK_TIME = 1.f,
 		FLIP_INITIAL_VEL_SCALE = 500.f,
 		FLIP_TORQUE_X = 260.f, // Left/Right
 		FLIP_TORQUE_Y = 224.f; // Forward/backward
