@@ -25,7 +25,7 @@ public:
 	btSphereShape* _collisionShape;
 
 	RSAPI float GetRadius() {
-		return _collisionShape->getRadius();
+		return _collisionShape->getRadius() * BT_TO_UU;
 	}
 
 	// For construction by Arena
