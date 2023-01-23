@@ -36,6 +36,12 @@ void Car::SetState(const CarState& state) {
 }
 
 void Car::_PreTickUpdate() {
+
+#ifndef RS_MAX_SPEED
+	// Fix inputs
+	controls.ClampFix();
+#endif
+
 	assert(_bulletVehicle->getNumWheels() == 4);
 
 	// Prevent the car's RB from becoming inactive
