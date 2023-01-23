@@ -45,20 +45,20 @@ typedef int64_t int64;	typedef uint64_t uint64;
 typedef uint8_t byte;
 
 // Current millisecond time
-#define CUR_MS() (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count())
+#define RS_CUR_MS() (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count())
 
-#define MAX(a, b) ((a > b) ? a : b)
-#define MIN(a, b) ((a < b) ? a : b)
+#define RS_MAX(a, b) ((a > b) ? a : b)
+#define RS_MIN(a, b) ((a < b) ? a : b)
 
-#define CLAMP(val, min, max) MIN(MAX(val, min), max)
+#define RS_CLAMP(val, min, max) RS_MIN(RS_MAX(val, min), max)
 
-#define LOG(s) { std::cout << std::dec << s << std::endl; }
-#define STR(s) ([&]{ std::stringstream __macroStream; __macroStream << s; return __macroStream.str(); }())
+#define RS_LOG(s) { std::cout << std::dec << s << std::endl; }
+#define RS_STR(s) ([&]{ std::stringstream __macroStream; __macroStream << s; return __macroStream.str(); }())
 
 // Returns sign of number (1 if positive, -1 if negative, and 0 if 0)
-#define SGN(val) ((val > 0) - (val < 0))
+#define RS_SGN(val) ((val > 0) - (val < 0))
 
-#define ERR_CLOSE(s) { LOG("FATAL ERROR: " << s); exit(EXIT_FAILURE); }
+#define RS_ERR_CLOSE(s) { RS_LOG("FATAL ERROR: " << s); exit(EXIT_FAILURE); }
 
 #if 0 // FOR FUTURE USE: Exports/imports setup
 #ifdef ROCKETSIM_EXPORTS
@@ -69,3 +69,5 @@ typedef uint8_t byte;
 #else
 #define RSAPI
 #endif
+
+// RS_MAX_SPEED: Define this to remove certain sanity checks for faster speed
