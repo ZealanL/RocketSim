@@ -95,7 +95,7 @@ namespace RLConst {
 
 	// TODO: Dropshot one may be a little off, will check at some future point
 	constexpr float
-		BALL_COLLISION_RADIUS_NORMAL = 92.25f, // Soccar, Hoops, etc.
+		BALL_COLLISION_RADIUS_NORMAL = 93.14f, // Soccar, Hoops, etc.
 		BALL_COLLISION_RADIUS_DROPSHOT = 103.6f;
 
 	constexpr float SOCCAR_GOAL_SCORE_BASE_THRESHOLD_Y = 5121.75f;
