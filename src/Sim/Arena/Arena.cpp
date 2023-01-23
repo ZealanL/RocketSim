@@ -348,6 +348,7 @@ void Arena::_SetupArenaCollisionShapes() {
 		goalMesh	= MeshLoader::LoadMeshFromFiles(basePath + "soccar_goal", 2);
 		rampsMeshA	= MeshLoader::LoadMeshFromFiles(basePath + "soccar_ramps_0", 2);
 		rampsMeshB	= MeshLoader::LoadMeshFromFiles(basePath + "soccar_ramps_1", 2);
+		meshesLoaded = true;
 	}
 
 	constexpr float PLANE_THICKNESS = 10;
