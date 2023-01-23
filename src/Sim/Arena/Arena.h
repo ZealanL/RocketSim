@@ -4,6 +4,11 @@
 #include "../Ball/Ball.h"
 #include "../MeshLoader/MeshLoader.h"
 
+enum : int {
+	BT_USERINFO_TYPE_CAR,
+	BT_USERINFO_TYPE_BALL,
+};
+
 enum class GameMode {
 	SOCCAR,
 	// More coming soon!
@@ -62,4 +67,10 @@ public:
 
 	void _AddStaticCollisionTris(MeshLoader::Mesh& mesh, btVector3 scale = btVector3(1,1,1), btVector3 pos = btVector3(0, 0, 0));
 	void _SetupArenaCollisionShapes();
+
+	// Static function called by Bullet internally during a tick
+	static void _BulletInternalTickCallback(btDynamicsWorld* world, btScalar step);
+
+	void _BtCallback_OnCarBallCollision(Car* car, Ball* ball, btManifoldPoint& manifoldPoint);
+	void _BtCallback_OnCarCarCollision(Car* car1, Car* car2, btManifoldPoint& manifoldPoint);
 };

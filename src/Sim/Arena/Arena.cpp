@@ -28,8 +28,10 @@ Car* Arena::AddCar(Team team, const CarConfig& config) {
 		btTransform carTransform = btTransform();
 		carTransform.setIdentity();
 		rbInfo.m_startWorldTransform = carTransform;
-		
+
 		car->_rigidBody = new btRigidBody(rbInfo);
+		car->_rigidBody->setUserIndex(BT_USERINFO_TYPE_CAR);
+		car->_rigidBody->setUserPointer(car);
 
 		// Disable gyroscopic force (shoutout to Allah for this one)
 		car->_rigidBody->m_rigidbodyFlags = 0;
@@ -117,6 +119,53 @@ void Arena::RegisterGoalScoreCallback(GoalScoreEventFn callbackFunc) {
 	_goalScoreCallbacks.push_back(callbackFunc);
 }
 
+void Arena::_BulletInternalTickCallback(btDynamicsWorld* world, btScalar step) {
+	Arena* arenaInst = (Arena*)world->getWorldUserInfo();
+
+	auto dispatcher = world->getDispatcher();
+	int numManifolds = dispatcher->getNumManifolds();
+	for (int i = 0; i < numManifolds; i++) {
+		auto contactManifold = dispatcher->getManifoldByIndexInternal(i);
+		int numContacts = contactManifold->getNumContacts();
+		if (!numContacts)
+			continue;
+
+		auto
+			body0 = contactManifold->getBody0(),
+			body1 = contactManifold->getBody1();
+
+		bool firstBodyIsCar = (body0->getUserIndex() == BT_USERINFO_TYPE_CAR);
+		if (!firstBodyIsCar && (body1->getUserIndex() != BT_USERINFO_TYPE_CAR))
+			continue; // No car involved, so we don't care
+
+		auto carBody = firstBodyIsCar ? body0 : body1;
+		auto otherBody = firstBodyIsCar ? body1 : body0;
+
+		if (!otherBody->getUserIndex())
+			continue; // Other colliding body is neither a car nor the ball
+
+		// TODO: Does RL support multiple contacts in a tick? Not sure.
+		// We'll just use the first one regardless.
+		btManifoldPoint& contactPoint = contactManifold->getContactPoint(0);
+
+		if (otherBody->getUserIndex() == BT_USERINFO_TYPE_BALL) {
+			// Ball was hit
+			arenaInst->_BtCallback_OnCarBallCollision((Car*)carBody->getUserPointer(), (Ball*)otherBody->getUserPointer(), contactPoint);
+		} else if (otherBody->getUserIndex() == BT_USERINFO_TYPE_CAR) {
+			// Car was hit
+			arenaInst->_BtCallback_OnCarCarCollision((Car*)carBody->getUserPointer(), (Car*)otherBody->getUserPointer(), contactPoint);
+		}
+	}
+}
+
+void Arena::_BtCallback_OnCarBallCollision(Car* car, Ball* ball, btManifoldPoint& manifoldPoint) {
+	
+}
+
+void Arena::_BtCallback_OnCarCarCollision(Car* car1, Car* car2, btManifoldPoint& manifoldPoint) {
+
+}
+
 Arena::Arena(GameMode gameMode) {
 	this->gameMode = gameMode;
 
@@ -141,7 +190,7 @@ Arena::Arena(GameMode gameMode) {
 
 	// Give arena collision shapes the proper restitution/friction values
 	for (auto rb : _worldCollisionRBs) {
-		rb->setRestitution(1.f);
+		rb->setRestitution(0.3f);
 		rb->setFriction(1.f);
 		rb->setRollingFriction(0.f);
 	}
@@ -172,24 +221,27 @@ Arena::Arena(GameMode gameMode) {
 		ball->_collisionShape->calculateLocalInertia(RLConst::BALL_MASS_BT, localInertial);
 
 		constructionInfo.m_localInertia = localInertial;
-		constructionInfo.m_angularSleepingThreshold = 0;
-		constructionInfo.m_linearSleepingThreshold = 0.001;
 		constructionInfo.m_linearDamping = RLConst::BALL_DRAG;
 		constructionInfo.m_friction = RLConst::BALL_FRICTION;
 		constructionInfo.m_restitution = RLConst::BALL_RESTITUTION;
 
-		ball->_rigidBody = new btRigidBody(constructionInfo);		
+		ball->_rigidBody = new btRigidBody(constructionInfo);
+		ball->_rigidBody->setUserIndex(BT_USERINFO_TYPE_BALL);
+		ball->_rigidBody->setUserPointer(ball);
 	}
 
 	// Add ball to world
 	_bulletWorld->addRigidBody(ball->_rigidBody);
+
+	// Set internal tick callback
+	_bulletWorld->setWorldUserInfo(this);
+	_bulletWorld->setInternalTickCallback(&Arena::_BulletInternalTickCallback);
 }
 
 void Arena::Step(int ticksToSimulate) {
 	for (int i = 0; i < ticksToSimulate; i++) {
 		for (Car* car : _carsList) {
 			car->_PreTickUpdate();
-			car->_ApplyPhysicsRounding();
 		}
 
 		// Update world
