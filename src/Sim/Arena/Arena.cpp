@@ -330,7 +330,7 @@ void Arena::_SetupArenaCollisionShapes() {
 	string basePath = "assets/soccar_field/";
 
 	if (!std::filesystem::exists(basePath)) {
-		ERR_CLOSE(
+		RS_ERR_CLOSE(
 			"Failed to find soccar field asset files at \"" << basePath
 			<< "\", the assets folder should be in our current directory " << std::filesystem::current_path() << ".")
 	}

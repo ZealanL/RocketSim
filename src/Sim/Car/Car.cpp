@@ -66,7 +66,7 @@ void Car::_PreTickUpdate() {
 		} else {
 			_internalState.handbrakeVal -= RLConst::POWERSLIDE_FALL_RATE * TICKTIME;
 		}
-		_internalState.handbrakeVal = CLAMP(_internalState.handbrakeVal, 0, 1);
+		_internalState.handbrakeVal = RS_CLAMP(_internalState.handbrakeVal, 0, 1);
 	}
 
 	{ // Update steering
@@ -150,7 +150,7 @@ void Car::_PreTickUpdate() {
 			float absThrottle = abs(controls.throttle);
 
 			if (absThrottle >= RLConst::THROTTLE_DEADZONE) {
-				if (absForwardSpeed > 0 && SGN(controls.throttle) != SGN(forwardSpeed)) {
+				if (absForwardSpeed > 0 && RS_SGN(controls.throttle) != RS_SGN(forwardSpeed)) {
 					// Full brake is applied if we are trying to drive in the opposite direction
 					realBrake = 1;
 
@@ -209,7 +209,7 @@ void Car::_PreTickUpdate() {
 				// Flip cancel check
 				float pitchScale = 1;
 				if (relDodgeTorque.y() != 0 && controls.pitch != 0) {
-					if (SGN(relDodgeTorque.y()) == SGN(controls.pitch)) {
+					if (RS_SGN(relDodgeTorque.y()) == RS_SGN(controls.pitch)) {
 						pitchScale = 0;
 						doAirControl = true;
 					}
@@ -346,7 +346,7 @@ void Car::_PostTickUpdate() {
 			
 			if (_internalState.hasJumped && jumpPressed && _internalState.airTimeSinceJump < DOUBLEJUMP_MAX_DELAY) {
 				if (!_internalState.hasDoubleJumped && !_internalState.hasFlipped) {
-					bool shouldFlip = MAX(MAX(abs(controls.yaw), abs(controls.pitch)), abs(controls.roll)) >= config.dodgeDeadzone;
+					bool shouldFlip = RS_MAX(RS_MAX(abs(controls.yaw), abs(controls.pitch)), abs(controls.roll)) >= config.dodgeDeadzone;
 
 					if (shouldFlip) {
 						// Begin flipping
@@ -434,7 +434,7 @@ void Car::_PostTickUpdate() {
 			vel = vel.normalize() * CAR_MAX_SPEED;
 		_rigidBody->setLinearVelocity(vel);
 
-		angVel = angVel / MAX(1, angVel.length() / CAR_MAX_ANG_SPEED);
+		angVel = angVel / RS_MAX(1, angVel.length() / CAR_MAX_ANG_SPEED);
 		_rigidBody->setAngularVelocity(angVel);
 	}
 }
