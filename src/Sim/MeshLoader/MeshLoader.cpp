@@ -2,7 +2,7 @@
 
 MeshLoader::Mesh MeshLoader::LoadMeshFromFiles(string path, float scale) {
 
-	LOG("Loading mesh data from \"" << path << "\"...");
+	RS_LOG("Loading mesh data from \"" << path << "\"...");
 
     string 
 		vertsFile = path + "_vertices.bin", 
@@ -11,14 +11,14 @@ MeshLoader::Mesh MeshLoader::LoadMeshFromFiles(string path, float scale) {
 	vector<btVector3> verticies;
 	auto vertsIn = std::ifstream(vertsFile, std::ios::binary);
 	if (!vertsIn.good())
-		ERR_CLOSE("Failed to find/access vertices file at \"" << vertsFile << "\".");
+		RS_ERR_CLOSE("Failed to find/access vertices file at \"" << vertsFile << "\".");
 
 	MeshLoader::Mesh result;
 
 	int numVerts = std::filesystem::file_size(vertsFile) / sizeof(float) / 3;
 	result.verts.reserve(numVerts);
 
-	LOG(" > Reading in " << numVerts << " verts...");
+	RS_LOG(" > Reading in " << numVerts << " verts...");
 	for (int i = 0; i < numVerts; i++) {
 		float vals[3];
 		vertsIn.read((char*)&vals, sizeof(vals));
@@ -28,12 +28,12 @@ MeshLoader::Mesh MeshLoader::LoadMeshFromFiles(string path, float scale) {
 
 	auto idsIn = std::ifstream(idsFile, std::ios::binary);
 	if (!idsIn.good())
-		ERR_CLOSE("Failed to find/access ids file at \"" << idsFile << "\".");
+		RS_ERR_CLOSE("Failed to find/access ids file at \"" << idsFile << "\".");
 
 	int numTris = std::filesystem::file_size(idsFile) / sizeof(uint32) / 3;
 	result.triIds.reserve(numTris);
 
-	LOG(" > Reading in " << numTris << " tris...");
+	RS_LOG(" > Reading in " << numTris << " tris...");
 	for (int i = 0; i < numTris; i++) {
 		TriIndices vals;
 		idsIn.read((char*)&vals, sizeof(vals));
@@ -45,7 +45,7 @@ MeshLoader::Mesh MeshLoader::LoadMeshFromFiles(string path, float scale) {
 		result.triIds.push_back(vals);
 	}
 
-	LOG(" > Done.");
+	RS_LOG(" > Done.");
 	return result;
 }
 

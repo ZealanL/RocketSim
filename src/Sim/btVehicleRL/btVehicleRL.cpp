@@ -351,7 +351,7 @@ void btVehicleRL::calcFrictionImpulses(float timeStep) {
 					// TODO: No idea where this number comes from or how it was calculated lol
 					constexpr float ROLLING_FRICTION_SCALE_MAGIC = 113.73963f;
 
-					rollingFriction = CLAMP(-relVel * ROLLING_FRICTION_SCALE_MAGIC, -wheel.m_brake, wheel.m_brake);
+					rollingFriction = RS_CLAMP(-relVel * ROLLING_FRICTION_SCALE_MAGIC, -wheel.m_brake, wheel.m_brake);
 				} else {
 					// Don't apply friction when driving with no brake
 					rollingFriction = 0;
