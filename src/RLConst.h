@@ -50,7 +50,7 @@ namespace RLConst {
 		STOPPING_FORWARD_VEL = 25.f, // If we are costing with less than this forward vel, we full-brake
 		COASTING_BRAKE_FACTOR = 0.15f, // How much the brake is applied when costing
 		THROTTLE_DEADZONE = 0.001f, // Throttle input of less than this is ignored
-		THROTTLE_AIR_FORCE = 200.f / 3.f;
+		THROTTLE_AIR_FORCE = CAR_MASS_BT * (1 / 0.75f);
 
 	constexpr float
 		JUMP_ACCEL = 4375.f / 3.f,

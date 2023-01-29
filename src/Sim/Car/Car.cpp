@@ -282,6 +282,7 @@ void Car::_PreTickUpdate(float tickTime) {
 				_rigidBody->getAngularVelocity() + (torque - damping) * CAR_TORQUE_SCALE * tickTime
 			);
 		}
+
 		// Throttle in air
 		if (controls.throttle != 0)
 			_rigidBody->applyCentralImpulse(forwardDir * controls.throttle * RLConst::THROTTLE_AIR_FORCE * tickTime);
