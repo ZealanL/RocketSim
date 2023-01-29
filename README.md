@@ -29,7 +29,7 @@ arena.ball->SetState(ballState);
 
 // Make our car drive forward and turn
 car->controls.throttle = 1;
-car->controls.boost = 1;
+car->controls.steer = 1;
 
 // Simulate for 100 ticks
 arena.Step(100);
