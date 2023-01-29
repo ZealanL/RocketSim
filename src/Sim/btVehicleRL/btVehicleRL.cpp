@@ -1,5 +1,6 @@
 #include "btVehicleRL.h"
 #include "../../../libsrc/bullet3-3.24/BulletDynamics/ConstraintSolver/btContactConstraint.h"
+#include "../../RLConst.h"
 #define ROLLING_INFLUENCE_FIX
 
 btVehicleRL::btVehicleRL(const btVehicleTuning& tuning, btRigidBody* chassis, btVehicleRaycaster* raycaster, btDynamicsWorld* world)
@@ -105,8 +106,6 @@ void btVehicleRL::updateWheelTransformsWS(btWheelInfoRL& wheel) {
 	wheel.m_raycastInfo.m_wheelAxleWS = chassisTrans.getBasis() * wheel.m_wheelAxleCS;
 }
 
-
-
 float btVehicleRL::rayCast(btWheelInfoRL& wheel) {
 	updateWheelTransformsWS(wheel);
 
@@ -129,10 +128,10 @@ float btVehicleRL::rayCast(btWheelInfoRL& wheel) {
 	wheel.m_raycastInfo.m_groundObject = 0;
 
 	if (object) {
-		bool hitGround = abs(rayResults.m_hitPointInWorld.z()) < 0.01f
+		bool hitGround = abs(rayResults.m_hitPointInWorld.z()) < 0.005f
 			&& rayResults.m_hitNormalInWorld.z() > 0.995f;
 		if (hitGround)
-			rayResults.m_hitPointInWorld.z() = 0; // Make sure ground is at exactly 0
+			rayResults.m_hitPointInWorld.z() = RLConst::GROUND_RAY_COLLISION_Z; // Make sure ground is at correct Z location
 
 		wheel.m_raycastInfo.m_contactPointWS = rayResults.m_hitPointInWorld;
 		float fraction = rayResults.m_distFraction;

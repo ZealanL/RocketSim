@@ -103,6 +103,8 @@ namespace RLConst {
 
 	constexpr float CAR_TORQUE_SCALE = 0.09587379924f;
 
+	constexpr float GROUND_RAY_COLLISION_Z = -8.793175e-05;
+
 	// Input: Forward car speed
 	// Output: Max steering angle (radians)
 	const static LinearPieceCurve STEER_ANGLE_FROM_SPEED_CURVE = {
