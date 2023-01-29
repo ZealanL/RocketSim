@@ -138,19 +138,37 @@ void Car::_PreTickUpdate(float tickTime) {
 		}
 	}
 
+	{ // Update boosting timer
+		if (_internalState.timeSpentBoosting > 0) {
+			if (!controls.boost && _internalState.timeSpentBoosting > RLConst::BOOST_MIN_TIME) {
+				_internalState.timeSpentBoosting = 0;
+			} else {
+				_internalState.timeSpentBoosting += tickTime;
+			}
+		} else {
+			if (controls.boost) {
+				// Start boosting (even if we dont have any)
+				_internalState.timeSpentBoosting = tickTime;
+			}
+		}
+	}
+
+	float realThrottle = controls.throttle;
+	float realBrake = 0;
+
+	if (_internalState.timeSpentBoosting && _internalState.boost > 0)
+		realThrottle = 1;
+
 	{ // Update throttle/brake forces
 		float driveSpeedScale = RLConst::DRIVE_SPEED_TORQUE_FACTOR_CURVE.GetOutput(absForwardSpeed * BT_TO_UU);
-
-		float realThrottle = controls.throttle;
-		float realBrake = 0;
 
 		if (controls.handbrake > 0) {
 			// Real throttle is unchanged from the input throttle when powersliding
 		} else {
-			float absThrottle = abs(controls.throttle);
+			float absThrottle = abs(realThrottle);
 
 			if (absThrottle >= RLConst::THROTTLE_DEADZONE) {
-				if (absForwardSpeed > 0 && RS_SGN(controls.throttle) != RS_SGN(forwardSpeed)) {
+				if (absForwardSpeed > 0 && RS_SGN(realThrottle) != RS_SGN(forwardSpeed)) {
 					// Full brake is applied if we are trying to drive in the opposite direction
 					realBrake = 1;
 
@@ -183,7 +201,7 @@ void Car::_PreTickUpdate(float tickTime) {
 	if (numWheelsInContact >= 3) { // Grounded, apply sticky forces
 		Vec downwardsDir = _bulletVehicle->getDownwardsDirFromWheelContacts();
 
-		bool fullStick = controls.throttle != 0 || absForwardSpeed > 25;
+		bool fullStick = (realThrottle != 0) || (absForwardSpeed > 25);
 
 		float stickyForceScale = 0.5f;
 		if (fullStick)
@@ -264,11 +282,16 @@ void Car::_PreTickUpdate(float tickTime) {
 				_rigidBody->getAngularVelocity() + (torque - damping) * CAR_TORQUE_SCALE * tickTime
 			);
 		}
-
 		// Throttle in air
-		if (controls.throttle != 0) {
+		if (controls.throttle != 0)
 			_rigidBody->applyCentralImpulse(forwardDir * controls.throttle * RLConst::THROTTLE_AIR_FORCE * tickTime);
-		}
+	}
+
+	// Apply boosting force and consume boost
+	if (_internalState.boost > 0 && _internalState.timeSpentBoosting > 0) {
+		_internalState.boost = RS_MAX(_internalState.boost - RLConst::BOOST_USED_PER_SECOND * tickTime, 0);
+
+		_rigidBody->applyCentralImpulse(forwardDir * RLConst::BOOST_FORCE * tickTime);
 	}
 }
 

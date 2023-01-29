@@ -31,6 +31,10 @@ struct CarState {
 	// Goes from 0 to 100
 	float boost;
 
+	// Added to replicate minimum boosting time
+	// NOTE: Will be used even when we have no boost
+	float timeSpentBoosting;
+
 	// This is a state variable due to the supersonic maintain time (see RLConst.h)
 	bool isSupersonic;
 

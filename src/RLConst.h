@@ -21,6 +21,7 @@ namespace RLConst {
 	constexpr float BOOST_MAX = 100.f;
 	constexpr float BOOST_USED_PER_SECOND = BOOST_MAX / 3;
 	constexpr float BOOST_MIN_TIME = 0.1f; // Minimum time we can be boosting for
+	constexpr float BOOST_FORCE = 3816.f;
 
 	constexpr float CAR_MAX_ANG_SPEED = 5.5f; // Car can never exceed this angular velocity (radians/s)
 
@@ -95,7 +96,7 @@ namespace RLConst {
 
 	// TODO: Dropshot one may be a little off, will check at some future point
 	constexpr float
-		BALL_COLLISION_RADIUS_NORMAL = 93.14f, // Soccar, Hoops, etc.
+		BALL_COLLISION_RADIUS_NORMAL = 93.15f, // Soccar, Hoops, etc.
 		BALL_COLLISION_RADIUS_DROPSHOT = 103.6f;
 
 	constexpr float SOCCAR_GOAL_SCORE_BASE_THRESHOLD_Y = 5121.75f;
@@ -104,6 +105,10 @@ namespace RLConst {
 	constexpr float CAR_TORQUE_SCALE = 0.09587379924f;
 
 	constexpr float GROUND_RAY_COLLISION_Z = -8.793175e-05;
+
+	constexpr float
+		BALL_CAR_EXTRA_IMPULSE_SCALE = 0.35f,
+		BALL_CAR_EXTRA_IMPULSE_MAXDELTAVEL_UU = 4600.f;
 
 	// Input: Forward car speed
 	// Output: Max steering angle (radians)
@@ -168,6 +173,15 @@ namespace RLConst {
 		{
 			{0,	0.5f},
 			{1,	0.9f}
+		}
+	};
+
+	const static LinearPieceCurve BALL_CAR_EXTRA_IMPULSE_FACTOR_CURVE = {
+		{
+			{     0, 0.65f},
+			{ 500.f, 0.65f},
+			{2300.f, 0.55f},
+			{4600.f, 0.30f}
 		}
 	};
 }
