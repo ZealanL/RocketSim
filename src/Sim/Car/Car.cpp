@@ -454,8 +454,8 @@ void Car::_PostTickUpdate(float tickTime) {
 			vel = _rigidBody->getLinearVelocity(), 
 			angVel = _rigidBody->getAngularVelocity();
 
-		if (vel.length2() > CAR_MAX_SPEED * CAR_MAX_SPEED)
-			vel = vel.normalize() * CAR_MAX_SPEED;
+		if (vel.length2() > (CAR_MAX_SPEED * UU_TO_BT) * (CAR_MAX_SPEED * UU_TO_BT))
+			vel = vel.normalize() * (CAR_MAX_SPEED * UU_TO_BT);
 		_rigidBody->setLinearVelocity(vel);
 
 		angVel = angVel / RS_MAX(1, angVel.length() / CAR_MAX_ANG_SPEED);
