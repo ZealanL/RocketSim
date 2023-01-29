@@ -166,9 +166,13 @@ void Arena::_BtCallback_OnCarCarCollision(Car* car1, Car* car2, btManifoldPoint&
 
 }
 
-Arena::Arena(GameMode gameMode) {
-	this->gameMode = gameMode;
+Arena::Arena(GameMode gameMode, float tickRate) {
 
+	// Tickrate must be from 15 to 120tps
+	assert(tickRate >= 15 && tickRate <= 120);
+
+	this->gameMode = gameMode;
+	this->tickTime = 1 / tickRate;
 	{ // Initialize world
 
 		 _bulletWorldParams.collisionConfig = new btDefaultCollisionConfiguration();
@@ -241,15 +245,15 @@ Arena::Arena(GameMode gameMode) {
 void Arena::Step(int ticksToSimulate) {
 	for (int i = 0; i < ticksToSimulate; i++) {
 		for (Car* car : _carsList) {
-			car->_PreTickUpdate();
+			car->_PreTickUpdate(tickTime);
 		}
 
 		// Update world
-		_bulletWorld->stepSimulation(TICKTIME, 0, TICKTIME);
+		_bulletWorld->stepSimulation(tickTime, 0, tickTime);
 
 		for (Car* car : _carsList) {
 			car->_ApplyPhysicsRounding();
-			car->_PostTickUpdate();
+			car->_PostTickUpdate(tickTime);
 		}
 
 		{ // Limit ball's linear/angular velocity

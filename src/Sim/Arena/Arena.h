@@ -25,6 +25,11 @@ public:
 	list<Car*> _carsList; // Using list so that elements do not change address
 	Ball* ball;
 
+	float tickTime; // Time each tick (1/tickrate)
+	float GetTickRate() {
+		return 1 / tickTime;
+	}
+
 	// Total ticks this arena instance has been simulated for, never resets
 	uint64_t tickCount = 0;
 
@@ -54,7 +59,7 @@ public:
 	vector<GoalScoreEventFn> _goalScoreCallbacks;
 	void RegisterGoalScoreCallback(GoalScoreEventFn callbackFunc);
 
-	RSAPI Arena(GameMode gameMode);
+	RSAPI Arena(GameMode gameMode, float tickRate = 120);
 
 	// Simulate everything in the arena for a given number of ticks
 	RSAPI void Step(int ticksToSimulate = 1);

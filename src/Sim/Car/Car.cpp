@@ -35,7 +35,7 @@ void Car::SetState(const CarState& state) {
 	_internalState = state;
 }
 
-void Car::_PreTickUpdate() {
+void Car::_PreTickUpdate(float tickTime) {
 
 #ifndef RS_MAX_SPEED
 	// Fix inputs
@@ -47,7 +47,7 @@ void Car::_PreTickUpdate() {
 	// Prevent the car's RB from becoming inactive
 	_rigidBody->setActivationState(ACTIVE_TAG);
 
-	_bulletVehicle->updateVehicle(TICKTIME);
+	_bulletVehicle->updateVehicle(tickTime);
 
 	Vec forwardDir = _bulletVehicle->getForwardVector();
 
@@ -62,9 +62,9 @@ void Car::_PreTickUpdate() {
 
 	{ // Increase/decrease handbrake value from input
 		if (controls.handbrake) {
-			_internalState.handbrakeVal += RLConst::POWERSLIDE_RISE_RATE * TICKTIME;
+			_internalState.handbrakeVal += RLConst::POWERSLIDE_RISE_RATE * tickTime;
 		} else {
-			_internalState.handbrakeVal -= RLConst::POWERSLIDE_FALL_RATE * TICKTIME;
+			_internalState.handbrakeVal -= RLConst::POWERSLIDE_FALL_RATE * tickTime;
 		}
 		_internalState.handbrakeVal = RS_CLAMP(_internalState.handbrakeVal, 0, 1);
 	}
@@ -219,7 +219,7 @@ void Car::_PreTickUpdate() {
 
 				btVector3 dodgeTorque = _rigidBody->getWorldTransform().getBasis() * (relDodgeTorque * btVector3(FLIP_TORQUE_X, FLIP_TORQUE_Y, 0));;
 				_rigidBody->setAngularVelocity(
-					_rigidBody->getAngularVelocity() + dodgeTorque * TICKTIME
+					_rigidBody->getAngularVelocity() + dodgeTorque * tickTime
 				);
 			} else {
 				// Stall, allow air control
@@ -261,13 +261,13 @@ void Car::_PreTickUpdate() {
 				(dirRoll_forward * dampRoll);
 
 			_rigidBody->setAngularVelocity(
-				_rigidBody->getAngularVelocity() + (torque - damping) * CAR_TORQUE_SCALE * TICKTIME
+				_rigidBody->getAngularVelocity() + (torque - damping) * CAR_TORQUE_SCALE * tickTime
 			);
 		}
 
 		// Throttle in air
 		if (controls.throttle != 0) {
-			_rigidBody->applyCentralImpulse(forwardDir * controls.throttle * RLConst::THROTTLE_AIR_FORCE * TICKTIME);
+			_rigidBody->applyCentralImpulse(forwardDir * controls.throttle * RLConst::THROTTLE_AIR_FORCE * tickTime);
 		}
 	}
 }
@@ -282,7 +282,7 @@ void Car::_ApplyPhysicsRounding() {
 	SetState(_internalState);
 }
 
-void Car::_PostTickUpdate() {
+void Car::_PostTickUpdate(float tickTime) {
 	{ // Update isOnGround
 		int wheelsWithContact = 0;
 		for (int i = 0; i < 4; i++)
@@ -316,7 +316,7 @@ void Car::_PostTickUpdate() {
 
 		if (_internalState.isJumping) {
 			_internalState.hasJumped = true;
-			_internalState.jumpTimer += TICKTIME;
+			_internalState.jumpTimer += tickTime;
 
 			// Apply extra long-jump force
 			btVector3 extraJumpForce = _bulletVehicle->getUpVector() * JUMP_ACCEL;
@@ -325,7 +325,7 @@ void Car::_PostTickUpdate() {
 				extraJumpForce *= 0.75f;
 			}
 
-			_rigidBody->applyCentralImpulse(extraJumpForce * CAR_MASS_BT * UU_TO_BT * TICKTIME);
+			_rigidBody->applyCentralImpulse(extraJumpForce * CAR_MASS_BT * UU_TO_BT * tickTime);
 		} else {
 			_internalState.jumpTimer = 0;
 		}
@@ -339,7 +339,7 @@ void Car::_PostTickUpdate() {
 			_internalState.airTimeSinceJump = false;
 		} else {
 			if (_internalState.hasJumped && !_internalState.isJumping) {
-				_internalState.airTimeSinceJump += TICKTIME;
+				_internalState.airTimeSinceJump += tickTime;
 			} else {
 				_internalState.airTimeSinceJump = 0;
 			}
@@ -409,12 +409,12 @@ void Car::_PostTickUpdate() {
 
 		if (_internalState.hasFlipped) {
 			// Replicated from https://github.com/samuelpmish/RLUtilities/blob/develop/src/mechanics/dodge.cc
-			_internalState.flipTimer += TICKTIME;
+			_internalState.flipTimer += tickTime;
 			if (_internalState.flipTimer <= FLIP_TORQUE_TIME) {
 
 				btVector3 vel = _rigidBody->getLinearVelocity();
 				if (_internalState.flipTimer >= FLIP_Z_DAMP_START && (vel.z() < 0 || _internalState.flipTimer < FLIP_Z_DAMP_END)) {
-					vel.z() *= powf(1 - FLIP_Z_DAMP_120, TICKTIME / (1 / 120.f));
+					vel.z() *= powf(1 - FLIP_Z_DAMP_120, tickTime / (1 / 120.f));
 					_rigidBody->setLinearVelocity(vel);
 				}
 				

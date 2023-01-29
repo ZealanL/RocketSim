@@ -77,11 +77,11 @@ public:
 
 	~Car();
 
-	void _PreTickUpdate();
+	void _PreTickUpdate(float tickTime);
 
 	void _ApplyPhysicsRounding();
 
-	void _PostTickUpdate();
+	void _PostTickUpdate(float tickTime);
 
 	// For construction by Arena
 	static Car* _AllocateCar();
