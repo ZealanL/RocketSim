@@ -336,11 +336,20 @@ void Arena::_SetupArenaCollisionShapes() {
 	}
 
 	// Create triangle meshes
-	MeshLoader::Mesh
-		cornerMesh	= MeshLoader::LoadMeshFromFiles(basePath + "soccar_corner", 2),
-		goalMesh	= MeshLoader::LoadMeshFromFiles(basePath + "soccar_goal", 2),
-		rampsMeshA	= MeshLoader::LoadMeshFromFiles(basePath + "soccar_ramps_0", 2),
+	static bool meshesLoaded;
+
+	static MeshLoader::Mesh cornerMesh;
+	static MeshLoader::Mesh goalMesh;
+	static MeshLoader::Mesh rampsMeshA;
+	static MeshLoader::Mesh rampsMeshB;
+
+	if (!meshesLoaded) {
+		cornerMesh	= MeshLoader::LoadMeshFromFiles(basePath + "soccar_corner", 2);
+		goalMesh	= MeshLoader::LoadMeshFromFiles(basePath + "soccar_goal", 2);
+		rampsMeshA	= MeshLoader::LoadMeshFromFiles(basePath + "soccar_ramps_0", 2);
 		rampsMeshB	= MeshLoader::LoadMeshFromFiles(basePath + "soccar_ramps_1", 2);
+		meshesLoaded = true;
+	}
 
 	constexpr float PLANE_THICKNESS = 10;
 	constexpr float WALL_SIZE = 120;
