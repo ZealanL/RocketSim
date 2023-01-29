@@ -1,5 +1,9 @@
 #pragma once
 
+// AVAILABLE DEFS FOR ROCKETSIM:
+//	RS_MAX_SPEED: Define this to remove certain sanity checks for faster speed
+//	RS_DONT_LOG: Define this to disable all logging output
+
 #include <stdint.h>
 #include <iostream>
 #include <string>
@@ -53,7 +57,12 @@ typedef uint8_t byte;
 
 #define RS_CLAMP(val, min, max) RS_MIN(RS_MAX(val, min), max)
 
+#ifndef RS_DONT_LOG
 #define RS_LOG(s) { std::cout << std::dec << s << std::endl; }
+#else
+#define RS_LOG(s) {}
+#endif
+
 #define RS_STR(s) ([&]{ std::stringstream __macroStream; __macroStream << s; return __macroStream.str(); }())
 
 // Returns sign of number (1 if positive, -1 if negative, and 0 if 0)
@@ -70,5 +79,3 @@ typedef uint8_t byte;
 #else
 #define RSAPI
 #endif
-
-// RS_MAX_SPEED: Define this to remove certain sanity checks for faster speed
