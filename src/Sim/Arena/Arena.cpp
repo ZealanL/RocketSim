@@ -4,7 +4,7 @@
 
 Car* Arena::AddCar(Team team, const CarConfig& config) {
 	Car* car = Car::_AllocateCar();
-	_carsList.push_back(car);
+	_cars.push_back(car);
 
 	car->config = config;
 	car->team = team;
@@ -95,20 +95,19 @@ Car* Arena::AddCar(Team team, const CarConfig& config) {
 }
 
 bool Arena::RemoveCar(Car* car) {
-	auto sizeBefore = _carsList.size();
-	_carsList.remove(car);
-	if (_carsList.size() < sizeBefore) {
-		// Car was removed, free it up
-		delete car;
-		return true;
-	} else {
-		// Car wasn't found
-		return false;
+	for (int i = 0; i < _cars.size(); i++) {
+		if (_cars[i] == car) {
+			_cars.erase(_cars.begin() + i);
+			delete car;
+			return true;
+		}
 	}
+
+	return false;
 }
 
 Car* Arena::GetCarFromID(uint32_t id) {
-	for (Car* car : _carsList)
+	for (Car* car : _cars)
 		if (car->id == id)
 			return car;
 
@@ -175,10 +174,13 @@ Arena::Arena(GameMode gameMode, float tickRate) {
 	this->tickTime = 1 / tickRate;
 	{ // Initialize world
 
-		 _bulletWorldParams.collisionConfig = new btDefaultCollisionConfiguration();
-		 _bulletWorldParams.collisionDispatcher = new btCollisionDispatcher(_bulletWorldParams.collisionConfig);
-		 _bulletWorldParams.constraintSolver = new btSequentialImpulseConstraintSolver;
-		 _bulletWorldParams.overlappingPairCache = new btDbvtBroadphase();
+		btDefaultCollisionConstructionInfo collisionConfigConstructionInfo = {};
+		
+		_bulletWorldParams.collisionConfig = new btDefaultCollisionConfiguration(collisionConfigConstructionInfo);
+		
+		_bulletWorldParams.collisionDispatcher = new btCollisionDispatcher(_bulletWorldParams.collisionConfig);
+		_bulletWorldParams.constraintSolver = new btSequentialImpulseConstraintSolver;
+		_bulletWorldParams.overlappingPairCache = new btDbvtBroadphase();
 
 		_bulletWorld = new btDiscreteDynamicsWorld(
 			_bulletWorldParams.collisionDispatcher,
@@ -244,14 +246,14 @@ Arena::Arena(GameMode gameMode, float tickRate) {
 
 void Arena::Step(int ticksToSimulate) {
 	for (int i = 0; i < ticksToSimulate; i++) {
-		for (Car* car : _carsList) {
+		for (Car* car : _cars) {
 			car->_PreTickUpdate(tickTime);
 		}
 
 		// Update world
 		_bulletWorld->stepSimulation(tickTime, 0, tickTime);
 
-		for (Car* car : _carsList) {
+		for (Car* car : _cars) {
 			car->_ApplyPhysicsRounding();
 			car->_PostTickUpdate(tickTime);
 		}
@@ -278,7 +280,11 @@ void Arena::Step(int ticksToSimulate) {
 
 Arena::~Arena() {
 
-	// Delete world first
+	// Remove all cars
+	for (Car* car : _cars)
+		RemoveCar(car);
+
+	// Delete world
 	delete _bulletWorld;
 
 	{ // Delete world param things
@@ -287,10 +293,6 @@ Arena::~Arena() {
 		delete _bulletWorldParams.overlappingPairCache;
 		delete _bulletWorldParams.constraintSolver;
 	}
-
-	// Remove all cars
-	for (Car* car : _carsList)
-		delete car;
 
 	{ // Delete collision RBs and shapes
 		for (btRigidBody* colRB : _worldCollisionRBs)

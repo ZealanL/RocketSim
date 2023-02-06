@@ -469,7 +469,7 @@ Car* Car::_AllocateCar() {
 
 Car::~Car() {
 	// Remove from world
-	_bulletVehicle->m_dynamicsWorld->removeRigidBody(_rigidBody);
+	_bulletVehicle->m_dynamicsWorld->removeCollisionObject(_rigidBody);
 
 	delete _bulletVehicle;
 	delete _bulletVehicleRaycaster;

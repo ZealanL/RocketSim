@@ -22,7 +22,7 @@ public:
 	GameMode gameMode;
 
 	uint32_t _lastCarID = 0;
-	list<Car*> _carsList; // Using list so that elements do not change address
+	vector<Car*> _cars;
 	Ball* ball;
 
 	float tickTime; // Time each tick (1/tickrate)
@@ -33,7 +33,7 @@ public:
 	// Total ticks this arena instance has been simulated for, never resets
 	uint64_t tickCount = 0;
 
-	RSAPI const list<Car*>& GetCars() { return _carsList; }
+	RSAPI const vector<Car*>& GetCars() { return _cars; }
 
 	RSAPI Car* AddCar(Team team, const CarConfig& config = CAR_CONFIG_OCTANE);
 
