@@ -264,8 +264,8 @@ void Arena::Step(int ticksToSimulate) {
 			btVector3 ballVel = ball->_rigidBody->getLinearVelocity();
 			btVector3 ballAngVel = ball->_rigidBody->getAngularVelocity();
 
-			if (ballVel.length2() > (BALL_MAX_SPEED * BALL_MAX_SPEED))
-				ballVel = ballVel.normalized() * BALL_MAX_SPEED;
+			if (ballVel.length2() > (BALL_MAX_SPEED * BALL_MAX_SPEED * UU_TO_BT))
+				ballVel = ballVel.normalized() * (BALL_MAX_SPEED * UU_TO_BT);
 
 			if (ballAngVel.length2() > (BALL_MAX_ANG_SPEED * BALL_MAX_ANG_SPEED))
 				ballAngVel = ballAngVel.normalized() * BALL_MAX_ANG_SPEED;
