@@ -140,7 +140,7 @@ void Car::_PreTickUpdate(float tickTime) {
 
 	{ // Update boosting timer
 		if (_internalState.timeSpentBoosting > 0) {
-			if (!controls.boost && _internalState.timeSpentBoosting > RLConst::BOOST_MIN_TIME) {
+			if (!controls.boost && _internalState.timeSpentBoosting >= RLConst::BOOST_MIN_TIME) {
 				_internalState.timeSpentBoosting = 0;
 			} else {
 				_internalState.timeSpentBoosting += tickTime;
