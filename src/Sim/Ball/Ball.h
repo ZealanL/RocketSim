@@ -24,13 +24,15 @@ public:
 	btRigidBody* _rigidBody;
 	btSphereShape* _collisionShape;
 
-	RSAPI float GetRadius() {
-		return _collisionShape->getRadius() * BT_TO_UU;
-	}
-
 	// For construction by Arena
 	static Ball* _AllocBall();
 	
+	RSAPI float GetRadius() {
+		return _collisionShape->getRadius();
+	}
+
+	void ResolveCollision(btRigidBody* otherBody, const btManifoldPoint& manifold);
+
 	~Ball();
 
 private:
