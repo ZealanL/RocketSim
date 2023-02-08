@@ -10,6 +10,9 @@ namespace RLConst {
 	constexpr float CAR_MASS_BT = 180.f;
 	constexpr float BALL_MASS_BT = CAR_MASS_BT / 6.f; // Ref: https://www.reddit.com/r/RocketLeague/comments/bmje9l/comment/emxkwrl/?context=3
 
+	constexpr float CAR_COLLISION_FRICTION = 0.3f;
+	constexpr float CAR_COLLISION_RESTITUTION = 0.1f;
+
 	constexpr float BALL_MAX_ANG_SPEED = 6.f; // Ball can never exceed this angular velocity (radians/s)
 	constexpr float BALL_DRAG = 0.03f; // Net-velocity drag multiplier
 	constexpr float BALL_FRICTION = 0.35f;
