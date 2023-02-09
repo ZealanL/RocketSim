@@ -323,7 +323,7 @@ public:
 	/**@brief Set the matrix to the identity */
 	void setIdentity()
 	{
-#if (defined(BT_USE_SSE_IN_API) && defined(BT_USE_SSE)) || defined(BT_USE_NEON) || true
+#if (defined(BT_USE_SSE_IN_API) && defined(BT_USE_SSE)) || defined(BT_USE_NEON)
 		m_el[0] = v1000;
 		m_el[1] = v0100;
 		m_el[2] = v0010;
