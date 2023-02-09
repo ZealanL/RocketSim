@@ -17,14 +17,14 @@ Arena arena = Arena(GameMode::SOCCAR);
 Car* car = arena.AddCar(Team::BLUE);
 
 // Set up an initial state for our car
-CarState setupState = {};
+CarState carState = {};
 carState.pos = { 0.f, 0.f, 17.f };
 carState.vel = { 50.f, 0.f, 0.f };
-car->SetState(setupState);
+car->SetState(carState);
 
 // Setup a ball state
 BallState ballState = {};
-ballState.pos = { 0.f, 400.f, 100.f }
+ballState.pos = { 0.f, 400.f, 100.f };
 arena.ball->SetState(ballState);
 
 // Make our car drive forward and turn
