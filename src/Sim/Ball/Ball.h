@@ -31,8 +31,6 @@ public:
 		return _collisionShape->getRadius();
 	}
 
-	void ResolveCollision(btRigidBody* otherBody, const btManifoldPoint& manifold);
-
 	~Ball();
 
 private:

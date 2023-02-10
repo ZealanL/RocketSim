@@ -5,6 +5,8 @@
 #include "../MeshLoader/MeshLoader.h"
 
 enum : int {
+	BT_USERINFO_NONE,
+
 	BT_USERINFO_TYPE_CAR,
 	BT_USERINFO_TYPE_BALL,
 };
@@ -48,7 +50,7 @@ public:
 		btCollisionConfiguration* collisionConfig;
 		btCollisionDispatcher* collisionDispatcher;
 		btDbvtBroadphase* overlappingPairCache;
-		btSequentialImpulseConstraintSolver* constraintSolver;
+		btConstraintSolver* constraintSolver;
 	} _bulletWorldParams;
 
 	vector<btRigidBody*> _worldCollisionRBs;
@@ -72,6 +74,9 @@ public:
 
 	void _AddStaticCollisionTris(MeshLoader::Mesh& mesh, btVector3 scale = btVector3(1,1,1), btVector3 pos = btVector3(0, 0, 0));
 	void _SetupArenaCollisionShapes();
+
+	// Static function called by Bullet internally when adding a collision point
+	static bool _BulletContactAddedCallback(btManifoldPoint& cp, const btCollisionObjectWrapper* colObj0Wrap, int partId0, int index0, const btCollisionObjectWrapper* colObj1Wrap, int partId1, int index1);
 
 	// Static function called by Bullet internally during a tick
 	static void _BulletInternalTickCallback(btDynamicsWorld* world, btScalar step);

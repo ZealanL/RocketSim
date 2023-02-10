@@ -114,7 +114,8 @@ namespace RLConst {
 	constexpr float GROUND_RAY_COLLISION_Z = -8.793175e-05;
 
 	constexpr float
-		BALL_CAR_EXTRA_IMPULSE_SCALE = 0.35f,
+		BALL_CAR_EXTRA_IMPULSE_Z_SCALE = 0.35f,
+		BALL_CAR_EXTRA_IMPULSE_FORWARD_SCALE = 0.65f,
 		BALL_CAR_EXTRA_IMPULSE_MAXDELTAVEL_UU = 4600.f;
 
 	// Input: Forward car speed

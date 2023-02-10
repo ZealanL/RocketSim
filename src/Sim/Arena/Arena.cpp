@@ -33,6 +33,9 @@ Car* Arena::AddCar(Team team, const CarConfig& config) {
 		car->_rigidBody->setUserIndex(BT_USERINFO_TYPE_CAR);
 		car->_rigidBody->setUserPointer(car);
 
+		car->_rigidBody->m_friction = RLConst::CAR_COLLISION_FRICTION;
+		car->_rigidBody->m_restitution = RLConst::CAR_COLLISION_RESTITUTION;
+
 		// Disable gyroscopic force (shoutout to Allah for this one)
 		car->_rigidBody->m_rigidbodyFlags = 0;
 	}
@@ -118,8 +121,31 @@ void Arena::RegisterGoalScoreCallback(GoalScoreEventFn callbackFunc) {
 	_goalScoreCallbacks.push_back(callbackFunc);
 }
 
+bool Arena::_BulletContactAddedCallback(btManifoldPoint& cp, const btCollisionObjectWrapper* objA, int partIdA, int indexA, const btCollisionObjectWrapper* objB, int partIdB, int indexB) {
+	
+	bool 
+		isBallObjA = objA->m_collisionObject->m_userIndex == BT_USERINFO_TYPE_BALL,
+		isBallObjB = objB->m_collisionObject->m_userIndex == BT_USERINFO_TYPE_BALL;
+	
+	if (isBallObjA || isBallObjB) {
+		auto ballRB = (btRigidBody*)(isBallObjA ? objA->m_collisionObject : objB->m_collisionObject);
+		auto otherCollider = isBallObjA ? objB->m_collisionObject : objA->m_collisionObject;
+
+		if (otherCollider->m_userIndex == BT_USERINFO_TYPE_CAR) {
+			// This is a car-ball collision
+			// Override the friction and restitution accordingly
+			cp.m_combinedFriction = RLConst::CARBALL_COLLISION_FRICTION;
+			cp.m_combinedRestitution = RLConst::CARBALL_COLLISION_RESTITUTION;
+		}
+	}
+
+	return true;
+}
+
 void Arena::_BulletInternalTickCallback(btDynamicsWorld* world, btScalar step) {
 	Arena* arenaInst = (Arena*)world->getWorldUserInfo();
+	if (!arenaInst)
+		return;
 
 	auto dispatcher = world->getDispatcher();
 	int numManifolds = dispatcher->getNumManifolds();
@@ -158,11 +184,34 @@ void Arena::_BulletInternalTickCallback(btDynamicsWorld* world, btScalar step) {
 }
 
 void Arena::_BtCallback_OnCarBallCollision(Car* car, Ball* ball, btManifoldPoint& manifoldPoint) {
-	
+	using namespace RLConst;
+
+	// Apply extra car-ball hit impulse
+
+	auto carState = car->GetState();
+	auto ballState = ball->GetState();
+
+	btVector3 carForward = car->_bulletVehicle->getForwardVector();
+	btVector3 relPos = ballState.pos - carState.pos;
+	btVector3 relVel = ballState.vel - carState.vel;
+
+	float relSpeed = RS_MIN(relVel.length(), BALL_CAR_EXTRA_IMPULSE_MAXDELTAVEL_UU);
+
+	if (relSpeed > 0) {
+		btVector3 hitDir = (relPos * btVector3(1, 1, BALL_CAR_EXTRA_IMPULSE_Z_SCALE)).normalized();
+
+		btVector3 forwardDirAdjustment = carForward * hitDir.dot(carForward) * (1 - BALL_CAR_EXTRA_IMPULSE_FORWARD_SCALE);
+		hitDir = (hitDir - forwardDirAdjustment).normalized();
+
+		btVector3 addedVel = (hitDir * relSpeed) * BALL_CAR_EXTRA_IMPULSE_FACTOR_CURVE.GetOutput(relSpeed);
+		ballState.vel += addedVel;
+	}
+
+	ball->SetState(ballState);
 }
 
 void Arena::_BtCallback_OnCarCarCollision(Car* car1, Car* car2, btManifoldPoint& manifoldPoint) {
-
+	// TODO: Bump physics
 }
 
 Arena::Arena(GameMode gameMode, float tickRate) {
@@ -175,11 +224,11 @@ Arena::Arena(GameMode gameMode, float tickRate) {
 	{ // Initialize world
 
 		btDefaultCollisionConstructionInfo collisionConfigConstructionInfo = {};
-		
+
 		_bulletWorldParams.collisionConfig = new btDefaultCollisionConfiguration(collisionConfigConstructionInfo);
-		
+
 		_bulletWorldParams.collisionDispatcher = new btCollisionDispatcher(_bulletWorldParams.collisionConfig);
-		_bulletWorldParams.constraintSolver = new btSequentialImpulseConstraintSolver;
+		_bulletWorldParams.constraintSolver = new btSequentialImpulseConstraintSolver();
 		_bulletWorldParams.overlappingPairCache = new btDbvtBroadphase();
 
 		_bulletWorld = new btDiscreteDynamicsWorld(
@@ -188,7 +237,7 @@ Arena::Arena(GameMode gameMode, float tickRate) {
 			_bulletWorldParams.constraintSolver,
 			_bulletWorldParams.collisionConfig
 		);
-
+		
 		_bulletWorld->setGravity(btVector3(0, 0, RLConst::GRAVITY_Z * UU_TO_BT));
 	}
 
@@ -196,8 +245,9 @@ Arena::Arena(GameMode gameMode, float tickRate) {
 
 	// Give arena collision shapes the proper restitution/friction values
 	for (auto rb : _worldCollisionRBs) {
+		// TODO: Move to RLConst
 		rb->setRestitution(0.3f);
-		rb->setFriction(1.f);
+		rb->setFriction(0.6f);
 		rb->setRollingFriction(0.f);
 	}
 
@@ -225,7 +275,7 @@ Arena::Arena(GameMode gameMode, float tickRate) {
 
 		btVector3 localInertial;
 		ball->_collisionShape->calculateLocalInertia(RLConst::BALL_MASS_BT, localInertial);
-
+		
 		constructionInfo.m_localInertia = localInertial;
 		constructionInfo.m_linearDamping = RLConst::BALL_DRAG;
 		constructionInfo.m_friction = RLConst::BALL_FRICTION;
@@ -234,6 +284,9 @@ Arena::Arena(GameMode gameMode, float tickRate) {
 		ball->_rigidBody = new btRigidBody(constructionInfo);
 		ball->_rigidBody->setUserIndex(BT_USERINFO_TYPE_BALL);
 		ball->_rigidBody->setUserPointer(ball);
+		
+		// Trigger the Arena::_BulletContactAddedCallback() when anything touches the ball
+		ball->_rigidBody->m_collisionFlags |= btCollisionObject::CF_CUSTOM_MATERIAL_CALLBACK;
 	}
 
 	// Add ball to world
@@ -241,11 +294,26 @@ Arena::Arena(GameMode gameMode, float tickRate) {
 
 	// Set internal tick callback
 	_bulletWorld->setWorldUserInfo(this);
+	
+	gContactAddedCallback = &Arena::_BulletContactAddedCallback;
+
 	_bulletWorld->setInternalTickCallback(&Arena::_BulletInternalTickCallback);
 }
 
 void Arena::Step(int ticksToSimulate) {
 	for (int i = 0; i < ticksToSimulate; i++) {
+
+		_bulletWorld->setWorldUserInfo(this);
+
+		{ // Ball zero-vel sleeping
+			if (ball->_rigidBody->getLinearVelocity().length2() == 0 && ball->_rigidBody->getAngularVelocity().length2() == 0) {
+				// hooooooonk mimimimimimimi hooooooonk mimimimimimimi
+				ball->_rigidBody->setActivationState(ISLAND_SLEEPING);
+			} else {
+				ball->_rigidBody->setActivationState(ACTIVE_TAG);
+			}
+		}
+
 		for (Car* car : _cars) {
 			car->_PreTickUpdate(tickTime);
 		}
@@ -366,24 +434,24 @@ void Arena::_SetupArenaCollisionShapes() {
 
 	// Floor
 	_AddStaticCollisionShape(
-		new btBoxShape({ WALL_SIZE, WALL_SIZE, PLANE_THICKNESS }),
-		{ 0, 0, -PLANE_THICKNESS }
+		new btStaticPlaneShape(btVector3(0, 0, 1), 0),
+		{ 0, 0, 0 }
 	);
 
 	// Ceiling
 	_AddStaticCollisionShape(
-		new btBoxShape({ WALL_SIZE, WALL_SIZE, PLANE_THICKNESS }),
-		{ 0, 0, EXTENT_Z + PLANE_THICKNESS }
+		new btStaticPlaneShape(btVector3(0, 0, -1), 0),
+		{ 0, 0, EXTENT_Z }
 	);
 
 	// Side walls
 	_AddStaticCollisionShape(
-		new btBoxShape({ PLANE_THICKNESS, WALL_SIZE, WALL_SIZE }),
-		{ -(EXTENT_X + PLANE_THICKNESS), 0, EXTENT_Z / 2 }
+		new btStaticPlaneShape(btVector3(1, 0, 0), 0),
+		{ -EXTENT_X, 0, EXTENT_Z / 2 }
 	);
 	_AddStaticCollisionShape(
-		new btBoxShape({ PLANE_THICKNESS, WALL_SIZE, WALL_SIZE }),
-		{ (EXTENT_X + PLANE_THICKNESS), 0, EXTENT_Z / 2 }
+		new btStaticPlaneShape(btVector3(-1, 0, 0), 0),
+		{ EXTENT_X, 0, EXTENT_Z / 2 }
 	);
 
 	// Add vertical corners
