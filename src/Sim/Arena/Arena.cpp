@@ -243,8 +243,8 @@ void Arena::Step(int ticksToSimulate) {
 Arena::~Arena() {
 
 	// Remove all cars
-	for (Car* car : _cars)
-		RemoveCar(car);
+	while (!_cars.empty())
+		RemoveCar(_cars.front());
 
 	// Delete world
 	delete _bulletWorld;
