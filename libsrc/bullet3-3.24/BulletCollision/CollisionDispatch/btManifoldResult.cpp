@@ -69,7 +69,12 @@ btScalar btManifoldResult::calculateCombinedRestitution(const btCollisionObject*
 {
 	btScalar a = body0->getRestitution();
 	btScalar b = body1->getRestitution();
-	return (a > b) ? a : b;
+
+	if (body0->isStaticObject() || body1->isStaticObject()) {
+		return (a > b) ? a : b;
+	} else {
+		return a * b;
+	}
 }
 
 btScalar btManifoldResult::calculateCombinedContactDamping(const btCollisionObject* body0, const btCollisionObject* body1)
