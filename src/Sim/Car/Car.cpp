@@ -472,6 +472,93 @@ Car* Car::_AllocateCar() {
 	return new Car();
 }
 
+void Car::_BulletSetup(btDynamicsWorld* bulletWorld) {
+	{ // Set up rigidbody and collision shapes
+		_childHitboxShape = new btBoxShape((config.hitboxSize * UU_TO_BT) / 2);
+		_compoundShape = new btCompoundShape();
+
+		btTransform hitboxOffsetTransform = btTransform();
+		hitboxOffsetTransform.setIdentity();
+		hitboxOffsetTransform.setOrigin(config.hitboxPosOffset * UU_TO_BT);
+		_compoundShape->addChildShape(hitboxOffsetTransform, _childHitboxShape);
+
+		btVector3 localInertia(0, 0, 0);
+		_childHitboxShape->calculateLocalInertia(RLConst::CAR_MASS_BT, localInertia);
+
+		btRigidBody::btRigidBodyConstructionInfo rbInfo
+			= btRigidBody::btRigidBodyConstructionInfo(RLConst::CAR_MASS_BT, NULL, _compoundShape, localInertia);
+
+		btTransform carTransform = btTransform();
+		carTransform.setIdentity();
+		rbInfo.m_startWorldTransform = carTransform;
+
+		_rigidBody = new btRigidBody(rbInfo);
+		_rigidBody->setUserIndex(BT_USERINFO_TYPE_CAR);
+		_rigidBody->setUserPointer(this);
+
+		_rigidBody->m_friction = RLConst::CAR_COLLISION_FRICTION;
+		_rigidBody->m_restitution = RLConst::CAR_COLLISION_RESTITUTION;
+
+		// Disable gyroscopic force (shoutout to Allah for this one)
+		_rigidBody->m_rigidbodyFlags = 0;
+	}
+
+	// Add rigidbody to world
+	bulletWorld->addRigidBody(_rigidBody);
+
+	{ // Set up actual vehicle stuff
+		_bulletVehicleRaycaster = new btDefaultVehicleRaycaster(bulletWorld);
+
+		btVehicleRL::btVehicleTuning tuning = btVehicleRL::btVehicleTuning();
+
+		_bulletVehicle = new btVehicleRL(tuning, _rigidBody, _bulletVehicleRaycaster, bulletWorld);
+
+		// Match RL with X forward, Y right, Z up
+		_bulletVehicle->setCoordinateSystem(1, 2, 0);
+
+		// Set up wheel directions with RL coordinate system
+		btVector3 wheelDirectionCS(0, 0, -1), wheelAxleCS(0, -1, 0);
+
+		{ // Set up wheels
+			for (int i = 0; i < 4; i++) {
+				bool front = i < 2;
+				bool left = i % 2;
+
+				float radius = front ? config.frontWheels.wheelRadius : config.backWheels.wheelRadius;
+				btVector3 wheelRayStartOffset = 
+					front ? config.frontWheels.connectionPointOffset : config.backWheels.connectionPointOffset;
+
+				if (left)
+					wheelRayStartOffset.y() *= -1;
+
+				float suspensionRestLength = 
+					front ? config.frontWheels.suspensionRestLength : config.backWheels.suspensionRestLength;
+
+				suspensionRestLength -= RLConst::BTVehicle::MAX_SUSPENSION_TRAVEL;
+
+				_bulletVehicle->addWheel(
+					wheelRayStartOffset * UU_TO_BT,
+					wheelDirectionCS, wheelAxleCS,
+					suspensionRestLength * UU_TO_BT,
+					radius * UU_TO_BT, tuning, true);
+
+				{ // Fix wheel info data
+					using namespace RLConst::BTVehicle;
+
+					btWheelInfoRL& wheelInfo = _bulletVehicle->m_wheelInfo[i];
+					wheelInfo.m_suspensionStiffness = SUSPENSION_STIFFNESS;
+					wheelInfo.m_wheelsDampingCompression = WHEELS_DAMPING_COMPRESSION;
+					wheelInfo.m_wheelsDampingRelaxation = WHEELS_DAMPING_RELAXATION;
+					wheelInfo.m_maxSuspensionTravelCm = (MAX_SUSPENSION_TRAVEL * UU_TO_BT) * 100; // Same for all cars (hopefully)
+					wheelInfo.m_maxSuspensionForce = FLT_MAX; // Don't think there's a limit
+					wheelInfo.m_bIsFrontWheel = front;
+					wheelInfo.m_suspensionForceScale = front ? SUSPENSION_FORCE_SCALE_FRONT : SUSPENSION_FORCE_SCALE_BACK;
+				}
+			}
+		}
+	}
+}
+
 Car::~Car() {
 	// Remove from world
 	_bulletVehicle->m_dynamicsWorld->removeCollisionObject(_rigidBody);

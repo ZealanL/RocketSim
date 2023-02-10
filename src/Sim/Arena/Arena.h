@@ -4,13 +4,6 @@
 #include "../Ball/Ball.h"
 #include "../MeshLoader/MeshLoader.h"
 
-enum : int {
-	BT_USERINFO_NONE,
-
-	BT_USERINFO_TYPE_CAR,
-	BT_USERINFO_TYPE_BALL,
-};
-
 enum class GameMode {
 	SOCCAR,
 	// More coming soon!

@@ -26,7 +26,8 @@ public:
 
 	// For construction by Arena
 	static Ball* _AllocBall();
-	
+	void _BulletSetup(btDynamicsWorld* bulletWorld, float radius);
+
 	RSAPI float GetRadius() {
 		return _collisionShape->getRadius();
 	}

@@ -10,89 +10,7 @@ Car* Arena::AddCar(Team team, const CarConfig& config) {
 	car->team = team;
 	car->id = ++_lastCarID;
 
-	{ // Set up rigidbody and collision shapes
-		car->_childHitboxShape = new btBoxShape((config.hitboxSize * UU_TO_BT) / 2);
-		car->_compoundShape = new btCompoundShape();
-
-		btTransform hitboxOffsetTransform = btTransform();
-		hitboxOffsetTransform.setIdentity();
-		hitboxOffsetTransform.setOrigin(config.hitboxPosOffset * UU_TO_BT);
-		car->_compoundShape->addChildShape(hitboxOffsetTransform, car->_childHitboxShape);
-
-		btVector3 localInertia(0, 0, 0);
-		car->_childHitboxShape->calculateLocalInertia(RLConst::CAR_MASS_BT, localInertia);
-
-		btRigidBody::btRigidBodyConstructionInfo rbInfo
-			= btRigidBody::btRigidBodyConstructionInfo(RLConst::CAR_MASS_BT, NULL, car->_compoundShape, localInertia);
-
-		btTransform carTransform = btTransform();
-		carTransform.setIdentity();
-		rbInfo.m_startWorldTransform = carTransform;
-
-		car->_rigidBody = new btRigidBody(rbInfo);
-		car->_rigidBody->setUserIndex(BT_USERINFO_TYPE_CAR);
-		car->_rigidBody->setUserPointer(car);
-
-		car->_rigidBody->m_friction = RLConst::CAR_COLLISION_FRICTION;
-		car->_rigidBody->m_restitution = RLConst::CAR_COLLISION_RESTITUTION;
-
-		// Disable gyroscopic force (shoutout to Allah for this one)
-		car->_rigidBody->m_rigidbodyFlags = 0;
-	}
-
-	// Add rigidbody to world
-	_bulletWorld->addRigidBody(car->_rigidBody);
-
-	{ // Set up actual vehicle stuff
-		car->_bulletVehicleRaycaster = new btDefaultVehicleRaycaster(_bulletWorld);
-
-		btVehicleRL::btVehicleTuning tuning = btVehicleRL::btVehicleTuning();
-
-		car->_bulletVehicle = new btVehicleRL(tuning, car->_rigidBody, car->_bulletVehicleRaycaster, _bulletWorld);
-
-		// Match RL with X forward, Y right, Z up
-		car->_bulletVehicle->setCoordinateSystem(1, 2, 0);
-
-		// Set up wheel directions with RL coordinate system
-		btVector3 wheelDirectionCS(0, 0, -1), wheelAxleCS(0, -1, 0);
-
-		{ // Set up wheels
-			for (int i = 0; i < 4; i++) {
-				bool front = i < 2;
-				bool left = i % 2;
-
-				
-				float radius = front ? config.frontWheels.wheelRadius : config.backWheels.wheelRadius;
-				btVector3 wheelRayStartOffset = front ? config.frontWheels.connectionPointOffset : config.backWheels.connectionPointOffset;
-
-				if (left)
-					wheelRayStartOffset.y() *= -1;
-
-				float suspensionRestLength = front ? config.frontWheels.suspensionRestLength : config.backWheels.suspensionRestLength;
-
-				suspensionRestLength -= RLConst::BTVehicle::MAX_SUSPENSION_TRAVEL;
-
-				car->_bulletVehicle->addWheel(
-					wheelRayStartOffset * UU_TO_BT,
-					wheelDirectionCS, wheelAxleCS,
-					suspensionRestLength * UU_TO_BT,
-					radius * UU_TO_BT, tuning, true);
-
-				{ // Fix wheel info data
-					using namespace RLConst::BTVehicle;
-
-					btWheelInfoRL& wheelInfo = car->_bulletVehicle->m_wheelInfo[i];
-					wheelInfo.m_suspensionStiffness =		SUSPENSION_STIFFNESS;
-					wheelInfo.m_wheelsDampingCompression =	WHEELS_DAMPING_COMPRESSION;
-					wheelInfo.m_wheelsDampingRelaxation =	WHEELS_DAMPING_RELAXATION;
-					wheelInfo.m_maxSuspensionTravelCm = (MAX_SUSPENSION_TRAVEL * UU_TO_BT) * 100; // Same for all cars (hopefully)
-					wheelInfo.m_maxSuspensionForce = FLT_MAX; // Don't think there's a limit
-					wheelInfo.m_bIsFrontWheel = front;
-					wheelInfo.m_suspensionForceScale = front ? SUSPENSION_FORCE_SCALE_FRONT : SUSPENSION_FORCE_SCALE_BACK;
-				}
-			}
-		}
-	}
+	car->_BulletSetup(_bulletWorld);
 
 	return car;
 }
@@ -262,31 +180,7 @@ Arena::Arena(GameMode gameMode, float tickRate) {
 		}
 		radius *= UU_TO_BT;
 
-		ball->_collisionShape = new btSphereShape(radius);
-
-		btRigidBody::btRigidBodyConstructionInfo constructionInfo =
-			btRigidBody::btRigidBodyConstructionInfo(RLConst::BALL_MASS_BT, NULL, ball->_collisionShape);
-
-		// TODO: Move this code to Ball.cpp
-		// TODO: Ball simulation is a tiny bit off when it comes to angular velocity loss on impact
-
-		constructionInfo.m_startWorldTransform.setIdentity();
-		constructionInfo.m_startWorldTransform.setOrigin(btVector3(0, 0, radius));
-
-		btVector3 localInertial;
-		ball->_collisionShape->calculateLocalInertia(RLConst::BALL_MASS_BT, localInertial);
-		
-		constructionInfo.m_localInertia = localInertial;
-		constructionInfo.m_linearDamping = RLConst::BALL_DRAG;
-		constructionInfo.m_friction = RLConst::BALL_FRICTION;
-		constructionInfo.m_restitution = RLConst::BALL_RESTITUTION;
-
-		ball->_rigidBody = new btRigidBody(constructionInfo);
-		ball->_rigidBody->setUserIndex(BT_USERINFO_TYPE_BALL);
-		ball->_rigidBody->setUserPointer(ball);
-		
-		// Trigger the Arena::_BulletContactAddedCallback() when anything touches the ball
-		ball->_rigidBody->m_collisionFlags |= btCollisionObject::CF_CUSTOM_MATERIAL_CALLBACK;
+		ball->_BulletSetup(_bulletWorld, radius);
 	}
 
 	// Add ball to world

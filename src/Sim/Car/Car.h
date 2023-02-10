@@ -89,6 +89,7 @@ public:
 
 	// For construction by Arena
 	static Car* _AllocateCar();
+	void _BulletSetup(btDynamicsWorld* bulletWorld);
 
 private:
 	Car() {};

@@ -26,3 +26,11 @@ static inline std::ostream& operator <<(std::ostream& stream, const btVector3& v
 	stream << "[ " << v.x() << ", " << v.y() << ", " << v.z() << " ]";
 	return stream;
 }
+
+// Enum values for Bullet btCollisionObject userinfo usage
+enum : int {
+	BT_USERINFO_NONE,
+
+	BT_USERINFO_TYPE_CAR,
+	BT_USERINFO_TYPE_BALL,
+};
