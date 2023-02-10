@@ -111,8 +111,6 @@ namespace RLConst {
 
 	constexpr float CAR_TORQUE_SCALE = 0.09587379924f;
 
-	constexpr float GROUND_RAY_COLLISION_Z = -8.793175e-05;
-
 	constexpr float
 		BALL_CAR_EXTRA_IMPULSE_Z_SCALE = 0.35f,
 		BALL_CAR_EXTRA_IMPULSE_FORWARD_SCALE = 0.65f,

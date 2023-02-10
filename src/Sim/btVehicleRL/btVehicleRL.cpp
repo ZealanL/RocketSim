@@ -128,11 +128,6 @@ float btVehicleRL::rayCast(btWheelInfoRL& wheel) {
 	wheel.m_raycastInfo.m_groundObject = 0;
 
 	if (object) {
-		bool hitGround = abs(rayResults.m_hitPointInWorld.z()) < 0.005f
-			&& rayResults.m_hitNormalInWorld.z() > 0.995f;
-		if (hitGround)
-			rayResults.m_hitPointInWorld.z() = RLConst::GROUND_RAY_COLLISION_Z; // Make sure ground is at correct Z location
-
 		wheel.m_raycastInfo.m_contactPointWS = rayResults.m_hitPointInWorld;
 		float fraction = rayResults.m_distFraction;
 		depth = realRayLength * rayResults.m_distFraction;
