@@ -319,8 +319,15 @@ void Car::_PostTickUpdate(float tickTime) {
 
 	{ // Update jump
 		using namespace RLConst;
-		if (_internalState.isOnGround && !_internalState.isJumping)
-			_internalState.hasJumped = false;
+		if (_internalState.isOnGround && !_internalState.isJumping) {
+			if (_internalState.hasJumped && _internalState.jumpTimer < JUMP_MIN_TIME + JUMP_RESET_TIME_PAD) {
+				// Don't reset the jump just yet, we might still be leaving the ground
+				// This fixes the bug where jump is reset before we actually leave the ground after a minimum-time jump
+				// TODO: RL does something similar to this time-pad, but not exactly the same
+			} else {
+				_internalState.hasJumped = false;
+			}
+		}
 
 		if (_internalState.isJumping) {
 			if (_internalState.jumpTimer < JUMP_MIN_TIME || controls.jump && _internalState.jumpTimer < JUMP_MAX_TIME) {
@@ -328,7 +335,7 @@ void Car::_PostTickUpdate(float tickTime) {
 				_internalState.isJumping = true;
 			} else {
 				// We can't keep jumping any longer
-				_internalState.isJumping = _internalState.jumpTimer < JUMP_MIN_TIME;
+				_internalState.isJumping = false;
 			}
 		} else if (_internalState.isOnGround && jumpPressed) {
 			// Start jumping
@@ -350,8 +357,6 @@ void Car::_PostTickUpdate(float tickTime) {
 			}
 
 			_rigidBody->applyCentralImpulse(extraJumpForce * CAR_MASS_BT * UU_TO_BT * tickTime);
-		} else {
-			_internalState.jumpTimer = 0;
 		}
 	}
 

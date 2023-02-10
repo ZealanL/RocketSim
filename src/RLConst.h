@@ -62,6 +62,7 @@ namespace RLConst {
 		JUMP_ACCEL = 4375.f / 3.f,
 		JUMP_IMMEDIATE_FORCE = 875.f / 3.f,
 		JUMP_MIN_TIME = 0.025f,
+		JUMP_RESET_TIME_PAD = (1 / 40.f),
 		JUMP_MAX_TIME = 0.2f,
 		DOUBLEJUMP_MAX_DELAY = 1.25f; // Can be at most 1.25 seconds after the jump is finished
 
