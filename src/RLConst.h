@@ -13,6 +13,9 @@ namespace RLConst {
 	constexpr float CAR_COLLISION_FRICTION = 0.3f;
 	constexpr float CAR_COLLISION_RESTITUTION = 0.1f;
 
+	constexpr float CARBALL_COLLISION_FRICTION = 2.0f;
+	constexpr float CARBALL_COLLISION_RESTITUTION = 0.0f;
+
 	constexpr float BALL_MAX_ANG_SPEED = 6.f; // Ball can never exceed this angular velocity (radians/s)
 	constexpr float BALL_DRAG = 0.03f; // Net-velocity drag multiplier
 	constexpr float BALL_FRICTION = 0.35f;
@@ -99,7 +102,7 @@ namespace RLConst {
 
 	// TODO: Dropshot one may be a little off, will check at some future point
 	constexpr float
-		BALL_COLLISION_RADIUS_NORMAL = 93.15f, // Soccar, Hoops, etc.
+		BALL_COLLISION_RADIUS_NORMAL = 91.25f, // Soccar, Hoops, etc.
 		BALL_COLLISION_RADIUS_DROPSHOT = 103.6f;
 
 	constexpr float SOCCAR_GOAL_SCORE_BASE_THRESHOLD_Y = 5121.75f;
