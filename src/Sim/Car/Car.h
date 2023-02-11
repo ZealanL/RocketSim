@@ -35,8 +35,10 @@ struct CarState {
 	// NOTE: Will be used even when we have no boost
 	float timeSpentBoosting;
 
-	// This is a state variable due to the supersonic maintain time (see RLConst.h)
 	bool isSupersonic;
+
+	// Time spent supersonic, for checking with the supersonic maintain time (see RLConst.h)
+	float supersonicTime;
 
 	// This is a state variable due to the rise/fall rate of handbrake inputs (see RLConst.h)
 	float handbrakeVal;

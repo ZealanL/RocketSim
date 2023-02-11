@@ -451,6 +451,25 @@ void Car::_PostTickUpdate(float tickTime) {
 			
 		}
 	}
+
+	{ // Update supersonic
+		float speedSquared = (_rigidBody->getLinearVelocity() * BT_TO_UU).length2();
+
+		if (_internalState.isSupersonic && _internalState.supersonicTime < RLConst::SUPERSONIC_MAINTAIN_MAX_TIME) {
+			_internalState.isSupersonic = 
+				(speedSquared >= RLConst::SUPERSONIC_MAINTAIN_MIN_SPEED * RLConst::SUPERSONIC_MAINTAIN_MIN_SPEED);
+		} else {
+			_internalState.isSupersonic = 
+				(speedSquared >= RLConst::SUPERSONIC_START_SPEED * RLConst::SUPERSONIC_START_SPEED);
+		}
+
+		if (_internalState.isSupersonic) {
+			_internalState.supersonicTime += tickTime;
+		} else {
+			_internalState.supersonicTime = 0;
+		}
+	}
+
 	_internalState.lastControls = controls;
 
 	{ // Limit velocities
