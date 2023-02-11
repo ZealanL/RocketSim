@@ -156,7 +156,7 @@ void Car::_PreTickUpdate(float tickTime) {
 	float realThrottle = controls.throttle;
 	float realBrake = 0;
 
-	if (_internalState.timeSpentBoosting && _internalState.boost > 0)
+	if (controls.boost && _internalState.boost > 0)
 		realThrottle = 1;
 
 	{ // Update throttle/brake forces
