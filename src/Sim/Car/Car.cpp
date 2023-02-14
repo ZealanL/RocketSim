@@ -373,7 +373,7 @@ void Car::_PostTickUpdate(float tickTime) {
 				_internalState.airTimeSinceJump = 0;
 			}
 			
-			if (_internalState.hasJumped && jumpPressed && _internalState.airTimeSinceJump < DOUBLEJUMP_MAX_DELAY) {
+			if (jumpPressed && _internalState.airTimeSinceJump < DOUBLEJUMP_MAX_DELAY) {
 				if (!_internalState.hasDoubleJumped && !_internalState.hasFlipped) {
 					bool shouldFlip = RS_MAX(RS_MAX(abs(controls.yaw), abs(controls.pitch)), abs(controls.roll)) >= config.dodgeDeadzone;
 
