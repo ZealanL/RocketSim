@@ -389,7 +389,7 @@ void Car::_PostTickUpdate(float tickTime) {
 							float forwardSpeed = forwardDir.dot(_rigidBody->getLinearVelocity()) * BT_TO_UU;
 							float forwardSpeedRatio = abs(forwardSpeed) / CAR_MAX_SPEED;
 
-							btVector3 dodgeDir = btVector3(-controls.pitch, controls.yaw + controls.roll, 0).normalize();
+							btVector3 dodgeDir = btVector3(-controls.pitch, controls.yaw + controls.roll, 0).safeNormalize();
 							_internalState.lastRelDodgeTorque = btVector3(-dodgeDir.y(), dodgeDir.x(), 0);
 
 							if (abs(dodgeDir.x()) < 0.1f) dodgeDir.x() = 0;
