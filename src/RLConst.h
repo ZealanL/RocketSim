@@ -117,6 +117,34 @@ namespace RLConst {
 		BALL_CAR_EXTRA_IMPULSE_FORWARD_SCALE = 0.65f,
 		BALL_CAR_EXTRA_IMPULSE_MAXDELTAVEL_UU = 4600.f;
 
+	constexpr int CAR_SPAWN_LOCATION_AMOUNT = 5;
+	constexpr int CAR_RESPAWN_LOCATION_AMOUNT = 4;
+	struct CarSpawnPos {
+		float x, y;
+		float yawAng;
+	};
+
+	// https://github.com/RLBot/RLBot/wiki/Useful-Game-Values
+	// For blue team, flip for orange
+	const static CarSpawnPos 
+		CAR_SPAWN_LOCATIONS[CAR_SPAWN_LOCATION_AMOUNT] = {
+			{ -2048, -2560, M_PI_4 * 1 },
+			{  2048, -2560, M_PI_4 * 3 },
+			{ -2048, -3840, M_PI_4 * 2 },
+			{  2048, -3840, M_PI_4 * 2 },
+			{     0, -4608, M_PI_4 * 2 },
+	};
+
+	// https://github.com/RLBot/RLBot/wiki/Useful-Game-Values
+	// For blue team, flip for orange
+	const static CarSpawnPos // For blue team, flip for orange
+		CAR_RESPAWN_LOCATIONS[CAR_RESPAWN_LOCATION_AMOUNT] = {
+		{ -2304, -4608, M_PI / 2 },
+		{ -2688, -4608, M_PI / 2 },
+		{  2304, -4608, M_PI / 2 },
+		{  2688, -4608, M_PI / 2 },
+	};
+
 	// Input: Forward car speed
 	// Output: Max steering angle (radians)
 	const static LinearPieceCurve STEER_ANGLE_FROM_SPEED_CURVE = {
