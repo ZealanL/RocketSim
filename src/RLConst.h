@@ -67,9 +67,6 @@ namespace RLConst {
 		DOUBLEJUMP_MAX_DELAY = 1.25f; // Can be at most 1.25 seconds after the jump is finished
 
 	// Mostly from: https://github.com/samuelpmish/RLUtilities/blob/develop/src/mechanics/dodge.cc
-	// SideDodgeImpulseMaxSpeedScale = 1.9
-	// ForwardDodgeImpulseMaxSpeedScale = 1
-	// BackwardDodgeImpulseMaxSpeedScale = 2.5
 	constexpr float
 		FLIP_Z_DAMP_120 = 0.35f,
 		FLIP_Z_DAMP_START = 0.15f,
@@ -79,7 +76,11 @@ namespace RLConst {
 		FLIP_PITCHLOCK_TIME = 1.f,
 		FLIP_INITIAL_VEL_SCALE = 500.f,
 		FLIP_TORQUE_X = 260.f, // Left/Right
-		FLIP_TORQUE_Y = 224.f; // Forward/backward
+		FLIP_TORQUE_Y = 224.f, // Forward/backward
+		FLIP_FORWARD_IMPULSE_MAX_SPEED_SCALE = 1.f,
+		FLIP_SIDE_IMPULSE_MAX_SPEED_SCALE = 1.9f,
+		FLIP_BACKWARD_IMPULSE_MAX_SPEED_SCALE = 2.5f,
+		FLIP_BACKWARD_IMPULSE_SCALE_X = 16.f / 15.f;
 
 	// Rocket League uses BulletPhysics, so I'd imagine they use a variation of the btRaycastVehicle
 	// These are those vehicle's settings

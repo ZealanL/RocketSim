@@ -398,16 +398,22 @@ void Car::_PostTickUpdate(float tickTime) {
 							if (!dodgeDir.fuzzyZero()) {
 								bool shouldDodgeBackwards;
 
-								if (abs(forwardSpeed) < 100.0f)
+								if (abs(forwardSpeed) < 100.0f) {
 									shouldDodgeBackwards = dodgeDir.x() < 0.0f;
-								else
-									shouldDodgeBackwards = (dodgeDir.x() >= 0.0f) != (dodgeDir.x() > 0.0f);
+								} else {
+									shouldDodgeBackwards = (dodgeDir.x() >= 0.0f) != (forwardSpeed >= 0.0f);
+								}
 
 								btVector3 initalDodgeVel = dodgeDir * FLIP_INITIAL_VEL_SCALE;
 
+								float maxSpeedScaleX = 
+									shouldDodgeBackwards ? FLIP_BACKWARD_IMPULSE_MAX_SPEED_SCALE : FLIP_FORWARD_IMPULSE_MAX_SPEED_SCALE;
+								
+								initalDodgeVel.x() *= ((maxSpeedScaleX - 1) * forwardSpeedRatio) + 1.f;
+								initalDodgeVel.y() *= ((FLIP_SIDE_IMPULSE_MAX_SPEED_SCALE-1) * forwardSpeedRatio) + 1.f;
+
 								if (shouldDodgeBackwards)
-									initalDodgeVel.x() *= (16.f / 15.f) * (1.5F * forwardSpeedRatio + 1.f);
-								initalDodgeVel.y() *= (0.9f * forwardSpeedRatio) + 1.f;
+									initalDodgeVel.x() *= FLIP_BACKWARD_IMPULSE_SCALE_X;
 
 								float forwardAng = atan2f(forwardDir.y(), forwardDir.x());
 
