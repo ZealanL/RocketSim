@@ -5,46 +5,46 @@
 
 struct CarState {
 	// Position in world space
-	Vec pos;
+	Vec pos = { 0, 0, 17 };
 
-	Angle angles;
+	Angle angles = { 0, 0, 0 };
 
 	// Linear velocity
-	Vec vel;
+	Vec vel = { 0, 0, 0 };
 
 	// Angular velocity (rad/s)
-	Vec angVel;
+	Vec angVel = { 0, 0, 0 };
 
-	bool isOnGround;
-	bool hasJumped, hasDoubleJumped, hasFlipped;
-	Vec lastRelDodgeTorque;
+	bool isOnGround = true;
+	bool hasJumped = false, hasDoubleJumped = false, hasFlipped = false;
+	Vec lastRelDodgeTorque = { 0, 0, 0 };
 
 	// Active during the duration of a jump or flip
-	float jumpTimer, flipTimer;
+	float jumpTimer = 0, flipTimer = 0;
 
 	// True during a jump (not double jumps or a flip)
-	bool isJumping;
+	bool isJumping = false;
 
 	// Time spent in the air once !isJumping
-	float airTimeSinceJump;
+	float airTimeSinceJump = 0;
 
 	// Goes from 0 to 100
-	float boost;
+	float boost = 0;
 
 	// Added to replicate minimum boosting time
 	// NOTE: Will be used even when we have no boost
-	float timeSpentBoosting;
+	float timeSpentBoosting = 0;
 
-	bool isSupersonic;
+	bool isSupersonic = false;
 
 	// Time spent supersonic, for checking with the supersonic maintain time (see RLConst.h)
-	float supersonicTime;
+	float supersonicTime = 0;
 
 	// This is a state variable due to the rise/fall rate of handbrake inputs (see RLConst.h)
-	float handbrakeVal;
+	float handbrakeVal = 0;
 
 	// Controls from last tick, set to this->controls after simulation
-	CarControls lastControls;
+	CarControls lastControls = CarControls();
 };
 
 enum class Team {
