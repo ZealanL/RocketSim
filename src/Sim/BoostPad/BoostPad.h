@@ -23,6 +23,10 @@ public:
 	RSAPI BoostPadState GetState() { return _internalState; }
 	RSAPI void SetState(const BoostPadState& state) { _internalState = state; }
 
+	RSAPI Vec GetPos() {
+		_rigidBody->getCenterOfMassTransform().getOrigin()* BT_TO_UU;
+	}
+
 	// For construction by Arena
 	static BoostPad* _AllocBoostPad();
 	void _BulletSetup(btDynamicsWorld* bulletWorld, bool isBig, btVector3 pos);
