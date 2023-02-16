@@ -1,15 +1,17 @@
 #pragma once
 #include "../../BaseInc.h"
 
+#include "../../RLConst.h"
+
 struct BallState {
 	// Position in world space
-	Vec pos;
+	Vec pos = { 0, 0, 93.15f };
 
 	// Linear velocity
-	Vec vel;
+	Vec vel = { 0, 0, 0 };
 
 	// Angular velocity (axis-angle)
-	Vec angVel;
+	Vec angVel = { 0, 0, 0 };
 };
 
 class Ball {
