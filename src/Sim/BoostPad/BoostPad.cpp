@@ -27,7 +27,7 @@ void BoostPad::_BulletSetup(btDynamicsWorld* bulletWorld, bool isBig, btVector3 
 	_rigidBody->setUserIndex(BT_USERINFO_TYPE_BOOSTPAD);
 	_rigidBody->setUserPointer(this);
 
-	bulletWorld->addCollisionObject(_rigidBody);
+	bulletWorld->addRigidBody(_rigidBody);
 }
 
 void BoostPad::_PreTickUpdate(float tickTime) {
