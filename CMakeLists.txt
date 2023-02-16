@@ -13,7 +13,7 @@ else()
   file(GLOB FILES_BULLET "libsrc/bullet3-3.24/*.cpp")
 endif()
 
-add_library(RocketSim ${FILES_CPP} ${FILES_H} ${FILES_BULLET_CPP})
+add_library(RocketSim ${FILES_CPP} ${FILES_H} ${FILES_BULLET})
 
 set_target_properties(RocketSim PROPERTIES LINKER_LANGUAGE CXX)
 set_target_properties(RocketSim PROPERTIES CXX_STANDARD 17)
