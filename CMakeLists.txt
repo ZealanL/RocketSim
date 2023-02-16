@@ -3,8 +3,8 @@
 project("RocketSim")
 
 # Add all headers and code files
-file(GLOB_RECURSE SOURCEFILES *.cpp)
-file(GLOB_RECURSE HEADERFILES *.h)
+file(GLOB_RECURSE SOURCEFILES "src/*.cpp" "libsrc/*.cpp" "src/*.cc" "libsrc/*.cc")
+file(GLOB_RECURSE HEADERFILES "src/*.h" "libsrc/*.h")
 
 add_library(RocketSim ${SOURCEFILES} ${HEADERFILES})
 
