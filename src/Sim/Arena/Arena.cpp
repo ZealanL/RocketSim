@@ -74,29 +74,45 @@ void Arena::_BulletInternalTickCallback(btDynamicsWorld* world, btScalar step) {
 			continue;
 
 		auto
-			body0 = contactManifold->getBody0(),
-			body1 = contactManifold->getBody1();
+			bodyA = contactManifold->getBody0(),
+			bodyB = contactManifold->getBody1();
 
-		bool firstBodyIsCar = (body0->getUserIndex() == BT_USERINFO_TYPE_CAR);
-		if (!firstBodyIsCar && (body1->getUserIndex() != BT_USERINFO_TYPE_CAR))
-			continue; // No car involved, so we don't care
+		bool shouldSwap = false;
+		if (bodyA->getUserIndex() && bodyB->getUserIndex()) {
+			// If both bodies have a user index, the lower user index should be A
+			shouldSwap = bodyA->getUserIndex() > bodyB->getUserIndex();
+		} else {
+			// If only one body has a user index, make sure that body is A
+			shouldSwap = bodyB->getUserIndex();
+		}
+		
+		if (shouldSwap)
+			std::swap(bodyA, bodyB);
 
-		auto carBody = firstBodyIsCar ? body0 : body1;
-		auto otherBody = firstBodyIsCar ? body1 : body0;
+		int 
+			userIndexA = bodyA->getUserIndex(),
+			userIndexB = bodyB->getUserIndex();
 
-		if (!otherBody->getUserIndex())
-			continue; // Other colliding body is neither a car nor the ball
+		bool carInvolved = (bodyA->getUserIndex() == BT_USERINFO_TYPE_CAR);
 
 		// TODO: Does RL support multiple contacts in a tick? Not sure.
 		// We'll just use the first one regardless.
 		btManifoldPoint& contactPoint = contactManifold->getContactPoint(0);
 
-		if (otherBody->getUserIndex() == BT_USERINFO_TYPE_BALL) {
-			// Ball was hit
-			arenaInst->_BtCallback_OnCarBallCollision((Car*)carBody->getUserPointer(), (Ball*)otherBody->getUserPointer(), contactPoint);
-		} else if (otherBody->getUserIndex() == BT_USERINFO_TYPE_CAR) {
-			// Car was hit
-			arenaInst->_BtCallback_OnCarCarCollision((Car*)carBody->getUserPointer(), (Car*)otherBody->getUserPointer(), contactPoint);
+		if (carInvolved) {
+			if (userIndexB == BT_USERINFO_TYPE_BALL) {
+				// Car + Ball
+				arenaInst->
+					_BtCallback_OnCarBallCollision((Car*)bodyA->getUserPointer(), (Ball*)bodyB->getUserPointer(), contactPoint);
+			} else if (userIndexB == BT_USERINFO_TYPE_CAR) {
+				// Car + Car
+				arenaInst->
+					_BtCallback_OnCarCarCollision((Car*)bodyA->getUserPointer(), (Car*)bodyB->getUserPointer(), contactPoint);
+			} else if (userIndexB == BT_USERINFO_TYPE_BOOSTPAD) {
+				// Car + BoostPad hitbox
+				arenaInst->
+					_BtCallback_OnCarBoostPadCollision((Car*)bodyA->getUserPointer(), (BoostPad*)bodyB->getUserPointer(), contactPoint);
+			}
 		}
 	}
 }
@@ -122,14 +138,16 @@ void Arena::_BtCallback_OnCarBallCollision(Car* car, Ball* ball, btManifoldPoint
 		hitDir = (hitDir - forwardDirAdjustment).normalized();
 
 		btVector3 addedVel = (hitDir * relSpeed) * BALL_CAR_EXTRA_IMPULSE_FACTOR_CURVE.GetOutput(relSpeed);
-		ballState.vel += addedVel;
+		ball->_rigidBody->m_linearVelocity += addedVel * UU_TO_BT;
 	}
-
-	ball->SetState(ballState);
 }
 
 void Arena::_BtCallback_OnCarCarCollision(Car* car1, Car* car2, btManifoldPoint& manifoldPoint) {
 	// TODO: Bump physics
+}
+
+void Arena::_BtCallback_OnCarBoostPadCollision(Car* car, BoostPad* pad, btManifoldPoint& manifoldPoint) {
+	pad->_OnCollide(car->_rigidBody);
 }
 
 Arena::Arena(GameMode gameMode, float tickRate) {
@@ -183,8 +201,22 @@ Arena::Arena(GameMode gameMode, float tickRate) {
 		ball->_BulletSetup(_bulletWorld, radius);
 	}
 
-	// Add ball to world
-	_bulletWorld->addRigidBody(ball->_rigidBody);
+	{ // Initialize boost pads
+		using namespace RLConst::BoostPad;
+
+		_boostPads.reserve(LOCS_AMOUNT_BIG + LOCS_AMOUNT_SMALL);
+
+		for (int i = 0; i < (LOCS_AMOUNT_BIG + LOCS_AMOUNT_SMALL); i++) {
+			bool isBig = i < LOCS_AMOUNT_BIG;
+			
+			btVector3 pos = isBig ? LOCS_BIG[i] : LOCS_SMALL[i - LOCS_AMOUNT_BIG];
+
+			BoostPad* pad = BoostPad::_AllocBoostPad();
+			pad->_BulletSetup(_bulletWorld, isBig, pos * UU_TO_BT);
+
+			_boostPads.push_back(pad);
+		}
+	}
 
 	// Set internal tick callback
 	_bulletWorld->setWorldUserInfo(this);
@@ -208,9 +240,11 @@ void Arena::Step(int ticksToSimulate) {
 			}
 		}
 
-		for (Car* car : _cars) {
+		for (Car* car : _cars)
 			car->_PreTickUpdate(tickTime);
-		}
+
+		for (BoostPad* pad : _boostPads)
+			pad->_PreTickUpdate(tickTime);
 
 		// Update world
 		_bulletWorld->stepSimulation(tickTime, 0, tickTime);
@@ -219,6 +253,9 @@ void Arena::Step(int ticksToSimulate) {
 			car->_ApplyPhysicsRounding();
 			car->_PostTickUpdate(tickTime);
 		}
+
+		for (BoostPad* pad : _boostPads)
+			pad->_PostTickUpdate(tickTime);
 
 		{ // Limit ball's linear/angular velocity
 			using namespace RLConst;
@@ -272,7 +309,7 @@ Arena::~Arena() {
 		delete mesh;
 }
 
-void Arena::_AddStaticCollisionShape(btCollisionShape* shape, btVector3 pos) {
+btRigidBody* Arena::_AddStaticCollisionShape(btCollisionShape* shape, btVector3 pos) {
 	_worldCollisionShapes.push_back(shape);
 
 	btRigidBody* shapeRB = new btRigidBody(0, NULL, shape);
@@ -280,6 +317,7 @@ void Arena::_AddStaticCollisionShape(btCollisionShape* shape, btVector3 pos) {
 	_worldCollisionRBs.push_back(shapeRB);
 
 	_bulletWorld->addRigidBody(shapeRB);
+	return shapeRB;
 }
 
 void Arena::_AddStaticCollisionTris(MeshLoader::Mesh& mesh, btVector3 scale, btVector3 pos) {

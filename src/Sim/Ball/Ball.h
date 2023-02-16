@@ -29,11 +29,17 @@ public:
 	void _BulletSetup(btDynamicsWorld* bulletWorld, float radius);
 
 	RSAPI float GetRadius() {
-		return _collisionShape->getRadius();
+		if (!_collisionShape) {
+			return -1;
+		} else {
+			return _collisionShape->getRadius();
+		}
 	}
 
 	~Ball();
 
 private:
-	Ball() {}
+	Ball() {
+		
+	}
 };

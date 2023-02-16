@@ -128,6 +128,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="src\Sim\BoostPad\BoostPad.cpp" />
     <ClCompile Include="src\Sim\MeshLoader\MeshLoader.cpp" />
     <ClCompile Include="src\Sim\Arena\Arena.cpp" />
     <ClCompile Include="src\Sim\Ball\Ball.cpp" />
@@ -290,6 +291,7 @@
     <ClCompile Include="src\Math\Math.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\Sim\BoostPad\BoostPad.h" />
     <ClInclude Include="src\Sim\MeshLoader\MeshLoader.h" />
     <ClInclude Include="src\Sim\Arena\Arena.h" />
     <ClInclude Include="src\Sim\Ball\Ball.h" />

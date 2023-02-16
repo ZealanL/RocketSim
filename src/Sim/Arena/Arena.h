@@ -3,6 +3,7 @@
 #include "../Car/Car.h"
 #include "../Ball/Ball.h"
 #include "../MeshLoader/MeshLoader.h"
+#include "../BoostPad/BoostPad.h"
 
 enum class GameMode {
 	SOCCAR,
@@ -18,6 +19,7 @@ public:
 
 	uint32_t _lastCarID = 0;
 	vector<Car*> _cars;
+	vector<BoostPad*> _boostPads;
 	Ball* ball;
 
 	float tickTime; // Time each tick (1/tickrate)
@@ -29,6 +31,7 @@ public:
 	uint64_t tickCount = 0;
 
 	RSAPI const vector<Car*>& GetCars() { return _cars; }
+	RSAPI const vector<BoostPad*>& GetBoostPads() { return _boostPads; }
 
 	RSAPI Car* AddCar(Team team, const CarConfig& config = CAR_CONFIG_OCTANE);
 
@@ -63,7 +66,7 @@ public:
 	RSAPI ~Arena();
 
 	// NOTE: Passed shape pointer will be freed when arena is deconstructed
-	void _AddStaticCollisionShape(btCollisionShape* shape, btVector3 pos = btVector3(0,0,0));
+	btRigidBody* _AddStaticCollisionShape(btCollisionShape* shape, btVector3 pos = btVector3(0,0,0));
 
 	void _AddStaticCollisionTris(MeshLoader::Mesh& mesh, btVector3 scale = btVector3(1,1,1), btVector3 pos = btVector3(0, 0, 0));
 	void _SetupArenaCollisionShapes();
@@ -76,4 +79,5 @@ public:
 
 	void _BtCallback_OnCarBallCollision(Car* car, Ball* ball, btManifoldPoint& manifoldPoint);
 	void _BtCallback_OnCarCarCollision(Car* car1, Car* car2, btManifoldPoint& manifoldPoint);
+	void _BtCallback_OnCarBoostPadCollision(Car* car, BoostPad* pad, btManifoldPoint& manifoldPoint);
 };

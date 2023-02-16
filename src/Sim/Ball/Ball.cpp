@@ -29,9 +29,6 @@ void Ball::_BulletSetup(btDynamicsWorld* bulletWorld, float radius) {
 	btRigidBody::btRigidBodyConstructionInfo constructionInfo =
 		btRigidBody::btRigidBodyConstructionInfo(RLConst::BALL_MASS_BT, NULL, _collisionShape);
 
-	// TODO: Move this code to Ball.cpp
-	// TODO: Ball simulation is a tiny bit off when it comes to angular velocity loss on impact
-
 	constructionInfo.m_startWorldTransform.setIdentity();
 	constructionInfo.m_startWorldTransform.setOrigin(btVector3(0, 0, radius));
 
@@ -49,6 +46,8 @@ void Ball::_BulletSetup(btDynamicsWorld* bulletWorld, float radius) {
 
 	// Trigger the Arena::_BulletContactAddedCallback() when anything touches the ball
 	_rigidBody->m_collisionFlags |= btCollisionObject::CF_CUSTOM_MATERIAL_CALLBACK;
+
+	bulletWorld->addRigidBody(_rigidBody);
 }
 
 Ball::~Ball() {
