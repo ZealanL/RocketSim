@@ -175,6 +175,11 @@ Arena::Arena(GameMode gameMode, float tickRate) {
 		);
 		
 		_bulletWorld->setGravity(btVector3(0, 0, RLConst::GRAVITY_Z * UU_TO_BT));
+
+		// Adjust solver configuration to be closer to older Bullet (Rocket League's Bullet is from somewhere between 2013 and 2015)
+		auto& solverInfo = _bulletWorld->getSolverInfo();
+		solverInfo.m_splitImpulsePenetrationThreshold = 1.0e30;
+		solverInfo.m_erp2 = 0.8f;
 	}
 
 	_SetupArenaCollisionShapes();
