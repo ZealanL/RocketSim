@@ -117,6 +117,72 @@ namespace RLConst {
 		BALL_CAR_EXTRA_IMPULSE_FORWARD_SCALE = 0.65f,
 		BALL_CAR_EXTRA_IMPULSE_MAXDELTAVEL_UU = 4600.f;
 
+	namespace BoostPad {
+		// Mostly from a Rocket Science video: https://www.youtube.com/watch?v=xgfa-qZyInw
+		
+		constexpr float
+			CYL_HEIGHT = 95,
+			CYL_RAD_BIG = 208,
+			CYL_RAD_SMALL = 144;
+
+		constexpr float
+			SQ_HEIGHT = 64,
+			SQ_RAD_BIG = 160,
+			SQ_RAD_SMALL = 120;
+
+		constexpr float
+			COOLDOWN_BIG = 10,
+			COOLDOWN_SMALL = 4;
+
+		constexpr float
+			BOOST_AMOUNT_BIG = 100,
+			BOOST_AMOUNT_SMALL = 12;
+
+		constexpr int
+			LOCS_AMOUNT_SMALL = 28,
+			LOCS_AMOUNT_BIG = 6;
+
+		const static Vec LOCS_SMALL[LOCS_AMOUNT_SMALL] = {
+			{0.f,		-4240.f,	0},
+			{-1792.f,	-4184.f,	0},
+			{1792.f,	-4184.f,	0},
+			{-940.f,	-3308.f,	0},
+			{940.f,		-3308.f,	0},
+			{0.f,		-2816.f,	0},
+			{-3584.f,	-2484.f,	0},
+			{3584.f,	-2484.f,	0},
+			{-1788.f,	-2300.f,	0},
+			{1788.f,	-2300.f,	0},
+			{-2048.f,	-1036.f,	0},
+			{0.f,		-1024.f,	0},
+			{2048.f,	-1036.f,	0},
+			{-1024.f,	0.f,		0},
+			{1024.f,	0.f,		0},
+			{-2048.f,	1036.f,		0},
+			{0.f,		1024.f,		0},
+			{2048.f,	1036.f,		0},
+			{-1788.f,	2300.f,		0},
+			{1788.f,	2300.f,		0},
+			{-3584.f,	2484.f,		0},
+			{3584.f,	2484.f,		0},
+			{0.f,		2816.f,		0},
+			{-940.f,	3310.f,		0},
+			{940.f,		3308.f,		0},
+			{-1792.f,	4184.f,		0},
+			{1792.f,	4184.f,		0},
+			{0.f,		4240.f,		0}
+		};
+
+		const static Vec LOCS_BIG[LOCS_AMOUNT_BIG] = {
+			{-3584.f,     0.f, 0 },
+			{ 3584.f,     0.f, 0 },
+			{-3072.f,  4096.f, 0 },
+			{ 3072.f,  4096.f, 0 },
+			{-3072.f, -4096.f, 0 },
+			{ 3072.f, -4096.f, 0 }
+		};
+	}
+
 	constexpr int CAR_SPAWN_LOCATION_AMOUNT = 5;
 	constexpr int CAR_RESPAWN_LOCATION_AMOUNT = 4;
 	struct CarSpawnPos {
