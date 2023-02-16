@@ -13,8 +13,6 @@ class BoostPad {
 public:
 	bool isBig;
 
-	float collisionHeight, collisionRadius;
-
 	BoostPadState _internalState;
 
 	btBoxShape* _collisionBoxShape;
