@@ -1,7 +1,8 @@
-# RocketSim
- A C++ library for simulating Rocket League games at maximum efficiency
+![image](https://user-images.githubusercontent.com/36944229/219303954-7267bce1-b7c5-4f15-881c-b9545512e65b.png)
 
-## Progress Roadmap
+**A C++ library for simulating Rocket League games at maximum efficiency**
+
+## Progress
 **Coming Soon:**
 - Bumps and demos
 - Auto-flip when upside-down
@@ -53,3 +54,11 @@ arena.Step(100);
 // Lets see where our car went!
 std::cout << "After " << arena.tickCount << "ticks, our car is at: " << car->GetState().pos << std::endl;
 ```
+
+## Issues & PRs
+Feel free to make issues and pull requests if you encounter any issues!
+
+You can also contact me on Discord if you have questions: `Zealan#5987`
+
+## Legal Notice
+RocketSim was written to replicate Rocket League's game logic, but does not actually contain any code from the game.
