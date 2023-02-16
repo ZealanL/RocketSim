@@ -1,7 +1,23 @@
 # RocketSim
  A C++ library for simulating Rocket League games at maximum efficiency
 
-## Accuracy
+## Progress Roadmap
+**Coming Soon:**
+- Bumps and demos
+- Auto-flip when upside-down
+- Significant collision optimizations
+- Decent half-percision 60tps simulation
+
+**Done:**
+- Car suspension
+- Car driving
+- Car jumps and flips
+- Arena collision
+- Proper ball bounces
+- Car-ball collision with proper forces (will be refined more in the near future)
+- Boost usage and boost pads
+
+## Simulation Accuracy
 RocketSim is not perfectly accurate, but it's close enough that it shouldnt matter.
 Bots that work well in RocketSim will work well in the actual game, and visa-versa.
 
