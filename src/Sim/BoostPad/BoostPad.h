@@ -22,7 +22,7 @@ public:
 	RSAPI void SetState(const BoostPadState& state) { _internalState = state; }
 
 	RSAPI Vec GetPos() {
-		_rigidBody->getCenterOfMassTransform().getOrigin()* BT_TO_UU;
+		return _rigidBody->getCenterOfMassTransform().getOrigin() * BT_TO_UU;
 	}
 
 	// For construction by Arena
