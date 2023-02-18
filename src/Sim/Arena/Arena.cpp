@@ -100,18 +100,25 @@ void Arena::_BulletInternalTickCallback(btDynamicsWorld* world, btScalar step) {
 		btManifoldPoint& contactPoint = contactManifold->getContactPoint(0);
 
 		if (carInvolved) {
+
+			Car* car = (Car*)bodyA->getUserPointer();
+
 			if (userIndexB == BT_USERINFO_TYPE_BALL) {
 				// Car + Ball
 				arenaInst->
-					_BtCallback_OnCarBallCollision((Car*)bodyA->getUserPointer(), (Ball*)bodyB->getUserPointer(), contactPoint);
+					_BtCallback_OnCarBallCollision(car, (Ball*)bodyB->getUserPointer(), contactPoint);
 			} else if (userIndexB == BT_USERINFO_TYPE_CAR) {
 				// Car + Car
 				arenaInst->
-					_BtCallback_OnCarCarCollision((Car*)bodyA->getUserPointer(), (Car*)bodyB->getUserPointer(), contactPoint);
+					_BtCallback_OnCarCarCollision(car, (Car*)bodyB->getUserPointer(), contactPoint);
 			} else if (userIndexB == BT_USERINFO_TYPE_BOOSTPAD) {
 				// Car + BoostPad hitbox
 				arenaInst->
-					_BtCallback_OnCarBoostPadCollision((Car*)bodyA->getUserPointer(), (BoostPad*)bodyB->getUserPointer(), contactPoint);
+					_BtCallback_OnCarBoostPadCollision(car, (BoostPad*)bodyB->getUserPointer(), contactPoint);
+			} else {
+				// Car + World
+				arenaInst->
+					_BtCallback_OnCarWorldCollision(car, (btCollisionObject*)bodyB->getUserPointer(), contactPoint);
 			}
 		}
 	}
@@ -148,6 +155,11 @@ void Arena::_BtCallback_OnCarCarCollision(Car* car1, Car* car2, btManifoldPoint&
 
 void Arena::_BtCallback_OnCarBoostPadCollision(Car* car, BoostPad* pad, btManifoldPoint& manifoldPoint) {
 	pad->_OnCollide(car->_rigidBody);
+}
+
+void Arena::_BtCallback_OnCarWorldCollision(Car* car, btCollisionObject* world, btManifoldPoint& manifoldPoint) {
+	car->_internalState.worldContact.hasContact = true;
+	car->_internalState.worldContact.contactNormal = manifoldPoint.m_normalWorldOnB;
 }
 
 Arena::Arena(GameMode gameMode, float tickRate) {
