@@ -62,3 +62,4 @@ You can also contact me on Discord if you have questions: `Zealan#5987`
 
 ## Legal Notice
 RocketSim was written to replicate Rocket League's game logic, but does not actually contain any code from the game.
+To Epic Games/Psyonix: If any of you guys have an issue with this, let me know on Discord and we can resolve it.
