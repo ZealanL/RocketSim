@@ -15,9 +15,15 @@ typedef btVector3 Vec;
 // Unreal Units (2cm) to BulletPhysics Units (1m) conversion scale
 #define UU_TO_BT (1.f/50.f)
 
-// NOTE: Values should be in radians
+// Has the same order of application as Rotators in Rocket League
+// NOTE: Values are in radians
 struct Angle {
 	float yaw, pitch, roll;
+
+	Angle(float yaw = 0, float pitch = 0, float roll = 0) : yaw(yaw), pitch(pitch), roll(roll) {}
+
+	Angle(btMatrix3x3 mat);
+	btMatrix3x3 ToMatrix();
 };
 
 // For easy printing of bullet vectors
