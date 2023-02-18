@@ -1,92 +1,88 @@
 #include "CarConfig.h"
 
 // Default car-type config definitions
-// Thanks to https://cars.rocketscience.fyi for this 90% of this data (I am very lazy)
-// Only thing I needed to get myself was the suspension rest lengths
 
-const static Vec HITBOX_SIZES[6] = {
-	{ 118.01f, 84.20f, 36.16f },
-	{ 127.93f, 83.28f, 31.30f },
-	{ 128.82f, 84.67f, 29.39f },
-	{ 131.49f, 80.52f, 30.30f },
-	{ 127.02f, 82.19f, 34.16f },
-	{ 120.72f, 76.71f, 41.66f }
+// For those confused about the hitbox numbers,
+// as any Google search for car hitbox sizes will conflict with this:
+// - They are all wrong. The values that Rocket League gives you
+//   when you call the function GetLocalCollisionExtent() are
+//   slightly larger than the actual values used in simulation.
+//
+// Why?
+// - Idk lol.
+//
+// How do I know I'm right?
+// -  The hitbox values I have produce a matching inertia matrix with real RL,
+//    the ones everyone else uses/shares do not.
+
+const static Vec HITBOX_SIZES[6] = { 
+	{ 120.507f,	86.6994f,	38.6591f	},
+	{ 130.427f,	85.7799f,	33.8f		},
+	{ 131.32f,	87.1704f,	31.8944f	},
+	{ 133.992f,	83.021f,	32.8f		},
+	{ 129.519f,	84.6879f,	36.6591f	},
+	{ 123.22f,	79.2103f,	44.1591f	}
 };
 
-const static Vec HITBOX_OFFSETS[6] = {
-	{ 13.88f, 0, 20.75f },
-	{ 9.00f,  0, 15.75f },
-	{ 9.01f,  0, 12.09f },
-	{ 12.50f, 0, 11.75f },
-	{ 13.88f, 0, 20.75f },
-	{ 11.38f, 0, 21.50f }
+const static Vec HITBOX_OFFSETS[6] = { 
+	{ 13.87566,	0, 20.755f	}, 
+	{ 9.f,		0, 15.75f	},	
+	{ 9.00857f, 0, 12.0942f	},
+	{ 12.5f,	0, 11.75f	},
+	{ 13.8757f,	0, 20.755f	},
+	{ 11.3757f,	0, 21.505f	}
 };
 
 constexpr float FRONT_WHEEL_RADS[6] = {
-	12.50f,
-	12.00f,
-	12.50f,
-	13.50f,
-	12.50f,
-	15.00f,
+	12.50f, 12.00f, 12.50f, 13.50f, 12.50f, 15.00f,
 };
 
 constexpr float BACK_WHEEL_RADS[6] = {
-	15.00f,
-	13.50f,
-	17.00f,
-	15.00f,
-	15.00f,
+	15.00f, 13.50f, 17.00f, 15.00f, 15.00f,
 };
 
 // whhen the impoter is sus
 constexpr float FRONT_WHEEL_SUS_REST[6] = {
-	38.755f,
-	33.95f,
-	31.9242f,
-	29.7f,
-	38.755f,
+	38.755f, 33.95f, 31.9242f, 29.7f, 38.755f,
 };
 
 constexpr float BACK_WHEEL_SUS_REST[6] = {
-	37.055f,
-	33.85f,
-	27.9242f,
-	29.666f,
-	37.055f,
+	37.055f, 33.85f, 27.9242f, 29.666f, 37.055f,
 };
 
 // TODO: recalc
-const static Vec FRONT_WHEELS_OFFSET[6] = {
-	{ 51.25f, 25.90f, 20.755f },
-	{ 50.30f, 31.10f, 20.755f },
+const static Vec FRONT_WHEELS_OFFSET[6] = { 
+	{ 51.25f, 25.90f, 20.755f }, 
+	{ 50.30f, 31.10f, 20.755f }, 
 	{ 49.97f, 27.80f, 20.755f },
-	{ 51.50f, 26.67f, 20.755f },
-	{ 51.25f, 25.90f, 20.755f },
+	{ 51.50f, 26.67f, 20.755f }, 
+	{ 51.25f, 25.90f, 20.755f }, 
 	{ 51.25f, 25.90f, 20.755f }
 };
 
 // TODO: recalc
-const static Vec BACK_WHEELS_OFFSET[6] = {
-	{ -33.75f, 29.50f, 20.755f  },
-	{ -34.75f, 33.00f, 20.755f  },
-	{ -35.43f, 20.28f, 20.755f  },
-	{ -35.75f, 35.00f, 20.755f  },
-	{ -34.00f, 29.50f, 20.755f  },
-	{ -33.75f, 29.50f, 20.755f  }
+const static Vec BACK_WHEELS_OFFSET[6] = { 
+	{ -33.75f, 29.50f, 20.755f }, 
+	{ -34.75f, 33.00f, 20.755f }, 
+	{ -35.43f, 20.28f, 20.755f },
+										   
+	{ -35.75f, 35.00f, 20.755f }, 
+	{ -34.00f, 29.50f, 20.755f }, 
+	{ -33.75f, 29.50f, 20.755f }
 };
 
 // Using a macro here for convenience
-#define MAKE_CAR_CONFIG(name, index)			\
-const CarConfig CAR_CONFIG_##name = {			\
-	HITBOX_SIZES[index], HITBOX_OFFSETS[index], \
-	{ FRONT_WHEEL_RADS[index],	FRONT_WHEEL_SUS_REST[index],	FRONT_WHEELS_OFFSET[index]	}, \
-	{ BACK_WHEEL_RADS[index],	BACK_WHEEL_SUS_REST[index],		BACK_WHEELS_OFFSET[index]	}, \
-}
+#define MAKE_CAR_CONFIG(name, index)                                                          \
+	const CarConfig CAR_CONFIG_##name = {                                                     \
+		HITBOX_SIZES[index],                                                                  \
+		HITBOX_OFFSETS[index],                                                                \
+		{ FRONT_WHEEL_RADS[index], FRONT_WHEEL_SUS_REST[index], FRONT_WHEELS_OFFSET[index] }, \
+		{ BACK_WHEEL_RADS[index], BACK_WHEEL_SUS_REST[index], BACK_WHEELS_OFFSET[index] },    \
+	}
 
-MAKE_CAR_CONFIG( OCTANE,	0 );
-MAKE_CAR_CONFIG( DOMINUS,	1 );
-MAKE_CAR_CONFIG( PLANK,		2 );
-MAKE_CAR_CONFIG( BREAKOUT,	3 );
-MAKE_CAR_CONFIG( HYBRID,	4 );
-MAKE_CAR_CONFIG( MERC,		5 );
+MAKE_CAR_CONFIG(OCTANE, 0);
+MAKE_CAR_CONFIG(DOMINUS, 1);
+MAKE_CAR_CONFIG(PLANK, 2);
+MAKE_CAR_CONFIG(BREAKOUT, 3);
+MAKE_CAR_CONFIG(HYBRID, 4);
+MAKE_CAR_CONFIG(MERC, 5);
