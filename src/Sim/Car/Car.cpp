@@ -49,6 +49,8 @@ void Car::_PreTickUpdate(float tickTime) {
 
 	_bulletVehicle->updateVehicle(tickTime);
 
+	_internalState.worldContact.hasContact = false;
+
 	btMatrix3x3 basis = _rigidBody->getWorldTransform().getBasis();
 
 	Vec
