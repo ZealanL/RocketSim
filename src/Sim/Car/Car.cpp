@@ -8,7 +8,7 @@ CarState Car::GetState() {
 
 	_internalState.pos = rbTransform.getOrigin() * BT_TO_UU;
 
-	rbTransform.getRotation().getEulerZYX(_internalState.angles.yaw, _internalState.angles.pitch, _internalState.angles.roll);
+	_internalState.angles = Angle(rbTransform.getBasis());
 
 	_internalState.vel = _rigidBody->getLinearVelocity() * BT_TO_UU;
 
@@ -49,7 +49,12 @@ void Car::_PreTickUpdate(float tickTime) {
 
 	_bulletVehicle->updateVehicle(tickTime);
 
-	Vec forwardDir = _bulletVehicle->getForwardVector();
+	btMatrix3x3 basis = _rigidBody->getWorldTransform().getBasis();
+
+	Vec
+		forwardDir = basis.getColumn(0),
+		rightDir = basis.getColumn(1),
+		upDir = basis.getColumn(2);
 
 	float forwardSpeed = _bulletVehicle->getForwardSpeed();
 	float absForwardSpeed = abs(forwardSpeed);
@@ -214,9 +219,9 @@ void Car::_PreTickUpdate(float tickTime) {
 
 		btMatrix3x3 basis = _rigidBody->getWorldTransform().getBasis();
 		btVector3
-			dirPitch_right = -basis.getColumn(1),
-			dirYaw_up = basis.getColumn(2),
-			dirRoll_forward = -basis.getColumn(0);
+			dirPitch_right = -rightDir,
+			dirYaw_up = upDir,
+			dirRoll_forward = -forwardDir;
 
 		bool doAirControl = false;
 		if (_internalState.hasFlipped && _internalState.flipTimer < FLIP_TORQUE_TIME) {
