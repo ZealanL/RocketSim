@@ -42,6 +42,11 @@ struct CarState {
 
 	// This is a state variable due to the rise/fall rate of handbrake inputs (see RLConst.h)
 	float handbrakeVal = 0;
+	
+	struct {
+		bool hasContact;
+		Vec contactNormal;
+	} worldContact;
 
 	// Controls from last tick, set to this->controls after simulation
 	CarControls lastControls = CarControls();
