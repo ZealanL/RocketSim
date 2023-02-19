@@ -1,5 +1,7 @@
 #include "BulletLink.h"
 
+#include "Framework.h"
+
 #define _USE_MATH_DEFINES
 #include <math.h>
 
@@ -11,10 +13,10 @@ Angle::Angle(btMatrix3x3 mat) {
 		right = mat.getColumn(1),
 		up = mat.getColumn(2);
 
-	pitch = asinf(forward.z());
+	pitch = asinf(RS_CLAMP(forward.z(), -1, 1));
 
 	float horizonMagnitude = (forward * Vec(1, 1, 0)).length();
-	yaw = asinf(forward.y() / horizonMagnitude);
+	yaw = asinf(RS_CLAMP(forward.y() / horizonMagnitude, -1, 1));
 	if (yaw >= 0) {
 		if (forward.x() < 0)
 			yaw = M_PI - yaw;
@@ -26,9 +28,9 @@ Angle::Angle(btMatrix3x3 mat) {
 	Vec vert = (up.z() < 0) ? Vec(0, 0, -1) : Vec(0, 0, 1);
 	Vec horizonRight = (forward.cross(vert) * -1).normalized();
 
-	roll = acosf(horizonRight.dot(right));
-
-	float upSin = asinf(up.z());
+	float horizonRightDot = horizonRight.dot(right);
+	roll = acosf(RS_CLAMP(horizonRightDot, -1, 1));
+	float upSin = asinf(RS_CLAMP(up.z(), -1, 1));
 
 	if (right.z() >= 0) {
 		if (up.z() >= 0) {
