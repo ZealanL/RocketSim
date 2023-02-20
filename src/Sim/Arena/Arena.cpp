@@ -78,12 +78,12 @@ void Arena::_BulletInternalTickCallback(btDynamicsWorld* world, btScalar step) {
 			bodyB = contactManifold->getBody1();
 
 		bool shouldSwap = false;
-		if (bodyA->getUserIndex() && bodyB->getUserIndex()) {
+		if ((bodyA->getUserIndex() != -1) && (bodyB->getUserIndex() != -1)) {
 			// If both bodies have a user index, the lower user index should be A
 			shouldSwap = bodyA->getUserIndex() > bodyB->getUserIndex();
 		} else {
 			// If only one body has a user index, make sure that body is A
-			shouldSwap = bodyB->getUserIndex();
+			shouldSwap = (bodyB->getUserIndex() != -1);
 		}
 		
 		if (shouldSwap)
