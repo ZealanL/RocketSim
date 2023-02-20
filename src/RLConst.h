@@ -29,6 +29,10 @@ namespace RLConst {
 	constexpr float BOOST_MIN_TIME = 0.1f; // Minimum time we can be boosting for
 	constexpr float BOOST_FORCE = 3816.f;
 
+	constexpr float
+		BOOST_FORCE_GROUND_DECAY_MIN_VEL = 600.f,
+		BOOST_FORCE_GROUND_DECAY_AMOUNT = 0.072f;
+
 	constexpr float CAR_MAX_ANG_SPEED = 5.5f; // Car can never exceed this angular velocity (radians/s)
 
 	// Speed needed to begin being supersonic
