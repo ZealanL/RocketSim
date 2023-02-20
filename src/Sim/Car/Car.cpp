@@ -242,7 +242,7 @@ void Car::_PreTickUpdate(float tickTime) {
 
 				relDodgeTorque.y() *= pitchScale;
 
-				btVector3 dodgeTorque = _rigidBody->getWorldTransform().getBasis() * (relDodgeTorque * btVector3(FLIP_TORQUE_X, FLIP_TORQUE_Y, 0));;
+				btVector3 dodgeTorque = _rigidBody->getWorldTransform().getBasis() * (relDodgeTorque * btVector3(FLIP_TORQUE_X, FLIP_TORQUE_Y, 0));
 				_rigidBody->setAngularVelocity(
 					_rigidBody->getAngularVelocity() + dodgeTorque * tickTime
 				);
@@ -254,16 +254,8 @@ void Car::_PreTickUpdate(float tickTime) {
 			doAirControl = true;
 		}
 
-		if (_internalState.isAutoFlipping) {
-			if (_internalState.autoFlipTimer <= 0) {
-				_internalState.isAutoFlipping = false;
-				_internalState.autoFlipTimer = 0;
-			} else {
-				_rigidBody->applyTorqueImpulse(forwardDir * CAR_AUTOFLIP_TORQUE * _internalState.autoFlipTorqueScale);
-
-				_internalState.autoFlipTimer -= tickTime;
-			}
-		} else if (doAirControl) {
+		doAirControl &= !_internalState.isAutoFlipping;
+		if (doAirControl) {
 			// Net torque to apply to the car
 			btVector3 torque;
 
@@ -300,9 +292,11 @@ void Car::_PreTickUpdate(float tickTime) {
 		}
 	}
 
-	// Throttle in air
-	if (controls.throttle != 0)
-		_rigidBody->applyCentralImpulse(forwardDir * controls.throttle * RLConst::THROTTLE_AIR_FORCE * tickTime);
+	if (!_internalState.isOnGround) {
+		// Throttle in air
+		if (controls.throttle != 0)
+			_rigidBody->applyCentralImpulse(forwardDir * controls.throttle * RLConst::THROTTLE_AIR_FORCE * tickTime);
+	}
 
 	// Apply boosting force and consume boost
 	if (_internalState.boost > 0 && _internalState.timeSpentBoosting > 0) {
@@ -310,8 +304,6 @@ void Car::_PreTickUpdate(float tickTime) {
 
 		_rigidBody->applyCentralImpulse(forwardDir * RLConst::BOOST_FORCE * tickTime);
 	}
-
-	_LimitVelocities();
 }
 
 void Car::_ApplyPhysicsRounding() {
@@ -498,14 +490,15 @@ void Car::_PostTickUpdate(float tickTime) {
 	}
 
 	{ // Update auto-flip jump
+
+		auto basis = _rigidBody->getWorldTransform().getBasis();
+
 		using namespace RLConst;
 		if (
 			jumpPressed &&
 			_internalState.worldContact.hasContact &&
 			_internalState.worldContact.contactNormal.z() > CAR_AUTOFLIP_NORMZ_THRESH
 			) {
-
-			auto basis = _rigidBody->getWorldTransform().getBasis();
 
 			Vec upDir = basis.getColumn(2);
 
@@ -515,6 +508,19 @@ void Car::_PostTickUpdate(float tickTime) {
 			_internalState.isAutoFlipping = true;
 
 			_rigidBody->applyCentralImpulse(-upDir * CAR_AUTOFLIP_IMPULSE * CAR_MASS_BT * UU_TO_BT);
+		}
+
+		if (_internalState.isAutoFlipping) {
+			if (_internalState.autoFlipTimer <= 0) {
+				_internalState.isAutoFlipping = false;
+				_internalState.autoFlipTimer = 0;
+			} else {
+				Vec forwardDir = basis.getColumn(0);
+
+				_rigidBody->applyTorqueImpulse(forwardDir * CAR_AUTOFLIP_TORQUE * _internalState.autoFlipTorqueScale);
+
+				_internalState.autoFlipTimer -= tickTime;
+			}
 		}
 	}
 
