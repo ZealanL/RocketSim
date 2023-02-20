@@ -42,7 +42,11 @@ struct CarState {
 
 	// This is a state variable due to the rise/fall rate of handbrake inputs (see RLConst.h)
 	float handbrakeVal = 0;
-	
+
+	bool isAutoFlipping = false;
+	float autoFlipTimer = 0; // Counts down when auto-flipping
+	float autoFlipTorqueScale = 0;
+
 	struct {
 		bool hasContact;
 		Vec contactNormal;
@@ -91,6 +95,7 @@ public:
 	void _PreTickUpdate(float tickTime);
 
 	void _ApplyPhysicsRounding();
+	void _LimitVelocities();
 
 	void _PostTickUpdate(float tickTime);
 
