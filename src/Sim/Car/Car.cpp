@@ -300,9 +300,14 @@ void Car::_PreTickUpdate(float tickTime) {
 
 	// Apply boosting force and consume boost
 	if (_internalState.boost > 0 && _internalState.timeSpentBoosting > 0) {
-		_internalState.boost = RS_MAX(_internalState.boost - RLConst::BOOST_USED_PER_SECOND * tickTime, 0);
+		using namespace RLConst;
+		_internalState.boost = RS_MAX(_internalState.boost - BOOST_USED_PER_SECOND * tickTime, 0);
 
-		_rigidBody->applyCentralImpulse(forwardDir * RLConst::BOOST_FORCE * tickTime);
+		float forceScale = 1;
+		if (_internalState.isOnGround && forwardSpeed > (BOOST_FORCE_GROUND_DECAY_MIN_VEL * UU_TO_BT))
+			forceScale = (1 - BOOST_FORCE_GROUND_DECAY_AMOUNT);
+
+		_rigidBody->applyCentralImpulse(forwardDir * BOOST_FORCE * forceScale * tickTime);
 	}
 }
 
