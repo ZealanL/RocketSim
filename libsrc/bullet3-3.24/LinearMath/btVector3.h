@@ -699,6 +699,11 @@ public:
 		return length2() < SIMD_EPSILON * SIMD_EPSILON;
 	}
 
+	SIMD_FORCE_INLINE bool isNan() const
+	{
+		return isnan(x() + y() + z());
+	}
+
 	SIMD_FORCE_INLINE void serialize(struct btVector3Data & dataOut) const;
 
 	SIMD_FORCE_INLINE void deSerialize(const struct btVector3DoubleData& dataIn);

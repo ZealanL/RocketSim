@@ -274,6 +274,7 @@ public:
 
 	void applyCentralForce(const btVector3& force)
 	{
+		btAssert(!force.isNan())
 		m_totalForce += force * m_linearFactor;
 	}
 
@@ -305,6 +306,7 @@ public:
 
 	void applyTorque(const btVector3& torque)
 	{
+		btAssert(!torque.isNan())
 		m_totalTorque += torque * m_angularFactor;
 		#if defined(BT_CLAMP_VELOCITY_TO) && BT_CLAMP_VELOCITY_TO > 0
 		clampVelocity(m_totalTorque);
@@ -319,6 +321,7 @@ public:
 
 	void applyCentralImpulse(const btVector3& impulse)
 	{
+		btAssert(!impulse.isNan());
 		m_linearVelocity += impulse * m_linearFactor * m_inverseMass;
 		#if defined(BT_CLAMP_VELOCITY_TO) && BT_CLAMP_VELOCITY_TO > 0
 		clampVelocity(m_linearVelocity);
@@ -327,6 +330,7 @@ public:
 
 	void applyTorqueImpulse(const btVector3& torque)
 	{
+		btAssert(!torque.isNan());
 		m_angularVelocity += m_invInertiaTensorWorld * torque * m_angularFactor;
 		#if defined(BT_CLAMP_VELOCITY_TO) && BT_CLAMP_VELOCITY_TO > 0
 		clampVelocity(m_angularVelocity);
@@ -399,6 +403,7 @@ public:
     
     void applyCentralPushImpulse(const btVector3& impulse)
     {
+		btAssert(!impulse.isNan());
         m_pushVelocity += impulse * m_linearFactor * m_inverseMass;
         #if defined(BT_CLAMP_VELOCITY_TO) && BT_CLAMP_VELOCITY_TO > 0
         clampVelocity(m_pushVelocity);
@@ -407,6 +412,7 @@ public:
     
     void applyTorqueTurnImpulse(const btVector3& torque)
     {
+		btAssert(!torque.isNan());
         m_turnVelocity += m_invInertiaTensorWorld * torque * m_angularFactor;
         #if defined(BT_CLAMP_VELOCITY_TO) && BT_CLAMP_VELOCITY_TO > 0
         clampVelocity(m_turnVelocity);
@@ -442,6 +448,7 @@ public:
 
 	inline void setLinearVelocity(const btVector3& lin_vel)
 	{
+		btAssert(!lin_vel.isNan());
 		m_updateRevision++;
 		m_linearVelocity = lin_vel;
 		#if defined(BT_CLAMP_VELOCITY_TO) && BT_CLAMP_VELOCITY_TO > 0
@@ -451,6 +458,7 @@ public:
 
 	inline void setAngularVelocity(const btVector3& ang_vel)
 	{
+		btAssert(!ang_vel.isNan());
 		m_updateRevision++;
 		m_angularVelocity = ang_vel;
 		#if defined(BT_CLAMP_VELOCITY_TO) && BT_CLAMP_VELOCITY_TO > 0
