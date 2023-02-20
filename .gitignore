@@ -25,11 +25,12 @@ out/
 *.exe
 *.pdb
 *.ilk
+*.tmp
 
 # Visual Studio (not using anything VS-related)
 .vs/
 *.vcxproj
 *.sln
+*.filters
+*.user
 
-# Extra
-*.tmp
