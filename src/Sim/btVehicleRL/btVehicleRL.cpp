@@ -368,7 +368,7 @@ void btVehicleRL::applyFrictionImpulses(float timeStep) {
 	btVector3 upDir = m_chassisBody->getWorldTransform().getBasis().getColumn(m_indexUpAxis);
 	for (int i = 0; i < 4; i++) {
 		btWheelInfoRL& wheel = m_wheelInfo[i];
-		{
+		if (!wheel.m_impulse.isZero()) {
 			btVector3 wheelContactOffset = wheel.m_raycastInfo.m_contactPointWS - m_chassisBody->getWorldTransform().getOrigin();
 			float contactUpDot = upDir.dot(wheelContactOffset);
 			btVector3 wheelRelPos = wheelContactOffset - upDir * contactUpDot;
