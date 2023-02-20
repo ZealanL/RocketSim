@@ -267,8 +267,8 @@ void Arena::Step(int ticksToSimulate) {
 		_bulletWorld->stepSimulation(tickTime, 0, tickTime);
 
 		for (Car* car : _cars) {
-			car->_ApplyPhysicsRounding();
 			car->_PostTickUpdate(tickTime);
+			car->_ApplyPhysicsRounding();
 		}
 
 		for (BoostPad* pad : _boostPads)
