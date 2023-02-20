@@ -45,7 +45,7 @@ void Car::_PreTickUpdate(float tickTime) {
 	assert(_bulletVehicle->getNumWheels() == 4);
 
 	// Prevent the car's RB from becoming inactive
-	_rigidBody->setActivationState(ACTIVE_TAG);
+	_rigidBody->m_activationState1 = ACTIVE_TAG;
 
 	_bulletVehicle->updateVehicle(tickTime);
 
@@ -254,7 +254,16 @@ void Car::_PreTickUpdate(float tickTime) {
 			doAirControl = true;
 		}
 
-		if (doAirControl) {
+		if (_internalState.isAutoFlipping) {
+			if (_internalState.autoFlipTimer <= 0) {
+				_internalState.isAutoFlipping = false;
+				_internalState.autoFlipTimer = 0;
+			} else {
+				_rigidBody->applyTorqueImpulse(forwardDir * CAR_AUTOFLIP_TORQUE * _internalState.autoFlipTorqueScale);
+
+				_internalState.autoFlipTimer -= tickTime;
+			}
+		} else if (doAirControl) {
 			// Net torque to apply to the car
 			btVector3 torque;
 
@@ -289,11 +298,11 @@ void Car::_PreTickUpdate(float tickTime) {
 				_rigidBody->getAngularVelocity() + (torque - damping) * CAR_TORQUE_SCALE * tickTime
 			);
 		}
-
-		// Throttle in air
-		if (controls.throttle != 0)
-			_rigidBody->applyCentralImpulse(forwardDir * controls.throttle * RLConst::THROTTLE_AIR_FORCE * tickTime);
 	}
+
+	// Throttle in air
+	if (controls.throttle != 0)
+		_rigidBody->applyCentralImpulse(forwardDir * controls.throttle * RLConst::THROTTLE_AIR_FORCE * tickTime);
 
 	// Apply boosting force and consume boost
 	if (_internalState.boost > 0 && _internalState.timeSpentBoosting > 0) {
@@ -301,19 +310,37 @@ void Car::_PreTickUpdate(float tickTime) {
 
 		_rigidBody->applyCentralImpulse(forwardDir * RLConst::BOOST_FORCE * tickTime);
 	}
+
+	_LimitVelocities();
 }
 
 void Car::_ApplyPhysicsRounding() {
+	
 	_internalState = GetState();
 
 	_internalState.pos = Math::RoundVec(_internalState.pos, 0.01);
 	_internalState.vel = Math::RoundVec(_internalState.vel, 0.01);
 	_internalState.angVel = Math::RoundVec(_internalState.angVel, 0.00001);
-	
+
 	SetState(_internalState);
 }
 
+void Car::_LimitVelocities() {
+	using namespace RLConst;
+	btVector3
+		vel = _rigidBody->getLinearVelocity(),
+		angVel = _rigidBody->getAngularVelocity();
+
+	if (vel.length2() > (CAR_MAX_SPEED * UU_TO_BT) * (CAR_MAX_SPEED * UU_TO_BT))
+		vel = vel.normalize() * (CAR_MAX_SPEED * UU_TO_BT);
+	_rigidBody->setLinearVelocity(vel);
+
+	angVel = angVel / RS_MAX(1, angVel.length() / CAR_MAX_ANG_SPEED);
+	_rigidBody->setAngularVelocity(angVel);
+}
+
 void Car::_PostTickUpdate(float tickTime) {
+
 	{ // Update isOnGround
 		int wheelsWithContact = 0;
 		for (int i = 0; i < 4; i++)
@@ -338,7 +365,7 @@ void Car::_PostTickUpdate(float tickTime) {
 
 		if (_internalState.isJumping) {
 			if (_internalState.jumpTimer < JUMP_MIN_TIME || controls.jump && _internalState.jumpTimer < JUMP_MAX_TIME) {
-					// Continue jump
+				// Continue jump
 				_internalState.isJumping = true;
 			} else {
 				// We can't keep jumping any longer
@@ -379,7 +406,7 @@ void Car::_PostTickUpdate(float tickTime) {
 			} else {
 				_internalState.airTimeSinceJump = 0;
 			}
-			
+
 			if (jumpPressed && _internalState.airTimeSinceJump < DOUBLEJUMP_MAX_DELAY) {
 				if (!_internalState.hasDoubleJumped && !_internalState.hasFlipped) {
 					bool shouldFlip = RS_MAX(RS_MAX(abs(controls.yaw), abs(controls.pitch)), abs(controls.roll)) >= config.dodgeDeadzone;
@@ -420,11 +447,11 @@ void Car::_PostTickUpdate(float tickTime) {
 
 								btVector3 initalDodgeVel = dodgeDir * FLIP_INITIAL_VEL_SCALE;
 
-								float maxSpeedScaleX = 
+								float maxSpeedScaleX =
 									shouldDodgeBackwards ? FLIP_BACKWARD_IMPULSE_MAX_SPEED_SCALE : FLIP_FORWARD_IMPULSE_MAX_SPEED_SCALE;
-								
+
 								initalDodgeVel.x() *= ((maxSpeedScaleX - 1) * forwardSpeedRatio) + 1.f;
-								initalDodgeVel.y() *= ((FLIP_SIDE_IMPULSE_MAX_SPEED_SCALE-1) * forwardSpeedRatio) + 1.f;
+								initalDodgeVel.y() *= ((FLIP_SIDE_IMPULSE_MAX_SPEED_SCALE - 1) * forwardSpeedRatio) + 1.f;
 
 								if (shouldDodgeBackwards)
 									initalDodgeVel.x() *= FLIP_BACKWARD_IMPULSE_SCALE_X;
@@ -466,9 +493,28 @@ void Car::_PostTickUpdate(float tickTime) {
 					vel.z() *= powf(1 - FLIP_Z_DAMP_120, tickTime / (1 / 120.f));
 					_rigidBody->setLinearVelocity(vel);
 				}
-				
 			}
-			
+		}
+	}
+
+	{ // Update auto-flip jump
+		using namespace RLConst;
+		if (
+			jumpPressed &&
+			_internalState.worldContact.hasContact &&
+			_internalState.worldContact.contactNormal.z() > CAR_AUTOFLIP_NORMZ_THRESH
+			) {
+
+			auto basis = _rigidBody->getWorldTransform().getBasis();
+
+			Vec upDir = basis.getColumn(2);
+
+			Angle angles = Angle(basis);
+			_internalState.autoFlipTimer = CAR_AUTOFLIP_TIME * (abs(angles.roll) / M_PI);
+			_internalState.autoFlipTorqueScale = (angles.roll < 0) ? 1 : -1;
+			_internalState.isAutoFlipping = true;
+
+			_rigidBody->applyCentralImpulse(-upDir * CAR_AUTOFLIP_IMPULSE * CAR_MASS_BT * UU_TO_BT);
 		}
 	}
 
@@ -476,10 +522,10 @@ void Car::_PostTickUpdate(float tickTime) {
 		float speedSquared = (_rigidBody->getLinearVelocity() * BT_TO_UU).length2();
 
 		if (_internalState.isSupersonic && _internalState.supersonicTime < RLConst::SUPERSONIC_MAINTAIN_MAX_TIME) {
-			_internalState.isSupersonic = 
+			_internalState.isSupersonic =
 				(speedSquared >= RLConst::SUPERSONIC_MAINTAIN_MIN_SPEED * RLConst::SUPERSONIC_MAINTAIN_MIN_SPEED);
 		} else {
-			_internalState.isSupersonic = 
+			_internalState.isSupersonic =
 				(speedSquared >= RLConst::SUPERSONIC_START_SPEED * RLConst::SUPERSONIC_START_SPEED);
 		}
 
@@ -490,21 +536,8 @@ void Car::_PostTickUpdate(float tickTime) {
 		}
 	}
 
+	_LimitVelocities();
 	_internalState.lastControls = controls;
-
-	{ // Limit velocities
-		using namespace RLConst;
-		btVector3 
-			vel = _rigidBody->getLinearVelocity(), 
-			angVel = _rigidBody->getAngularVelocity();
-
-		if (vel.length2() > (CAR_MAX_SPEED * UU_TO_BT) * (CAR_MAX_SPEED * UU_TO_BT))
-			vel = vel.normalize() * (CAR_MAX_SPEED * UU_TO_BT);
-		_rigidBody->setLinearVelocity(vel);
-
-		angVel = angVel / RS_MAX(1, angVel.length() / CAR_MAX_ANG_SPEED);
-		_rigidBody->setAngularVelocity(angVel);
-	}
 }
 
 Car* Car::_AllocateCar() {
@@ -535,6 +568,8 @@ void Car::_BulletSetup(btDynamicsWorld* bulletWorld) {
 		_rigidBody->setUserIndex(BT_USERINFO_TYPE_CAR);
 		_rigidBody->setUserPointer(this);
 
+		_rigidBody->m_collisionFlags |= btCollisionObject::CF_CUSTOM_MATERIAL_CALLBACK;
+
 		_rigidBody->m_friction = RLConst::CAR_COLLISION_FRICTION;
 		_rigidBody->m_restitution = RLConst::CAR_COLLISION_RESTITUTION;
 
@@ -564,13 +599,13 @@ void Car::_BulletSetup(btDynamicsWorld* bulletWorld) {
 				bool left = i % 2;
 
 				float radius = front ? config.frontWheels.wheelRadius : config.backWheels.wheelRadius;
-				btVector3 wheelRayStartOffset = 
+				btVector3 wheelRayStartOffset =
 					front ? config.frontWheels.connectionPointOffset : config.backWheels.connectionPointOffset;
 
 				if (left)
 					wheelRayStartOffset.y() *= -1;
 
-				float suspensionRestLength = 
+				float suspensionRestLength =
 					front ? config.frontWheels.suspensionRestLength : config.backWheels.suspensionRestLength;
 
 				suspensionRestLength -= RLConst::BTVehicle::MAX_SUSPENSION_TRAVEL;
