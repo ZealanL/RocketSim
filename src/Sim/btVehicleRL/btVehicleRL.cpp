@@ -377,15 +377,15 @@ void btVehicleRL::applyFrictionImpulses(float timeStep) {
 	}
 }
 
-Vec btVehicleRL::getDownwardsDirFromWheelContacts() {
+Vec btVehicleRL::getUpwardsDirFromWheelContacts() {
 	Vec sumContactDir = Vec(0, 0, 0);
 	for (int i = 0; i < 4; i++)
 		if (m_wheelInfo[i].m_isInContactWithWorld)
 			sumContactDir += m_wheelInfo[i].m_raycastInfo.m_contactNormalWS;
 
 	if (sumContactDir == Vec(0, 0, 0)) {
-		// No wheels had world contact, just return downwards direction
-		return -this->getUpVector();
+		// No wheels had world contact, just return basic upward direction
+		return this->getUpVector();
 	} else {
 		// Average normal of contact
 		return sumContactDir.normalized();

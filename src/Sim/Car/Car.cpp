@@ -206,15 +206,15 @@ void Car::_PreTickUpdate(float tickTime) {
 	}
 
 	if (numWheelsInContact >= 3) { // Grounded, apply sticky forces
-		Vec downwardsDir = _bulletVehicle->getDownwardsDirFromWheelContacts();
+		Vec upwardsDir = _bulletVehicle->getUpwardsDirFromWheelContacts();
 
 		bool fullStick = (realThrottle != 0) || (absForwardSpeed > 25);
 
 		float stickyForceScale = 0.5f;
 		if (fullStick)
-			stickyForceScale += 1 - abs(downwardsDir.z());
+			stickyForceScale += 1 - abs(upwardsDir.z());
 
-		_rigidBody->applyCentralForce(downwardsDir * stickyForceScale * (-RLConst::GRAVITY_Z * UU_TO_BT) * RLConst::CAR_MASS_BT);
+		_rigidBody->applyCentralForce(upwardsDir* stickyForceScale * (-RLConst::GRAVITY_Z * UU_TO_BT) * RLConst::CAR_MASS_BT);
 
 	} else { // Not grounded, apply air control
 		using namespace RLConst;
@@ -338,12 +338,12 @@ void Car::_LimitVelocities() {
 
 void Car::_PostTickUpdate(float tickTime) {
 
-	{ // Update isOnGround
-		int wheelsWithContact = 0;
-		for (int i = 0; i < 4; i++)
-			wheelsWithContact += _bulletVehicle->m_wheelInfo[i].m_raycastInfo.m_isInContact;
+	int numWheelsInContact = 0;
+	for (int i = 0; i < 4; i++)
+		numWheelsInContact += _bulletVehicle->m_wheelInfo[i].m_raycastInfo.m_isInContact;
 
-		_internalState.isOnGround = wheelsWithContact >= 3;
+	{ // Update isOnGround
+		_internalState.isOnGround = numWheelsInContact >= 3;
 	}
 
 	bool jumpPressed = controls.jump && !_internalState.lastControls.jump;
@@ -527,6 +527,44 @@ void Car::_PostTickUpdate(float tickTime) {
 				_internalState.autoFlipTimer -= tickTime;
 			}
 		}
+	}
+
+	// Update auto-roll
+	if (controls.throttle && ((numWheelsInContact > 0 && numWheelsInContact < 4) || _internalState.worldContact.hasContact)) {
+		
+		auto basis = _rigidBody->getWorldTransform().getBasis();
+
+		Vec
+			forwardDir = basis.getColumn(0),
+			rightDir = basis.getColumn(1),
+			upDir = basis.getColumn(2);
+		
+		Vec groundUpDir;
+		if (numWheelsInContact > 0) {
+			groundUpDir = _bulletVehicle->getUpwardsDirFromWheelContacts();
+		} else {
+			groundUpDir = _internalState.worldContact.contactNormal;
+		}
+
+		Vec groundDownDir = -groundUpDir;
+
+		Vec
+			crossRightDir = groundUpDir.cross(forwardDir),
+			crossForwardDir = groundDownDir.cross(crossRightDir);
+
+		float
+			rightTorqueFactor = 1 - RS_CLAMP(rightDir.dot(crossRightDir), 0, 1),
+			forwardTorqueFactor = 1 - RS_CLAMP(forwardDir.dot(crossForwardDir), 0, 1);
+
+		Vec
+			torqueDirRight = forwardDir * (rightDir.dot(groundUpDir) >= 0 ? -1 : 1),
+			torqueDirForward = rightDir * (forwardDir.dot(groundUpDir) >= 0 ? -1 : 1);
+
+		Vec torqueRight = torqueDirRight * rightTorqueFactor;
+		Vec torqueForward = torqueDirForward * forwardTorqueFactor;
+
+		_rigidBody->m_linearVelocity += groundDownDir * RLConst::CAR_AUTOROLL_FORCE * UU_TO_BT * tickTime;
+		_rigidBody->m_angularVelocity += (torqueForward + torqueRight) * RLConst::CAR_AUTOROLL_TORQUE * tickTime;
 	}
 
 	{ // Update supersonic
