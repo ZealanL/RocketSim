@@ -198,6 +198,6 @@ public:
 	virtual void debugDraw(btIDebugDraw* debugDrawer) {}
 
     // Extra utility funcs
-	Vec getDownwardsDirFromWheelContacts();
+	Vec getUpwardsDirFromWheelContacts();
 	float getForwardSpeed();
 };
