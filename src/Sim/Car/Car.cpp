@@ -214,7 +214,7 @@ void Car::_PreTickUpdate(float tickTime) {
 		if (fullStick)
 			stickyForceScale += 1 - abs(upwardsDir.z());
 
-		_rigidBody->applyCentralForce(upwardsDir* stickyForceScale * (-RLConst::GRAVITY_Z * UU_TO_BT) * RLConst::CAR_MASS_BT);
+		_rigidBody->applyCentralForce(upwardsDir * stickyForceScale * (RLConst::GRAVITY_Z * UU_TO_BT) * RLConst::CAR_MASS_BT);
 
 	} else { // Not grounded, apply air control
 		using namespace RLConst;
