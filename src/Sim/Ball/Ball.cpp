@@ -17,6 +17,8 @@ void Ball::SetState(const BallState& state) {
 	_rigidBody->setWorldTransform(newTransform);
 	_rigidBody->setLinearVelocity(state.vel * UU_TO_BT);
 	_rigidBody->setAngularVelocity(state.angVel);
+
+	_velocityImpulseCache = { 0,0,0 };
 }
 
 Ball* Ball::_AllocBall() {
