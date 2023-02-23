@@ -16,6 +16,9 @@ namespace RLConst {
 	constexpr float CARBALL_COLLISION_FRICTION = 2.0f;
 	constexpr float CARBALL_COLLISION_RESTITUTION = 0.0f;
 
+	constexpr float CARWORLD_COLLISION_FRICTION = 0.3f;
+	constexpr float CARWORLD_COLLISION_RESTITUTION = 0.3f;
+
 	constexpr float BALL_MAX_ANG_SPEED = 6.f; // Ball can never exceed this angular velocity (radians/s)
 	constexpr float BALL_DRAG = 0.03f; // Net-velocity drag multiplier
 	constexpr float BALL_FRICTION = 0.35f;
