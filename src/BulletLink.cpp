@@ -11,7 +11,7 @@ Angle::Angle(btMatrix3x3 mat) {
 	roll *= -1;
 }
 
-btMatrix3x3 Angle::ToMatrix() {
+btMatrix3x3 Angle::ToMatrix() const {
 	btMatrix3x3 mat;
 	mat.setEulerYPR(yaw, -pitch, -roll);
 	return mat;

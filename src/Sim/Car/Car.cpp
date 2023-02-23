@@ -23,9 +23,7 @@ void Car::SetState(const CarState& state) {
 
 	rbTransform.setOrigin(state.pos * UU_TO_BT);
 
-	btQuaternion quat;
-	quat.setEulerZYX(state.angles.yaw, state.angles.pitch, state.angles.roll);
-	rbTransform.setRotation(quat);
+	rbTransform.setBasis(state.angles.ToMatrix());
 
 	_rigidBody->setWorldTransform(rbTransform);
 
@@ -312,14 +310,14 @@ void Car::_PreTickUpdate(float tickTime) {
 }
 
 void Car::_ApplyPhysicsRounding() {
-	
-	_internalState = GetState();
+	_rigidBody->m_worldTransform.m_origin = 
+		Math::RoundVec(_rigidBody->m_worldTransform.m_origin, 0.01 * UU_TO_BT);
 
-	_internalState.pos = Math::RoundVec(_internalState.pos, 0.01);
-	_internalState.vel = Math::RoundVec(_internalState.vel, 0.01);
-	_internalState.angVel = Math::RoundVec(_internalState.angVel, 0.00001);
+	_rigidBody->m_linearVelocity = 
+		Math::RoundVec(_rigidBody->m_linearVelocity, 0.01 * UU_TO_BT);
 
-	SetState(_internalState);
+	_rigidBody->m_angularVelocity = 
+		Math::RoundVec(_rigidBody->m_angularVelocity, 0.00001);
 }
 
 void Car::_LimitVelocities() {
@@ -337,7 +335,6 @@ void Car::_LimitVelocities() {
 }
 
 void Car::_PostTickUpdate(float tickTime) {
-
 	int numWheelsInContact = 0;
 	for (int i = 0; i < 4; i++)
 		numWheelsInContact += _bulletVehicle->m_wheelInfo[i].m_raycastInfo.m_isInContact;

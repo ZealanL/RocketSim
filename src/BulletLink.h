@@ -25,7 +25,7 @@ struct Angle {
 	Angle(float yaw = 0, float pitch = 0, float roll = 0) : yaw(yaw), pitch(pitch), roll(roll) {}
 
 	Angle(btMatrix3x3 mat);
-	btMatrix3x3 ToMatrix();
+	btMatrix3x3 ToMatrix() const;
 };
 
 // For printing btVector3
