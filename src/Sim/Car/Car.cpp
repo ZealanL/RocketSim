@@ -506,7 +506,7 @@ void Car::_PostTickUpdate(float tickTime) {
 
 			Angle angles = Angle(basis);
 			_internalState.autoFlipTimer = CAR_AUTOFLIP_TIME * (abs(angles.roll) / M_PI);
-			_internalState.autoFlipTorqueScale = (angles.roll < 0) ? 1 : -1;
+			_internalState.autoFlipTorqueScale = (angles.roll > 0) ? 1 : -1;
 			_internalState.isAutoFlipping = true;
 
 			_rigidBody->applyCentralImpulse(-upDir * CAR_AUTOFLIP_IMPULSE * CAR_MASS_BT * UU_TO_BT);
