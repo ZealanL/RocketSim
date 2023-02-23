@@ -28,12 +28,12 @@ subject to the following restrictions:
 ATTRIBUTE_ALIGNED16(class)
 btTransform
 {
+public:
 	///Storage for the rotation
 	btMatrix3x3 m_basis;
 	///Storage for the translation
 	btVector3 m_origin;
 
-public:
 	BT_DECLARE_ALIGNED_ALLOCATOR();
 	/**@brief No initialization constructor */
 	btTransform() {}
