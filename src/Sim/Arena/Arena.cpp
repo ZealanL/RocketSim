@@ -138,6 +138,10 @@ void Arena::_BtCallback_OnCarBoostPadCollision(Car* car, BoostPad* pad, btManifo
 void Arena::_BtCallback_OnCarWorldCollision(Car* car, btCollisionObject* world, btManifoldPoint& manifoldPoint) {
 	car->_internalState.worldContact.hasContact = true;
 	car->_internalState.worldContact.contactNormal = manifoldPoint.m_normalWorldOnB;
+
+	// Manually override manifold friction/restitution
+	manifoldPoint.m_combinedFriction = RLConst::CARWORLD_COLLISION_FRICTION;
+	manifoldPoint.m_combinedRestitution = RLConst::CARWORLD_COLLISION_RESTITUTION;
 }
 
 Arena::Arena(GameMode gameMode, float tickRate) {
