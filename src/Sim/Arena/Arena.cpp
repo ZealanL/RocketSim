@@ -39,95 +39,72 @@ void Arena::RegisterGoalScoreCallback(GoalScoreEventFn callbackFunc) {
 	_goalScoreCallbacks.push_back(callbackFunc);
 }
 
-bool Arena::_BulletContactAddedCallback(btManifoldPoint& cp, const btCollisionObjectWrapper* objA, int partIdA, int indexA, const btCollisionObjectWrapper* objB, int partIdB, int indexB) {
+bool Arena::_BulletContactAddedCallback(
+	btManifoldPoint& contactPoint, 
+	const btCollisionObjectWrapper* objA, int partIdA, int indexA, 
+	const btCollisionObjectWrapper* objB, int partIdB, int indexB) {
 	
-	bool 
-		isBallObjA = objA->m_collisionObject->m_userIndex == BT_USERINFO_TYPE_BALL,
-		isBallObjB = objB->m_collisionObject->m_userIndex == BT_USERINFO_TYPE_BALL;
+	auto
+		bodyA = objA->m_collisionObject,
+		bodyB = objB->m_collisionObject;
 	
-	if (isBallObjA || isBallObjB) {
-		auto ballRB = (btRigidBody*)(isBallObjA ? objA->m_collisionObject : objB->m_collisionObject);
-		auto otherCollider = isBallObjA ? objB->m_collisionObject : objA->m_collisionObject;
-
-		if (otherCollider->m_userIndex == BT_USERINFO_TYPE_CAR) {
-			// This is a car-ball collision
-			// Override the friction and restitution accordingly
-			cp.m_combinedFriction = RLConst::CARBALL_COLLISION_FRICTION;
-			cp.m_combinedRestitution = RLConst::CARBALL_COLLISION_RESTITUTION;
-		}
+	bool shouldSwap = false;
+	if ((bodyA->getUserIndex() != -1) && (bodyB->getUserIndex() != -1)) {
+		// If both bodies have a user index, the lower user index should be A
+		shouldSwap = bodyA->getUserIndex() > bodyB->getUserIndex();
+	} else {
+		// If only one body has a user index, make sure that body is A
+		shouldSwap = (bodyB->getUserIndex() != -1);
 	}
 
-	return true;
-}
+	if (shouldSwap)
+		std::swap(bodyA, bodyB);
 
-void Arena::_BulletInternalTickCallback(btDynamicsWorld* world, btScalar step) {
-	Arena* arenaInst = (Arena*)world->getWorldUserInfo();
-	if (!arenaInst)
-		return;
+	int
+		userIndexA = bodyA->getUserIndex(),
+		userIndexB = bodyB->getUserIndex();
 
-	auto dispatcher = world->getDispatcher();
-	int numManifolds = dispatcher->getNumManifolds();
-	for (int i = 0; i < numManifolds; i++) {
-		auto contactManifold = dispatcher->getManifoldByIndexInternal(i);
-		int numContacts = contactManifold->getNumContacts();
-		if (!numContacts)
-			continue;
+	bool carInvolved = (bodyA->getUserIndex() == BT_USERINFO_TYPE_CAR);
+	if (carInvolved) {
 
-		auto
-			bodyA = contactManifold->getBody0(),
-			bodyB = contactManifold->getBody1();
+		Car* car = (Car*)bodyA->getUserPointer();
+		Arena* arenaInst = (Arena*)car->_bulletVehicle->m_dynamicsWorld->getWorldUserInfo();
 
-		bool shouldSwap = false;
-		if ((bodyA->getUserIndex() != -1) && (bodyB->getUserIndex() != -1)) {
-			// If both bodies have a user index, the lower user index should be A
-			shouldSwap = bodyA->getUserIndex() > bodyB->getUserIndex();
+		if (userIndexB == BT_USERINFO_TYPE_BALL) {
+			// Car + Ball
+			arenaInst->
+				_BtCallback_OnCarBallCollision(car, (Ball*)bodyB->getUserPointer(), contactPoint);
+		} else if (userIndexB == BT_USERINFO_TYPE_CAR) {
+			// Car + Car
+			arenaInst->
+				_BtCallback_OnCarCarCollision(car, (Car*)bodyB->getUserPointer(), contactPoint);
+		} else if (userIndexB == BT_USERINFO_TYPE_BOOSTPAD) {
+			// Car + BoostPad hitbox
+			arenaInst->
+				_BtCallback_OnCarBoostPadCollision(car, (BoostPad*)bodyB->getUserPointer(), contactPoint);
 		} else {
-			// If only one body has a user index, make sure that body is A
-			shouldSwap = (bodyB->getUserIndex() != -1);
-		}
-		
-		if (shouldSwap)
-			std::swap(bodyA, bodyB);
-
-		int 
-			userIndexA = bodyA->getUserIndex(),
-			userIndexB = bodyB->getUserIndex();
-
-		bool carInvolved = (bodyA->getUserIndex() == BT_USERINFO_TYPE_CAR);
-
-		// TODO: Does RL support multiple contacts in a tick? Not sure.
-		// We'll just use the first one regardless.
-		btManifoldPoint& contactPoint = contactManifold->getContactPoint(0);
-
-		if (carInvolved) {
-
-			Car* car = (Car*)bodyA->getUserPointer();
-
-			if (userIndexB == BT_USERINFO_TYPE_BALL) {
-				// Car + Ball
-				arenaInst->
-					_BtCallback_OnCarBallCollision(car, (Ball*)bodyB->getUserPointer(), contactPoint);
-			} else if (userIndexB == BT_USERINFO_TYPE_CAR) {
-				// Car + Car
-				arenaInst->
-					_BtCallback_OnCarCarCollision(car, (Car*)bodyB->getUserPointer(), contactPoint);
-			} else if (userIndexB == BT_USERINFO_TYPE_BOOSTPAD) {
-				// Car + BoostPad hitbox
-				arenaInst->
-					_BtCallback_OnCarBoostPadCollision(car, (BoostPad*)bodyB->getUserPointer(), contactPoint);
-			} else {
-				// Car + World
-				arenaInst->
-					_BtCallback_OnCarWorldCollision(car, (btCollisionObject*)bodyB->getUserPointer(), contactPoint);
-			}
+			// Car + World
+			arenaInst->
+				_BtCallback_OnCarWorldCollision(car, (btCollisionObject*)bodyB->getUserPointer(), contactPoint);
 		}
 	}
+	return true;
 }
 
 void Arena::_BtCallback_OnCarBallCollision(Car* car, Ball* ball, btManifoldPoint& manifoldPoint) {
 	using namespace RLConst;
 
-	// Apply extra car-ball hit impulse
+	// Manually override manifold friction/restitution
+	manifoldPoint.m_combinedFriction = RLConst::CARBALL_COLLISION_FRICTION;
+	manifoldPoint.m_combinedRestitution = RLConst::CARBALL_COLLISION_RESTITUTION;
+
+	// Once we do an extra car-ball impulse, we need to wait at least 1 tick to do it again
+	if ((tickCount > car->_internalState.lastHitBallTick + 1) || (car->_internalState.lastHitBallTick > tickCount)) {
+		car->_internalState.lastHitBallTick = tickCount;
+	} else {
+		// Don't do multiple extra impulses in a row
+		return;
+	}
 
 	auto carState = car->GetState();
 	auto ballState = ball->GetState();
@@ -140,12 +117,13 @@ void Arena::_BtCallback_OnCarBallCollision(Car* car, Ball* ball, btManifoldPoint
 
 	if (relSpeed > 0) {
 		btVector3 hitDir = (relPos * btVector3(1, 1, BALL_CAR_EXTRA_IMPULSE_Z_SCALE)).normalized();
-
 		btVector3 forwardDirAdjustment = carForward * hitDir.dot(carForward) * (1 - BALL_CAR_EXTRA_IMPULSE_FORWARD_SCALE);
 		hitDir = (hitDir - forwardDirAdjustment).normalized();
 
 		btVector3 addedVel = (hitDir * relSpeed) * BALL_CAR_EXTRA_IMPULSE_FACTOR_CURVE.GetOutput(relSpeed);
-		ball->_rigidBody->m_linearVelocity += addedVel * UU_TO_BT;
+
+		// Velocity won't be actually added until the end of this tick
+		ball->_velocityImpulseCache += addedVel * UU_TO_BT;
 	}
 }
 
@@ -239,8 +217,6 @@ Arena::Arena(GameMode gameMode, float tickRate) {
 	_bulletWorld->setWorldUserInfo(this);
 	
 	gContactAddedCallback = &Arena::_BulletContactAddedCallback;
-
-	_bulletWorld->setInternalTickCallback(&Arena::_BulletInternalTickCallback);
 }
 
 void Arena::Step(int ticksToSimulate) {
@@ -273,6 +249,12 @@ void Arena::Step(int ticksToSimulate) {
 
 		for (BoostPad* pad : _boostPads)
 			pad->_PostTickUpdate(tickTime);
+
+		// Add ball velocity impulse cache
+		if (!ball->_velocityImpulseCache.isZero()) {
+			ball->_rigidBody->m_linearVelocity += ball->_velocityImpulseCache;
+			ball->_velocityImpulseCache = { 0,0,0 };
+		}
 
 		{ // Limit ball's linear/angular velocity
 			using namespace RLConst;

@@ -52,6 +52,10 @@ struct CarState {
 		Vec contactNormal;
 	} worldContact;
 
+	// Set to arena->tickCount when ball is hit
+	// Don't change this unless you know what you're doing
+	uint64_t lastHitBallTick = -1;
+
 	// Controls from last tick, set to this->controls after simulation
 	CarControls lastControls = CarControls();
 };

@@ -74,9 +74,6 @@ public:
 	// Static function called by Bullet internally when adding a collision point
 	static bool _BulletContactAddedCallback(btManifoldPoint& cp, const btCollisionObjectWrapper* colObj0Wrap, int partId0, int index0, const btCollisionObjectWrapper* colObj1Wrap, int partId1, int index1);
 
-	// Static function called by Bullet internally during a tick
-	static void _BulletInternalTickCallback(btDynamicsWorld* world, btScalar step);
-
 	void _BtCallback_OnCarBallCollision(Car* car, Ball* ball, btManifoldPoint& manifoldPoint);
 	void _BtCallback_OnCarCarCollision(Car* car1, Car* car2, btManifoldPoint& manifoldPoint);
 	void _BtCallback_OnCarWorldCollision(Car* car, btCollisionObject* worldObject, btManifoldPoint& manifoldPoint);

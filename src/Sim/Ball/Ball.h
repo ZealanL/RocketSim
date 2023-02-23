@@ -26,6 +26,9 @@ public:
 	btRigidBody* _rigidBody;
 	btSphereShape* _collisionShape;
 
+	// If non-zero, added to velocity at the end of an Arena step
+	Vec _velocityImpulseCache = { 0,0,0 };
+
 	// For construction by Arena
 	static Ball* _AllocBall();
 	void _BulletSetup(btDynamicsWorld* bulletWorld, float radius);
