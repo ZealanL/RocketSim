@@ -47,6 +47,8 @@ void BoostPad::_OnCollide(btCollisionObject* other) {
 	if (other->getUserIndex() == BT_USERINFO_TYPE_CAR) {
 
 		Car* otherCar = (Car*)other->getUserPointer();
+		if (otherCar->_internalState.boost >= 100)
+			return;
 
 		bool colliding;
 
