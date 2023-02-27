@@ -310,30 +310,40 @@ void Car::_PreTickUpdate(float tickTime) {
 		_rigidBody->applyCentralImpulse(forwardDir * BOOST_FORCE * forceScale * tickTime);
 	}
 }
-
-void Car::_ApplyPhysicsRounding() {
-	_rigidBody->m_worldTransform.m_origin = 
-		Math::RoundVec(_rigidBody->m_worldTransform.m_origin, 0.01 * UU_TO_BT);
-
-	_rigidBody->m_linearVelocity = 
-		Math::RoundVec(_rigidBody->m_linearVelocity, 0.01 * UU_TO_BT);
-
-	_rigidBody->m_angularVelocity = 
-		Math::RoundVec(_rigidBody->m_angularVelocity, 0.00001);
-}
-
-void Car::_LimitVelocities() {
+void Car::_FinishPhysicsTick() {
 	using namespace RLConst;
-	btVector3
-		vel = _rigidBody->getLinearVelocity(),
-		angVel = _rigidBody->getAngularVelocity();
 
-	if (vel.length2() > (CAR_MAX_SPEED * UU_TO_BT) * (CAR_MAX_SPEED * UU_TO_BT))
-		vel = vel.normalize() * (CAR_MAX_SPEED * UU_TO_BT);
-	_rigidBody->setLinearVelocity(vel);
+	// Add velocity cache
+	if (!_velocityImpulseCache.isZero()) {
+		_rigidBody->m_linearVelocity += _velocityImpulseCache;
+		_velocityImpulseCache = { 0,0,0 };
+	}
 
-	angVel = angVel / RS_MAX(1, angVel.length() / CAR_MAX_ANG_SPEED);
-	_rigidBody->setAngularVelocity(angVel);
+	{ // Limit velocities
+		btVector3
+			vel = _rigidBody->m_linearVelocity,
+			angVel = _rigidBody->m_angularVelocity;
+
+		if (vel.length2() > (CAR_MAX_SPEED * CAR_MAX_SPEED * UU_TO_BT))
+			vel = vel.normalized() * (CAR_MAX_SPEED * UU_TO_BT);
+
+		if (angVel.length2() > (CAR_MAX_ANG_SPEED * CAR_MAX_ANG_SPEED))
+			angVel = angVel.normalized() * CAR_MAX_ANG_SPEED;
+
+		_rigidBody->m_linearVelocity = vel;
+		_rigidBody->m_angularVelocity = angVel;
+	}
+
+	{ // Round physics values to match RL
+		_rigidBody->m_worldTransform.m_origin =
+			Math::RoundVec(_rigidBody->m_worldTransform.m_origin, 0.01 * UU_TO_BT);
+
+		_rigidBody->m_linearVelocity =
+			Math::RoundVec(_rigidBody->m_linearVelocity, 0.01 * UU_TO_BT);
+
+		_rigidBody->m_angularVelocity =
+			Math::RoundVec(_rigidBody->m_angularVelocity, 0.00001);
+	}
 }
 
 void Car::_PostTickUpdate(float tickTime) {

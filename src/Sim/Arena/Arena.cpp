@@ -272,7 +272,7 @@ void Arena::Step(int ticksToSimulate) {
 		_bulletWorld->setWorldUserInfo(this);
 
 		{ // Ball zero-vel sleeping
-			if (ball->_rigidBody->getLinearVelocity().length2() == 0 && ball->_rigidBody->getAngularVelocity().length2() == 0) {
+			if (ball->_rigidBody->m_linearVelocity.length2() == 0 && ball->_rigidBody->m_angularVelocity.length2() == 0) {
 				// hooooooonk mimimimimimimi hooooooonk mimimimimimimi
 				ball->_rigidBody->setActivationState(ISLAND_SLEEPING);
 			} else {
@@ -291,28 +291,13 @@ void Arena::Step(int ticksToSimulate) {
 
 		for (Car* car : _cars) {
 			car->_PostTickUpdate(tickTime);
-
-			// Add car velocity impulse cache
-			if (!car->_velocityImpulseCache.isZero()) {
-				car->_rigidBody->m_linearVelocity += car->_velocityImpulseCache;
-				car->_velocityImpulseCache = { 0,0,0 };
-			}
-
-			car->_ApplyPhysicsRounding();
-			car->_LimitVelocities();
+			car->_FinishPhysicsTick();
 		}
 
 		for (BoostPad* pad : _boostPads)
 			pad->_PostTickUpdate(tickTime);
 
-		// Add ball velocity impulse cache
-		if (!ball->_velocityImpulseCache.isZero()) {
-			ball->_rigidBody->m_linearVelocity += ball->_velocityImpulseCache;
-			ball->_velocityImpulseCache = { 0,0,0 };
-		}
-
-		ball->_ApplyPhysicsRounding();
-		ball->_LimitVelocities();
+		ball->_FinishPhysicsTick();
 
 		tickCount++;
 	}
