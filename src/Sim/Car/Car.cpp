@@ -30,6 +30,8 @@ void Car::SetState(const CarState& state) {
 	_rigidBody->setLinearVelocity(state.vel * UU_TO_BT);
 	_rigidBody->setAngularVelocity(state.angVel);
 
+	_velocityImpulseCache = { 0, 0, 0 };
+
 	_internalState = state;
 }
 
@@ -581,6 +583,10 @@ void Car::_PostTickUpdate(float tickTime) {
 			_internalState.supersonicTime = 0;
 		}
 	}
+
+	// Update car contact cooldown timer
+	if (_internalState.carContact.cooldownTimer > 0)
+		_internalState.carContact.cooldownTimer = RS_MAX(_internalState.carContact.cooldownTimer - tickTime, 0);
 
 	_internalState.lastControls = controls;
 }

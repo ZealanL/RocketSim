@@ -48,9 +48,14 @@ struct CarState {
 	float autoFlipTorqueScale = 0;
 
 	struct {
-		bool hasContact;
+		bool hasContact = false;
 		Vec contactNormal;
 	} worldContact;
+
+	struct {
+		class Car* otherCar = NULL;
+		float cooldownTimer = 0;
+	} carContact;
 
 	// Set to arena->tickCount when ball is hit
 	// Don't change this unless you know what you're doing
@@ -97,6 +102,8 @@ public:
 	~Car();
 
 	void _PreTickUpdate(float tickTime);
+
+	Vec _velocityImpulseCache;
 
 	void _ApplyPhysicsRounding();
 	void _LimitVelocities();

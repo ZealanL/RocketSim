@@ -19,6 +19,9 @@ namespace RLConst {
 	constexpr float CARWORLD_COLLISION_FRICTION = 0.3f;
 	constexpr float CARWORLD_COLLISION_RESTITUTION = 0.3f;
 
+	constexpr float CARCAR_COLLISION_FRICTION = 0.09f;
+	constexpr float CARCAR_COLLISION_RESTITUTION = 0.1f;
+
 	constexpr float BALL_MAX_ANG_SPEED = 6.f; // Ball can never exceed this angular velocity (radians/s)
 	constexpr float BALL_DRAG = 0.03f; // Net-velocity drag multiplier
 	constexpr float BALL_FRICTION = 0.35f;
@@ -123,7 +126,7 @@ namespace RLConst {
 		CAR_AUTOFLIP_IMPULSE = 200,
 		CAR_AUTOFLIP_TORQUE = 1000,
 		CAR_AUTOFLIP_TIME = 0.4f,
-		CAR_AUTOFLIP_NORMZ_THRESH = 0.7071f; // sqrt(0.5)
+		CAR_AUTOFLIP_NORMZ_THRESH = M_SQRT1_2;
 
 	constexpr float
 		CAR_AUTOROLL_FORCE = 100,
@@ -300,6 +303,33 @@ namespace RLConst {
 			{ 500.f, 0.65f},
 			{2300.f, 0.55f},
 			{4600.f, 0.30f}
+		}
+	};
+
+	constexpr float BUMP_COOLDOWN_TIME = 0.25f;
+	constexpr float BUMP_MIN_FORWARD_DIST = 64.5f;
+
+	const static LinearPieceCurve BUMP_VEL_AMOUNT_GROUND_CURVE = {
+		{
+			{0.f, (5.f / 6.f)},
+			{1400.f, 1100.f},
+			{2200.f, 1530.f},
+		}
+	};
+
+	const static LinearPieceCurve BUMP_VEL_AMOUNT_AIR_CURVE = {
+		{
+			{0.f, (5.f / 6.f)},
+			{1400.f, 1390.f},
+			{2200.f, 1945.f},
+		}
+	};
+
+	const static LinearPieceCurve BUMP_UPWARD_VEL_AMOUNT_CURVE = {
+		{
+			{0.f, (2.f / 6.f)},
+			{1400.f, 278.f},
+			{2200.f, 417.f},
 		}
 	};
 }
