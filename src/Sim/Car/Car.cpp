@@ -35,7 +35,27 @@ void Car::SetState(const CarState& state) {
 	_internalState = state;
 }
 
+void Car::Demolish() {
+	_internalState.isDemoed = true;
+	_internalState.demoRespawnTimer = RLConst::DEMO_RESPAWN_TIME;
+}
+
+void Car::Respawn() {
+	using namespace RLConst;
+
+	CarState newState = CarState();
+	
+	int spawnPosIndex = RS_RAND(0, CAR_RESPAWN_LOCATION_AMOUNT);
+	CarSpawnPos spawnPos = CAR_RESPAWN_LOCATIONS[spawnPosIndex];
+
+	newState.pos = Vec(spawnPos.x, spawnPos.y * (team == Team::BLUE ? 1 : -1), CAR_RESPAWN_Z);
+	newState.angles = Angle(spawnPos.yawAng, 0.f, 0.f);
+
+	this->SetState(newState);
+}
+
 void Car::_PreTickUpdate(float tickTime) {
+	using namespace RLConst;
 
 #ifndef RS_MAX_SPEED
 	// Fix inputs
@@ -44,8 +64,29 @@ void Car::_PreTickUpdate(float tickTime) {
 
 	assert(_bulletVehicle->getNumWheels() == 4);
 
-	// Prevent the car's RB from becoming inactive
-	_rigidBody->m_activationState1 = ACTIVE_TAG;
+	{
+		if (_internalState.isDemoed) {
+			_internalState.demoRespawnTimer = RS_MAX(_internalState.demoRespawnTimer - tickTime, 0);
+			if (_internalState.demoRespawnTimer == 0)
+				Respawn();
+		}
+		
+		if (_internalState.isDemoed) {
+			// Disable rigidbody simulation
+			_rigidBody->m_activationState1 = DISABLE_SIMULATION;
+			_rigidBody->m_collisionFlags |= btCollisionObject::CF_NO_CONTACT_RESPONSE;
+
+			// Put car far away from anything going on in the arena
+			_rigidBody->m_worldTransform.m_origin = Vec(0, 0, -1000);
+
+			// Don't bother updating anything
+			return;
+		} else {
+			// Prevent the car's RB from becoming inactive
+			_rigidBody->m_activationState1 = ACTIVE_TAG;
+			_rigidBody->m_collisionFlags &= ~btCollisionObject::CF_NO_CONTACT_RESPONSE;
+		}
+	}
 
 	_bulletVehicle->updateVehicle(tickTime);
 
@@ -69,20 +110,20 @@ void Car::_PreTickUpdate(float tickTime) {
 
 	{ // Increase/decrease handbrake value from input
 		if (controls.handbrake) {
-			_internalState.handbrakeVal += RLConst::POWERSLIDE_RISE_RATE * tickTime;
+			_internalState.handbrakeVal += POWERSLIDE_RISE_RATE * tickTime;
 		} else {
-			_internalState.handbrakeVal -= RLConst::POWERSLIDE_FALL_RATE * tickTime;
+			_internalState.handbrakeVal -= POWERSLIDE_FALL_RATE * tickTime;
 		}
 		_internalState.handbrakeVal = RS_CLAMP(_internalState.handbrakeVal, 0, 1);
 	}
 
 	{ // Update steering
 		float absForwardSpeedUU = absForwardSpeed * BT_TO_UU;
-		float steerAngle = RLConst::STEER_ANGLE_FROM_SPEED_CURVE.GetOutput(absForwardSpeedUU);
+		float steerAngle = STEER_ANGLE_FROM_SPEED_CURVE.GetOutput(absForwardSpeedUU);
 
 		if (_internalState.handbrakeVal) {
 			steerAngle +=
-				(RLConst::POWERSLIDE_STEER_ANGLE_FROM_SPEED_CURVE.GetOutput(absForwardSpeedUU) - steerAngle)
+				(POWERSLIDE_STEER_ANGLE_FROM_SPEED_CURVE.GetOutput(absForwardSpeedUU) - steerAngle)
 				* _internalState.handbrakeVal;
 		}
 
@@ -116,14 +157,14 @@ void Car::_PreTickUpdate(float tickTime) {
 				if (baseFriction > 5)
 					frictionCurveInput = baseFriction / (abs(crossVec.dot(longDir)) + baseFriction);
 
-				float latFriction = RLConst::LAT_FRICTION_CURVE.GetOutput(frictionCurveInput);
-				float longFriction = RLConst::LONG_FRICTION_CURVE.GetOutput(frictionCurveInput);
+				float latFriction = LAT_FRICTION_CURVE.GetOutput(frictionCurveInput);
+				float longFriction = LONG_FRICTION_CURVE.GetOutput(frictionCurveInput);
 
 				if (_internalState.handbrakeVal) {
 					float handbrakeAmount = _internalState.handbrakeVal;
 
-					latFriction *= (RLConst::HANDBRAKE_LAT_FRICTION_FACTOR_CURVE.GetOutput(latFriction) - 1) * handbrakeAmount + 1;
-					longFriction *= (RLConst::HANDBRAKE_LONG_FRICTION_FACTOR_CURVE.GetOutput(frictionCurveInput) - 1) * handbrakeAmount + 1;
+					latFriction *= (HANDBRAKE_LAT_FRICTION_FACTOR_CURVE.GetOutput(latFriction) - 1) * handbrakeAmount + 1;
+					longFriction *= (HANDBRAKE_LONG_FRICTION_FACTOR_CURVE.GetOutput(frictionCurveInput) - 1) * handbrakeAmount + 1;
 				} else {
 					longFriction = 1; // If we aren't powersliding, it's not scaled down
 				}
@@ -134,7 +175,7 @@ void Car::_PreTickUpdate(float tickTime) {
 					// Keep current friction values
 				} else {
 					// Scale friction down with non-sticky friction curve
-					float nonStickyScale = RLConst::NON_STICKY_FRICTION_FACTOR_CURVE.GetOutput(wheel.m_raycastInfo.m_contactNormalWS.z());
+					float nonStickyScale = NON_STICKY_FRICTION_FACTOR_CURVE.GetOutput(wheel.m_raycastInfo.m_contactNormalWS.z());
 					latFriction *= nonStickyScale;
 					longFriction *= nonStickyScale;
 				}
@@ -147,7 +188,7 @@ void Car::_PreTickUpdate(float tickTime) {
 
 	{ // Update boosting timer
 		if (_internalState.timeSpentBoosting > 0) {
-			if (!controls.boost && _internalState.timeSpentBoosting >= RLConst::BOOST_MIN_TIME) {
+			if (!controls.boost && _internalState.timeSpentBoosting >= BOOST_MIN_TIME) {
 				_internalState.timeSpentBoosting = 0;
 			} else {
 				_internalState.timeSpentBoosting += tickTime;
@@ -167,14 +208,14 @@ void Car::_PreTickUpdate(float tickTime) {
 		realThrottle = 1;
 
 	{ // Update throttle/brake forces
-		float driveSpeedScale = RLConst::DRIVE_SPEED_TORQUE_FACTOR_CURVE.GetOutput(absForwardSpeed * BT_TO_UU);
+		float driveSpeedScale = DRIVE_SPEED_TORQUE_FACTOR_CURVE.GetOutput(absForwardSpeed * BT_TO_UU);
 
 		if (controls.handbrake > 0) {
 			// Real throttle is unchanged from the input throttle when powersliding
 		} else {
 			float absThrottle = abs(realThrottle);
 
-			if (absThrottle >= RLConst::THROTTLE_DEADZONE) {
+			if (absThrottle >= THROTTLE_DEADZONE) {
 				if (absForwardSpeed > 0 && RS_SGN(realThrottle) != RS_SGN(forwardSpeed)) {
 					// Full brake is applied if we are trying to drive in the opposite direction
 					realBrake = 1;
@@ -189,16 +230,16 @@ void Car::_PreTickUpdate(float tickTime) {
 				realThrottle = 0;
 
 				// Apply coasting brake, we full-break when coasting very slowly
-				bool shouldFullStop = (absForwardSpeed < (RLConst::STOPPING_FORWARD_VEL* UU_TO_BT));
-				realBrake = shouldFullStop ? 1 : RLConst::COASTING_BRAKE_FACTOR;
+				bool shouldFullStop = (absForwardSpeed < (STOPPING_FORWARD_VEL* UU_TO_BT));
+				realBrake = shouldFullStop ? 1 : COASTING_BRAKE_FACTOR;
 			}
 		}
 
 		if (numWheelsInContact < 3)
 			driveSpeedScale /= 4;
 
-		float driveEngineForce = realThrottle * (RLConst::THROTTLE_TORQUE_AMOUNT * UU_TO_BT) * driveSpeedScale;
-		float driveBrakeForce = realBrake * (RLConst::BRAKE_TORQUE_AMOUNT * UU_TO_BT);
+		float driveEngineForce = realThrottle * (THROTTLE_TORQUE_AMOUNT * UU_TO_BT) * driveSpeedScale;
+		float driveBrakeForce = realBrake * (BRAKE_TORQUE_AMOUNT * UU_TO_BT);
 		for (int i = 0; i < 4; i++) {
 			_bulletVehicle->m_wheelInfo[i].m_engineForce = driveEngineForce;
 			_bulletVehicle->m_wheelInfo[i].m_brake = driveBrakeForce;
@@ -214,11 +255,9 @@ void Car::_PreTickUpdate(float tickTime) {
 		if (fullStick)
 			stickyForceScale += 1 - abs(upwardsDir.z());
 
-		_rigidBody->applyCentralForce(upwardsDir * stickyForceScale * (RLConst::GRAVITY_Z * UU_TO_BT) * RLConst::CAR_MASS_BT);
+		_rigidBody->applyCentralForce(upwardsDir * stickyForceScale * (GRAVITY_Z * UU_TO_BT) * CAR_MASS_BT);
 
 	} else { // Not grounded, apply air control
-		using namespace RLConst;
-
 		btMatrix3x3 basis = _rigidBody->getWorldTransform().getBasis();
 		btVector3
 			dirPitch_right = -rightDir,
@@ -295,12 +334,11 @@ void Car::_PreTickUpdate(float tickTime) {
 	if (!_internalState.isOnGround) {
 		// Throttle in air
 		if (controls.throttle != 0)
-			_rigidBody->applyCentralImpulse(forwardDir * controls.throttle * RLConst::THROTTLE_AIR_FORCE * tickTime);
+			_rigidBody->applyCentralImpulse(forwardDir * controls.throttle * THROTTLE_AIR_FORCE * tickTime);
 	}
 
 	// Apply boosting force and consume boost
 	if (_internalState.boost > 0 && _internalState.timeSpentBoosting > 0) {
-		using namespace RLConst;
 		_internalState.boost = RS_MAX(_internalState.boost - BOOST_USED_PER_SECOND * tickTime, 0);
 
 		float forceScale = 1;
@@ -310,43 +348,12 @@ void Car::_PreTickUpdate(float tickTime) {
 		_rigidBody->applyCentralImpulse(forwardDir * BOOST_FORCE * forceScale * tickTime);
 	}
 }
-void Car::_FinishPhysicsTick() {
-	using namespace RLConst;
-
-	// Add velocity cache
-	if (!_velocityImpulseCache.isZero()) {
-		_rigidBody->m_linearVelocity += _velocityImpulseCache;
-		_velocityImpulseCache = { 0,0,0 };
-	}
-
-	{ // Limit velocities
-		btVector3
-			vel = _rigidBody->m_linearVelocity,
-			angVel = _rigidBody->m_angularVelocity;
-
-		if (vel.length2() > (CAR_MAX_SPEED * CAR_MAX_SPEED * UU_TO_BT))
-			vel = vel.normalized() * (CAR_MAX_SPEED * UU_TO_BT);
-
-		if (angVel.length2() > (CAR_MAX_ANG_SPEED * CAR_MAX_ANG_SPEED))
-			angVel = angVel.normalized() * CAR_MAX_ANG_SPEED;
-
-		_rigidBody->m_linearVelocity = vel;
-		_rigidBody->m_angularVelocity = angVel;
-	}
-
-	{ // Round physics values to match RL
-		_rigidBody->m_worldTransform.m_origin =
-			Math::RoundVec(_rigidBody->m_worldTransform.m_origin, 0.01 * UU_TO_BT);
-
-		_rigidBody->m_linearVelocity =
-			Math::RoundVec(_rigidBody->m_linearVelocity, 0.01 * UU_TO_BT);
-
-		_rigidBody->m_angularVelocity =
-			Math::RoundVec(_rigidBody->m_angularVelocity, 0.00001);
-	}
-}
 
 void Car::_PostTickUpdate(float tickTime) {
+
+	if (_internalState.isDemoed)
+		return;
+
 	int numWheelsInContact = 0;
 	for (int i = 0; i < 4; i++)
 		numWheelsInContact += _bulletVehicle->m_wheelInfo[i].m_raycastInfo.m_isInContact;
@@ -599,6 +606,45 @@ void Car::_PostTickUpdate(float tickTime) {
 		_internalState.carContact.cooldownTimer = RS_MAX(_internalState.carContact.cooldownTimer - tickTime, 0);
 
 	_internalState.lastControls = controls;
+}
+
+void Car::_FinishPhysicsTick() {
+	using namespace RLConst;
+
+	if (_internalState.isDemoed)
+		return;
+
+	// Add velocity cache
+	if (!_velocityImpulseCache.isZero()) {
+		_rigidBody->m_linearVelocity += _velocityImpulseCache;
+		_velocityImpulseCache = { 0,0,0 };
+	}
+
+	{ // Limit velocities
+		btVector3
+			vel = _rigidBody->m_linearVelocity,
+			angVel = _rigidBody->m_angularVelocity;
+
+		if (vel.length2() > (CAR_MAX_SPEED * CAR_MAX_SPEED * UU_TO_BT))
+			vel = vel.normalized() * (CAR_MAX_SPEED * UU_TO_BT);
+
+		if (angVel.length2() > (CAR_MAX_ANG_SPEED * CAR_MAX_ANG_SPEED))
+			angVel = angVel.normalized() * CAR_MAX_ANG_SPEED;
+
+		_rigidBody->m_linearVelocity = vel;
+		_rigidBody->m_angularVelocity = angVel;
+	}
+
+	{ // Round physics values to match RL
+		_rigidBody->m_worldTransform.m_origin =
+			Math::RoundVec(_rigidBody->m_worldTransform.m_origin, 0.01 * UU_TO_BT);
+
+		_rigidBody->m_linearVelocity =
+			Math::RoundVec(_rigidBody->m_linearVelocity, 0.01 * UU_TO_BT);
+
+		_rigidBody->m_angularVelocity =
+			Math::RoundVec(_rigidBody->m_angularVelocity, 0.00001);
+	}
 }
 
 Car* Car::_AllocateCar() {
