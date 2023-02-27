@@ -33,6 +33,9 @@ public:
 	static Ball* _AllocBall();
 	void _BulletSetup(btDynamicsWorld* bulletWorld, float radius);
 
+	void _ApplyPhysicsRounding();
+	void _LimitVelocities();
+
 	RSAPI float GetRadius() {
 		if (!_collisionShape) {
 			return -1;

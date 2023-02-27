@@ -49,7 +49,37 @@ void Ball::_BulletSetup(btDynamicsWorld* bulletWorld, float radius) {
 	// Trigger the Arena::_BulletContactAddedCallback() when anything touches the ball
 	_rigidBody->m_collisionFlags |= btCollisionObject::CF_CUSTOM_MATERIAL_CALLBACK;
 
+	_rigidBody->m_rigidbodyFlags = 0;
+
 	bulletWorld->addRigidBody(_rigidBody);
+}
+
+void Ball::_ApplyPhysicsRounding() {
+	_rigidBody->m_worldTransform.m_origin =
+		Math::RoundVec(_rigidBody->m_worldTransform.m_origin, 0.01 * UU_TO_BT);
+
+	_rigidBody->m_linearVelocity =
+		Math::RoundVec(_rigidBody->m_linearVelocity, 0.01 * UU_TO_BT);
+
+	_rigidBody->m_angularVelocity =
+		Math::RoundVec(_rigidBody->m_angularVelocity, 0.00001);
+}
+
+void Ball::_LimitVelocities() {
+	using namespace RLConst;
+
+	btVector3 
+		vel = _rigidBody->m_linearVelocity,
+		angVel = _rigidBody->m_angularVelocity;
+
+	if (vel.length2() > (BALL_MAX_SPEED * BALL_MAX_SPEED * UU_TO_BT))
+		vel = vel.normalized() * (BALL_MAX_SPEED * UU_TO_BT);
+
+	if (angVel.length2() > (BALL_MAX_ANG_SPEED * BALL_MAX_ANG_SPEED))
+		angVel = angVel.normalized() * BALL_MAX_ANG_SPEED;
+
+	_rigidBody->m_linearVelocity = vel;
+	_rigidBody->m_angularVelocity = angVel;
 }
 
 Ball::~Ball() {

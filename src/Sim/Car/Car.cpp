@@ -582,7 +582,6 @@ void Car::_PostTickUpdate(float tickTime) {
 		}
 	}
 
-	_LimitVelocities();
 	_internalState.lastControls = controls;
 }
 
