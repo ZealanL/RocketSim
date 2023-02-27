@@ -226,7 +226,7 @@ void Car::_PreTickUpdate(float tickTime) {
 			dirRoll_forward = -forwardDir;
 
 		bool doAirControl = false;
-		if (_internalState.hasFlipped && _internalState.flipTimer < FLIP_TORQUE_TIME) {
+		if (_internalState.hasFlipped && _internalState.flipTime < FLIP_TORQUE_TIME) {
 
 			btVector3 relDodgeTorque = _internalState.lastRelDodgeTorque;
 
@@ -262,7 +262,7 @@ void Car::_PreTickUpdate(float tickTime) {
 			float pitchTorqueScale = 1;
 			if (controls.pitch || controls.yaw || controls.roll) {
 
-				if (_internalState.hasFlipped && _internalState.flipTimer < FLIP_PITCHLOCK_TIME)
+				if (_internalState.hasFlipped && _internalState.flipTime < FLIP_PITCHLOCK_TIME)
 					pitchTorqueScale = 0;
 
 				// TODO: Use actual dot product operator functions (?)
@@ -360,7 +360,7 @@ void Car::_PostTickUpdate(float tickTime) {
 	{ // Update jump
 		using namespace RLConst;
 		if (_internalState.isOnGround && !_internalState.isJumping) {
-			if (_internalState.hasJumped && _internalState.jumpTimer < JUMP_MIN_TIME + JUMP_RESET_TIME_PAD) {
+			if (_internalState.hasJumped && _internalState.jumpTime < JUMP_MIN_TIME + JUMP_RESET_TIME_PAD) {
 				// Don't reset the jump just yet, we might still be leaving the ground
 				// This fixes the bug where jump is reset before we actually leave the ground after a minimum-time jump
 				// TODO: RL does something similar to this time-pad, but not exactly the same
@@ -370,7 +370,7 @@ void Car::_PostTickUpdate(float tickTime) {
 		}
 
 		if (_internalState.isJumping) {
-			if (_internalState.jumpTimer < JUMP_MIN_TIME || controls.jump && _internalState.jumpTimer < JUMP_MAX_TIME) {
+			if (_internalState.jumpTime < JUMP_MIN_TIME || controls.jump && _internalState.jumpTime < JUMP_MAX_TIME) {
 				// Continue jump
 				_internalState.isJumping = true;
 			} else {
@@ -380,19 +380,19 @@ void Car::_PostTickUpdate(float tickTime) {
 		} else if (_internalState.isOnGround && jumpPressed) {
 			// Start jumping
 			_internalState.isJumping = true;
-			_internalState.jumpTimer = 0;
+			_internalState.jumpTime = 0;
 			btVector3 jumpStartForce = _bulletVehicle->getUpVector() * JUMP_IMMEDIATE_FORCE * UU_TO_BT;
 			_rigidBody->applyCentralImpulse(jumpStartForce * CAR_MASS_BT);
 		}
 
 		if (_internalState.isJumping) {
 			_internalState.hasJumped = true;
-			_internalState.jumpTimer += tickTime;
+			_internalState.jumpTime += tickTime;
 
 			// Apply extra long-jump force
 			btVector3 extraJumpForce = _bulletVehicle->getUpVector() * JUMP_ACCEL;
 
-			if (_internalState.jumpTimer < JUMP_MIN_TIME) {
+			if (_internalState.jumpTime < JUMP_MIN_TIME) {
 				extraJumpForce *= 0.75f;
 			}
 
@@ -419,7 +419,7 @@ void Car::_PostTickUpdate(float tickTime) {
 
 					if (shouldFlip) {
 						// Begin flipping
-						_internalState.flipTimer = 0;
+						_internalState.flipTime = 0;
 						_internalState.hasFlipped = true;
 
 						// Apply initial dodge vel and set later dodge vel
@@ -491,11 +491,11 @@ void Car::_PostTickUpdate(float tickTime) {
 
 		if (_internalState.hasFlipped) {
 			// Replicated from https://github.com/samuelpmish/RLUtilities/blob/develop/src/mechanics/dodge.cc
-			_internalState.flipTimer += tickTime;
-			if (_internalState.flipTimer <= FLIP_TORQUE_TIME) {
+			_internalState.flipTime += tickTime;
+			if (_internalState.flipTime <= FLIP_TORQUE_TIME) {
 
 				btVector3 vel = _rigidBody->getLinearVelocity();
-				if (_internalState.flipTimer >= FLIP_Z_DAMP_START && (vel.z() < 0 || _internalState.flipTimer < FLIP_Z_DAMP_END)) {
+				if (_internalState.flipTime >= FLIP_Z_DAMP_START && (vel.z() < 0 || _internalState.flipTime < FLIP_Z_DAMP_END)) {
 					vel.z() *= powf(1 - FLIP_Z_DAMP_120, tickTime / (1 / 120.f));
 					_rigidBody->setLinearVelocity(vel);
 				}

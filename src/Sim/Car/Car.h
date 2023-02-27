@@ -20,7 +20,7 @@ struct CarState {
 	Vec lastRelDodgeTorque = { 0, 0, 0 };
 
 	// Active during the duration of a jump or flip
-	float jumpTimer = 0, flipTimer = 0;
+	float jumpTime = 0, flipTime = 0;
 
 	// True during a jump (not double jumps or a flip)
 	bool isJumping = false;
