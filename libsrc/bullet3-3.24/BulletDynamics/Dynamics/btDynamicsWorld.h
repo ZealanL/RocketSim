@@ -41,14 +41,14 @@ enum btDynamicsWorldType
 ///The btDynamicsWorld is the interface class for several dynamics implementation, basic, discrete, parallel, and continuous etc.
 class btDynamicsWorld : public btCollisionWorld
 {
-protected:
+public:
 	btInternalTickCallback m_internalTickCallback;
 	btInternalTickCallback m_internalPreTickCallback;
 	void* m_worldUserInfo;
 
 	btContactSolverInfo m_solverInfo;
 
-public:
+
 	btDynamicsWorld(btDispatcher* dispatcher, btBroadphaseInterface* broadphase, btCollisionConfiguration* collisionConfiguration)
 		: btCollisionWorld(dispatcher, broadphase, collisionConfiguration), m_internalTickCallback(0), m_internalPreTickCallback(0), m_worldUserInfo(0)
 	{
