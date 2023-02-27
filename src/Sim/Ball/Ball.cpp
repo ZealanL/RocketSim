@@ -1,6 +1,6 @@
 #include "Ball.h"
 
-#include "../../RLConst.h";
+#include "../../RLConst.h"
 
 BallState Ball::GetState() {
 	BallState stateOut;
