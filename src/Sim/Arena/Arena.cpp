@@ -76,8 +76,11 @@ bool Arena::_BulletContactAddedCallback(
 				_BtCallback_OnCarBallCollision(car, (Ball*)bodyB->getUserPointer(), contactPoint);
 		} else if (userIndexB == BT_USERINFO_TYPE_CAR) {
 			// Car + Car
+			// Do collision both ways
 			arenaInst->
 				_BtCallback_OnCarCarCollision(car, (Car*)bodyB->getUserPointer(), contactPoint);
+			arenaInst->
+				_BtCallback_OnCarCarCollision((Car*)bodyB->getUserPointer(), car, contactPoint);
 		} else if (userIndexB == BT_USERINFO_TYPE_BOOSTPAD) {
 			// Car + BoostPad hitbox
 			arenaInst->
