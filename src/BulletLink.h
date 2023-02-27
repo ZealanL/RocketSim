@@ -35,7 +35,7 @@ static inline std::ostream& operator <<(std::ostream& stream, const btVector3& v
 }
 
 // For printing Angle
-static inline std::ostream& operator <<(std::ostream stream, const Angle& ang) {
+static inline std::ostream& operator <<(std::ostream& stream, const Angle& ang) {
 	stream << "(YPR)[ " << ang.yaw << ", " << ang.pitch << ", " << ang.roll << " ]";
 	return stream;
 }
