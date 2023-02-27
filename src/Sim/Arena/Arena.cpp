@@ -40,14 +40,14 @@ void Arena::RegisterGoalScoreCallback(GoalScoreEventFn callbackFunc) {
 }
 
 bool Arena::_BulletContactAddedCallback(
-	btManifoldPoint& contactPoint, 
-	const btCollisionObjectWrapper* objA, int partIdA, int indexA, 
+	btManifoldPoint& contactPoint,
+	const btCollisionObjectWrapper* objA, int partIdA, int indexA,
 	const btCollisionObjectWrapper* objB, int partIdB, int indexB) {
-	
+
 	auto
 		bodyA = objA->m_collisionObject,
 		bodyB = objB->m_collisionObject;
-	
+
 	bool shouldSwap = false;
 	if ((bodyA->getUserIndex() != -1) && (bodyB->getUserIndex() != -1)) {
 		// If both bodies have a user index, the lower user index should be A
@@ -167,7 +167,7 @@ Arena::Arena(GameMode gameMode, float tickRate) {
 			_bulletWorldParams.constraintSolver,
 			_bulletWorldParams.collisionConfig
 		);
-		
+
 		_bulletWorld->setGravity(btVector3(0, 0, RLConst::GRAVITY_Z * UU_TO_BT));
 
 		// Adjust solver configuration to be closer to older Bullet (Rocket League's Bullet is from somewhere between 2013 and 2015)
@@ -207,7 +207,7 @@ Arena::Arena(GameMode gameMode, float tickRate) {
 
 		for (int i = 0; i < (LOCS_AMOUNT_BIG + LOCS_AMOUNT_SMALL); i++) {
 			bool isBig = i < LOCS_AMOUNT_BIG;
-			
+
 			btVector3 pos = isBig ? LOCS_BIG[i] : LOCS_SMALL[i - LOCS_AMOUNT_BIG];
 
 			BoostPad* pad = BoostPad::_AllocBoostPad();
@@ -219,7 +219,7 @@ Arena::Arena(GameMode gameMode, float tickRate) {
 
 	// Set internal tick callback
 	_bulletWorld->setWorldUserInfo(this);
-	
+
 	gContactAddedCallback = &Arena::_BulletContactAddedCallback;
 }
 
@@ -249,6 +249,7 @@ void Arena::Step(int ticksToSimulate) {
 		for (Car* car : _cars) {
 			car->_PostTickUpdate(tickTime);
 			car->_ApplyPhysicsRounding();
+			car->_LimitVelocities();
 		}
 
 		for (BoostPad* pad : _boostPads)
@@ -260,21 +261,8 @@ void Arena::Step(int ticksToSimulate) {
 			ball->_velocityImpulseCache = { 0,0,0 };
 		}
 
-		{ // Limit ball's linear/angular velocity
-			using namespace RLConst;
-
-			btVector3 ballVel = ball->_rigidBody->getLinearVelocity();
-			btVector3 ballAngVel = ball->_rigidBody->getAngularVelocity();
-
-			if (ballVel.length2() > (BALL_MAX_SPEED * BALL_MAX_SPEED * UU_TO_BT))
-				ballVel = ballVel.normalized() * (BALL_MAX_SPEED * UU_TO_BT);
-
-			if (ballAngVel.length2() > (BALL_MAX_ANG_SPEED * BALL_MAX_ANG_SPEED))
-				ballAngVel = ballAngVel.normalized() * BALL_MAX_ANG_SPEED;
-
-			ball->_rigidBody->setLinearVelocity(ballVel);
-			ball->_rigidBody->setAngularVelocity(ballAngVel);
-		}
+		ball->_ApplyPhysicsRounding();
+		ball->_LimitVelocities();
 
 		tickCount++;
 	}
@@ -362,7 +350,7 @@ void Arena::_SetupArenaCollisionShapes() {
 
 	constexpr float PLANE_THICKNESS = 10;
 	constexpr float WALL_SIZE = 120;
-	
+
 	constexpr float EXTENT_X = 4096 * UU_TO_BT;
 	constexpr float EXTENT_Y = 5120 * UU_TO_BT;
 	constexpr float EXTENT_Z = 2048 * UU_TO_BT;
