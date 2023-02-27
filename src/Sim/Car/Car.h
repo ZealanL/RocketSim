@@ -2,6 +2,7 @@
 #include "CarConfig/CarConfig.h"
 #include "../btVehicleRL/btVehicleRL.h"
 #include "../CarControls.h"
+#include "../../RLConst.h"
 
 struct CarState {
 	// Position in world space
@@ -29,7 +30,7 @@ struct CarState {
 	float airTimeSinceJump = 0;
 
 	// Goes from 0 to 100
-	float boost = 0;
+	float boost = RLConst::BOOST_SPAWN_AMOUNT;
 
 	// Added to replicate minimum boosting time
 	// NOTE: Will be used even when we have no boost
@@ -56,6 +57,9 @@ struct CarState {
 		class Car* otherCar = NULL;
 		float cooldownTimer = 0;
 	} carContact;
+
+	bool isDemoed = false;
+	float demoRespawnTimer = 0;
 
 	// Set to arena->tickCount when ball is hit
 	// Don't change this unless you know what you're doing
@@ -88,6 +92,10 @@ public:
 
 	RSAPI CarState GetState();
 	RSAPI void SetState(const CarState& state);
+
+	void Demolish();
+
+	void Respawn();
 
 	btVehicleRL* _bulletVehicle;
 	btVehicleRaycaster* _bulletVehicleRaycaster;

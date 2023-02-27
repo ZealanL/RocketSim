@@ -157,21 +157,26 @@ void Arena::_BtCallback_OnCarCarCollision(Car* car1, Car* car2, btManifoldPoint&
 
 			bool hitWithBumper = manifoldPoint.m_localPointA.x() * BT_TO_UU > BUMP_MIN_FORWARD_DIST;
 			if (hitWithBumper) {
-				bool groundHit = car2->_internalState.isOnGround;
 
-				float baseScale =
-					(groundHit ? BUMP_VEL_AMOUNT_GROUND_CURVE : BUMP_VEL_AMOUNT_AIR_CURVE).GetOutput(speedTowardsOtherCar);
+				if (state.isSupersonic) {
+					car2->Demolish();
+				} else {
+					bool groundHit = car2->_internalState.isOnGround;
 
-				Vec hitUpDir =
-					(otherState.isOnGround ? car2->_bulletVehicle->getUpVector() : Vec(0, 0, 1));
+					float baseScale =
+						(groundHit ? BUMP_VEL_AMOUNT_GROUND_CURVE : BUMP_VEL_AMOUNT_AIR_CURVE).GetOutput(speedTowardsOtherCar);
 
-				Vec bumpImpulse =
-					velDir * baseScale +
-					hitUpDir * BUMP_UPWARD_VEL_AMOUNT_CURVE.GetOutput(speedTowardsOtherCar);
+					Vec hitUpDir =
+						(otherState.isOnGround ? car2->_bulletVehicle->getUpVector() : Vec(0, 0, 1));
 
-				car2->_velocityImpulseCache += bumpImpulse * UU_TO_BT;
-				car1->_internalState.carContact.otherCar = car2;
-				car1->_internalState.carContact.cooldownTimer = BUMP_COOLDOWN_TIME;
+					Vec bumpImpulse =
+						velDir * baseScale +
+						hitUpDir * BUMP_UPWARD_VEL_AMOUNT_CURVE.GetOutput(speedTowardsOtherCar);
+
+					car2->_velocityImpulseCache += bumpImpulse * UU_TO_BT;
+					car1->_internalState.carContact.otherCar = car2;
+					car1->_internalState.carContact.cooldownTimer = BUMP_COOLDOWN_TIME;
+				}
 			}
 		}
 	}

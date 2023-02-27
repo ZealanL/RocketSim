@@ -34,6 +34,7 @@ namespace RLConst {
 	constexpr float BOOST_USED_PER_SECOND = BOOST_MAX / 3;
 	constexpr float BOOST_MIN_TIME = 0.1f; // Minimum time we can be boosting for
 	constexpr float BOOST_FORCE = 3816.f;
+	constexpr float BOOST_SPAWN_AMOUNT = BOOST_MAX / 3;
 
 	constexpr float
 		BOOST_FORCE_GROUND_DECAY_MIN_VEL = 600.f,
@@ -203,6 +204,8 @@ namespace RLConst {
 		};
 	}
 
+	constexpr float CAR_RESPAWN_Z = 36.f;
+
 	constexpr int CAR_SPAWN_LOCATION_AMOUNT = 5;
 	constexpr int CAR_RESPAWN_LOCATION_AMOUNT = 4;
 	struct CarSpawnPos {
@@ -308,6 +311,8 @@ namespace RLConst {
 
 	constexpr float BUMP_COOLDOWN_TIME = 0.25f;
 	constexpr float BUMP_MIN_FORWARD_DIST = 64.5f;
+
+	constexpr float DEMO_RESPAWN_TIME = 3.f;
 
 	const static LinearPieceCurve BUMP_VEL_AMOUNT_GROUND_CURVE = {
 		{

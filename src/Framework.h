@@ -80,3 +80,5 @@ typedef uint8_t byte;
 #else
 #define RSAPI
 #endif
+
+#define RS_RAND(min, max) (min + (rand() % (max - min)))
