@@ -102,13 +102,10 @@ public:
 	~Car();
 
 	void _PreTickUpdate(float tickTime);
-
-	Vec _velocityImpulseCache;
-
-	void _ApplyPhysicsRounding();
-	void _LimitVelocities();
-
 	void _PostTickUpdate(float tickTime);
+
+	Vec _velocityImpulseCache = { 0,0,0 };
+	void _FinishPhysicsTick();
 
 	// For construction by Arena
 	static Car* _AllocateCar();
