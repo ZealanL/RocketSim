@@ -625,7 +625,7 @@ void Car::_FinishPhysicsTick() {
 			vel = _rigidBody->m_linearVelocity,
 			angVel = _rigidBody->m_angularVelocity;
 
-		if (vel.length2() > (CAR_MAX_SPEED * CAR_MAX_SPEED * UU_TO_BT))
+		if (vel.length2() > (CAR_MAX_SPEED * UU_TO_BT) * (CAR_MAX_SPEED * UU_TO_BT))
 			vel = vel.normalized() * (CAR_MAX_SPEED * UU_TO_BT);
 
 		if (angVel.length2() > (CAR_MAX_ANG_SPEED * CAR_MAX_ANG_SPEED))

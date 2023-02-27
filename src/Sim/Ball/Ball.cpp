@@ -68,7 +68,7 @@ void Ball::_FinishPhysicsTick() {
 			vel = _rigidBody->m_linearVelocity,
 			angVel = _rigidBody->m_angularVelocity;
 
-		if (vel.length2() > (BALL_MAX_SPEED * BALL_MAX_SPEED * UU_TO_BT))
+		if (vel.length2() > (BALL_MAX_SPEED * UU_TO_BT) * (BALL_MAX_SPEED * UU_TO_BT))
 			vel = vel.normalized() * (BALL_MAX_SPEED * UU_TO_BT);
 
 		if (angVel.length2() > (BALL_MAX_ANG_SPEED * BALL_MAX_ANG_SPEED))
