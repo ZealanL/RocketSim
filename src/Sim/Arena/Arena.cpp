@@ -128,7 +128,50 @@ void Arena::_BtCallback_OnCarBallCollision(Car* car, Ball* ball, btManifoldPoint
 }
 
 void Arena::_BtCallback_OnCarCarCollision(Car* car1, Car* car2, btManifoldPoint& manifoldPoint) {
-	// TODO: Bump physics
+	using namespace RLConst;
+
+	// Manually override manifold friction/restitution
+	manifoldPoint.m_combinedFriction = RLConst::CARCAR_COLLISION_FRICTION;
+	manifoldPoint.m_combinedRestitution = RLConst::CARCAR_COLLISION_RESTITUTION;
+
+	CarState
+		state = car1->GetState(),
+		otherState = car2->GetState();
+
+	if ((state.carContact.otherCar == car2) && (state.carContact.cooldownTimer > 0))
+		return; // In cooldown
+
+	Vec deltaPos = (otherState.pos - state.pos);
+	if (state.vel.dot(deltaPos) > 0) { // Going towards other car
+
+		Vec velDir = state.vel.normalized();
+		Vec dirToOtherCar = deltaPos.normalized();
+
+		float speedTowardsOtherCar = state.vel.dot(dirToOtherCar);
+		float otherCarAwaySpeed = otherState.vel.dot(velDir);
+
+		if (speedTowardsOtherCar > otherCarAwaySpeed) { // Going towards other car faster than they are going away
+
+			bool hitWithBumper = manifoldPoint.m_localPointA.x() * BT_TO_UU > BUMP_MIN_FORWARD_DIST;
+			if (hitWithBumper) {
+				bool groundHit = car2->_internalState.isOnGround;
+
+				float baseScale =
+					(groundHit ? BUMP_VEL_AMOUNT_GROUND_CURVE : BUMP_VEL_AMOUNT_AIR_CURVE).GetOutput(speedTowardsOtherCar);
+
+				Vec hitUpDir =
+					(otherState.isOnGround ? car2->_bulletVehicle->getUpVector() : Vec(0, 0, 1));
+
+				Vec bumpImpulse =
+					velDir * baseScale +
+					hitUpDir * BUMP_UPWARD_VEL_AMOUNT_CURVE.GetOutput(speedTowardsOtherCar);
+
+				car2->_velocityImpulseCache += bumpImpulse * UU_TO_BT;
+				car1->_internalState.carContact.otherCar = car2;
+				car1->_internalState.carContact.cooldownTimer = BUMP_COOLDOWN_TIME;
+			}
+		}
+	}
 }
 
 void Arena::_BtCallback_OnCarBoostPadCollision(Car* car, BoostPad* pad, btManifoldPoint& manifoldPoint) {
@@ -248,6 +291,13 @@ void Arena::Step(int ticksToSimulate) {
 
 		for (Car* car : _cars) {
 			car->_PostTickUpdate(tickTime);
+
+			// Add car velocity impulse cache
+			if (!car->_velocityImpulseCache.isZero()) {
+				car->_rigidBody->m_linearVelocity += car->_velocityImpulseCache;
+				car->_velocityImpulseCache = { 0,0,0 };
+			}
+
 			car->_ApplyPhysicsRounding();
 			car->_LimitVelocities();
 		}
