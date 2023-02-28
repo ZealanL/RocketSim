@@ -62,7 +62,7 @@ public:
 	// Simulate everything in the arena for a given number of ticks
 	RSAPI void Step(int ticksToSimulate = 1);
 
-	RSAPI void ResetToKickoff(int seed = -1);
+	RSAPI void ResetToRandomKickoff(int seed = -1);
 
 	// Free all associated memory
 	RSAPI ~Arena();
