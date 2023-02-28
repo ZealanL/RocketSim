@@ -40,12 +40,12 @@ void Car::Demolish() {
 	_internalState.demoRespawnTimer = RLConst::DEMO_RESPAWN_TIME;
 }
 
-void Car::Respawn() {
+void Car::Respawn(int seed) {
 	using namespace RLConst;
 
 	CarState newState = CarState();
 	
-	int spawnPosIndex = RS_RAND(0, CAR_RESPAWN_LOCATION_AMOUNT);
+	int spawnPosIndex = Math::RandInt(0, CAR_RESPAWN_LOCATION_AMOUNT, seed);
 	CarSpawnPos spawnPos = CAR_RESPAWN_LOCATIONS[spawnPosIndex];
 
 	newState.pos = Vec(spawnPos.x, spawnPos.y * (team == Team::BLUE ? 1 : -1), CAR_RESPAWN_Z);
@@ -117,6 +117,53 @@ void Car::_PreTickUpdate(float tickTime) {
 		_internalState.handbrakeVal = RS_CLAMP(_internalState.handbrakeVal, 0, 1);
 	}
 
+	float realThrottle = controls.throttle;
+	float realBrake = 0;
+
+	if (controls.boost && _internalState.boost > 0)
+		realThrottle = 1;
+
+	{ // Update throttle/brake forces
+		float driveSpeedScale = DRIVE_SPEED_TORQUE_FACTOR_CURVE.GetOutput(absForwardSpeed * BT_TO_UU);
+
+		float engineThrottle = realThrottle;
+
+		if (controls.handbrake > 0) {
+			// Real throttle is unchanged from the input throttle when powersliding
+		} else {
+			float absThrottle = abs(realThrottle);
+
+			if (absThrottle >= THROTTLE_DEADZONE) {
+				if (absForwardSpeed > 0 && RS_SGN(realThrottle) != RS_SGN(forwardSpeed)) {
+					// Full brake is applied if we are trying to drive in the opposite direction
+					realBrake = 1;
+
+					if (absForwardSpeed > 0.01f) {
+						// Kill actual throttle (we can't throttle and break at the same time, even backwards)
+						engineThrottle = 0;
+					}
+				}
+			} else {
+				// No throttle, we are coasting
+				engineThrottle = 0;
+
+				// Apply coasting brake, we full-break when coasting very slowly
+				bool shouldFullStop = (absForwardSpeed < (STOPPING_FORWARD_VEL* UU_TO_BT));
+				realBrake = shouldFullStop ? 1 : COASTING_BRAKE_FACTOR;
+			}
+		}
+
+		if (numWheelsInContact < 3)
+			driveSpeedScale /= 4;
+
+		float driveEngineForce = engineThrottle * (THROTTLE_TORQUE_AMOUNT * UU_TO_BT) * driveSpeedScale;
+		float driveBrakeForce = realBrake * (BRAKE_TORQUE_AMOUNT * UU_TO_BT);
+		for (int i = 0; i < 4; i++) {
+			_bulletVehicle->m_wheelInfo[i].m_engineForce = driveEngineForce;
+			_bulletVehicle->m_wheelInfo[i].m_brake = driveBrakeForce;
+		}
+	}
+
 	{ // Update steering
 		float absForwardSpeedUU = absForwardSpeed * BT_TO_UU;
 		float steerAngle = STEER_ANGLE_FROM_SPEED_CURVE.GetOutput(absForwardSpeedUU);
@@ -169,7 +216,7 @@ void Car::_PreTickUpdate(float tickTime) {
 					longFriction = 1; // If we aren't powersliding, it's not scaled down
 				}
 
-				bool isContactSticky = controls.throttle != 0;
+				bool isContactSticky = realThrottle != 0;
 
 				if (isContactSticky) {
 					// Keep current friction values
@@ -198,51 +245,6 @@ void Car::_PreTickUpdate(float tickTime) {
 				// Start boosting (even if we dont have any)
 				_internalState.timeSpentBoosting = tickTime;
 			}
-		}
-	}
-
-	float realThrottle = controls.throttle;
-	float realBrake = 0;
-
-	if (controls.boost && _internalState.boost > 0)
-		realThrottle = 1;
-
-	{ // Update throttle/brake forces
-		float driveSpeedScale = DRIVE_SPEED_TORQUE_FACTOR_CURVE.GetOutput(absForwardSpeed * BT_TO_UU);
-
-		if (controls.handbrake > 0) {
-			// Real throttle is unchanged from the input throttle when powersliding
-		} else {
-			float absThrottle = abs(realThrottle);
-
-			if (absThrottle >= THROTTLE_DEADZONE) {
-				if (absForwardSpeed > 0 && RS_SGN(realThrottle) != RS_SGN(forwardSpeed)) {
-					// Full brake is applied if we are trying to drive in the opposite direction
-					realBrake = 1;
-
-					if (absForwardSpeed > 0.01f) {
-						// Kill actual throttle (we can't throttle and break at the same time, even backwards)
-						realThrottle = 0;
-					}
-				}
-			} else {
-				// No throttle, we are coasting
-				realThrottle = 0;
-
-				// Apply coasting brake, we full-break when coasting very slowly
-				bool shouldFullStop = (absForwardSpeed < (STOPPING_FORWARD_VEL* UU_TO_BT));
-				realBrake = shouldFullStop ? 1 : COASTING_BRAKE_FACTOR;
-			}
-		}
-
-		if (numWheelsInContact < 3)
-			driveSpeedScale /= 4;
-
-		float driveEngineForce = realThrottle * (THROTTLE_TORQUE_AMOUNT * UU_TO_BT) * driveSpeedScale;
-		float driveBrakeForce = realBrake * (BRAKE_TORQUE_AMOUNT * UU_TO_BT);
-		for (int i = 0; i < 4; i++) {
-			_bulletVehicle->m_wheelInfo[i].m_engineForce = driveEngineForce;
-			_bulletVehicle->m_wheelInfo[i].m_brake = driveBrakeForce;
 		}
 	}
 

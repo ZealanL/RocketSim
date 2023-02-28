@@ -95,7 +95,7 @@ public:
 
 	void Demolish();
 
-	void Respawn();
+	void Respawn(int seed = -1);
 
 	btVehicleRL* _bulletVehicle;
 	btVehicleRaycaster* _bulletVehicleRaycaster;

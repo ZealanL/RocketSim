@@ -25,9 +25,11 @@
 #include <functional>
 #include <chrono>
 #include <filesystem>
+#include <random>
 
 #define _USE_MATH_DEFINES // for M_PI and similar
 #include <cmath>
+#include <math.h>
 
 // Remove need for std namespace scope for very common datatypes
 using std::vector;
@@ -80,5 +82,3 @@ typedef uint8_t byte;
 #else
 #define RSAPI
 #endif
-
-#define RS_RAND(min, max) (min + (rand() % (max - min)))
