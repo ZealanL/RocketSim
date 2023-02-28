@@ -204,6 +204,7 @@ namespace RLConst {
 		};
 	}
 
+	constexpr float CAR_SPAWN_REST_Z = 17.f;
 	constexpr float CAR_RESPAWN_Z = 36.f;
 
 	constexpr int CAR_SPAWN_LOCATION_AMOUNT = 5;
@@ -219,8 +220,8 @@ namespace RLConst {
 		CAR_SPAWN_LOCATIONS[CAR_SPAWN_LOCATION_AMOUNT] = {
 			{ -2048, -2560, M_PI_4 * 1 },
 			{  2048, -2560, M_PI_4 * 3 },
-			{ -2048, -3840, M_PI_4 * 2 },
-			{  2048, -3840, M_PI_4 * 2 },
+			{  -256, -3840, M_PI_4 * 2 },
+			{   256, -3840, M_PI_4 * 2 },
 			{     0, -4608, M_PI_4 * 2 },
 	};
 

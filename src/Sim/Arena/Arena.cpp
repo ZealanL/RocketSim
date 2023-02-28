@@ -39,6 +39,57 @@ void Arena::RegisterGoalScoreCallback(GoalScoreEventFn callbackFunc) {
 	_goalScoreCallbacks.push_back(callbackFunc);
 }
 
+void Arena::ResetToRandomKickoff(int seed) {
+	using namespace RLConst;
+
+	// TODO: Make shuffling of kickoff setup more efficient (?)
+
+	static vector<int> kickoffOrder;
+	if (kickoffOrder.empty()) {
+		for (int i = 0; i < CAR_SPAWN_LOCATION_AMOUNT; i++)
+			kickoffOrder.push_back(i);
+	}
+
+	if (seed == -1) {
+		std::default_random_engine& randEngine = Math::GetRandEngine();
+		std::shuffle(kickoffOrder.begin(), kickoffOrder.end(), randEngine);
+	} else {
+		std::default_random_engine randEngine = std::default_random_engine(seed);
+		std::shuffle(kickoffOrder.begin(), kickoffOrder.end(), randEngine);
+	}
+
+	vector<Car*> blueCars, orangeCars;
+	for (Car* car : _cars)
+		((car->team == Team::BLUE) ? blueCars : orangeCars).push_back(car);
+
+	int kickoffPositionAmount = RS_MAX(blueCars.size(), orangeCars.size());
+	for (int i = 0; i < kickoffPositionAmount; i++) {
+		CarSpawnPos spawnPos = CAR_SPAWN_LOCATIONS[kickoffOrder[i]];
+
+		for (int teamIndex = 0; teamIndex < 2; teamIndex++) {
+			bool isBlue = (teamIndex == 0);
+			vector<Car*> teamCars = isBlue ? blueCars : orangeCars;
+
+			if (i < teamCars.size()) {
+				CarState spawnState;
+				spawnState.pos = { spawnPos.x, spawnPos.y, CAR_SPAWN_REST_Z };
+				spawnState.angles.yaw = spawnPos.yawAng;
+				spawnState.isOnGround = true;
+
+				if (!isBlue) {
+					spawnState.pos *= { -1, -1, 1 };
+					spawnState.angles.yaw += M_PI;
+					spawnState.angles.NormalizeFix();
+				}
+
+				teamCars[i]->SetState(spawnState);
+			}
+		}
+	}
+
+	ball->SetState(BallState());
+}
+
 bool Arena::_BulletContactAddedCallback(
 	btManifoldPoint& contactPoint,
 	const btCollisionObjectWrapper* objA, int partIdA, int indexA,
@@ -200,8 +251,17 @@ Arena::Arena(GameMode gameMode, float tickRate) {
 	// Tickrate must be from 15 to 120tps
 	assert(tickRate >= 15 && tickRate <= 120);
 
+	{ // Seed std::rand()
+		static bool seedRandom = true;
+		if (seedRandom) {
+			srand(time(NULL));
+			seedRandom = false;
+		}
+	}
+
 	this->gameMode = gameMode;
 	this->tickTime = 1 / tickRate;
+
 	{ // Initialize world
 
 		btDefaultCollisionConstructionInfo collisionConfigConstructionInfo = {};

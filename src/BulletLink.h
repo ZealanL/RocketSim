@@ -26,6 +26,9 @@ struct Angle {
 
 	Angle(btMatrix3x3 mat);
 	btMatrix3x3 ToMatrix() const;
+
+	// Limits yaw/pitch/roll to [-pi,pi]/[-pi/2,pi/2]/[-pi,pi] while still representing the same rotation
+	void NormalizeFix();
 };
 
 // For printing btVector3
