@@ -372,16 +372,7 @@ void Arena::Step(int ticksToSimulate) {
 }
 
 Arena::~Arena() {
-
-	// Remove all cars
-	while (!_cars.empty())
-		RemoveCar(_cars.front());
-
-	// Remove all boost pads
-	for (BoostPad* boostPad : _boostPads)
-		delete boostPad;
-
-	// Delete world
+	// Delete world first
 	delete _bulletWorld;
 
 	{ // Delete world param things
@@ -390,6 +381,14 @@ Arena::~Arena() {
 		delete _bulletWorldParams.overlappingPairCache;
 		delete _bulletWorldParams.constraintSolver;
 	}
+
+	// Remove all cars
+	for (Car* car : _cars)
+		delete car;
+
+	// Remove all boost pads
+	for (BoostPad* boostPad : _boostPads)
+		delete boostPad;
 
 	{ // Delete collision RBs and shapes
 		for (btRigidBody* colRB : _worldCollisionRBs)

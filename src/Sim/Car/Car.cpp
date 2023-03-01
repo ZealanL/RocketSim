@@ -743,9 +743,6 @@ void Car::_BulletSetup(btDynamicsWorld* bulletWorld) {
 }
 
 Car::~Car() {
-	// Remove from world
-	_bulletVehicle->m_dynamicsWorld->removeCollisionObject(_rigidBody);
-
 	delete _bulletVehicle;
 	delete _bulletVehicleRaycaster;
 	delete _rigidBody;
