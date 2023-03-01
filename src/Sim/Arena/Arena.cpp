@@ -1,6 +1,5 @@
 #include "Arena.h"
 #include "../../RLConst.h"
-#include "../MeshLoader/MeshLoader.h"
 
 Car* Arena::AddCar(Team team, const CarConfig& config) {
 	Car* car = Car::_AllocateCar();
@@ -417,85 +416,78 @@ btRigidBody* Arena::_AddStaticCollisionShape(btCollisionShape* shape, btVector3 
 	return shapeRB;
 }
 
-void Arena::_AddStaticCollisionTris(MeshLoader::Mesh& mesh, btVector3 scale, btVector3 pos) {
-	auto triMesh = mesh.MakeBulletMesh(scale);
+void Arena::_AddStaticCollisionTris(CollisionMeshFile& file) {
+	auto triMesh = file.MakeBulletMesh();
 	_arenaTriMeshes.push_back(triMesh);
 
 	auto bvt = new btBvhTriangleMeshShape(triMesh, false);
 	bvt->buildOptimizedBvh();
-	_AddStaticCollisionShape(bvt, pos);
+	_AddStaticCollisionShape(bvt, btVector3(0,0,0));
 }
 
 void Arena::_SetupArenaCollisionShapes() {
-	// TODO: This is just for soccar arena
+	// TODO: This is just for soccar arena (for now)
 	assert(gameMode == GameMode::SOCCAR);
 
-	string basePath = "assets/soccar_field/";
+	static vector<CollisionMeshFile> collisionMeshes;
+	if (collisionMeshes.empty()) {
 
-	if (!std::filesystem::exists(basePath)) {
-		RS_ERR_CLOSE(
-			"Failed to find soccar field asset files at \"" << basePath
-			<< "\", the assets folder should be in our current directory " << std::filesystem::current_path() << ".")
+		string basePath = COLLISION_MESH_SOCCAR_PATH;
+
+		if (!std::filesystem::exists(basePath))
+			RS_ERR_CLOSE(
+				"Failed to find soccar field asset files at \"" << basePath
+				<< "\", the assets folder should be in our current directory " << std::filesystem::current_path() << ".")
+
+		// Load collision meshes
+		auto dirItr = std::filesystem::directory_iterator(basePath);
+		for (auto& entry : dirItr) {
+			auto entryPath = entry.path();
+			if (entryPath.has_extension() && entryPath.extension() == COLLISION_MESH_FILE_EXTENSION) {
+				CollisionMeshFile meshFile = {};
+				meshFile.ReadFromFile(entryPath.string());
+				collisionMeshes.push_back(meshFile);
+			}
+		}
+
+		if (collisionMeshes.empty())
+			RS_ERR_CLOSE(
+				"Failed to find soccar field asset files at \"" << basePath
+				<< "\", the folder exists but is empty.")
 	}
+	
+	// Add collision meshes to world
+	for (CollisionMeshFile& mesh : collisionMeshes)
+		_AddStaticCollisionTris(mesh);
 
-	// Create triangle meshes
-	static bool meshesLoaded;
+	{ // Add arena collision planes (floor/walls/ceiling)
+		constexpr float PLANE_THICKNESS = 10;
+		constexpr float WALL_SIZE = 120;
 
-	static MeshLoader::Mesh cornerMesh;
-	static MeshLoader::Mesh goalMesh;
-	static MeshLoader::Mesh rampsMeshA;
-	static MeshLoader::Mesh rampsMeshB;
+		constexpr float EXTENT_X = 4096 * UU_TO_BT;
+		constexpr float EXTENT_Y = 5120 * UU_TO_BT;
+		constexpr float EXTENT_Z = 2048 * UU_TO_BT;
 
-	if (!meshesLoaded) {
-		cornerMesh	= MeshLoader::LoadMeshFromFiles(basePath + "soccar_corner", 2);
-		goalMesh	= MeshLoader::LoadMeshFromFiles(basePath + "soccar_goal", 2);
-		rampsMeshA	= MeshLoader::LoadMeshFromFiles(basePath + "soccar_ramps_0", 2);
-		rampsMeshB	= MeshLoader::LoadMeshFromFiles(basePath + "soccar_ramps_1", 2);
-		meshesLoaded = true;
+		// Floor
+		_AddStaticCollisionShape(
+			new btStaticPlaneShape(btVector3(0, 0, 1), 0),
+			{ 0, 0, 0 }
+		);
+
+		// Ceiling
+		_AddStaticCollisionShape(
+			new btStaticPlaneShape(btVector3(0, 0, -1), 0),
+			{ 0, 0, EXTENT_Z }
+		);
+
+		// Side walls
+		_AddStaticCollisionShape(
+			new btStaticPlaneShape(btVector3(1, 0, 0), 0),
+			{ -EXTENT_X, 0, EXTENT_Z / 2 }
+		);
+		_AddStaticCollisionShape(
+			new btStaticPlaneShape(btVector3(-1, 0, 0), 0),
+			{ EXTENT_X, 0, EXTENT_Z / 2 }
+		);
 	}
-
-	constexpr float PLANE_THICKNESS = 10;
-	constexpr float WALL_SIZE = 120;
-
-	constexpr float EXTENT_X = 4096 * UU_TO_BT;
-	constexpr float EXTENT_Y = 5120 * UU_TO_BT;
-	constexpr float EXTENT_Z = 2048 * UU_TO_BT;
-
-	// Floor
-	_AddStaticCollisionShape(
-		new btStaticPlaneShape(btVector3(0, 0, 1), 0),
-		{ 0, 0, 0 }
-	);
-
-	// Ceiling
-	_AddStaticCollisionShape(
-		new btStaticPlaneShape(btVector3(0, 0, -1), 0),
-		{ 0, 0, EXTENT_Z }
-	);
-
-	// Side walls
-	_AddStaticCollisionShape(
-		new btStaticPlaneShape(btVector3(1, 0, 0), 0),
-		{ -EXTENT_X, 0, EXTENT_Z / 2 }
-	);
-	_AddStaticCollisionShape(
-		new btStaticPlaneShape(btVector3(-1, 0, 0), 0),
-		{ EXTENT_X, 0, EXTENT_Z / 2 }
-	);
-
-	// Add vertical corners
-	_AddStaticCollisionTris(cornerMesh, btVector3(1, 1, 1));
-	_AddStaticCollisionTris(cornerMesh, btVector3(-1, 1, 1));
-	_AddStaticCollisionTris(cornerMesh, btVector3(1, -1, 1));
-	_AddStaticCollisionTris(cornerMesh, btVector3(-1, -1, 1));
-
-	// Add goals
-	_AddStaticCollisionTris(goalMesh, btVector3(1, 1, 1), btVector3(0, -EXTENT_Y, 0));
-	_AddStaticCollisionTris(goalMesh, btVector3(1, -1, 1), btVector3(0, EXTENT_Y, 0));
-
-	// Add sidewall ramps
-	_AddStaticCollisionTris(rampsMeshA, btVector3(1, 1, 1));
-	_AddStaticCollisionTris(rampsMeshA, btVector3(-1, 1, 1));
-	_AddStaticCollisionTris(rampsMeshB, btVector3(1, 1, 1));
-	_AddStaticCollisionTris(rampsMeshB, btVector3(-1, 1, 1));
 }

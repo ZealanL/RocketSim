@@ -2,8 +2,9 @@
 #include "../../BaseInc.h"
 #include "../Car/Car.h"
 #include "../Ball/Ball.h"
-#include "../MeshLoader/MeshLoader.h"
 #include "../BoostPad/BoostPad.h"
+
+#include "../../CollisionMeshFile/CollisionMeshFile.h"
 
 enum class GameMode {
 	SOCCAR,
@@ -70,7 +71,7 @@ public:
 	// NOTE: Passed shape pointer will be freed when arena is deconstructed
 	btRigidBody* _AddStaticCollisionShape(btCollisionShape* shape, btVector3 pos = btVector3(0,0,0));
 
-	void _AddStaticCollisionTris(MeshLoader::Mesh& mesh, btVector3 scale = btVector3(1,1,1), btVector3 pos = btVector3(0, 0, 0));
+	void _AddStaticCollisionTris(CollisionMeshFile& file);
 	void _SetupArenaCollisionShapes();
 
 	// Static function called by Bullet internally when adding a collision point
