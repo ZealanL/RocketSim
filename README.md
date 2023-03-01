@@ -4,8 +4,7 @@
 
 ## Progress
 **Coming Soon:**
-- Bumps and demos
-- Auto-flip when upside-down
+- Version 1.0 release
 - Significant collision optimizations
 - Decent half-percision 60tps simulation
 
@@ -17,6 +16,8 @@
 - Proper ball bounces
 - Car-ball collision with proper forces (will be refined more in the near future)
 - Boost usage and boost pads
+- Bumps and demos
+- Auto-flip when upside-down
 
 ## Simulation Accuracy
 RocketSim is not perfectly accurate, but it's close enough that it shouldnt matter.
