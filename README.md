@@ -4,14 +4,14 @@
 
 ## Installation
 - Clone this repo and build it
-- Use https://github.com/ZealanL/RLArenaCollisionDumper to dump all of Rocket League's collision assets
+- Use https://github.com/ZealanL/RLArenaCollisionDumper to dump all of Rocket League's arena collision meshes
 - Move those assets into RocketSim's executing directory
 
 ## Progress
 **Coming Soon:**
 - Version 1.0 release
 - Significant collision optimizations
-- Decent half-percision 60tps simulation
+- Make half-percision 60tps simulation viable
 
 **Done:**
 - Car suspension
@@ -25,7 +25,7 @@
 - Auto-flip when upside-down
 
 ## Simulation Accuracy
-RocketSim is not perfectly accurate, but it's close enough that it shouldnt matter.
+RocketSim is not perfectly accurate, but it's close enough that it shouldnt matter (for ML bots or humans).
 Bots that work well in RocketSim will work well in the actual game, and visa-versa.
 
 ## Example Usage
