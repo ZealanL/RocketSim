@@ -377,6 +377,10 @@ Arena::~Arena() {
 	while (!_cars.empty())
 		RemoveCar(_cars.front());
 
+	// Remove all boost pads
+	for (BoostPad* boostPad : _boostPads)
+		delete boostPad;
+
 	// Delete world
 	delete _bulletWorld;
 
