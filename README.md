@@ -2,6 +2,11 @@
 
 **A C++ library for simulating Rocket League games at maximum efficiency**
 
+## Installation
+- Clone this repo and build it
+- Use https://github.com/ZealanL/RLArenaCollisionDumper to dump all of Rocket League's collision assets
+- Move those assets into RocketSim's executing directory
+
 ## Progress
 **Coming Soon:**
 - Version 1.0 release
