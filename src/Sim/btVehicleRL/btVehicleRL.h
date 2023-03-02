@@ -70,16 +70,16 @@ public:
 	virtual ~btVehicleRL();
 
 	///btActionInterface interface
-	virtual void updateAction(btCollisionWorld* collisionWorld, float step) {
-		(void)collisionWorld;
-		updateVehicle(step);
+	void updateAction(btCollisionWorld* collisionWorld, float step) {
+		assert(false); // This should never be hit in RocketSim!
 	}
 
 	const btTransform& getChassisWorldTransform() const;
 
 	float rayCast(btWheelInfoRL& wheel);
 
-	virtual void updateVehicle(float step);
+	void updateVehicleFirst(float step);
+	void updateVehicleSecond(float step);
 
 	void resetSuspension();
 

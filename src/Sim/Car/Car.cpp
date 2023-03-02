@@ -88,7 +88,8 @@ void Car::_PreTickUpdate(float tickTime) {
 		}
 	}
 
-	_bulletVehicle->updateVehicle(tickTime);
+	// Do first part of the btVehicleRL update (update wheel transforms, do traces, calculate friction impulses) 
+	_bulletVehicle->updateVehicleFirst(tickTime);
 
 	_internalState.worldContact.hasContact = false;
 
@@ -99,8 +100,8 @@ void Car::_PreTickUpdate(float tickTime) {
 		rightDir = basis.getColumn(1),
 		upDir = basis.getColumn(2);
 
-	float forwardSpeed = _bulletVehicle->getForwardSpeed();
-	float absForwardSpeed = abs(forwardSpeed);
+	float forwardSpeed_UU = _bulletVehicle->getForwardSpeed() * BT_TO_UU;
+	float absForwardSpeed_UU = abs(forwardSpeed_UU);
 
 	bool jumpPressed = controls.jump && !_internalState.lastControls.jump;
 
@@ -124,7 +125,7 @@ void Car::_PreTickUpdate(float tickTime) {
 		realThrottle = 1;
 
 	{ // Update throttle/brake forces
-		float driveSpeedScale = DRIVE_SPEED_TORQUE_FACTOR_CURVE.GetOutput(absForwardSpeed * BT_TO_UU);
+		float driveSpeedScale = DRIVE_SPEED_TORQUE_FACTOR_CURVE.GetOutput(absForwardSpeed_UU);
 
 		float engineThrottle = realThrottle;
 
@@ -134,12 +135,12 @@ void Car::_PreTickUpdate(float tickTime) {
 			float absThrottle = abs(realThrottle);
 
 			if (absThrottle >= THROTTLE_DEADZONE) {
-				if (absForwardSpeed > 0 && RS_SGN(realThrottle) != RS_SGN(forwardSpeed)) {
+				if (absForwardSpeed_UU > STOPPING_FORWARD_VEL && RS_SGN(realThrottle) != RS_SGN(forwardSpeed_UU)) {
 					// Full brake is applied if we are trying to drive in the opposite direction
 					realBrake = 1;
 
-					if (absForwardSpeed > 0.01f) {
-						// Kill actual throttle (we can't throttle and break at the same time, even backwards)
+					if (absForwardSpeed_UU > 0.01f) {
+						// Kill actual throttle (we can't throttle and brake at the same time, even backwards)
 						engineThrottle = 0;
 					}
 				}
@@ -148,7 +149,7 @@ void Car::_PreTickUpdate(float tickTime) {
 				engineThrottle = 0;
 
 				// Apply coasting brake, we full-break when coasting very slowly
-				bool shouldFullStop = (absForwardSpeed < (STOPPING_FORWARD_VEL* UU_TO_BT));
+				bool shouldFullStop = (absForwardSpeed_UU < STOPPING_FORWARD_VEL);
 				realBrake = shouldFullStop ? 1 : COASTING_BRAKE_FACTOR;
 			}
 		}
@@ -165,12 +166,11 @@ void Car::_PreTickUpdate(float tickTime) {
 	}
 
 	{ // Update steering
-		float absForwardSpeedUU = absForwardSpeed * BT_TO_UU;
-		float steerAngle = STEER_ANGLE_FROM_SPEED_CURVE.GetOutput(absForwardSpeedUU);
+		float steerAngle = STEER_ANGLE_FROM_SPEED_CURVE.GetOutput(absForwardSpeed_UU);
 
 		if (_internalState.handbrakeVal) {
 			steerAngle +=
-				(POWERSLIDE_STEER_ANGLE_FROM_SPEED_CURVE.GetOutput(absForwardSpeedUU) - steerAngle)
+				(POWERSLIDE_STEER_ANGLE_FROM_SPEED_CURVE.GetOutput(absForwardSpeed_UU) - steerAngle)
 				* _internalState.handbrakeVal;
 		}
 
@@ -251,7 +251,7 @@ void Car::_PreTickUpdate(float tickTime) {
 	if (numWheelsInContact >= 3) { // Grounded, apply sticky forces
 		Vec upwardsDir = _bulletVehicle->getUpwardsDirFromWheelContacts();
 
-		bool fullStick = (realThrottle != 0) || (absForwardSpeed > 25);
+		bool fullStick = (realThrottle != 0) || (absForwardSpeed_UU > STOPPING_FORWARD_VEL);
 
 		float stickyForceScale = 0.5f;
 		if (fullStick)
@@ -333,6 +333,9 @@ void Car::_PreTickUpdate(float tickTime) {
 		}
 	}
 
+	// Complete the btVehicleRL update (does suspension and applies wheel forces)
+	_bulletVehicle->updateVehicleSecond(tickTime);
+
 	if (!_internalState.isOnGround) {
 		// Throttle in air
 		if (controls.throttle != 0)
@@ -344,7 +347,7 @@ void Car::_PreTickUpdate(float tickTime) {
 		_internalState.boost = RS_MAX(_internalState.boost - BOOST_USED_PER_SECOND * tickTime, 0);
 
 		float forceScale = 1;
-		if (_internalState.isOnGround && forwardSpeed > (BOOST_FORCE_GROUND_DECAY_MIN_VEL * UU_TO_BT))
+		if (_internalState.isOnGround && forwardSpeed_UU > BOOST_FORCE_GROUND_DECAY_MIN_VEL)
 			forceScale = (1 - BOOST_FORCE_GROUND_DECAY_AMOUNT);
 
 		_rigidBody->applyCentralImpulse(forwardDir * BOOST_FORCE * forceScale * tickTime);

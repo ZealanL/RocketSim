@@ -202,7 +202,7 @@ const btTransform& btVehicleRL::getChassisWorldTransform() const {
 	return getRigidBody()->getCenterOfMassTransform();
 }
 
-void btVehicleRL::updateVehicle(float step) {
+void btVehicleRL::updateVehicleFirst(float step) {
 
 	for (int i = 0; i < getNumWheels(); i++)
 		updateWheelTransform(i);
@@ -219,7 +219,9 @@ void btVehicleRL::updateVehicle(float step) {
 	}
 
 	calcFrictionImpulses(step);
+}
 
+void btVehicleRL::updateVehicleSecond(float step) {
 	updateSuspension(step);
 	applyFrictionImpulses(step);
 }
