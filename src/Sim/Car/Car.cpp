@@ -548,7 +548,7 @@ void Car::_PostTickUpdate(float tickTime) {
 	}
 
 	// Update auto-roll
-	if (controls.throttle && ((numWheelsInContact > 0 && numWheelsInContact < 4) || _internalState.worldContact.hasContact)) {
+	if (controls.throttle && (numWheelsInContact < 4) && ((numWheelsInContact > 0) || _internalState.worldContact.hasContact)) {
 		
 		auto basis = _rigidBody->getWorldTransform().getBasis();
 
@@ -581,7 +581,9 @@ void Car::_PostTickUpdate(float tickTime) {
 		Vec torqueRight = torqueDirRight * rightTorqueFactor;
 		Vec torqueForward = torqueDirForward * forwardTorqueFactor;
 
-		_rigidBody->m_linearVelocity += groundDownDir * RLConst::CAR_AUTOROLL_FORCE * UU_TO_BT * tickTime;
+		if (numWheelsInContact > 0) {
+			_rigidBody->m_linearVelocity += groundDownDir * RLConst::CAR_AUTOROLL_FORCE * tickTime;
+		}
 		_rigidBody->m_angularVelocity += (torqueForward + torqueRight) * RLConst::CAR_AUTOROLL_TORQUE * tickTime;
 	}
 
