@@ -1,13 +1,13 @@
 #include "CollisionMeshFile.h"
 
 void CollisionMeshFile::ReadFromFile(string filePath) {
-	constexpr char MSG_BASE_STR[] = "CollisionMeshFile::ReadFromFile(): ";
+	constexpr char ERR_BASE_STR[] = " > CollisionMeshFile::ReadFromFile(): ";
 
 	std::ifstream inStream = std::ifstream(filePath, std::ios::binary);
 	if (!inStream.good())
-		RS_ERR_CLOSE(MSG_BASE_STR << "Failed to open file \"" << filePath << "\"");
+		RS_ERR_CLOSE(ERR_BASE_STR << "Failed to open file \"" << filePath << "\"");
 
-	RS_LOG(MSG_BASE_STR << "Loading collision mesh \"" << filePath << "\", (bytes left: " << inStream.left << ")...");
+	RS_LOG(" > Loading \"" << filePath << "\"...");
 
 	// Read triangle/vertex counts
 	int numTris = 0, numVertices = 0;
@@ -16,7 +16,7 @@ void CollisionMeshFile::ReadFromFile(string filePath) {
 
 	if (numTris <= 0 || numVertices <= 0)
 		RS_ERR_CLOSE(
-			MSG_BASE_STR << "Invalid collision mesh file at \"" << filePath <<
+			ERR_BASE_STR << "Invalid collision mesh file at \"" << filePath <<
 			"\" (bad triangle/vertex count: [" << numTris << ", " << numVertices << "])");
 
 	tris.resize(numTris);
@@ -32,11 +32,13 @@ void CollisionMeshFile::ReadFromFile(string filePath) {
 			int vertIndex = tri.vertexIndexes[i];
 			if (i < 0 || i >= numVertices) {
 				RS_ERR_CLOSE(
-					MSG_BASE_STR << "Invalid collision mesh file at \"" << filePath <<
+					ERR_BASE_STR << "Invalid collision mesh file at \"" << filePath <<
 					"\" (bad triangle vertex index)");
 			}
 		}
 	}
+
+	RS_LOG("   > Loaded " << numVertices << " verts and " << numTris << " tris.");
 
 	inStream.close();
 }

@@ -436,14 +436,14 @@ void Arena::_SetupArenaCollisionShapes() {
 	if (!collisionMeshesFullyloaded) {
 		collisionMeshLoadMutex.lock();
 		if (collisionMeshes.empty()) {
-
 			string basePath = COLLISION_MESH_SOCCAR_PATH;
+			RS_LOG("Loading arena meshes from \"" << basePath << "\"...");
 
-			if (!std::filesystem::exists(basePath))
+			if (!std::filesystem::exists(basePath)) {
 				RS_ERR_CLOSE(
-					"Failed to find soccar field asset files at \"" << basePath
-					<< "\", the assets folder should be in our current directory " << std::filesystem::current_path() << ".")
-
+					"Failed to find arena collision mesh files at \"" << basePath
+					<< "\", the collision meshes folder should be in our current directory " << std::filesystem::current_path() << ".")
+			}
 				// Load collision meshes
 				auto dirItr = std::filesystem::directory_iterator(basePath);
 			for (auto& entry : dirItr) {
@@ -455,12 +455,14 @@ void Arena::_SetupArenaCollisionShapes() {
 				}
 			}
 
-			if (collisionMeshes.empty())
+			if (collisionMeshes.empty()) {
 				RS_ERR_CLOSE(
 					"Failed to find soccar field asset files at \"" << basePath
 					<< "\", the folder exists but is empty.")
+			}
 
-				collisionMeshesFullyloaded = true;
+			RS_LOG("Finished loading " << collisionMeshes.size() << " arena collision meshes.");
+			collisionMeshesFullyloaded = true;
 		}
 		collisionMeshLoadMutex.unlock();
 	}
