@@ -26,6 +26,7 @@
 #include <chrono>
 #include <filesystem>
 #include <random>
+#include <mutex>
 
 #define _USE_MATH_DEFINES // for M_PI and similar
 #include <cmath>

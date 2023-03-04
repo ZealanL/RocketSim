@@ -429,31 +429,40 @@ void Arena::_SetupArenaCollisionShapes() {
 	// TODO: This is just for soccar arena (for now)
 	assert(gameMode == GameMode::SOCCAR);
 
+	static std::mutex collisionMeshLoadMutex;
 	static vector<CollisionMeshFile> collisionMeshes;
-	if (collisionMeshes.empty()) {
+	static bool collisionMeshesFullyloaded = false;
 
-		string basePath = COLLISION_MESH_SOCCAR_PATH;
+	if (!collisionMeshesFullyloaded) {
+		collisionMeshLoadMutex.lock();
+		if (collisionMeshes.empty()) {
 
-		if (!std::filesystem::exists(basePath))
-			RS_ERR_CLOSE(
-				"Failed to find soccar field asset files at \"" << basePath
-				<< "\", the assets folder should be in our current directory " << std::filesystem::current_path() << ".")
+			string basePath = COLLISION_MESH_SOCCAR_PATH;
 
-		// Load collision meshes
-		auto dirItr = std::filesystem::directory_iterator(basePath);
-		for (auto& entry : dirItr) {
-			auto entryPath = entry.path();
-			if (entryPath.has_extension() && entryPath.extension() == COLLISION_MESH_FILE_EXTENSION) {
-				CollisionMeshFile meshFile = {};
-				meshFile.ReadFromFile(entryPath.string());
-				collisionMeshes.push_back(meshFile);
+			if (!std::filesystem::exists(basePath))
+				RS_ERR_CLOSE(
+					"Failed to find soccar field asset files at \"" << basePath
+					<< "\", the assets folder should be in our current directory " << std::filesystem::current_path() << ".")
+
+				// Load collision meshes
+				auto dirItr = std::filesystem::directory_iterator(basePath);
+			for (auto& entry : dirItr) {
+				auto entryPath = entry.path();
+				if (entryPath.has_extension() && entryPath.extension() == COLLISION_MESH_FILE_EXTENSION) {
+					CollisionMeshFile meshFile = {};
+					meshFile.ReadFromFile(entryPath.string());
+					collisionMeshes.push_back(meshFile);
+				}
 			}
-		}
 
-		if (collisionMeshes.empty())
-			RS_ERR_CLOSE(
-				"Failed to find soccar field asset files at \"" << basePath
-				<< "\", the folder exists but is empty.")
+			if (collisionMeshes.empty())
+				RS_ERR_CLOSE(
+					"Failed to find soccar field asset files at \"" << basePath
+					<< "\", the folder exists but is empty.")
+
+				collisionMeshesFullyloaded = true;
+		}
+		collisionMeshLoadMutex.unlock();
 	}
 	
 	// Add collision meshes to world
