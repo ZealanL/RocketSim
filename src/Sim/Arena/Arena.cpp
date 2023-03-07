@@ -88,6 +88,9 @@ void Arena::ResetToRandomKickoff(int seed) {
 	}
 
 	ball->SetState(BallState());
+
+	for (BoostPad* boostPad : _boostPads)
+		boostPad->SetState(BoostPadState());
 }
 
 bool Arena::_BulletContactAddedCallback(
