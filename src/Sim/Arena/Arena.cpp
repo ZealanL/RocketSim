@@ -17,6 +17,7 @@ Car* Arena::AddCar(Team team, const CarConfig& config) {
 bool Arena::RemoveCar(Car* car) {
 	for (int i = 0; i < _cars.size(); i++) {
 		if (_cars[i] == car) {
+			_bulletWorld->removeCollisionObject(car->_rigidBody);
 			_cars.erase(_cars.begin() + i);
 			delete car;
 			return true;
