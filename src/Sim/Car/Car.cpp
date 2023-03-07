@@ -49,7 +49,8 @@ void Car::Respawn(int seed) {
 	CarSpawnPos spawnPos = CAR_RESPAWN_LOCATIONS[spawnPosIndex];
 
 	newState.pos = Vec(spawnPos.x, spawnPos.y * (team == Team::BLUE ? 1 : -1), CAR_RESPAWN_Z);
-	newState.angles = Angle(spawnPos.yawAng, 0.f, 0.f);
+	newState.angles = Angle(spawnPos.yawAng + (team == Team::BLUE ? 0 : M_PI), 0.f, 0.f);
+	newState.angles.NormalizeFix();
 
 	this->SetState(newState);
 }
