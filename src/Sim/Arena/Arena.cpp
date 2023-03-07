@@ -311,7 +311,7 @@ Arena::Arena(GameMode gameMode, float tickRate) {
 	}
 
 	{ // Initialize boost pads
-		using namespace RLConst::BoostPad;
+		using namespace RLConst::BoostPads;
 
 		_boostPads.reserve(LOCS_AMOUNT_BIG + LOCS_AMOUNT_SMALL);
 

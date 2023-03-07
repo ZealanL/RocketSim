@@ -8,7 +8,7 @@ BoostPad* BoostPad::_AllocBoostPad() {
 }
 
 void BoostPad::_BulletSetup(btDynamicsWorld* bulletWorld, bool isBig, btVector3 pos) {
-	using namespace RLConst::BoostPad;
+	using namespace RLConst::BoostPads;
 
 	this->isBig = isBig;
 
@@ -42,7 +42,7 @@ void BoostPad::_PreTickUpdate(float tickTime) {
 }
 
 void BoostPad::_OnCollide(btCollisionObject* other) {
-	using namespace RLConst::BoostPad;
+	using namespace RLConst::BoostPads;
 
 	if (other->getUserIndex() == BT_USERINFO_TYPE_CAR) {
 
@@ -82,7 +82,7 @@ void BoostPad::_OnCollide(btCollisionObject* other) {
 }
 
 void BoostPad::_PostTickUpdate(float tickTime) {
-	using namespace RLConst::BoostPad;
+	using namespace RLConst::BoostPads;
 
 	if (_internalState.curLockedCarObj && _internalState.isActive) {
 		Car* car = (Car*)_internalState.curLockedCarObj->getUserPointer();

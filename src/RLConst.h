@@ -138,7 +138,7 @@ namespace RLConst {
 		BALL_CAR_EXTRA_IMPULSE_FORWARD_SCALE = 0.65f,
 		BALL_CAR_EXTRA_IMPULSE_MAXDELTAVEL_UU = 4600.f;
 
-	namespace BoostPad {
+	namespace BoostPads {
 		// Mostly from a Rocket Science video: https://www.youtube.com/watch?v=xgfa-qZyInw
 		
 		constexpr float
