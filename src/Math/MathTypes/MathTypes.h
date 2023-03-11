@@ -5,23 +5,24 @@
 struct Vec {
 	float x, y, z;
 
+	float _w; // 4th component to get compiler to use SIMD operations
+
 	Vec() {
-		x = y = z = 0;
+		x = y = z = _w = 0;
 	}
 
-	Vec(float x, float y, float z) : x(x), y(y), z(z) {}
+	Vec(float x, float y, float z, float _w = 0) : x(x), y(y), z(z), _w(_w) {}
 
 	Vec(const btVector3& bulletVec) {
-		for (int i = 0; i < 3; i++)
-			(*this)[i] = bulletVec[i];
+		*(btVector3*)this = bulletVec;
 	}
 
 	bool IsZero() const {
-		return (x == 0 && y == 0 && z == 0);
+		return (x == 0 && y == 0 && z == 0 && _w == 0);
 	}
 
 	float LengthSq() const {
-		return (x * x + y * y + z * z);
+		return (x * x + y * y + z * z + _w * _w);
 	}
 
 	float Length() const {
@@ -34,7 +35,7 @@ struct Vec {
 	}
 
 	float Dot(const Vec& other) const {
-		return (x * other.x + y * other.y + z * other.z);
+		return (x * other.x + y * other.y + z * other.z + _w * other._w);
 	}
 
 	Vec Cross(const Vec& other) const {
@@ -73,7 +74,7 @@ struct Vec {
 	}
 
 	operator btVector3() const {
-		return btVector3(x, y, z);
+		return *(btVector3*)(this);
 	}
 
 	Vec operator+(const Vec& other) const;
@@ -93,7 +94,7 @@ struct Vec {
 	Vec& operator/=(float val);
 
 	Vec operator-() const {
-		return Vec(-x, -y, -z);
+		return Vec(-x, -y, -z, -_w);
 	}
 
 	friend std::ostream& operator<<(std::ostream& stream, const Vec& vec) {
@@ -101,6 +102,7 @@ struct Vec {
 		return stream;
 	}
 };
+static_assert(sizeof(Vec) == sizeof(btVector3), "RocketSim Vec size must match btVector3 size");
 
 // RocketSim 3x3 rotation matrix struct
 // NOTE: Column-major
