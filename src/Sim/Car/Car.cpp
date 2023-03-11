@@ -8,7 +8,7 @@ CarState Car::GetState() {
 
 	_internalState.pos = rbTransform.getOrigin() * BT_TO_UU;
 
-	_internalState.angles = Angle(rbTransform.getBasis());
+	_internalState.rotMat = RotMat(rbTransform.getBasis());
 
 	_internalState.vel = _rigidBody->getLinearVelocity() * BT_TO_UU;
 
@@ -23,7 +23,7 @@ void Car::SetState(const CarState& state) {
 
 	rbTransform.setOrigin(state.pos * UU_TO_BT);
 
-	rbTransform.setBasis(state.angles.ToMatrix());
+	rbTransform.setBasis(state.rotMat);
 
 	_rigidBody->setWorldTransform(rbTransform);
 
@@ -49,8 +49,7 @@ void Car::Respawn(int seed) {
 	CarSpawnPos spawnPos = CAR_RESPAWN_LOCATIONS[spawnPosIndex];
 
 	newState.pos = Vec(spawnPos.x, spawnPos.y * (team == Team::BLUE ? 1 : -1), CAR_RESPAWN_Z);
-	newState.angles = Angle(spawnPos.yawAng + (team == Team::BLUE ? 0 : M_PI), 0.f, 0.f);
-	newState.angles.NormalizeFix();
+	newState.rotMat = Angle(spawnPos.yawAng + (team == Team::BLUE ? 0 : M_PI), 0.f, 0.f).ToMatrix();
 
 	this->SetState(newState);
 }

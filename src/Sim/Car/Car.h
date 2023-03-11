@@ -8,7 +8,7 @@ struct CarState {
 	// Position in world space (UU)
 	Vec pos = { 0, 0, 17 };
 	
-	Angle angles = { 0, 0, 0 };
+	RotMat rotMat = RotMat();
 
 	// Linear velocity
 	Vec vel = { 0, 0, 0 };

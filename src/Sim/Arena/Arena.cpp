@@ -73,14 +73,16 @@ void Arena::ResetToRandomKickoff(int seed) {
 			if (i < teamCars.size()) {
 				CarState spawnState;
 				spawnState.pos = { spawnPos.x, spawnPos.y, CAR_SPAWN_REST_Z };
-				spawnState.angles.yaw = spawnPos.yawAng;
+				
+				Angle angle = Angle(spawnPos.yawAng, 0, 0);
 				spawnState.isOnGround = true;
 
 				if (!isBlue) {
 					spawnState.pos *= { -1, -1, 1 };
-					spawnState.angles.yaw += M_PI;
-					spawnState.angles.NormalizeFix();
+					angle.yaw += M_PI;
 				}
+
+				spawnState.rotMat = angle.ToMatrix();
 
 				teamCars[i]->SetState(spawnState);
 			}

@@ -53,13 +53,16 @@ MAT_OP_EACH_FLT(/)
 
 #undef MAT_OP_EACH_FLT
 
-Angle::Angle(btMatrix3x3 mat) {
-	mat.getEulerYPR(yaw, pitch, roll);
+Angle::Angle(RotMat mat) {
+	// TODO: Don't use btMatrix3x3
+	btMatrix3x3 bulletMat = mat;
+	bulletMat.getEulerYPR(yaw, pitch, roll);
 	pitch *= -1;
 	roll *= -1;
 }
 
-btMatrix3x3 Angle::ToMatrix() const {
+RotMat Angle::ToMatrix() const {
+	// TODO: Don't use btMatrix3x3
 	btMatrix3x3 mat;
 	mat.setEulerYPR(yaw, -pitch, -roll);
 	return mat;
