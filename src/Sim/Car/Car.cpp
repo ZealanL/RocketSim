@@ -49,7 +49,7 @@ void Car::Respawn(int seed) {
 	CarSpawnPos spawnPos = CAR_RESPAWN_LOCATIONS[spawnPosIndex];
 
 	newState.pos = Vec(spawnPos.x, spawnPos.y * (team == Team::BLUE ? 1 : -1), CAR_RESPAWN_Z);
-	newState.rotMat = Angle(spawnPos.yawAng + (team == Team::BLUE ? 0 : M_PI), 0.f, 0.f).ToMatrix();
+	newState.rotMat = Angle(spawnPos.yawAng + (team == Team::BLUE ? 0 : M_PI), 0.f, 0.f).ToRotMat();
 
 	this->SetState(newState);
 }
@@ -528,7 +528,7 @@ void Car::_PostTickUpdate(float tickTime) {
 
 			btVector3 upDir = basis.getColumn(2);
 
-			Angle angles = Angle(basis);
+			Angle angles = Angle::FromRotMat(basis);
 			_internalState.autoFlipTimer = CAR_AUTOFLIP_TIME * (abs(angles.roll) / M_PI);
 			_internalState.autoFlipTorqueScale = (angles.roll > 0) ? 1 : -1;
 			_internalState.isAutoFlipping = true;

@@ -82,7 +82,7 @@ void Arena::ResetToRandomKickoff(int seed) {
 					angle.yaw += M_PI;
 				}
 
-				spawnState.rotMat = angle.ToMatrix();
+				spawnState.rotMat = angle.ToRotMat();
 
 				teamCars[i]->SetState(spawnState);
 			}

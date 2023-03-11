@@ -187,8 +187,8 @@ struct Angle {
 
 	Angle(float yaw = 0, float pitch = 0, float roll = 0) : yaw(yaw), pitch(pitch), roll(roll) {}
 
-	Angle(RotMat mat);
-	RotMat ToMatrix() const;
+	static Angle FromRotMat(RotMat mat);
+	RotMat ToRotMat() const;
 
 	Vec GetForwardVector() const;
 
