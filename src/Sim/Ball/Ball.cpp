@@ -58,7 +58,7 @@ void Ball::_FinishPhysicsTick() {
 	using namespace RLConst;
 
 	// Add velocity cache
-	if (!_velocityImpulseCache.isZero()) {
+	if (!_velocityImpulseCache.IsZero()) {
 		_rigidBody->m_linearVelocity += _velocityImpulseCache;
 		_velocityImpulseCache = { 0,0,0 };
 	}

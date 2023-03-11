@@ -21,8 +21,8 @@ struct btWheelInfoRL : public btWheelInfo {
 // This is a modified version of btRaycastVehicle to more accurately follow Rocket League
 class btVehicleRL : public btActionInterface {
 public:
-	btAlignedObjectArray<Vec> m_forwardWS;
-	btAlignedObjectArray<Vec> m_axle;
+	btAlignedObjectArray<btVector3> m_forwardWS;
+	btAlignedObjectArray<btVector3> m_axle;
 	btAlignedObjectArray<float> m_forwardImpulse;
 	btAlignedObjectArray<float> m_sideImpulse;
 
@@ -93,9 +93,9 @@ public:
 
 	void updateWheelTransform(int wheelIndex);
 
-	//	void	setRaycastWheelInfo( int wheelIndex , bool isInContact, const Vec& hitPoint, const Vec& hitNormal,float depth);
+	//	void	setRaycastWheelInfo( int wheelIndex , bool isInContact, const btVector3& hitPoint, const btVector3& hitNormal,float depth);
 
-	btWheelInfoRL& addWheel(const Vec& connectionPointCS0, const Vec& wheelDirectionCS0, const Vec& wheelAxleCS, float suspensionRestLength, float wheelRadius, const btVehicleTuning& tuning, bool isFrontWheel);
+	btWheelInfoRL& addWheel(const btVector3& connectionPointCS0, const btVector3& wheelDirectionCS0, const btVector3& wheelAxleCS, float suspensionRestLength, float wheelRadius, const btVehicleTuning& tuning, bool isFrontWheel);
 
 	inline int getNumWheels() const {
 		return int(m_wheelInfo.size());
@@ -139,10 +139,10 @@ public:
 		return m_indexForwardAxis;
 	}
 
-	Vec getForwardVector() const {
+	btVector3 getForwardVector() const {
 		const btTransform& chassisTrans = getChassisWorldTransform();
 
-		Vec forwardW(
+		btVector3 forwardW(
 			chassisTrans.getBasis()[0][m_indexForwardAxis],
 			chassisTrans.getBasis()[1][m_indexForwardAxis],
 			chassisTrans.getBasis()[2][m_indexForwardAxis]);
@@ -150,10 +150,10 @@ public:
 		return forwardW;
 	}
 
-	Vec getUpVector() const {
+	btVector3 getUpVector() const {
 		const btTransform& chassisTrans = getChassisWorldTransform();
 
-		Vec forwardW(
+		btVector3 forwardW(
 			chassisTrans.getBasis()[0][m_indexUpAxis],
 			chassisTrans.getBasis()[1][m_indexUpAxis],
 			chassisTrans.getBasis()[2][m_indexUpAxis]);
@@ -161,10 +161,10 @@ public:
 		return forwardW;
 	}
 
-	Vec getRightVector() const {
+	btVector3 getRightVector() const {
 		const btTransform& chassisTrans = getChassisWorldTransform();
 
-		Vec forwardW(
+		btVector3 forwardW(
 			chassisTrans.getBasis()[0][m_indexRightAxis],
 			chassisTrans.getBasis()[1][m_indexRightAxis],
 			chassisTrans.getBasis()[2][m_indexRightAxis]);
@@ -198,6 +198,6 @@ public:
 	virtual void debugDraw(btIDebugDraw* debugDrawer) {}
 
     // Extra utility funcs
-	Vec getUpwardsDirFromWheelContacts();
+	btVector3 getUpwardsDirFromWheelContacts();
 	float getForwardSpeed();
 };

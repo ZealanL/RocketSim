@@ -78,7 +78,7 @@ void Car::_PreTickUpdate(float tickTime) {
 			_rigidBody->m_collisionFlags |= btCollisionObject::CF_NO_CONTACT_RESPONSE;
 
 			// Put car far away from anything going on in the arena
-			_rigidBody->m_worldTransform.m_origin = Vec(0, 0, -1000);
+			_rigidBody->m_worldTransform.m_origin = btVector3(0, 0, -1000);
 
 			// Don't bother updating anything
 			return;
@@ -96,7 +96,7 @@ void Car::_PreTickUpdate(float tickTime) {
 
 	btMatrix3x3 basis = _rigidBody->getWorldTransform().getBasis();
 
-	Vec
+	btVector3
 		forwardDir = basis.getColumn(0),
 		rightDir = basis.getColumn(1),
 		upDir = basis.getColumn(2);
@@ -185,17 +185,17 @@ void Car::_PreTickUpdate(float tickTime) {
 			auto& wheel = _bulletVehicle->m_wheelInfo[i];
 			if (wheel.m_raycastInfo.m_groundObject) {
 
-				Vec
+				btVector3
 					vel = _rigidBody->getLinearVelocity(),
 					angularVel = _rigidBody->getAngularVelocity();
 
-				Vec
+				btVector3
 					latDir = wheel.m_worldTransform.getBasis().getColumn(1),
 					longDir = latDir.cross(wheel.m_raycastInfo.m_contactNormalWS);
 
 				float frictionCurveInput = 0;
 
-				Vec wheelDelta = wheel.m_raycastInfo.m_hardPointWS - _rigidBody->getWorldTransform().getOrigin();
+				btVector3 wheelDelta = wheel.m_raycastInfo.m_hardPointWS - _rigidBody->getWorldTransform().getOrigin();
 
 				auto crossVec = (angularVel.cross(wheelDelta) + vel) * BT_TO_UU;
 
@@ -250,7 +250,7 @@ void Car::_PreTickUpdate(float tickTime) {
 	}
 
 	if (numWheelsInContact >= 3) { // Grounded, apply sticky forces
-		Vec upwardsDir = _bulletVehicle->getUpwardsDirFromWheelContacts();
+		btVector3 upwardsDir = _bulletVehicle->getUpwardsDirFromWheelContacts();
 
 		bool fullStick = (realThrottle != 0) || (absForwardSpeed_UU > STOPPING_FORWARD_VEL);
 
@@ -272,7 +272,7 @@ void Car::_PreTickUpdate(float tickTime) {
 
 			btVector3 relDodgeTorque = _internalState.lastRelDodgeTorque;
 
-			if (!_internalState.lastRelDodgeTorque.isZero()) {
+			if (!_internalState.lastRelDodgeTorque.IsZero()) {
 				// Flip cancel check
 				float pitchScale = 1;
 				if (relDodgeTorque.y() != 0 && controls.pitch != 0) {
@@ -308,9 +308,9 @@ void Car::_PreTickUpdate(float tickTime) {
 					pitchTorqueScale = 0;
 
 				// TODO: Use actual dot product operator functions (?)
-				torque = (controls.pitch * dirPitch_right * pitchTorqueScale * CAR_AIR_CONTROL_TORQUE.x()) +
-					(controls.yaw * dirYaw_up * CAR_AIR_CONTROL_TORQUE.y()) +
-					(controls.roll * dirRoll_forward * CAR_AIR_CONTROL_TORQUE.z());
+				torque = (controls.pitch * dirPitch_right * pitchTorqueScale * CAR_AIR_CONTROL_TORQUE.x) +
+					(controls.yaw * dirYaw_up * CAR_AIR_CONTROL_TORQUE.y) +
+					(controls.roll * dirRoll_forward * CAR_AIR_CONTROL_TORQUE.z);
 			} else {
 				torque = { 0, 0, 0 };
 			}
@@ -319,9 +319,9 @@ void Car::_PreTickUpdate(float tickTime) {
 
 			// TODO: Use actual dot product operator functions (?)
 			float
-				dampPitch = dirPitch_right.dot(angVel) * CAR_AIR_CONTROL_DAMPING.x() * (1 - abs(doAirControl ? (controls.pitch * pitchTorqueScale) : 0)),
-				dampYaw = dirYaw_up.dot(angVel) * CAR_AIR_CONTROL_DAMPING.y() * (1 - abs(doAirControl ? controls.yaw : 0)),
-				dampRoll = dirRoll_forward.dot(angVel) * CAR_AIR_CONTROL_DAMPING.z();
+				dampPitch = dirPitch_right.dot(angVel) * CAR_AIR_CONTROL_DAMPING.x * (1 - abs(doAirControl ? (controls.pitch * pitchTorqueScale) : 0)),
+				dampYaw = dirYaw_up.dot(angVel) * CAR_AIR_CONTROL_DAMPING.y * (1 - abs(doAirControl ? controls.yaw : 0)),
+				dampRoll = dirRoll_forward.dot(angVel) * CAR_AIR_CONTROL_DAMPING.z;
 
 			btVector3 damping =
 				(dirYaw_up * dampYaw) +
@@ -524,10 +524,10 @@ void Car::_PostTickUpdate(float tickTime) {
 		if (
 			jumpPressed &&
 			_internalState.worldContact.hasContact &&
-			_internalState.worldContact.contactNormal.z() > CAR_AUTOFLIP_NORMZ_THRESH
+			_internalState.worldContact.contactNormal.z > CAR_AUTOFLIP_NORMZ_THRESH
 			) {
 
-			Vec upDir = basis.getColumn(2);
+			btVector3 upDir = basis.getColumn(2);
 
 			Angle angles = Angle(basis);
 			_internalState.autoFlipTimer = CAR_AUTOFLIP_TIME * (abs(angles.roll) / M_PI);
@@ -542,7 +542,7 @@ void Car::_PostTickUpdate(float tickTime) {
 				_internalState.isAutoFlipping = false;
 				_internalState.autoFlipTimer = 0;
 			} else {
-				Vec forwardDir = basis.getColumn(0);
+				btVector3 forwardDir = basis.getColumn(0);
 
 				_rigidBody->applyTorqueImpulse(forwardDir * CAR_AUTOFLIP_TORQUE * _internalState.autoFlipTorqueScale);
 
@@ -556,21 +556,21 @@ void Car::_PostTickUpdate(float tickTime) {
 		
 		auto basis = _rigidBody->getWorldTransform().getBasis();
 
-		Vec
+		btVector3
 			forwardDir = basis.getColumn(0),
 			rightDir = basis.getColumn(1),
 			upDir = basis.getColumn(2);
-		
-		Vec groundUpDir;
+
+		btVector3 groundUpDir;
 		if (numWheelsInContact > 0) {
 			groundUpDir = _bulletVehicle->getUpwardsDirFromWheelContacts();
 		} else {
 			groundUpDir = _internalState.worldContact.contactNormal;
 		}
 
-		Vec groundDownDir = -groundUpDir;
+		btVector3 groundDownDir = -groundUpDir;
 
-		Vec
+		btVector3
 			crossRightDir = groundUpDir.cross(forwardDir),
 			crossForwardDir = groundDownDir.cross(crossRightDir);
 
@@ -621,7 +621,7 @@ void Car::_FinishPhysicsTick() {
 		return;
 
 	// Add velocity cache
-	if (!_velocityImpulseCache.isZero()) {
+	if (!_velocityImpulseCache.IsZero()) {
 		_rigidBody->m_linearVelocity += _velocityImpulseCache;
 		_velocityImpulseCache = { 0,0,0 };
 	}

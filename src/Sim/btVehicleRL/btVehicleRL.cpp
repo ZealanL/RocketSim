@@ -23,7 +23,7 @@ btVehicleRL::~btVehicleRL() {
 //
 // basically most of the code is general for 2 or 4 wheel vehicles, but some of it needs to be reviewed
 //
-btWheelInfoRL& btVehicleRL::addWheel(const Vec& connectionPointCS, const Vec& wheelDirectionCS0, const Vec& wheelAxleCS, float suspensionRestLength, float wheelRadius, const btVehicleTuning& tuning, bool isFrontWheel) {
+btWheelInfoRL& btVehicleRL::addWheel(const btVector3& connectionPointCS, const btVector3& wheelDirectionCS0, const btVector3& wheelAxleCS, float suspensionRestLength, float wheelRadius, const btVehicleTuning& tuning, bool isFrontWheel) {
 	btWheelInfoConstructionInfo ci;
 
 	ci.m_chassisConnectionCS = connectionPointCS;
@@ -57,9 +57,9 @@ const btTransform& btVehicleRL::getWheelTransformWS(int wheelIndex) const {
 void btVehicleRL::updateWheelTransform(int wheelIndex) {
 	btWheelInfoRL& wheel = m_wheelInfo[wheelIndex];
 	updateWheelTransformsWS(wheel);
-	Vec up = -wheel.m_raycastInfo.m_wheelDirectionWS;
-	const Vec& right = wheel.m_raycastInfo.m_wheelAxleWS;
-	Vec fwd = up.cross(right);
+	btVector3 up = -wheel.m_raycastInfo.m_wheelDirectionWS;
+	const btVector3& right = wheel.m_raycastInfo.m_wheelAxleWS;
+	btVector3 fwd = up.cross(right);
 	fwd = fwd.normalize();
 	//	up = right.cross(fwd);
 	//	up.normalize();
@@ -115,8 +115,8 @@ float btVehicleRL::rayCast(btWheelInfoRL& wheel) {
 	float magicSubtractionNumber = 0.05f; // TODO: Add to RLConst
 	float realRayLength = wheel.getSuspensionRestLength() + suspensionTravel + wheel.m_wheelsRadius - magicSubtractionNumber;
 
-	Vec source = wheel.m_raycastInfo.m_hardPointWS;
-	Vec target = source + (wheel.m_raycastInfo.m_wheelDirectionWS * realRayLength);
+	btVector3 source = wheel.m_raycastInfo.m_hardPointWS;
+	btVector3 target = source + (wheel.m_raycastInfo.m_wheelDirectionWS * realRayLength);
 	wheel.m_raycastInfo.m_contactPointWS = target;
 
 	btVehicleRaycaster::btVehicleRaycasterResult rayResults;
@@ -152,8 +152,8 @@ float btVehicleRL::rayCast(btWheelInfoRL& wheel) {
 
 		float denominator = wheel.m_raycastInfo.m_contactNormalWS.dot(wheel.m_raycastInfo.m_wheelDirectionWS);
 
-		Vec chassis_velocity_at_contactPoint;
-		Vec relpos = wheel.m_raycastInfo.m_contactPointWS - getRigidBody()->getCenterOfMassPosition();
+		btVector3 chassis_velocity_at_contactPoint;
+		btVector3 relpos = wheel.m_raycastInfo.m_contactPointWS - getRigidBody()->getCenterOfMassPosition();
 
 		chassis_velocity_at_contactPoint = getRigidBody()->getVelocityInLocalPoint(relpos);
 
@@ -289,9 +289,9 @@ void btVehicleRL::updateSuspension(float deltaTime) {
 		//apply suspension force
 		btWheelInfoRL& wheel = m_wheelInfo[i];
 		if (wheel.m_wheelsSuspensionForce != 0) {
-			Vec contactPointOffset = wheel.m_raycastInfo.m_contactPointWS - getRigidBody()->getCenterOfMassPosition();
+			btVector3 contactPointOffset = wheel.m_raycastInfo.m_contactPointWS - getRigidBody()->getCenterOfMassPosition();
 			float baseForceScale = (wheel.m_wheelsSuspensionForce * deltaTime) + wheel.m_extraPushback;
-			Vec force = wheel.m_raycastInfo.m_contactNormalWS * baseForceScale;
+			btVector3 force = wheel.m_raycastInfo.m_contactNormalWS * baseForceScale;
 			m_chassisBody->applyImpulse(force, contactPointOffset);
 		}
 	}
@@ -379,13 +379,13 @@ void btVehicleRL::applyFrictionImpulses(float timeStep) {
 	}
 }
 
-Vec btVehicleRL::getUpwardsDirFromWheelContacts() {
-	Vec sumContactDir = Vec(0, 0, 0);
+btVector3 btVehicleRL::getUpwardsDirFromWheelContacts() {
+	btVector3 sumContactDir = btVector3(0, 0, 0);
 	for (int i = 0; i < 4; i++)
-		if (m_wheelInfo[i].m_isInContactWithWorld)
+		if (m_wheelInfo[i].m_raycastInfo.m_isInContact)
 			sumContactDir += m_wheelInfo[i].m_raycastInfo.m_contactNormalWS;
 
-	if (sumContactDir == Vec(0, 0, 0)) {
+	if (sumContactDir == btVector3(0, 0, 0)) {
 		// No wheels had world contact, just return basic upward direction
 		return this->getUpVector();
 	} else {

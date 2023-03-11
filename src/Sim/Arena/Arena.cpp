@@ -199,13 +199,13 @@ void Arena::_BtCallback_OnCarCarCollision(Car* car1, Car* car2, btManifoldPoint&
 		return; // In cooldown
 
 	Vec deltaPos = (otherState.pos - state.pos);
-	if (state.vel.dot(deltaPos) > 0) { // Going towards other car
+	if (state.vel.Dot(deltaPos) > 0) { // Going towards other car
 
-		Vec velDir = state.vel.normalized();
-		Vec dirToOtherCar = deltaPos.normalized();
+		Vec velDir = state.vel.Normalized();
+		Vec dirToOtherCar = deltaPos.Normalized();
 
-		float speedTowardsOtherCar = state.vel.dot(dirToOtherCar);
-		float otherCarAwaySpeed = otherState.vel.dot(velDir);
+		float speedTowardsOtherCar = state.vel.Dot(dirToOtherCar);
+		float otherCarAwaySpeed = otherState.vel.Dot(velDir);
 
 		if (speedTowardsOtherCar > otherCarAwaySpeed) { // Going towards other car faster than they are going away
 
@@ -221,7 +221,7 @@ void Arena::_BtCallback_OnCarCarCollision(Car* car1, Car* car2, btManifoldPoint&
 						(groundHit ? BUMP_VEL_AMOUNT_GROUND_CURVE : BUMP_VEL_AMOUNT_AIR_CURVE).GetOutput(speedTowardsOtherCar);
 
 					Vec hitUpDir =
-						(otherState.isOnGround ? car2->_bulletVehicle->getUpVector() : Vec(0, 0, 1));
+						(otherState.isOnGround ? (Vec)car2->_bulletVehicle->getUpVector() : Vec(0, 0, 1));
 
 					Vec bumpImpulse =
 						velDir * baseScale +
