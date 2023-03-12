@@ -3,12 +3,11 @@
 
 // Update our internal state from bullet and return it
 CarState Car::GetState() {
-
 	btTransform rbTransform = _rigidBody->getWorldTransform();
 
 	_internalState.pos = rbTransform.getOrigin() * BT_TO_UU;
 
-	_internalState.rotMat = RotMat(rbTransform.getBasis());
+	// NOTE: rotMat already updated at the start of Car::_PostTickUpdate()
 
 	_internalState.vel = _rigidBody->getLinearVelocity() * BT_TO_UU;
 
@@ -359,6 +358,8 @@ void Car::_PostTickUpdate(float tickTime) {
 	if (_internalState.isDemoed)
 		return;
 
+	_internalState.rotMat = _rigidBody->m_worldTransform.m_basis;
+
 	int numWheelsInContact = 0;
 	for (int i = 0; i < 4; i++)
 		numWheelsInContact += _bulletVehicle->m_wheelInfo[i].m_raycastInfo.m_isInContact;
@@ -393,7 +394,7 @@ void Car::_PostTickUpdate(float tickTime) {
 			// Start jumping
 			_internalState.isJumping = true;
 			_internalState.jumpTime = 0;
-			btVector3 jumpStartForce = _bulletVehicle->getUpVector() * JUMP_IMMEDIATE_FORCE * UU_TO_BT;
+			btVector3 jumpStartForce = GetUpDir() * JUMP_IMMEDIATE_FORCE * UU_TO_BT;
 			_rigidBody->applyCentralImpulse(jumpStartForce * CAR_MASS_BT);
 		}
 
@@ -402,7 +403,7 @@ void Car::_PostTickUpdate(float tickTime) {
 			_internalState.jumpTime += tickTime;
 
 			// Apply extra long-jump force
-			btVector3 extraJumpForce = _bulletVehicle->getUpVector() * JUMP_ACCEL;
+			btVector3 extraJumpForce = GetUpDir() * JUMP_ACCEL;
 
 			if (_internalState.jumpTime < JUMP_MIN_TIME) {
 				extraJumpForce *= 0.75f;
@@ -437,7 +438,7 @@ void Car::_PostTickUpdate(float tickTime) {
 						// Apply initial dodge vel and set later dodge vel
 						// Replicated based on https://github.com/samuelpmish/RLUtilities/blob/develop/src/simulation/car.cc
 						{
-							btVector3 forwardDir = _bulletVehicle->getForwardVector();
+							btVector3 forwardDir = GetForwardDir();
 							float forwardSpeed = forwardDir.dot(_rigidBody->getLinearVelocity()) * BT_TO_UU;
 							float forwardSpeedRatio = abs(forwardSpeed) / CAR_MAX_SPEED;
 
@@ -492,7 +493,7 @@ void Car::_PostTickUpdate(float tickTime) {
 
 					} else {
 						// Double jump, add upwards velocity
-						btVector3 jumpStartForce = _bulletVehicle->getUpVector() * JUMP_IMMEDIATE_FORCE * UU_TO_BT;
+						btVector3 jumpStartForce = GetUpDir() * JUMP_IMMEDIATE_FORCE * UU_TO_BT;
 						_rigidBody->applyCentralImpulse(jumpStartForce * CAR_MASS_BT);
 
 						_internalState.hasDoubleJumped = true;

@@ -107,6 +107,16 @@ public:
 	// Those values are only updated when GetState() is called
 	CarState _internalState;
 
+	Vec GetForwardDir() const {
+		return _internalState.rotMat.forward;
+	}
+	Vec GetRightDir() const {
+		return _internalState.rotMat.right;
+	}
+	Vec GetUpDir() const {
+		return _internalState.rotMat.up;
+	}
+
 	~Car();
 
 	void _PreTickUpdate(float tickTime);

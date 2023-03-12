@@ -168,7 +168,7 @@ void Arena::_BtCallback_OnCarBallCollision(Car* car, Ball* ball, btManifoldPoint
 	auto carState = car->GetState();
 	auto ballState = ball->GetState();
 
-	btVector3 carForward = car->_bulletVehicle->getForwardVector();
+	btVector3 carForward = car->GetForwardDir();
 	btVector3 relPos = ballState.pos - carState.pos;
 	btVector3 relVel = ballState.vel - carState.vel;
 
@@ -223,7 +223,7 @@ void Arena::_BtCallback_OnCarCarCollision(Car* car1, Car* car2, btManifoldPoint&
 						(groundHit ? BUMP_VEL_AMOUNT_GROUND_CURVE : BUMP_VEL_AMOUNT_AIR_CURVE).GetOutput(speedTowardsOtherCar);
 
 					Vec hitUpDir =
-						(otherState.isOnGround ? (Vec)car2->_bulletVehicle->getUpVector() : Vec(0, 0, 1));
+						(otherState.isOnGround ? (Vec)car2->GetUpDir() : Vec(0, 0, 1));
 
 					Vec bumpImpulse =
 						velDir * baseScale +
