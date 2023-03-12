@@ -451,6 +451,9 @@ void Arena::_SetupArenaCollisionShapes() {
 
 	if (!collisionMeshesFullyloaded) {
 		collisionMeshLoadMutex.lock();
+
+		RS_LOG("RocketSim version: " << RS_VERSION);
+
 		if (collisionMeshes.empty()) {
 			string basePath = COLLISION_MESH_SOCCAR_PATH;
 			RS_LOG("Loading arena meshes from \"" << basePath << "\"...");
