@@ -35,8 +35,9 @@ Car* Arena::GetCarFromID(uint32_t id) {
 	return NULL;
 }
 
-void Arena::RegisterGoalScoreCallback(GoalScoreEventFn callbackFunc) {
-	_goalScoreCallbacks.push_back(callbackFunc);
+void Arena::SetGoalScoreCallback(GoalScoreEventFn callbackFunc, void* userInfo) {
+	_goalScoreCallback.func = callbackFunc;
+	_goalScoreCallback.userInfo = userInfo;
 }
 
 void Arena::ResetToRandomKickoff(int seed) {
@@ -371,6 +372,15 @@ void Arena::Step(int ticksToSimulate) {
 			pad->_PostTickUpdate(tickTime);
 
 		ball->_FinishPhysicsTick();
+
+		if (_goalScoreCallback.func != NULL) { // Potentially fire goal score callback
+			float ballPosY = ball->_rigidBody->m_worldTransform.m_origin.y() * BT_TO_UU;
+			if (abs(ballPosY) > RLConst::SOCCAR_BALL_SCORE_THRESHOLD_Y) {
+				// Orange goal is at positive Y, so if the ball's Y is positive, it's in orange goal and thus blue scored
+				Team scoringTeam = (ballPosY > 0) ? Team::BLUE : Team::ORANGE;
+				_goalScoreCallback.func(this, scoringTeam, _goalScoreCallback.userInfo);
+			}
+		}
 
 		tickCount++;
 	}

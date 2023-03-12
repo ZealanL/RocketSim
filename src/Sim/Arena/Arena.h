@@ -11,6 +11,8 @@ enum class GameMode {
 	// More coming soon!
 };
 
+typedef std::function<void(class Arena* arena, Team scoringTeam, void* userInfo)> GoalScoreEventFn;
+
 // The container for all game simulation
 // Stores cars, the ball, all arena collisions, and manages the overall game state
 class Arena {
@@ -54,9 +56,11 @@ public:
 	vector<btCollisionShape*> _worldCollisionShapes;
 	vector<btTriangleMesh*> _arenaTriMeshes;
 
-	typedef std::function<void(Team goalTeam)> GoalScoreEventFn;
-	vector<GoalScoreEventFn> _goalScoreCallbacks;
-	void RegisterGoalScoreCallback(GoalScoreEventFn callbackFunc);
+	struct {
+		GoalScoreEventFn func = NULL;
+		void* userInfo = NULL;
+	} _goalScoreCallback;
+	RSAPI void SetGoalScoreCallback(GoalScoreEventFn callbackFn, void* userInfo = NULL);
 
 	RSAPI Arena(GameMode gameMode, float tickRate = 120);
 
