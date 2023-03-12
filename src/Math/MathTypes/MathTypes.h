@@ -77,21 +77,21 @@ struct Vec {
 		return *(btVector3*)(this);
 	}
 
-	Vec operator+(const Vec& other) const;
-	Vec operator-(const Vec& other) const;
-	Vec operator*(const Vec& other) const;
-	Vec operator/(const Vec& other) const;
+	RSAPI Vec operator+(const Vec& other) const;
+	RSAPI Vec operator-(const Vec& other) const;
+	RSAPI Vec operator*(const Vec& other) const;
+	RSAPI Vec operator/(const Vec& other) const;
 
-	Vec& operator+=(const Vec& other);
-	Vec& operator-=(const Vec& other);
-	Vec& operator*=(const Vec& other);
-	Vec& operator/=(const Vec& other);
+	RSAPI Vec& operator+=(const Vec& other);
+	RSAPI Vec& operator-=(const Vec& other);
+	RSAPI Vec& operator*=(const Vec& other);
+	RSAPI Vec& operator/=(const Vec& other);
 
-	Vec operator*(float val) const;
-	Vec operator/(float val) const;
+	RSAPI Vec operator*(float val) const;
+	RSAPI Vec operator/(float val) const;
 
-	Vec& operator*=(float val);
-	Vec& operator/=(float val);
+	RSAPI Vec& operator*=(float val);
+	RSAPI Vec& operator/=(float val);
 
 	Vec operator-() const {
 		return Vec(-x, -y, -z, -_w);
@@ -145,17 +145,17 @@ struct RotMat {
 		return result;
 	}
 
-	RotMat operator+(const RotMat& other) const;
-	RotMat operator-(const RotMat& other) const;
+	RSAPI RotMat operator+(const RotMat& other) const;
+	RSAPI RotMat operator-(const RotMat& other) const;
 
-	RotMat& operator+=(const RotMat& other);
-	RotMat& operator-=(const RotMat& other);
+	RSAPI RotMat& operator+=(const RotMat& other);
+	RSAPI RotMat& operator-=(const RotMat& other);
 
-	RotMat operator*(float val) const;
-	RotMat operator/(float val) const;
+	RSAPI RotMat operator*(float val) const;
+	RSAPI RotMat operator/(float val) const;
 
-	RotMat& operator*=(float val);
-	RotMat& operator/=(float val);
+	RSAPI RotMat& operator*=(float val);
+	RSAPI RotMat& operator/=(float val);
 
 	Vec Dot(const Vec& vec) const {
 		return Vec(
@@ -189,13 +189,13 @@ struct Angle {
 
 	Angle(float yaw = 0, float pitch = 0, float roll = 0) : yaw(yaw), pitch(pitch), roll(roll) {}
 
-	static Angle FromRotMat(RotMat mat);
-	RotMat ToRotMat() const;
+	RSAPI static Angle FromRotMat(RotMat mat);
+	RSAPI RotMat ToRotMat() const;
 
-	Vec GetForwardVector() const;
+	RSAPI Vec GetForwardVector() const;
 
 	// Limits yaw/pitch/roll to [-pi,pi]/[-pi/2,pi/2]/[-pi,pi] while still representing the same rotation
-	void NormalizeFix();
+	RSAPI void NormalizeFix();
 
 	friend std::ostream& operator<<(std::ostream& stream, const Angle& ang) {
 		stream << "(YPR)[ " << ang.yaw << ", " << ang.pitch << ", " << ang.roll << " ]";
