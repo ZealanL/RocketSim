@@ -580,7 +580,7 @@ void Car::_PostTickUpdate(float tickTime) {
 
 		Vec
 			torqueDirRight = forwardDir * (rightDir.dot(groundUpDir) >= 0 ? -1 : 1),
-			torqueDirForward = rightDir * (forwardDir.dot(groundUpDir) >= 0 ? -1 : 1);
+			torqueDirForward = rightDir * (forwardDir.dot(groundUpDir) >= 0 ? 1 : -1);
 
 		Vec torqueRight = torqueDirRight * rightTorqueFactor;
 		Vec torqueForward = torqueDirForward * forwardTorqueFactor;
