@@ -126,6 +126,14 @@ struct RS_ALIGN_16 RotMat {
 		}
 	}
 
+	static RotMat GetIdentity() {
+		return RotMat(
+			Vec(1, 0, 0),
+			Vec(0, 1, 0),
+			Vec(0, 0, 1)
+		);
+	}
+
 	Vec operator[](uint32_t index) const {
 		assert(index >= 0 && index < 3);
 		return ((Vec*)(this))[index];
