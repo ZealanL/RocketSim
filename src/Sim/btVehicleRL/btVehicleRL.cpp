@@ -99,6 +99,7 @@ void btVehicleRL::resetSuspension() {
 
 void btVehicleRL::updateWheelTransformsWS(btWheelInfoRL& wheel) {
 	wheel.m_raycastInfo.m_isInContact = false;
+	wheel.m_isInContactWithWorld = false;
 
 	btTransform chassisTrans = getChassisWorldTransform();
 	wheel.m_raycastInfo.m_hardPointWS = chassisTrans(wheel.m_chassisConnectionPointCS);
@@ -123,7 +124,7 @@ float btVehicleRL::rayCast(btWheelInfoRL& wheel) {
 
 	btAssert(m_vehicleRaycaster);
 
-	void* object = m_vehicleRaycaster->castRay(source, target, rayResults);
+	btCollisionObject* object = (btCollisionObject * )m_vehicleRaycaster->castRay(source, target, rayResults);
 
 	wheel.m_raycastInfo.m_groundObject = 0;
 
@@ -133,9 +134,9 @@ float btVehicleRL::rayCast(btWheelInfoRL& wheel) {
 		depth = realRayLength * rayResults.m_distFraction;
 		wheel.m_raycastInfo.m_contactNormalWS = rayResults.m_hitNormalInWorld;
 		wheel.m_raycastInfo.m_isInContact = true;
+		wheel.m_isInContactWithWorld = object->isStaticObject();
 
-		wheel.m_raycastInfo.m_groundObject = &getFixedBody();  ///@todo for driving on dynamic/movable objects!;
-		//wheel.m_raycastInfo.m_groundObject = object;
+		wheel.m_raycastInfo.m_groundObject = object;
 
 		float wheelTraceLenSq = (wheel.m_raycastInfo.m_hardPointWS - wheel.m_raycastInfo.m_contactPointWS).dot(getUpVector());
 		wheel.m_raycastInfo.m_suspensionLength = wheelTraceLenSq - wheel.m_wheelsRadius;
@@ -178,7 +179,7 @@ float btVehicleRL::rayCast(btWheelInfoRL& wheel) {
 
 			float susRayDeltaDist = wheelTraceLenSq - (realRayLength - wheel.m_wheelsRadius);
 			
-			float collisionResult = resolveSingleCollision(m_chassisBody, (btCollisionObject*)object, rayResults.m_hitPointInWorld, rayResults.m_hitNormalInWorld, m_dynamicsWorld->getSolverInfo(), susRayDeltaDist);
+			float collisionResult = resolveSingleCollision(m_chassisBody, object, rayResults.m_hitPointInWorld, rayResults.m_hitNormalInWorld, m_dynamicsWorld->getSolverInfo(), susRayDeltaDist);
 			float pushBackScale = (1 / 1.5f);
 			wheel.m_extraPushback = (collisionResult * pushBackScale) / getNumWheels();
 

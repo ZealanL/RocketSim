@@ -108,6 +108,10 @@ void Car::_PreTickUpdate(float tickTime) {
 	for (int i = 0; i < 4; i++)
 		numWheelsInContact += _bulletVehicle->m_wheelInfo[i].m_raycastInfo.m_isInContact;
 
+	bool wheelsHaveWorldContact = false;
+	for (int i = 0; i < 4; i++)
+		wheelsHaveWorldContact |= _bulletVehicle->m_wheelInfo[i].m_isInContactWithWorld;
+
 	{ // Increase/decrease handbrake value from input
 		if (controls.handbrake) {
 			_internalState.handbrakeVal += POWERSLIDE_RISE_RATE * tickTime;
@@ -247,7 +251,7 @@ void Car::_PreTickUpdate(float tickTime) {
 		}
 	}
 
-	if (numWheelsInContact >= 3) { // Grounded, apply sticky forces
+	if (wheelsHaveWorldContact) { // At least 1 wheel is contacting, apply sticky forces
 		btVector3 upwardsDir = _bulletVehicle->getUpwardsDirFromWheelContacts();
 
 		bool fullStick = (realThrottle != 0) || (absForwardSpeed_UU > STOPPING_FORWARD_VEL);
@@ -257,8 +261,9 @@ void Car::_PreTickUpdate(float tickTime) {
 			stickyForceScale += 1 - abs(upwardsDir.z());
 
 		_rigidBody->applyCentralForce(upwardsDir * stickyForceScale * (GRAVITY_Z * UU_TO_BT) * CAR_MASS_BT);
+	}
 
-	} else { // Not grounded, apply air control
+	if (numWheelsInContact == 0) { // Not grounded, apply air control
 		btMatrix3x3 basis = _rigidBody->getWorldTransform().getBasis();
 		btVector3
 			dirPitch_right = -rightDir,
