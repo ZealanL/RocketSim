@@ -121,7 +121,7 @@ bool Arena::_BulletContactAddedCallback(
 		userIndexA = bodyA->getUserIndex(),
 		userIndexB = bodyB->getUserIndex();
 
-	bool carInvolved = (bodyA->getUserIndex() == BT_USERINFO_TYPE_CAR);
+	bool carInvolved = (userIndexA == BT_USERINFO_TYPE_CAR);
 	if (carInvolved) {
 
 		Car* car = (Car*)bodyA->getUserPointer();
@@ -133,11 +133,8 @@ bool Arena::_BulletContactAddedCallback(
 				_BtCallback_OnCarBallCollision(car, (Ball*)bodyB->getUserPointer(), contactPoint);
 		} else if (userIndexB == BT_USERINFO_TYPE_CAR) {
 			// Car + Car
-			// Do collision both ways
 			arenaInst->
 				_BtCallback_OnCarCarCollision(car, (Car*)bodyB->getUserPointer(), contactPoint);
-			arenaInst->
-				_BtCallback_OnCarCarCollision((Car*)bodyB->getUserPointer(), car, contactPoint);
 		} else if (userIndexB == BT_USERINFO_TYPE_BOOSTPAD) {
 			// Car + BoostPad hitbox
 			arenaInst->
@@ -194,45 +191,53 @@ void Arena::_BtCallback_OnCarCarCollision(Car* car1, Car* car2, btManifoldPoint&
 	manifoldPoint.m_combinedFriction = RLConst::CARCAR_COLLISION_FRICTION;
 	manifoldPoint.m_combinedRestitution = RLConst::CARCAR_COLLISION_RESTITUTION;
 
-	CarState
-		state = car1->GetState(),
-		otherState = car2->GetState();
+	for (int i = 0; i < 2; i++) {
 
-	if ((state.carContact.otherCar == car2) && (state.carContact.cooldownTimer > 0))
-		return; // In cooldown
+		bool isSwapped = (i == 1);
+		if (isSwapped)
+			std::swap(car1, car2);
 
-	Vec deltaPos = (otherState.pos - state.pos);
-	if (state.vel.Dot(deltaPos) > 0) { // Going towards other car
+		CarState
+			state = car1->GetState(),
+			otherState = car2->GetState();
 
-		Vec velDir = state.vel.Normalized();
-		Vec dirToOtherCar = deltaPos.Normalized();
+		if ((state.carContact.otherCar == car2) && (state.carContact.cooldownTimer > 0))
+			return; // In cooldown
 
-		float speedTowardsOtherCar = state.vel.Dot(dirToOtherCar);
-		float otherCarAwaySpeed = otherState.vel.Dot(velDir);
+		Vec deltaPos = (otherState.pos - state.pos);
+		if (state.vel.Dot(deltaPos) > 0) { // Going towards other car
 
-		if (speedTowardsOtherCar > otherCarAwaySpeed) { // Going towards other car faster than they are going away
+			Vec velDir = state.vel.Normalized();
+			Vec dirToOtherCar = deltaPos.Normalized();
 
-			bool hitWithBumper = manifoldPoint.m_localPointA.x() * BT_TO_UU > BUMP_MIN_FORWARD_DIST;
-			if (hitWithBumper) {
+			float speedTowardsOtherCar = state.vel.Dot(dirToOtherCar);
+			float otherCarAwaySpeed = otherState.vel.Dot(velDir);
 
-				if (state.isSupersonic) {
-					car2->Demolish();
-				} else {
-					bool groundHit = car2->_internalState.isOnGround;
+			if (speedTowardsOtherCar > otherCarAwaySpeed) { // Going towards other car faster than they are going away
 
-					float baseScale =
-						(groundHit ? BUMP_VEL_AMOUNT_GROUND_CURVE : BUMP_VEL_AMOUNT_AIR_CURVE).GetOutput(speedTowardsOtherCar);
+				Vec localPoint = isSwapped ? manifoldPoint.m_localPointB : manifoldPoint.m_localPointA;
+				bool hitWithBumper = (localPoint.x * BT_TO_UU) > BUMP_MIN_FORWARD_DIST;
+				if (hitWithBumper) {
 
-					Vec hitUpDir =
-						(otherState.isOnGround ? (Vec)car2->GetUpDir() : Vec(0, 0, 1));
+					if (state.isSupersonic) {
+						car2->Demolish();
+					} else {
+						bool groundHit = car2->_internalState.isOnGround;
 
-					Vec bumpImpulse =
-						velDir * baseScale +
-						hitUpDir * BUMP_UPWARD_VEL_AMOUNT_CURVE.GetOutput(speedTowardsOtherCar);
+						float baseScale =
+							(groundHit ? BUMP_VEL_AMOUNT_GROUND_CURVE : BUMP_VEL_AMOUNT_AIR_CURVE).GetOutput(speedTowardsOtherCar);
 
-					car2->_velocityImpulseCache += bumpImpulse * UU_TO_BT;
-					car1->_internalState.carContact.otherCar = car2;
-					car1->_internalState.carContact.cooldownTimer = BUMP_COOLDOWN_TIME;
+						Vec hitUpDir =
+							(otherState.isOnGround ? (Vec)car2->GetUpDir() : Vec(0, 0, 1));
+
+						Vec bumpImpulse =
+							velDir * baseScale +
+							hitUpDir * BUMP_UPWARD_VEL_AMOUNT_CURVE.GetOutput(speedTowardsOtherCar);
+
+						car2->_velocityImpulseCache += bumpImpulse * UU_TO_BT;
+						car1->_internalState.carContact.otherCar = car2;
+						car1->_internalState.carContact.cooldownTimer = BUMP_COOLDOWN_TIME;
+					}
 				}
 			}
 		}
