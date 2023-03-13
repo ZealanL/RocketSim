@@ -85,3 +85,5 @@ typedef uint8_t byte;
 #else
 #define RSAPI
 #endif
+
+#define RS_ALIGN_16 alignas(16)

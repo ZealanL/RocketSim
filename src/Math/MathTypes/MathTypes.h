@@ -2,7 +2,7 @@
 #include "../../BaseInc.h"
 
 // RocketSim 3D vector struct
-struct Vec {
+struct RS_ALIGN_16 Vec {
 	float x, y, z;
 
 	float _w; // 4th component to get compiler to use SIMD operations
@@ -102,11 +102,13 @@ struct Vec {
 		return stream;
 	}
 };
+
+// Vec needs to be equal in both size and structure layout to btVector3, because they are type-punned to and from
 static_assert(sizeof(Vec) == sizeof(btVector3), "RocketSim Vec size must match btVector3 size");
 
 // RocketSim 3x3 rotation matrix struct
 // NOTE: Column-major
-struct RotMat {
+struct RS_ALIGN_16 RotMat {
 	Vec forward, right, up;
 
 	RotMat() {
