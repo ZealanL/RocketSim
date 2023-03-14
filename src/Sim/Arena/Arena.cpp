@@ -45,7 +45,7 @@ void Arena::ResetToRandomKickoff(int seed) {
 
 	// TODO: Make shuffling of kickoff setup more efficient (?)
 
-	static vector<int> kickoffOrder;
+	static thread_local vector<int> kickoffOrder;
 	if (kickoffOrder.empty()) {
 		for (int i = 0; i < CAR_SPAWN_LOCATION_AMOUNT; i++)
 			kickoffOrder.push_back(i);
