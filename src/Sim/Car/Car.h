@@ -54,7 +54,7 @@ struct CarState {
 	} worldContact;
 
 	struct {
-		class Car* otherCar = NULL;
+		uint32_t otherCarID = 0;
 		float cooldownTimer = 0;
 	} carContact;
 

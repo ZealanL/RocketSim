@@ -201,7 +201,7 @@ void Arena::_BtCallback_OnCarCarCollision(Car* car1, Car* car2, btManifoldPoint&
 			state = car1->GetState(),
 			otherState = car2->GetState();
 
-		if ((state.carContact.otherCar == car2) && (state.carContact.cooldownTimer > 0))
+		if ((state.carContact.otherCarID == car2->id) && (state.carContact.cooldownTimer > 0))
 			return; // In cooldown
 
 		Vec deltaPos = (otherState.pos - state.pos);
@@ -235,7 +235,7 @@ void Arena::_BtCallback_OnCarCarCollision(Car* car1, Car* car2, btManifoldPoint&
 							hitUpDir * BUMP_UPWARD_VEL_AMOUNT_CURVE.GetOutput(speedTowardsOtherCar);
 
 						car2->_velocityImpulseCache += bumpImpulse * UU_TO_BT;
-						car1->_internalState.carContact.otherCar = car2;
+						car1->_internalState.carContact.otherCarID = car2->id;
 						car1->_internalState.carContact.cooldownTimer = BUMP_COOLDOWN_TIME;
 					}
 				}
