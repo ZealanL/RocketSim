@@ -345,6 +345,38 @@ Arena::Arena(GameMode gameMode, float tickRate) {
 	gContactAddedCallback = &Arena::_BulletContactAddedCallback;
 }
 
+Arena* Arena::Create(GameMode gameMode, float tickRate) {
+	return new Arena(gameMode, tickRate);
+}
+
+Arena* Arena::Clone(bool copyCallbacks) {
+	Arena* newArena = new Arena(this->gameMode, this->GetTickRate());
+	
+	if (copyCallbacks)
+		newArena->_goalScoreCallback = this->_goalScoreCallback;
+	
+	newArena->ball->SetState(this->ball->GetState());
+	newArena->ball->_velocityImpulseCache = this->ball->_velocityImpulseCache;
+
+	for (Car* car : this->_cars) {
+		Car* newCar = newArena->AddCar(car->team, car->config);
+		
+		newCar->SetState(car->GetState());
+		newCar->id = car->id;
+		newCar->controls = car->controls;
+		newCar->_velocityImpulseCache = car->_velocityImpulseCache;
+	}
+
+	assert(this->_boostPads.size() == newArena->_boostPads.size());
+	for (int i = 0; i < this->_boostPads.size(); i++)
+		newArena->_boostPads[i]->SetState(this->_boostPads[i]->GetState());
+
+	newArena->tickCount = this->tickCount;
+	newArena->_lastCarID = this->_lastCarID;
+
+	return newArena;
+}
+
 void Arena::Step(int ticksToSimulate) {
 	for (int i = 0; i < ticksToSimulate; i++) {
 

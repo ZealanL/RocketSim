@@ -62,7 +62,19 @@ public:
 	} _goalScoreCallback;
 	RSAPI void SetGoalScoreCallback(GoalScoreEventFn callbackFn, void* userInfo = NULL);
 
-	RSAPI Arena(GameMode gameMode, float tickRate = 120);
+	// NOTE: Arena should be destroyed after use
+	RSAPI static Arena* Create(GameMode gameMode, float tickRate = 120);
+	
+	// No copy constructor, use Arena::Clone() instead	
+	Arena(const Arena& other) = delete;
+	Arena& operator =(const Arena& other) = delete;
+
+	// No move constructor
+	Arena(Arena&& other) = delete;
+	Arena& operator =(Arena && other) = delete;
+
+	// Get a deep copy of the arena
+	RSAPI Arena* Clone(bool copyCallbacks);
 
 	// Simulate everything in the arena for a given number of ticks
 	RSAPI void Step(int ticksToSimulate = 1);
@@ -85,4 +97,9 @@ public:
 	void _BtCallback_OnCarCarCollision(Car* car1, Car* car2, btManifoldPoint& manifoldPoint);
 	void _BtCallback_OnCarWorldCollision(Car* car, btCollisionObject* worldObject, btManifoldPoint& manifoldPoint);
 	void _BtCallback_OnCarBoostPadCollision(Car* car, BoostPad* pad, btManifoldPoint& manifoldPoint);
+
+private:
+	
+	// Constructor for use by Arena::Create()
+	Arena(GameMode gameMode, float tickRate = 120);
 };
