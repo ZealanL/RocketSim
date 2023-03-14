@@ -55,7 +55,9 @@ float Math::RandFloat(float min, float max) {
 }
 
 std::default_random_engine& Math::GetRandEngine() {
-	static thread_local std::default_random_engine randEngine = std::default_random_engine(time(NULL));
+	static thread_local auto hashThreadID = std::hash<std::thread::id>();
+	static thread_local uint64_t seed = RS_CUR_MS() + hashThreadID(std::this_thread::get_id());
+	static thread_local std::default_random_engine randEngine = std::default_random_engine(seed);
 	return randEngine;
 }
 
