@@ -6,7 +6,7 @@
 
 #include "../../CollisionMeshFile/CollisionMeshFile.h"
 
-enum class GameMode : byte{
+enum class GameMode : byte {
 	SOCCAR,
 	// More coming soon!
 };
@@ -65,6 +65,12 @@ public:
 	// NOTE: Arena should be destroyed after use
 	RSAPI static Arena* Create(GameMode gameMode, float tickRate = 120);
 	
+	// Serialize cars, ball, and boostpads to a file
+	RSAPI void WriteToFile(std::filesystem::path path);
+
+	// Create a new arena from a file written by Arena.WriteToFile()
+	RSAPI static Arena* LoadFromFile(std::filesystem::path path);
+
 	// No copy constructor, use Arena::Clone() instead	
 	Arena(const Arena& other) = delete;
 	Arena& operator =(const Arena& other) = delete;
