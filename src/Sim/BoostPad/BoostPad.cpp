@@ -100,6 +100,19 @@ void BoostPad::_PostTickUpdate(float tickTime) {
 	_internalState.prevLockedCarID = lockedCarID;
 }
 
+void BoostPadState::Serialize(DataStreamOut& out) {
+	out.WriteMultiple(
+		BOOSTPAD_SERIALIZATION_FIELDS
+	);
+
+}
+
+void BoostPadState::Deserialize(DataStreamIn& in) {
+	in.ReadMultiple(
+		BOOSTPAD_SERIALIZATION_FIELDS
+	);
+}
+
 BoostPad::~BoostPad() {
 	delete _rigidBody;
 	delete _collisionBoxShape;
