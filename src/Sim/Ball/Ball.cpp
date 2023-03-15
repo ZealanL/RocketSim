@@ -94,3 +94,11 @@ Ball::~Ball() {
 	delete _rigidBody;
 	delete _collisionShape;
 }
+
+void BallState::Serialize(DataStreamOut& out) {
+	out.WriteMultiple(BALLSTATE_SERIALIZATION_FIELDS);
+}
+
+void BallState::Deserialize(DataStreamIn& in) {
+	in.ReadMultiple(BALLSTATE_SERIALIZATION_FIELDS);
+}
