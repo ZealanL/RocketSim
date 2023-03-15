@@ -40,15 +40,11 @@ struct DataStreamOut {
 
 	template <>
 	void Write(const Vec& val) {
-		Write(val.x);
-		Write(val.y);
-		Write(val.z);
+		WriteMultiple(val.x, val.y, val.z);
 	}
 
 	template <>
 	void Write(const RotMat& val) {
-		Write(val.forward);
-		Write(val.right);
-		Write(val.up);
+		WriteMultiple(val.forward, val.right, val.up);
 	}
 };

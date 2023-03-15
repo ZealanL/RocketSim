@@ -64,19 +64,15 @@ struct DataStreamIn {
 
 	template <>
 	Vec Read() {
-		return Vec(
-			Read<float>(),
-			Read<float>(),
-			Read<float>()
-		);
+		Vec result;
+		ReadMultiple(result.x, result.y, result.z);
+		return result;
 	}
 
 	template <>
 	RotMat Read() {
-		return RotMat(
-			Read<Vec>(),
-			Read<Vec>(),
-			Read<Vec>()
-		);
+		RotMat result;
+		ReadMultiple(result.forward, result.right, result.up);
+		return result;
 	}
 };
