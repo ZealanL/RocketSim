@@ -6,7 +6,7 @@ struct BoostPadState {
 	float cooldown = 0;
 
 	btCollisionObject* curLockedCarObj = NULL;
-	btCollisionObject* prevLockedCarObj = NULL;
+	uint32_t prevLockedCarID = NULL;
 };
 
 class BoostPad {
