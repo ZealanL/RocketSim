@@ -3,6 +3,8 @@
 #include "../btVehicleRL/btVehicleRL.h"
 #include "../CarControls.h"
 #include "../../RLConst.h"
+#include "../../DataStream/DataStreamIn.h"
+#include "../../DataStream/DataStreamOut.h"
 
 struct CarState {
 	// Position in world space (UU)
@@ -67,9 +69,20 @@ struct CarState {
 
 	// Controls from last tick, set to this->controls after simulation
 	CarControls lastControls = CarControls();
+
+	void Serialize(DataStreamOut& out);
+	void Deserialize(DataStreamIn& in);
 };
 
-enum class Team {
+#define CARSTATE_SERIALIZATION_FIELDS \
+pos, rotMat, vel, angVel, isOnGround, hasJumped, hasDoubleJumped, hasFlipped, \
+lastRelDodgeTorque, jumpTime, flipTime, isJumping, airTimeSinceJump, boost, \
+timeSpentBoosting, supersonicTime, handbrakeVal, isAutoFlipping, autoFlipTimer, \
+autoFlipTorqueScale, isDemoed, demoRespawnTimer, lastHitBallTick, lastControls, \
+worldContact.hasContact, worldContact.contactNormal, \
+carContact.otherCarID, carContact.cooldownTimer
+
+enum class Team : byte {
 	BLUE = 0,
 	ORANGE = 1
 };
@@ -128,6 +141,9 @@ public:
 	// For construction by Arena
 	static Car* _AllocateCar();
 	void _BulletSetup(btDynamicsWorld* bulletWorld);
+	
+	void _Serialize(DataStreamOut& out);
+	void _Deserialize(DataStreamIn& in);
 
 private:
 	Car() {};

@@ -377,6 +377,30 @@ Arena* Arena::Clone(bool copyCallbacks) {
 	return newArena;
 }
 
+void Arena::SerializeCar(DataStreamOut& out, Car* car) {
+	car->_Serialize(out);
+
+	CarState state = car->GetState();
+	state.Serialize(out);
+}
+
+Car* Arena::DeserializeNewCar(DataStreamIn& in, Team team) {
+	Car* car = Car::_AllocateCar();
+	car->_Deserialize(in);
+	_cars.push_back(car);
+
+	car->team = team;
+	car->id = ++_lastCarID;
+
+	car->_BulletSetup(_bulletWorld);
+
+	CarState state = CarState();
+	state.Deserialize(in);
+	car->SetState(state);
+
+	return car;
+}
+
 void Arena::Step(int ticksToSimulate) {
 	for (int i = 0; i < ticksToSimulate; i++) {
 

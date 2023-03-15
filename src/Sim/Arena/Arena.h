@@ -6,7 +6,7 @@
 
 #include "../../CollisionMeshFile/CollisionMeshFile.h"
 
-enum class GameMode {
+enum class GameMode : byte{
 	SOCCAR,
 	// More coming soon!
 };
@@ -75,6 +75,9 @@ public:
 
 	// Get a deep copy of the arena
 	RSAPI Arena* Clone(bool copyCallbacks);
+
+	RSAPI static void SerializeCar(DataStreamOut& out, Car* car);
+	RSAPI Car* DeserializeNewCar(DataStreamIn& in, Team team);
 
 	// Simulate everything in the arena for a given number of ticks
 	RSAPI void Step(int ticksToSimulate = 1);
