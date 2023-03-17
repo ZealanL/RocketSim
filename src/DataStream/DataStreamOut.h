@@ -38,13 +38,15 @@ struct DataStreamOut {
 		[](...) {}((Write(std::forward<Args>(args)), 0)...);
 	}
 
-	template <>
-	void Write(const Vec& val) {
-		WriteMultiple(val.x, val.y, val.z);
-	}
-
-	template <>
-	void Write(const RotMat& val) {
-		WriteMultiple(val.forward, val.right, val.up);
-	}
 };
+
+
+template <>
+inline void DataStreamOut::Write(const Vec& val) {
+	WriteMultiple(val.x, val.y, val.z);
+}
+
+template <>
+inline void DataStreamOut::Write(const RotMat& val) {
+	WriteMultiple(val.forward, val.right, val.up);
+}
