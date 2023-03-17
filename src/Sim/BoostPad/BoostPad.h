@@ -1,13 +1,21 @@
 #pragma once
 #include "../../BaseInc.h"
 
+#include "../../DataStream/DataStreamIn.h"
+#include "../../DataStream/DataStreamOut.h"
+
 struct BoostPadState {
 	bool isActive = true;
 	float cooldown = 0;
 
 	btCollisionObject* curLockedCarObj = NULL;
-	btCollisionObject* prevLockedCarObj = NULL;
+	uint32_t prevLockedCarID = NULL;
+
+	void Serialize(DataStreamOut& out);
+	void Deserialize(DataStreamIn& in);
 };
+#define BOOSTPAD_SERIALIZATION_FIELDS \
+isActive, cooldown, prevLockedCarID
 
 class BoostPad {
 public:

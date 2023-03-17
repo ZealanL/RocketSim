@@ -349,6 +349,89 @@ Arena* Arena::Create(GameMode gameMode, float tickRate) {
 	return new Arena(gameMode, tickRate);
 }
 
+void Arena::WriteToFile(std::filesystem::path path) {
+	DataStreamOut out = DataStreamOut(path);
+
+	out.WriteMultiple(gameMode, tickTime, tickCount, _lastCarID);
+
+	{ // Serialize cars
+		out.Write<uint32_t>(_cars.size());
+		for (auto car : _cars) {
+			out.WriteMultiple(car->team, car->id);
+
+			SerializeCar(out, car);
+		}
+	}
+
+	{ // Serialize boost pads
+		out.Write<uint32_t>(_boostPads.size());
+		for (auto pad : _boostPads)
+			pad->GetState().Serialize(out);
+	}
+
+	{ // Serialize ball
+		ball->GetState().Serialize(out);
+	}
+}
+
+Arena* Arena::LoadFromFile(std::filesystem::path path) {
+	constexpr char ERROR_PREFIX[] = "Arena::LoadFromFile(): ";
+
+	DataStreamIn in = DataStreamIn(path);
+
+	GameMode gameMode;
+	float tickTime;
+	uint64_t tickCount;
+	uint32_t lastCarID;
+
+	in.ReadMultiple(gameMode, tickTime, tickCount, lastCarID);
+
+	Arena* newArena = new Arena(gameMode, 1.f / tickTime);
+	newArena->tickCount = tickCount;
+	
+	{ // Deserialize cars
+		uint32_t carAmount = in.Read<uint32_t>();
+		for (int i = 0; i < carAmount; i++) {
+			Team team;
+			uint32_t id;
+			in.ReadMultiple(team, id);
+
+#ifndef RS_MAX_SPEED
+			if (newArena->GetCarFromID(id) != NULL)
+				RS_ERR_CLOSE(ERROR_PREFIX << "Failed to load from " << path << ", got repeated car ID of " << id << ".");
+#endif
+
+			Car* newCar = newArena->DeserializeNewCar(in, team);
+			newCar->id = id;
+		}
+	}
+
+	{ // Deserialize boost pads
+		uint32_t boostPadAmount = in.Read<uint32_t>();
+
+#ifndef RS_MAX_SPEED
+		if (boostPadAmount != newArena->_boostPads.size())
+			RS_ERR_CLOSE(ERROR_PREFIX << "Failed to load from " << path << 
+				", different boost pad amount written in file (" << boostPadAmount << "/" << newArena->_boostPads.size() << ")");
+#endif
+
+		for (auto pad : newArena->_boostPads) {
+			BoostPadState padState = BoostPadState();
+			padState.Deserialize(in);
+			pad->SetState(padState);
+		}
+	}
+
+	{ // Serialize ball
+		BallState ballState = BallState();
+		ballState.Deserialize(in);
+		newArena->ball->SetState(ballState);
+	}
+
+	newArena->_lastCarID = lastCarID;
+	return newArena;
+}
+
 Arena* Arena::Clone(bool copyCallbacks) {
 	Arena* newArena = new Arena(this->gameMode, this->GetTickRate());
 	
@@ -375,6 +458,30 @@ Arena* Arena::Clone(bool copyCallbacks) {
 	newArena->_lastCarID = this->_lastCarID;
 
 	return newArena;
+}
+
+void Arena::SerializeCar(DataStreamOut& out, Car* car) {
+	car->_Serialize(out);
+
+	CarState state = car->GetState();
+	state.Serialize(out);
+}
+
+Car* Arena::DeserializeNewCar(DataStreamIn& in, Team team) {
+	Car* car = Car::_AllocateCar();
+	car->_Deserialize(in);
+	_cars.push_back(car);
+
+	car->team = team;
+	car->id = ++_lastCarID;
+
+	car->_BulletSetup(_bulletWorld);
+
+	CarState state = CarState();
+	state.Deserialize(in);
+	car->SetState(state);
+
+	return car;
 }
 
 void Arena::Step(int ticksToSimulate) {

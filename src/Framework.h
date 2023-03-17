@@ -29,6 +29,7 @@
 #include <filesystem>
 #include <random>
 #include <mutex>
+#include <bit>
 #include <thread>
 
 #define _USE_MATH_DEFINES // for M_PI and similar
@@ -88,3 +89,19 @@ typedef uint8_t byte;
 #endif
 
 #define RS_ALIGN_16 alignas(16)
+
+template<typename ...Args>
+size_t __RS_GET_ARGUMENT_COUNT(Args ...) {
+	return sizeof...(Args);
+}
+#define RS_GET_ARGUMENT_COUNT __RS_GET_ARGUMENT_COUNT
+
+constexpr uint32_t __RS_GET_VERSION_ID() {
+	uint32_t result = 0;
+	for (int i = 0; i < sizeof(RS_VERSION); i++)
+		result = RS_MAX(RS_VERSION[i] - '0' + 1, 0) + (result*10);
+	return result;
+}
+#define RS_VERSION_ID (__RS_GET_VERSION_ID())
+
+#define RS_IS_BIG_ENDIAN (std::endian::native == std::endian::big)

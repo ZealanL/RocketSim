@@ -23,6 +23,7 @@
 - Boost usage and boost pads
 - Bumps and demos
 - Auto-flip when upside-down
+- Serialization of cars/ball/boost pads/arena
 
 ## Simulation Accuracy
 RocketSim is not perfectly accurate, but it's close enough that it shouldnt matter (for ML bots or humans).

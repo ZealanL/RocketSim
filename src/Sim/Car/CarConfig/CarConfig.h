@@ -13,6 +13,9 @@ struct WheelPairConfig {
 	Vec connectionPointOffset;
 };
 
+#define WHEEL_PAIR_CONFIG_SERIALIZATION_FIELDS(name) \
+name.connectionPointOffset, name.suspensionRestLength, name.wheelRadius
+
 struct CarConfig {
 	// Full size of hitbox (NOT the half-size/extent)
 	Vec hitboxSize;
@@ -27,8 +30,12 @@ struct CarConfig {
 	float dodgeDeadzone = 0.5f;
 };
 
+#define CAR_CONFIG_SERIALIZATION_FIELDS(name) \
+name.dodgeDeadzone, name.hitboxPosOffset, name.hitboxSize, \
+WHEEL_PAIR_CONFIG_SERIALIZATION_FIELDS(name.frontWheels), \
+WHEEL_PAIR_CONFIG_SERIALIZATION_FIELDS(name.backWheels) \
+
 // Global car configurations for all car type presets
 // NOTE: CAR_CONFIG_PLANK is the batmobile preset
-// TODO: Make sure these are all right (defined in .cpp)
 RSAPI const extern CarConfig
 	CAR_CONFIG_OCTANE, CAR_CONFIG_DOMINUS, CAR_CONFIG_PLANK, CAR_CONFIG_BREAKOUT, CAR_CONFIG_HYBRID, CAR_CONFIG_MERC;

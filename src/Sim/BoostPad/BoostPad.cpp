@@ -45,7 +45,6 @@ void BoostPad::_OnCollide(btCollisionObject* other) {
 	using namespace RLConst::BoostPads;
 
 	if (other->getUserIndex() == BT_USERINFO_TYPE_CAR) {
-
 		Car* otherCar = (Car*)other->getUserPointer();
 		if (otherCar->_internalState.boost >= 100)
 			return;
@@ -54,7 +53,7 @@ void BoostPad::_OnCollide(btCollisionObject* other) {
 
 		bool colliding;
 
-		if (_internalState.prevLockedCarObj == other) {
+		if (_internalState.prevLockedCarID == otherCar->id) {
 			colliding = true;
 		} else {
 			colliding = false;
@@ -84,17 +83,34 @@ void BoostPad::_OnCollide(btCollisionObject* other) {
 void BoostPad::_PostTickUpdate(float tickTime) {
 	using namespace RLConst::BoostPads;
 
-	if (_internalState.curLockedCarObj && _internalState.isActive) {
+	uint32_t lockedCarID = 0;
+	if (_internalState.curLockedCarObj) {
 		Car* car = (Car*)_internalState.curLockedCarObj->getUserPointer();
-		
-		float boostToAdd = isBig ? BOOST_AMOUNT_BIG : BOOST_AMOUNT_SMALL;
-		car->_internalState.boost = RS_MIN(car->_internalState.boost + boostToAdd, 100);
+		lockedCarID = car->id;
 
-		_internalState.isActive = false;
-		_internalState.cooldown = isBig ? COOLDOWN_BIG : COOLDOWN_SMALL;
+		if (_internalState.isActive) {
+			float boostToAdd = isBig ? BOOST_AMOUNT_BIG : BOOST_AMOUNT_SMALL;
+			car->_internalState.boost = RS_MIN(car->_internalState.boost + boostToAdd, 100);
+
+			_internalState.isActive = false;
+			_internalState.cooldown = isBig ? COOLDOWN_BIG : COOLDOWN_SMALL;
+		}
 	}
 
-	_internalState.prevLockedCarObj = _internalState.curLockedCarObj;
+	_internalState.prevLockedCarID = lockedCarID;
+}
+
+void BoostPadState::Serialize(DataStreamOut& out) {
+	out.WriteMultiple(
+		BOOSTPAD_SERIALIZATION_FIELDS
+	);
+
+}
+
+void BoostPadState::Deserialize(DataStreamIn& in) {
+	in.ReadMultiple(
+		BOOSTPAD_SERIALIZATION_FIELDS
+	);
 }
 
 BoostPad::~BoostPad() {

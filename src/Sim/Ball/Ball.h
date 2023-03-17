@@ -2,6 +2,8 @@
 #include "../../BaseInc.h"
 
 #include "../../RLConst.h"
+#include "../../DataStream/DataStreamIn.h"
+#include "../../DataStream/DataStreamOut.h"
 
 struct BallState {
 	// Position in world space
@@ -9,10 +11,16 @@ struct BallState {
 
 	// Linear velocity
 	Vec vel = { 0, 0, 0 };
-
+	 
 	// Angular velocity (axis-angle)
 	Vec angVel = { 0, 0, 0 };
+
+	void Serialize(DataStreamOut& out);
+	void Deserialize(DataStreamIn& in);
 };
+
+#define BALLSTATE_SERIALIZATION_FIELDS \
+pos, vel, angVel
 
 class Ball {
 public:
@@ -44,7 +52,5 @@ public:
 	~Ball();
 
 private:
-	Ball() {
-
-	}
+	Ball() {}
 };

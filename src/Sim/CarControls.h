@@ -29,3 +29,8 @@ struct CarControls {
 		roll		= RS_CLAMP(roll,		-1, 1);
 	}
 };
+
+#define CAR_CONTROLS_SERIALIZATION_FIELDS(name) \
+name.throttle, name.steer, \
+name.pitch, name.yaw, name.roll, \
+name.boost, name.jump, name.handbrake

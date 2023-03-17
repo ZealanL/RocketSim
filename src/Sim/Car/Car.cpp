@@ -43,7 +43,7 @@ void Car::Respawn(int seed) {
 	using namespace RLConst;
 
 	CarState newState = CarState();
-	
+
 	int spawnPosIndex = Math::RandInt(0, CAR_RESPAWN_LOCATION_AMOUNT, seed);
 	CarSpawnPos spawnPos = CAR_RESPAWN_LOCATIONS[spawnPosIndex];
 
@@ -69,7 +69,7 @@ void Car::_PreTickUpdate(float tickTime) {
 			if (_internalState.demoRespawnTimer == 0)
 				Respawn();
 		}
-		
+
 		if (_internalState.isDemoed) {
 			// Disable rigidbody simulation
 			_rigidBody->m_activationState1 = DISABLE_SIMULATION;
@@ -558,7 +558,7 @@ void Car::_PostTickUpdate(float tickTime) {
 
 	// Update auto-roll
 	if (controls.throttle && ((numWheelsInContact > 0 && numWheelsInContact < 4) || _internalState.worldContact.hasContact)) {
-		
+
 		auto basis = _rigidBody->getWorldTransform().getBasis();
 
 		btVector3
@@ -757,4 +757,42 @@ Car::~Car() {
 	delete _rigidBody;
 	delete _compoundShape;
 	delete _childHitboxShape;
+}
+
+void CarState::Serialize(DataStreamOut& out) {
+
+	uint32_t argumentCount = RS_GET_ARGUMENT_COUNT(CARSTATE_SERIALIZATION_FIELDS);
+	out.Write(argumentCount);
+
+	out.WriteMultiple(
+		CARSTATE_SERIALIZATION_FIELDS
+	);
+}
+
+void CarState::Deserialize(DataStreamIn& in) {
+
+	uint32_t trueArgumentCount = RS_GET_ARGUMENT_COUNT(CARSTATE_SERIALIZATION_FIELDS);
+	uint32_t argumentCount = in.Read<uint32_t>();
+
+	if (argumentCount != trueArgumentCount) {
+		RS_ERR_CLOSE(
+			"CarState::Deserialize(): Failed to deserialize, number of arguments does not match " <<
+			"(" << argumentCount << "/" << trueArgumentCount << "). " <<
+			"File is either corrupt or from a different version of RocketSim."
+		);
+	}
+
+	in.ReadMultiple(
+		CARSTATE_SERIALIZATION_FIELDS
+	);
+}
+
+void Car::_Serialize(DataStreamOut& out) {
+	out.WriteMultiple(CAR_CONTROLS_SERIALIZATION_FIELDS(controls));
+	out.WriteMultiple(CAR_CONFIG_SERIALIZATION_FIELDS(config));
+}
+
+void Car::_Deserialize(DataStreamIn& in) {
+	in.ReadMultiple(CAR_CONTROLS_SERIALIZATION_FIELDS(controls));
+	in.ReadMultiple(CAR_CONFIG_SERIALIZATION_FIELDS(config));
 }
