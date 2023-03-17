@@ -30,6 +30,7 @@
 #include <random>
 #include <mutex>
 #include <bit>
+#include <thread>
 
 #define _USE_MATH_DEFINES // for M_PI and similar
 #include <cmath>
