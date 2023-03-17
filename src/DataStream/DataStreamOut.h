@@ -7,12 +7,13 @@ struct DataStreamOut {
 	std::ofstream fileStream;
 	size_t pos = 0;
 
-	DataStreamOut(std::filesystem::path filePath) : filePath(filePath) {
+	DataStreamOut(std::filesystem::path filePath, bool writeVersionCheck = true) : filePath(filePath) {
 		this->fileStream = std::ofstream(filePath, std::ios::binary);
 		if (!fileStream.good())
 			RS_ERR_CLOSE("Failed to write to file " << filePath << ", cannot open file.");
 
-		Write<uint32_t>(RS_VERSION_ID);
+		if (writeVersionCheck)
+			Write<uint32_t>(RS_VERSION_ID);
 	}
 
 	template <typename T>
@@ -39,7 +40,6 @@ struct DataStreamOut {
 	}
 
 };
-
 
 template <>
 inline void DataStreamOut::Write(const Vec& val) {

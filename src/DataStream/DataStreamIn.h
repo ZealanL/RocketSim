@@ -6,16 +6,18 @@ struct DataStreamIn {
 	vector<char> data;
 	size_t pos = 0;
 
-	DataStreamIn(std::filesystem::path filePath) {
+	DataStreamIn(std::filesystem::path filePath, bool versionCheck = true) {
 		std::ifstream fileStream = std::ifstream(filePath, std::ios::binary);
 		if (!fileStream.good())
 			RS_ERR_CLOSE("Failed to read file " << filePath << ", cannot open file.");
 
 		data = vector<char>(std::istreambuf_iterator<char>(fileStream), std::istreambuf_iterator<char>());
 
-		uint32_t versionID = Read<uint32_t>();
-		if (versionID != RS_VERSION_ID)
-			RS_ERR_CLOSE("Failed to read file " << filePath << ", file is invalid or from a different version of RocketSim.");
+		if (versionCheck) {
+			uint32_t versionID = Read<uint32_t>();
+			if (versionID != RS_VERSION_ID)
+				RS_ERR_CLOSE("Failed to read file " << filePath << ", file is invalid or from a different version of RocketSim.");
+		}
 	}
 
 	bool IsDone() {
