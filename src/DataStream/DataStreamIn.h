@@ -62,17 +62,18 @@ struct DataStreamIn {
 		[](...) {}((Read(std::forward<Args&>(args)), 0)...);
 	}
 
-	template <>
-	Vec Read() {
-		Vec result;
-		ReadMultiple(result.x, result.y, result.z);
-		return result;
-	}
-
-	template <>
-	RotMat Read() {
-		RotMat result;
-		ReadMultiple(result.forward, result.right, result.up);
-		return result;
-	}
 };
+
+template <>
+inline Vec DataStreamIn::Read() {
+	Vec result;
+	ReadMultiple(result.x, result.y, result.z);
+	return result;
+}
+
+template <>
+inline RotMat DataStreamIn::Read() {
+	RotMat result;
+	ReadMultiple(result.forward, result.right, result.up);
+	return result;
+}
