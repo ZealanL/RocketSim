@@ -1,19 +1,16 @@
 #include "CollisionMeshFile.h"
 
+#include "../DataStream/DataStreamIn.h"
+
 void CollisionMeshFile::ReadFromFile(string filePath) {
 	constexpr char ERR_BASE_STR[] = " > CollisionMeshFile::ReadFromFile(): ";
 
-	std::ifstream inStream = std::ifstream(filePath, std::ios::binary);
-	if (!inStream.good())
-		RS_ERR_CLOSE(ERR_BASE_STR << "Failed to open file \"" << filePath << "\"");
-
-	RS_LOG(" > Loading \"" << filePath << "\"...");
+	DataStreamIn in = DataStreamIn(filePath, false);
+	RS_LOG("  > Loading \"" << filePath << "\"...");
 
 	// Read triangle/vertex counts
-	int numTris = 0, numVertices = 0;
-	inStream.read((char*)&numTris, sizeof(int));
-	inStream.read((char*)&numVertices, sizeof(int));
-
+	int32_t numTris, numVertices;
+	in.ReadMultiple(numVertices, numTris);
 	if (numTris <= 0 || numVertices <= 0)
 		RS_ERR_CLOSE(
 			ERR_BASE_STR << "Invalid collision mesh file at \"" << filePath <<
@@ -22,9 +19,11 @@ void CollisionMeshFile::ReadFromFile(string filePath) {
 	tris.resize(numTris);
 	vertices.resize(numVertices);
 
-	// Read tris and vertices (raw data)
-	inStream.read((char*)tris.data(), numTris * sizeof(Triangle));
-	inStream.read((char*)vertices.data(), numVertices * sizeof(Vertex));
+	for (Triangle& tri : tris)
+		tri = in.Read<Triangle>();
+
+	for (Vertex& vert : vertices)
+		vert = in.Read<Vertex>();
 
 	// Verify that the triangle data is correct
 	for (Triangle& tri : tris) {
@@ -39,8 +38,6 @@ void CollisionMeshFile::ReadFromFile(string filePath) {
 	}
 
 	RS_LOG("   > Loaded " << numVertices << " verts and " << numTris << " tris.");
-
-	inStream.close();
 }
 
 btTriangleMesh* CollisionMeshFile::MakeBulletMesh() {
