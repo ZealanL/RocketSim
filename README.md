@@ -26,11 +26,13 @@
 
 ## Performance
 RocketSim already heavily outperforms the speed of Rocket League's physics tick step without optimization.
+
 Version performance comparison:
 ```
 OS: Windows 10 (Process Priority = Normal)
 CPU: Intel i5-11400 @ 2.60GHz
 Ram Speed: 3200MZ
+Compiler: MSVC 14.16
 =================================
 Single-thread performance in C/T (CPU cycles per tick) (1M ticks simulated):
 v1.0.0 = 85712
