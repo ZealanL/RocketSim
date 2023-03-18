@@ -9,9 +9,8 @@
 
 ## Progress
 **Coming Soon:**
-- Version 1.0 release
 - Significant collision optimizations
-- Make half-percision 60tps simulation viable
+- Proper documentation
 
 **Done:**
 - Car suspension
@@ -24,6 +23,20 @@
 - Bumps and demos
 - Auto-flip when upside-down
 - Serialization of cars/ball/boost pads/arena
+
+## Performance
+RocketSim already heavily outperforms the speed of Rocket League's physics tick step without optimization.
+
+Version performance comparison:
+```
+OS: Windows 10 (Process Priority = Normal)
+CPU: Intel i5-11400 @ 2.60GHz
+Ram Speed: 3200MZ
+Compiler: MSVC 14.16
+=================================
+Single-thread performance in C/T (CPU cycles per tick) (1M ticks simulated):
+v1.0.0 = 85712
+```
 
 ## Simulation Accuracy
 RocketSim is not perfectly accurate, but it's close enough that it shouldnt matter (for ML bots or humans).
