@@ -345,6 +345,14 @@ void btVehicleRL::calcFrictionImpulses(float timeStep) {
 					btVector3 contactVel = v1 - v2;
 					float relVel = contactVel.dot(forwardDir);
 
+					// This will round off small rolling friction amounts when at sub-80 TPS to prevent stuttering (to an extent)
+					// TODO: Improve and clarify
+					if (timeStep > (1 / 80.f)) {
+						float threshold = -(1 / (timeStep * 150.f)) + 0.8f;
+						if (abs(relVel) < threshold)
+							relVel = 0;
+					}
+
 					// TODO: No idea where this number comes from or how it was calculated lol
 					constexpr float ROLLING_FRICTION_SCALE_MAGIC = 113.73963f;
 
