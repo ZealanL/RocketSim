@@ -54,6 +54,16 @@ struct RS_ALIGN_16 Vec {
 		return sqrtf(DistSq(other));
 	}
 
+	float DistSq2D(const Vec& other) const {
+		float dx = this->x - other.x;
+		float dy = this->y - other.y;
+		return (dx * dx + dy * dy);
+	}
+
+	float Dist2D(const Vec& other) const {
+		return sqrtf(DistSq2D(other));
+	}
+
 	Vec Normalized() const {
 		float length = Length();
 		if (length > 0) {
