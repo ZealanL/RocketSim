@@ -1,33 +1,24 @@
 #include "BoostPad.h"
 
 #include "../../RLConst.h"
-#include "../Car/Car.h"
 
 BoostPad* BoostPad::_AllocBoostPad() {
 	return new BoostPad();
 }
 
-void BoostPad::_BulletSetup(btDynamicsWorld* bulletWorld, bool isBig, btVector3 pos) {
-	using namespace RLConst::BoostPads;
-
+void BoostPad::_Setup(bool isBig, Vec pos) {
 	this->isBig = isBig;
+	this->pos = pos;
 
-	float sqRad = isBig ? SQ_RAD_BIG : SQ_RAD_SMALL;
-	_collisionBoxShape = new btBoxShape(
-		Vec(
-			sqRad, sqRad, SQ_HEIGHT
-		) * UU_TO_BT);
+	this->_posBT = pos * UU_TO_BT;
 
-	_rigidBody = new btRigidBody(0, NULL, _collisionBoxShape);
-	_rigidBody->setWorldTransform(btTransform(btMatrix3x3::getIdentity(), pos));
-	
-	// We aren't an actual solid object, just a collision check
-	_rigidBody->m_collisionFlags |= btCollisionObject::CF_NO_CONTACT_RESPONSE;
+	{
+		using namespace RLConst::BoostPads;
 
-	_rigidBody->setUserIndex(BT_USERINFO_TYPE_BOOSTPAD);
-	_rigidBody->setUserPointer(this);
-
-	bulletWorld->addRigidBody(_rigidBody);
+		float boxRad = (isBig ? BOX_RAD_BIG : BOX_RAD_SMALL) * UU_TO_BT;
+		this->_boxMinBT = this->_posBT - Vec(boxRad, boxRad, 0);
+		this->_boxMaxBT = this->_posBT + Vec(boxRad, boxRad, BOX_HEIGHT * UU_TO_BT);
+	}
 }
 
 void BoostPad::_PreTickUpdate(float tickTime) {
@@ -38,59 +29,45 @@ void BoostPad::_PreTickUpdate(float tickTime) {
 
 	_internalState.isActive = (_internalState.cooldown == 0);
 
-	_internalState.curLockedCarObj = NULL;
+	_internalState.curLockedCar = NULL;
 }
 
-void BoostPad::_OnCollide(btCollisionObject* other) {
+void BoostPad::_CheckCollide(Car* car) {
 	using namespace RLConst::BoostPads;
 
-	if (other->getUserIndex() == BT_USERINFO_TYPE_CAR) {
-		Car* otherCar = (Car*)other->getUserPointer();
-		if (otherCar->_internalState.boost >= 100)
-			return;
-		if (otherCar->_internalState.isDemoed)
-			return;
+	Vec carPosBT = car->_rigidBody->m_worldTransform.m_origin;
 
-		bool colliding;
+	bool colliding = false;
+	if (_internalState.prevLockedCarID == car->id) {
+		// Check with AABB-hitbox collision
 
-		if (_internalState.prevLockedCarID == otherCar->id) {
-			colliding = true;
-		} else {
-			colliding = false;
-			btVector3
-				otherPos = other->getWorldTransform().getOrigin(),
-				selfPos = _rigidBody->getWorldTransform().getOrigin();
+		btVector3 carMinBT, carMaxBT;
+		car->_rigidBody->getAabb(carMinBT, carMaxBT);
 
-			btVector3 deltaPos = otherPos - selfPos;
+		// TODO: Account for orientation
+		colliding = (_boxMaxBT > carMinBT) && (_boxMinBT < carMaxBT);
+	} else {
+		// Check with cylinder-origin collision
 
-			if (deltaPos.z() < CYL_HEIGHT * UU_TO_BT) {
-
-				float squareDeltaXY = (deltaPos.x() * deltaPos.x() + deltaPos.y() * deltaPos.y());
-				float cylRad = (isBig ? CYL_RAD_BIG : CYL_RAD_SMALL) * UU_TO_BT;
-
-				if (squareDeltaXY < (cylRad * cylRad)) {
-					colliding = true;
-				}
-			}
-		}
-
-		if (colliding) {
-			_internalState.curLockedCarObj = other;
-		}
+		float rad = (isBig ? CYL_RAD_BIG : CYL_RAD_SMALL) * UU_TO_BT;
+		if (carPosBT.DistSq2D(this->_posBT) < (rad * rad))
+			colliding = abs(carPosBT.z - this->_posBT.z) < (CYL_HEIGHT * UU_TO_BT);
 	}
+
+	if (colliding)
+		_internalState.curLockedCar = car;
 }
 
 void BoostPad::_PostTickUpdate(float tickTime) {
 	using namespace RLConst::BoostPads;
 
 	uint32_t lockedCarID = 0;
-	if (_internalState.curLockedCarObj) {
-		Car* car = (Car*)_internalState.curLockedCarObj->getUserPointer();
-		lockedCarID = car->id;
+	if (_internalState.curLockedCar) {
+		lockedCarID = _internalState.curLockedCar->id;
 
 		if (_internalState.isActive) {
 			float boostToAdd = isBig ? BOOST_AMOUNT_BIG : BOOST_AMOUNT_SMALL;
-			car->_internalState.boost = RS_MIN(car->_internalState.boost + boostToAdd, 100);
+			_internalState.curLockedCar->_internalState.boost = RS_MIN(_internalState.curLockedCar->_internalState.boost + boostToAdd, 100);
 
 			_internalState.isActive = false;
 			_internalState.cooldown = isBig ? COOLDOWN_BIG : COOLDOWN_SMALL;
@@ -104,16 +81,10 @@ void BoostPadState::Serialize(DataStreamOut& out) {
 	out.WriteMultiple(
 		BOOSTPAD_SERIALIZATION_FIELDS
 	);
-
 }
 
 void BoostPadState::Deserialize(DataStreamIn& in) {
 	in.ReadMultiple(
 		BOOSTPAD_SERIALIZATION_FIELDS
 	);
-}
-
-BoostPad::~BoostPad() {
-	delete _rigidBody;
-	delete _collisionBoxShape;
 }

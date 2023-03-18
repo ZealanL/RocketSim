@@ -147,9 +147,9 @@ namespace RLConst {
 			CYL_RAD_SMALL = 144;
 
 		constexpr float
-			SQ_HEIGHT = 64,
-			SQ_RAD_BIG = 160,
-			SQ_RAD_SMALL = 120;
+			BOX_HEIGHT = 64,
+			BOX_RAD_BIG = 160,
+			BOX_RAD_SMALL = 120;
 
 		constexpr float
 			COOLDOWN_BIG = 10,

@@ -5,6 +5,7 @@
 #include "../BoostPad/BoostPad.h"
 
 #include "../../CollisionMeshFile/CollisionMeshFile.h"
+#include "../BoostPad/BoostPadGrid/BoostPadGrid.h"
 
 enum class GameMode : byte {
 	SOCCAR,
@@ -22,8 +23,11 @@ public:
 
 	uint32_t _lastCarID = 0;
 	vector<Car*> _cars;
-	vector<BoostPad*> _boostPads;
+	
 	Ball* ball;
+
+	vector<BoostPad*> _boostPads;
+	BoostPadGrid _boostPadGrid;
 
 	float tickTime; // Time each tick (1/tickrate)
 	float GetTickRate() {
@@ -105,7 +109,6 @@ public:
 	void _BtCallback_OnCarBallCollision(Car* car, Ball* ball, btManifoldPoint& manifoldPoint);
 	void _BtCallback_OnCarCarCollision(Car* car1, Car* car2, btManifoldPoint& manifoldPoint);
 	void _BtCallback_OnCarWorldCollision(Car* car, btCollisionObject* worldObject, btManifoldPoint& manifoldPoint);
-	void _BtCallback_OnCarBoostPadCollision(Car* car, BoostPad* pad, btManifoldPoint& manifoldPoint);
 
 private:
 	

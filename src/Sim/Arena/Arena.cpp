@@ -135,10 +135,6 @@ bool Arena::_BulletContactAddedCallback(
 			// Car + Car
 			arenaInst->
 				_BtCallback_OnCarCarCollision(car, (Car*)bodyB->getUserPointer(), contactPoint);
-		} else if (userIndexB == BT_USERINFO_TYPE_BOOSTPAD) {
-			// Car + BoostPad hitbox
-			arenaInst->
-				_BtCallback_OnCarBoostPadCollision(car, (BoostPad*)bodyB->getUserPointer(), contactPoint);
 		} else {
 			// Car + World
 			arenaInst->
@@ -244,10 +240,6 @@ void Arena::_BtCallback_OnCarCarCollision(Car* car1, Car* car2, btManifoldPoint&
 	}
 }
 
-void Arena::_BtCallback_OnCarBoostPadCollision(Car* car, BoostPad* pad, btManifoldPoint& manifoldPoint) {
-	pad->_OnCollide(car->_rigidBody);
-}
-
 void Arena::_BtCallback_OnCarWorldCollision(Car* car, btCollisionObject* world, btManifoldPoint& manifoldPoint) {
 	car->_internalState.worldContact.hasContact = true;
 	car->_internalState.worldContact.contactNormal = manifoldPoint.m_normalWorldOnB;
@@ -333,9 +325,10 @@ Arena::Arena(GameMode gameMode, float tickRate) {
 			btVector3 pos = isBig ? LOCS_BIG[i] : LOCS_SMALL[i - LOCS_AMOUNT_BIG];
 
 			BoostPad* pad = BoostPad::_AllocBoostPad();
-			pad->_BulletSetup(_bulletWorld, isBig, pos * UU_TO_BT);
+			pad->_Setup(isBig, pos);
 
 			_boostPads.push_back(pad);
+			_boostPadGrid.Add(pad);
 		}
 	}
 
@@ -510,6 +503,8 @@ void Arena::Step(int ticksToSimulate) {
 		for (Car* car : _cars) {
 			car->_PostTickUpdate(tickTime);
 			car->_FinishPhysicsTick();
+
+			_boostPadGrid.CheckCollision(car);
 		}
 
 		for (BoostPad* pad : _boostPads)
