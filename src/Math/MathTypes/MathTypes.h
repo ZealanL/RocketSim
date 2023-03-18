@@ -103,6 +103,14 @@ struct RS_ALIGN_16 Vec {
 	RSAPI Vec& operator*=(float val);
 	RSAPI Vec& operator/=(float val);
 
+	bool operator<(const Vec& other) const {
+		return (x < other.x) && (y < other.y) && (z < other.z);
+	}
+
+	bool operator>(const Vec& other) const {
+		return (x > other.x) && (y > other.y) && (z > other.z);
+	}
+
 	Vec operator-() const {
 		return Vec(-x, -y, -z, -_w);
 	}
