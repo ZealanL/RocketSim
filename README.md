@@ -9,9 +9,8 @@
 
 ## Progress
 **Coming Soon:**
-- Version 1.0 release
 - Significant collision optimizations
-- Make half-percision 60tps simulation viable
+- Proper documentation
 
 **Done:**
 - Car suspension
