@@ -1,6 +1,6 @@
 #pragma once
 
-#define RS_VERSION "pre-1.0"
+#define RS_VERSION "1.0.0"
 
 // AVAILABLE DEFS FOR ROCKETSIM:
 //	RS_MAX_SPEED: Define this to remove certain sanity checks for faster speed
