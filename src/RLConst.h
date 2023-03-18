@@ -7,6 +7,11 @@
 namespace RLConst {
 	constexpr float GRAVITY_Z = -650.f;
 
+	constexpr float
+		ARENA_EXTENT_X = 4096,
+		ARENA_EXTENT_Y = 5120, // Does not include inner-goal
+		ARENA_HEIGHT = 2048;
+
 	constexpr float CAR_MASS_BT = 180.f;
 	constexpr float BALL_MASS_BT = CAR_MASS_BT / 6.f; // Ref: https://www.reddit.com/r/RocketLeague/comments/bmje9l/comment/emxkwrl/?context=3
 

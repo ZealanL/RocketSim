@@ -98,7 +98,7 @@ public:
 	RSAPI ~Arena();
 
 	// NOTE: Passed shape pointer will be freed when arena is deconstructed
-	btRigidBody* _AddStaticCollisionShape(btCollisionShape* shape, btVector3 pos = btVector3(0,0,0));
+	btRigidBody* _AddStaticCollisionShape(btCollisionShape* shape, btVector3 posBT = btVector3(0,0,0));
 
 	void _AddStaticCollisionTris(CollisionMeshFile& file);
 	void _SetupArenaCollisionShapes();

@@ -560,11 +560,11 @@ Arena::~Arena() {
 		delete mesh;
 }
 
-btRigidBody* Arena::_AddStaticCollisionShape(btCollisionShape* shape, btVector3 pos) {
+btRigidBody* Arena::_AddStaticCollisionShape(btCollisionShape* shape, btVector3 posBT) {
 	_worldCollisionShapes.push_back(shape);
 
 	btRigidBody* shapeRB = new btRigidBody(0, NULL, shape);
-	shapeRB->setWorldTransform(btTransform(btMatrix3x3::getIdentity(), pos));
+	shapeRB->setWorldTransform(btTransform(btMatrix3x3::getIdentity(), posBT));
 	_worldCollisionRBs.push_back(shapeRB);
 
 	_bulletWorld->addRigidBody(shapeRB);
@@ -630,33 +630,27 @@ void Arena::_SetupArenaCollisionShapes() {
 		_AddStaticCollisionTris(mesh);
 
 	{ // Add arena collision planes (floor/walls/ceiling)
-		constexpr float PLANE_THICKNESS = 10;
-		constexpr float WALL_SIZE = 120;
-
-		constexpr float EXTENT_X = 4096 * UU_TO_BT;
-		constexpr float EXTENT_Y = 5120 * UU_TO_BT;
-		constexpr float EXTENT_Z = 2048 * UU_TO_BT;
+		using namespace RLConst;
 
 		// Floor
 		_AddStaticCollisionShape(
-			new btStaticPlaneShape(btVector3(0, 0, 1), 0),
-			{ 0, 0, 0 }
+			new btStaticPlaneShape(btVector3(0, 0, 1), 0)
 		);
 
 		// Ceiling
 		_AddStaticCollisionShape(
 			new btStaticPlaneShape(btVector3(0, 0, -1), 0),
-			{ 0, 0, EXTENT_Z }
+			Vec( 0, 0, ARENA_HEIGHT ) * UU_TO_BT
 		);
 
 		// Side walls
 		_AddStaticCollisionShape(
 			new btStaticPlaneShape(btVector3(1, 0, 0), 0),
-			{ -EXTENT_X, 0, EXTENT_Z / 2 }
+			Vec( -ARENA_EXTENT_X, 0, ARENA_HEIGHT / 2 ) * UU_TO_BT
 		);
 		_AddStaticCollisionShape(
 			new btStaticPlaneShape(btVector3(-1, 0, 0), 0),
-			{ EXTENT_X, 0, EXTENT_Z / 2 }
+			Vec( ARENA_EXTENT_X, 0, ARENA_HEIGHT / 2 ) * UU_TO_BT
 		);
 	}
 }
