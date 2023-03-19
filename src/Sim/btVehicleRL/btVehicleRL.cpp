@@ -3,6 +3,8 @@
 #include "../../RLConst.h"
 #define ROLLING_INFLUENCE_FIX
 
+#include "../SuspensionCollisionGrid/SuspensionCollisionGrid.h"
+
 btVehicleRL::btVehicleRL(const btVehicleTuning& tuning, btRigidBody* chassis, btVehicleRaycaster* raycaster, btDynamicsWorld* world)
 	: m_vehicleRaycaster(raycaster), m_pitchControl(0),  m_dynamicsWorld(world) {
 	m_chassisBody = chassis;
@@ -107,7 +109,7 @@ void btVehicleRL::updateWheelTransformsWS(btWheelInfoRL& wheel) {
 	wheel.m_raycastInfo.m_wheelAxleWS = chassisTrans.getBasis() * wheel.m_wheelAxleCS;
 }
 
-float btVehicleRL::rayCast(btWheelInfoRL& wheel) {
+float btVehicleRL::rayCast(btWheelInfoRL& wheel, SuspensionCollisionGrid* grid) {
 	updateWheelTransformsWS(wheel);
 
 	float depth = -1;
@@ -119,14 +121,13 @@ float btVehicleRL::rayCast(btWheelInfoRL& wheel) {
 	btVector3 source = wheel.m_raycastInfo.m_hardPointWS;
 	btVector3 target = source + (wheel.m_raycastInfo.m_wheelDirectionWS * realRayLength);
 	wheel.m_raycastInfo.m_contactPointWS = target;
+	wheel.m_raycastInfo.m_groundObject = NULL;
 
 	btVehicleRaycaster::btVehicleRaycasterResult rayResults;
 
 	btAssert(m_vehicleRaycaster);
 
-	btCollisionObject* object = (btCollisionObject * )m_vehicleRaycaster->castRay(source, target, rayResults);
-
-	wheel.m_raycastInfo.m_groundObject = 0;
+	btCollisionObject* object = grid->CastSuspensionRay(m_vehicleRaycaster, source, target, rayResults);
 
 	if (object) {
 		wheel.m_raycastInfo.m_contactPointWS = rayResults.m_hitPointInWorld;
@@ -203,7 +204,7 @@ const btTransform& btVehicleRL::getChassisWorldTransform() const {
 	return getRigidBody()->getCenterOfMassTransform();
 }
 
-void btVehicleRL::updateVehicleFirst(float step) {
+void btVehicleRL::updateVehicleFirst(float step, SuspensionCollisionGrid* grid) {
 
 	for (int i = 0; i < getNumWheels(); i++)
 		updateWheelTransform(i);
@@ -216,7 +217,7 @@ void btVehicleRL::updateVehicleFirst(float step) {
 	for (i = 0; i < m_wheelInfo.size(); i++) {
 		//float depth;
 		//depth =
-		rayCast(m_wheelInfo[i]);
+		rayCast(m_wheelInfo[i], grid);
 	}
 
 	calcFrictionImpulses(step);

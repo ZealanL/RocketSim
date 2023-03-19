@@ -132,7 +132,7 @@ public:
 
 	~Car();
 
-	void _PreTickUpdate(float tickTime);
+	void _PreTickUpdate(float tickTime, struct SuspensionCollisionGrid* grid);
 	void _PostTickUpdate(float tickTime);
 
 	Vec _velocityImpulseCache = { 0,0,0 };

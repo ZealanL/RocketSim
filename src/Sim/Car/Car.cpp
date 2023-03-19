@@ -1,5 +1,6 @@
 #include "Car.h"
 #include "../../RLConst.h"
+#include "../SuspensionCollisionGrid/SuspensionCollisionGrid.h"
 
 // Update our internal state from bullet and return it
 CarState Car::GetState() {
@@ -53,7 +54,7 @@ void Car::Respawn(int seed) {
 	this->SetState(newState);
 }
 
-void Car::_PreTickUpdate(float tickTime) {
+void Car::_PreTickUpdate(float tickTime, SuspensionCollisionGrid* grid) {
 	using namespace RLConst;
 
 #ifndef RS_MAX_SPEED
@@ -88,7 +89,7 @@ void Car::_PreTickUpdate(float tickTime) {
 	}
 
 	// Do first part of the btVehicleRL update (update wheel transforms, do traces, calculate friction impulses) 
-	_bulletVehicle->updateVehicleFirst(tickTime);
+	_bulletVehicle->updateVehicleFirst(tickTime, grid);
 
 	_internalState.worldContact.hasContact = false;
 

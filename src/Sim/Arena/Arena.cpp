@@ -292,6 +292,8 @@ Arena::Arena(GameMode gameMode, float tickRate) {
 
 	_SetupArenaCollisionShapes();
 
+	_suspColGrid.Setup(_worldCollisionRBs);
+
 	// Give arena collision shapes the proper restitution/friction values
 	for (auto rb : _worldCollisionRBs) {
 		// TODO: Move to RLConst
@@ -492,7 +494,7 @@ void Arena::Step(int ticksToSimulate) {
 		}
 
 		for (Car* car : _cars)
-			car->_PreTickUpdate(tickTime);
+			car->_PreTickUpdate(tickTime, &_suspColGrid);
 
 		for (BoostPad* pad : _boostPads)
 			pad->_PreTickUpdate(tickTime);

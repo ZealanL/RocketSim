@@ -76,9 +76,9 @@ public:
 
 	const btTransform& getChassisWorldTransform() const;
 
-	float rayCast(btWheelInfoRL& wheel);
+	float rayCast(btWheelInfoRL& wheel, struct SuspensionCollisionGrid* grid);
 
-	void updateVehicleFirst(float step);
+	void updateVehicleFirst(float step, struct SuspensionCollisionGrid* grid);
 	void updateVehicleSecond(float step);
 
 	void resetSuspension();

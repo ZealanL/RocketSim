@@ -6,6 +6,7 @@
 
 #include "../../CollisionMeshFile/CollisionMeshFile.h"
 #include "../BoostPad/BoostPadGrid/BoostPadGrid.h"
+#include "../SuspensionCollisionGrid/SuspensionCollisionGrid.h"
 
 enum class GameMode : byte {
 	SOCCAR,
@@ -28,6 +29,8 @@ public:
 
 	vector<BoostPad*> _boostPads;
 	BoostPadGrid _boostPadGrid;
+
+	SuspensionCollisionGrid _suspColGrid;
 
 	float tickTime; // Time each tick (1/tickrate)
 	float GetTickRate() {
