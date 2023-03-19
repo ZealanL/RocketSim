@@ -50,7 +50,10 @@ Bots that work well in RocketSim will work well in the actual game, and visa-ver
 
 ## Example Usage
 ```cpp
-#include "./RocketSim/src/Sim/Arena/Arena.h"
+#include "./RocketSim/src/RocketSim.h"
+
+// Initialize RocketSim (loads arena collision meshes, etc.)
+RocketSim::Init();
 
 // Make an arena instance (this is where our simulation takes place, has its own btDynamicsWorld instance)
 Arena* arena = Arena::Create(GameMode::SOCCAR);
