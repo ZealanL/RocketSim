@@ -34,8 +34,12 @@ CPU: Intel i5-11400 @ 2.60GHz
 Ram Speed: 3200MZ
 Compiler: MSVC 14.16
 =================================
-Single-thread performance in C/T (CPU cycles per tick) (1M ticks simulated):
-v1.0.0 = 85712
+Arena: Default (Soccar)
+Cars: 2 on each team (2v2)
+Inputs: Randomly pregenerated, changed every 2-60 ticks for each car
+=================================
+Single-thread performance (calculated using average CPU cycles per tick on the RocketSim thread) (1M ticks simulated):
+v1.0.0 = 30,334tps
 ```
 
 ## Simulation Accuracy
