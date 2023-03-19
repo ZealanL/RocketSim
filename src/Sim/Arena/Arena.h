@@ -84,7 +84,7 @@ public:
 
 	// No move constructor
 	Arena(Arena&& other) = delete;
-	Arena& operator =(Arena && other) = delete;
+	Arena& operator =(Arena&& other) = delete;
 
 	// Get a deep copy of the arena
 	RSAPI Arena* Clone(bool copyCallbacks);
@@ -101,9 +101,7 @@ public:
 	RSAPI ~Arena();
 
 	// NOTE: Passed shape pointer will be freed when arena is deconstructed
-	btRigidBody* _AddStaticCollisionShape(btCollisionShape* shape, btVector3 posBT = btVector3(0,0,0));
-
-	void _AddStaticCollisionTris(CollisionMeshFile& file);
+	btRigidBody* _AddStaticCollisionShape(btCollisionShape* shape, bool isOwner, btVector3 posBT = btVector3(0,0,0));
 	void _SetupArenaCollisionShapes();
 
 	// Static function called by Bullet internally when adding a collision point

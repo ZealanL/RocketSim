@@ -1,5 +1,6 @@
 #include "Arena.h"
-#include "../../RLConst.h"
+
+#include "../../RocketSim.h"
 
 Car* Arena::AddCar(Team team, const CarConfig& config) {
 	Car* car = Car::_AllocateCar();
@@ -254,13 +255,7 @@ Arena::Arena(GameMode gameMode, float tickRate) {
 	// Tickrate must be from 15 to 120tps
 	assert(tickRate >= 15 && tickRate <= 120);
 
-	{ // Seed std::rand()
-		static bool seedRandom = true;
-		if (seedRandom) {
-			srand(time(NULL));
-			seedRandom = false;
-		}
-	}
+	RocketSim::AssertInitialized("Cannot create Arena, ");
 
 	this->gameMode = gameMode;
 	this->tickTime = 1 / tickRate;
@@ -292,7 +287,10 @@ Arena::Arena(GameMode gameMode, float tickRate) {
 
 	_SetupArenaCollisionShapes();
 
-	_suspColGrid.Setup(_worldCollisionRBs);
+#ifndef RS_NO_SUSPCOLGRID
+	_suspColGrid = RocketSim::GetDefaultSuspColGrid();
+	_suspColGrid.defaultWorldCollisionRB = _worldCollisionRBs.front();
+#endif
 
 	// Give arena collision shapes the proper restitution/friction values
 	for (auto rb : _worldCollisionRBs) {
@@ -562,8 +560,9 @@ Arena::~Arena() {
 		delete mesh;
 }
 
-btRigidBody* Arena::_AddStaticCollisionShape(btCollisionShape* shape, btVector3 posBT) {
-	_worldCollisionShapes.push_back(shape);
+btRigidBody* Arena::_AddStaticCollisionShape(btCollisionShape* shape, bool isOwner, btVector3 posBT) {
+	if (isOwner)
+		_worldCollisionShapes.push_back(shape);
 
 	btRigidBody* shapeRB = new btRigidBody(0, NULL, shape);
 	shapeRB->setWorldTransform(btTransform(btMatrix3x3::getIdentity(), posBT));
@@ -573,85 +572,40 @@ btRigidBody* Arena::_AddStaticCollisionShape(btCollisionShape* shape, btVector3 
 	return shapeRB;
 }
 
-void Arena::_AddStaticCollisionTris(CollisionMeshFile& file) {
-	auto triMesh = file.MakeBulletMesh();
-	_arenaTriMeshes.push_back(triMesh);
-
-	auto bvt = new btBvhTriangleMeshShape(triMesh, false);
-	bvt->buildOptimizedBvh();
-	_AddStaticCollisionShape(bvt, btVector3(0,0,0));
-}
-
 void Arena::_SetupArenaCollisionShapes() {
 	// TODO: This is just for soccar arena (for now)
 	assert(gameMode == GameMode::SOCCAR);
 
-	static std::mutex collisionMeshLoadMutex;
-	static vector<CollisionMeshFile> collisionMeshes;
-	static bool collisionMeshesFullyloaded = false;
-
-	if (!collisionMeshesFullyloaded) {
-		collisionMeshLoadMutex.lock();
-
-		RS_LOG("RocketSim version: " << RS_VERSION);
-
-		if (collisionMeshes.empty()) {
-			string basePath = COLLISION_MESH_SOCCAR_PATH;
-			RS_LOG("Loading arena meshes from \"" << basePath << "\"...");
-
-			if (!std::filesystem::exists(basePath)) {
-				RS_ERR_CLOSE(
-					"Failed to find arena collision mesh files at \"" << basePath
-					<< "\", the collision meshes folder should be in our current directory " << std::filesystem::current_path() << ".")
-			}
-				// Load collision meshes
-				auto dirItr = std::filesystem::directory_iterator(basePath);
-			for (auto& entry : dirItr) {
-				auto entryPath = entry.path();
-				if (entryPath.has_extension() && entryPath.extension() == COLLISION_MESH_FILE_EXTENSION) {
-					CollisionMeshFile meshFile = {};
-					meshFile.ReadFromFile(entryPath.string());
-					collisionMeshes.push_back(meshFile);
-				}
-			}
-
-			if (collisionMeshes.empty()) {
-				RS_ERR_CLOSE(
-					"Failed to find soccar field asset files at \"" << basePath
-					<< "\", the folder exists but is empty.")
-			}
-
-			RS_LOG("Finished loading " << collisionMeshes.size() << " arena collision meshes.");
-			collisionMeshesFullyloaded = true;
-		}
-		collisionMeshLoadMutex.unlock();
-	}
-	
 	// Add collision meshes to world
-	for (CollisionMeshFile& mesh : collisionMeshes)
-		_AddStaticCollisionTris(mesh);
+	auto collisionMeshes = RocketSim::GetArenaCollisionShapes();
+	for (btBvhTriangleMeshShape* meshShape : collisionMeshes)
+		_AddStaticCollisionShape(meshShape, false);
 
 	{ // Add arena collision planes (floor/walls/ceiling)
 		using namespace RLConst;
 
 		// Floor
 		_AddStaticCollisionShape(
-			new btStaticPlaneShape(btVector3(0, 0, 1), 0)
+			new btStaticPlaneShape(btVector3(0, 0, 1), 0),
+			true
 		);
 
 		// Ceiling
 		_AddStaticCollisionShape(
 			new btStaticPlaneShape(btVector3(0, 0, -1), 0),
+			true,
 			Vec( 0, 0, ARENA_HEIGHT ) * UU_TO_BT
 		);
 
 		// Side walls
 		_AddStaticCollisionShape(
 			new btStaticPlaneShape(btVector3(1, 0, 0), 0),
+			true,
 			Vec( -ARENA_EXTENT_X, 0, ARENA_HEIGHT / 2 ) * UU_TO_BT
 		);
 		_AddStaticCollisionShape(
 			new btStaticPlaneShape(btVector3(-1, 0, 0), 0),
+			true,
 			Vec( ARENA_EXTENT_X, 0, ARENA_HEIGHT / 2 ) * UU_TO_BT
 		);
 	}

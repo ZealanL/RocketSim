@@ -9,8 +9,9 @@
 
 ## Progress
 **Coming Soon:**
-- Significant collision optimizations
+- More collision optimizations
 - Proper documentation
+- Improved collision accuracy
 
 **Done:**
 - Car suspension
@@ -23,6 +24,7 @@
 - Bumps and demos
 - Auto-flip when upside-down
 - Serialization of cars/ball/boost pads/arena
+- Boost pad/suspension ray optimization using lookup grid
 
 ## Performance
 RocketSim already heavily outperforms the speed of Rocket League's physics tick step without optimization.
@@ -34,8 +36,12 @@ CPU: Intel i5-11400 @ 2.60GHz
 Ram Speed: 3200MZ
 Compiler: MSVC 14.16
 =================================
-Single-thread performance in C/T (CPU cycles per tick) (1M ticks simulated):
-v1.0.0 = 85712
+Arena: Default (Soccar)
+Cars: 2 on each team (2v2)
+Inputs: Randomly pregenerated, changed every 2-60 ticks for each car
+=================================
+Single-thread performance (calculated using average CPU cycles per tick on the RocketSim thread) (1M ticks simulated):
+v1.0.0 = 30,334tps
 ```
 
 ## Simulation Accuracy

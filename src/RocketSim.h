@@ -1,8 +1,30 @@
-// MASTER HEADER FILE
-// Includes everything a user of RocketSim probably wants
-
 #include "Sim/Car/Car.h"
 #include "Sim/Ball/Ball.h"
 #include "Sim/Arena/Arena.h"
 
 #include "Math/Math.h"
+
+// AVAILABLE DEFS FOR ROCKETSIM:
+//	RS_MAX_SPEED: Define this to remove certain sanity checks for faster speed
+//	RS_DONT_LOG: Define this to disable all logging output
+//	RS_NO_SUSPCOLGRID: Disable the suspension-collision grid optimization
+
+enum class RocketSimStage : byte {
+	UNINITIALIZED,
+	INITIALIZING,
+	INITIALIZED
+};
+
+namespace RocketSim {
+
+	void Init();
+	void AssertInitialized(const char* errorMsgPrefix);
+
+	RocketSimStage GetStage();
+
+	const vector<btBvhTriangleMeshShape*>& GetArenaCollisionShapes();
+
+#ifndef RS_NO_SUSPCOLGRID
+	const SuspensionCollisionGrid& GetDefaultSuspColGrid();
+#endif
+}

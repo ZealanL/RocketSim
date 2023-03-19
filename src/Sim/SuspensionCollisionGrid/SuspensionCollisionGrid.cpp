@@ -13,20 +13,15 @@ struct BoolHitTriangleCallback : public btTriangleCallback {
 	}
 };
 
-void SuspensionCollisionGrid::Setup(const vector<btRigidBody*>& worldCollisionRBs) {
+void SuspensionCollisionGrid::SetupWorldCollision(const vector<btBvhTriangleMeshShape*>& triMeshShapes) {
 
 	int totalCellsWithin = 0;
 	BoolHitTriangleCallback boolCallback = BoolHitTriangleCallback();
 
-	for (btRigidBody* rb : worldCollisionRBs) {
-		auto type = rb->getCollisionShape()->getShapeType();
-		if (type != TRIANGLE_MESH_SHAPE_PROXYTYPE)
-			continue;
-
-		auto triMeshShape = (btBvhTriangleMeshShape*)rb->getCollisionShape();
-
+	for (btBvhTriangleMeshShape* triMeshShape : triMeshShapes) {
+		
 		btVector3 rbMinBT, rbMaxBT;
-		rb->getAabb(rbMinBT, rbMaxBT);
+		triMeshShape->getAabb(btTransform(), rbMinBT, rbMaxBT);
 
 		btVector3 borderSize = (GetCellSize() * UU_TO_BT);
 		rbMinBT -= borderSize;
@@ -36,7 +31,9 @@ void SuspensionCollisionGrid::Setup(const vector<btRigidBody*>& worldCollisionRB
 			for (int j = 0; j < CELL_AMOUNT_Y; j++) {
 				for (int k = 0; k < CELL_AMOUNT_Z; k++) {
 
-					if (!cells[i][j][k].worldCollision) {
+					Cell& cell = Get(i, j, k);
+
+					if (!cell.worldCollision) {
 
 						Vec
 							cellMinBT = (GetCellMin(i, j, k) - GetCellSize()) * UU_TO_BT,
@@ -48,7 +45,7 @@ void SuspensionCollisionGrid::Setup(const vector<btRigidBody*>& worldCollisionRB
 							boolCallback.hit = false;
 							triMeshShape->processAllTriangles(&boolCallback, cellMinBT, cellMaxBT);
 							if (boolCallback.hit) {
-								cells[i][j][k].worldCollision = true;
+								cell.worldCollision = true;
 								totalCellsWithin++;
 							}
 						}
@@ -56,12 +53,6 @@ void SuspensionCollisionGrid::Setup(const vector<btRigidBody*>& worldCollisionRB
 				}
 			}
 		}
-	}
-
-	if (worldCollisionRBs.empty()) {
-		defaultWorldColObj = NULL;
-	} else {
-		defaultWorldColObj = worldCollisionRBs.front();
 	}
 
 	RS_LOG(
@@ -104,7 +95,7 @@ btCollisionObject* SuspensionCollisionGrid::CastSuspensionRay(btVehicleRaycaster
 			result.m_distFraction = distToPlane / dist;
 			result.m_hitPointInWorld = start + dir * distToPlane;
 			result.m_hitNormalInWorld = planeNormal;
-			return defaultWorldColObj;
+			return defaultWorldCollisionRB;
 		} else {
 			return NULL;
 		}

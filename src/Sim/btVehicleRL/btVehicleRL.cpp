@@ -127,7 +127,11 @@ float btVehicleRL::rayCast(btWheelInfoRL& wheel, SuspensionCollisionGrid* grid) 
 
 	btAssert(m_vehicleRaycaster);
 
+#ifndef RS_NO_SUSPCOLGRID
 	btCollisionObject* object = grid->CastSuspensionRay(m_vehicleRaycaster, source, target, rayResults);
+#else
+	btCollisionObject* object = (btCollisionObject*)m_vehicleRaycaster->castRay(source, target, rayResults);
+#endif
 
 	if (object) {
 		wheel.m_raycastInfo.m_contactPointWS = rayResults.m_hitPointInWorld;

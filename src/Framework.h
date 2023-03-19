@@ -1,10 +1,6 @@
 #pragma once
 
-#define RS_VERSION "1.0.0"
-
-// AVAILABLE DEFS FOR ROCKETSIM:
-//	RS_MAX_SPEED: Define this to remove certain sanity checks for faster speed
-//	RS_DONT_LOG: Define this to disable all logging output
+#define RS_VERSION "pre-1.1.0"
 
 #include <stdint.h>
 #include <iostream>

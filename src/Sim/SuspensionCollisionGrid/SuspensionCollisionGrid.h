@@ -29,9 +29,23 @@ struct SuspensionCollisionGrid {
 		int dynamicObjects = 0; // TODO: Implement dynamic grid update
 	};
 
-	Cell cells[CELL_AMOUNT_X][CELL_AMOUNT_Y][CELL_AMOUNT_Z] = {};
+	vector<Cell> cellData;
 
-	btCollisionObject* defaultWorldColObj = NULL;
+	void Allocate() {
+		cellData.resize(CELL_AMOUNT_TOTAL);
+	}
+
+	Cell& Get(int i, int j, int k) {
+		int index = (i * CELL_AMOUNT_Y * CELL_AMOUNT_Z) + (j * CELL_AMOUNT_Z) + k;
+		assert(index >= 0 && index < CELL_AMOUNT_TOTAL);
+		return cellData[index];
+	}
+
+	Cell Get(int i, int j, int k) const {
+		int index = (i * CELL_AMOUNT_Y * CELL_AMOUNT_Z) + (j * CELL_AMOUNT_Z) + k;
+		assert(index >= 0 && index < CELL_AMOUNT_TOTAL);
+		return cellData[index];
+	}
 
 	Vec GetCellMin(int xIndex, int yIndex, int zIndex) {
 		return Vec(
@@ -47,14 +61,15 @@ struct SuspensionCollisionGrid {
 			j = RS_CLAMP(pos.y / CELL_SIZE_Y + (CELL_AMOUNT_Y / 2), 0, CELL_AMOUNT_Y - 1),
 			k = RS_CLAMP(pos.z / CELL_SIZE_Z, 0, CELL_AMOUNT_Z - 1);
 
-		return cells[i][j][k];
+		return Get(i, j, k);
 	}
 
 	Vec GetCellSize() {
 		return Vec(CELL_SIZE_X, CELL_SIZE_Y, CELL_SIZE_Z);
 	}
 
-	void Setup(const vector<btRigidBody*>& worldCollisionRBs);
-
+	void SetupWorldCollision(const vector<btBvhTriangleMeshShape*>& triMeshShapes);
 	btCollisionObject* CastSuspensionRay(btVehicleRaycaster* raycaster, Vec start, Vec end, btVehicleRaycaster::btVehicleRaycasterResult& result);
+
+	btRigidBody* defaultWorldCollisionRB = NULL;
 };
