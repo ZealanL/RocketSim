@@ -10,7 +10,9 @@ struct SuspensionCollisionGrid {
 	constexpr static int
 		CELL_AMOUNT_X = 128,
 		CELL_AMOUNT_Y = 224,
-		CELL_AMOUNT_Z = 32;
+		CELL_AMOUNT_Z = 32,
+
+		CELL_AMOUNT_TOTAL = (CELL_AMOUNT_X * CELL_AMOUNT_Y * CELL_AMOUNT_Z);
 
 	constexpr static float
 		CELL_SIZE_X = EXTENT_X / (CELL_AMOUNT_X / 2),

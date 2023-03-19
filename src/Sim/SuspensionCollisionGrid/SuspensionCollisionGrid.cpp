@@ -1,12 +1,29 @@
 #include "SuspensionCollisionGrid.h"
 
-void SuspensionCollisionGrid::Setup(const vector<btRigidBody*>& worldCollisionRBs) {
-	int totalCellsWithin = 0;
+#include "../../../libsrc/bullet3-3.24/BulletCollision/NarrowPhaseCollision/btRaycastCallback.h"
+
+// Quick virtual btTriangleCallback child class to simply check if any triangles are processed
+struct BoolHitTriangleCallback : public btTriangleCallback {
+
+	bool hit = false;
 	
+	BoolHitTriangleCallback() {}
+	virtual void processTriangle(btVector3* triangle, int partId, int triangleIndex) {
+		hit = true;
+	}
+};
+
+void SuspensionCollisionGrid::Setup(const vector<btRigidBody*>& worldCollisionRBs) {
+
+	int totalCellsWithin = 0;
+	BoolHitTriangleCallback boolCallback = BoolHitTriangleCallback();
+
 	for (btRigidBody* rb : worldCollisionRBs) {
 		auto type = rb->getCollisionShape()->getShapeType();
-		if (type == STATIC_PLANE_PROXYTYPE)
+		if (type != TRIANGLE_MESH_SHAPE_PROXYTYPE)
 			continue;
+
+		auto triMeshShape = (btBvhTriangleMeshShape*)rb->getCollisionShape();
 
 		btVector3 rbMinBT, rbMaxBT;
 		rb->getAabb(rbMinBT, rbMaxBT);
@@ -20,13 +37,20 @@ void SuspensionCollisionGrid::Setup(const vector<btRigidBody*>& worldCollisionRB
 				for (int k = 0; k < CELL_AMOUNT_Z; k++) {
 
 					if (!cells[i][j][k].worldCollision) {
+
 						Vec
-							cellMinBT = GetCellMin(i, j, k) * UU_TO_BT,
-							cellMaxBT = cellMinBT + (GetCellSize() * UU_TO_BT);
+							cellMinBT = (GetCellMin(i, j, k) - GetCellSize()) * UU_TO_BT,
+							cellMaxBT = cellMinBT + (GetCellSize() * UU_TO_BT * 2);
 
 						if ((cellMinBT < rbMaxBT) && (cellMaxBT > rbMinBT)) {
-							totalCellsWithin++;
-							cells[i][j][k].worldCollision = true;
+							Vec cellCenter = (cellMinBT + cellMaxBT) / 2;
+
+							boolCallback.hit = false;
+							triMeshShape->processAllTriangles(&boolCallback, cellMinBT, cellMaxBT);
+							if (boolCallback.hit) {
+								cells[i][j][k].worldCollision = true;
+								totalCellsWithin++;
+							}
 						}
 					}
 				}
@@ -42,15 +66,14 @@ void SuspensionCollisionGrid::Setup(const vector<btRigidBody*>& worldCollisionRB
 
 	RS_LOG(
 		"SuspensionCollisionGrid::Setup(): Built suspension collision grid, " << 
-		totalCellsWithin << "/" << (CELL_AMOUNT_X * CELL_AMOUNT_Y * CELL_AMOUNT_Z) << " cells contain world collision meshes"
+		totalCellsWithin << "/" << CELL_AMOUNT_TOTAL << " cells contain world collision meshes"
 	);
 }
 
 btCollisionObject* SuspensionCollisionGrid::CastSuspensionRay(btVehicleRaycaster* raycaster, Vec start, Vec end, btVehicleRaycaster::btVehicleRaycasterResult& result) {
-	Cell& cell1 = GetCellFromPos(start * BT_TO_UU);
-	Cell& cell2 = GetCellFromPos(end * BT_TO_UU);
+	Cell& cell = GetCellFromPos(start * BT_TO_UU);
 
-	if ((cell1.worldCollision || cell2.worldCollision) || (RS_MAX(cell1.dynamicObjects, cell2.dynamicObjects) > 1)) {
+	if (cell.worldCollision || cell.dynamicObjects > 1) {
 		return (btCollisionObject*)raycaster->castRay(start, end, result);
 	} else {
 		Vec delta = end - start;
