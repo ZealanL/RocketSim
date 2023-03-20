@@ -37,13 +37,11 @@ struct SuspensionCollisionGrid {
 
 	Cell& Get(int i, int j, int k) {
 		int index = (i * CELL_AMOUNT_Y * CELL_AMOUNT_Z) + (j * CELL_AMOUNT_Z) + k;
-		assert(index >= 0 && index < CELL_AMOUNT_TOTAL);
 		return cellData[index];
 	}
 
 	Cell Get(int i, int j, int k) const {
 		int index = (i * CELL_AMOUNT_Y * CELL_AMOUNT_Z) + (j * CELL_AMOUNT_Z) + k;
-		assert(index >= 0 && index < CELL_AMOUNT_TOTAL);
 		return cellData[index];
 	}
 
