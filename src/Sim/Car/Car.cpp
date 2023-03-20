@@ -419,6 +419,42 @@ void Car::_PostTickUpdate(float tickTime) {
 		}
 	}
 
+
+	{ // Update auto-flip jump
+
+		auto basis = _rigidBody->getWorldTransform().getBasis();
+
+		using namespace RLConst;
+		if (
+			jumpPressed &&
+			_internalState.worldContact.hasContact &&
+			_internalState.worldContact.contactNormal.z > CAR_AUTOFLIP_NORMZ_THRESH
+			) {
+
+			btVector3 upDir = basis.getColumn(2);
+
+			Angle angles = Angle::FromRotMat(basis);
+			_internalState.autoFlipTimer = CAR_AUTOFLIP_TIME * (abs(angles.roll) / M_PI);
+			_internalState.autoFlipTorqueScale = (angles.roll > 0) ? 1 : -1;
+			_internalState.isAutoFlipping = true;
+
+			_rigidBody->applyCentralImpulse(-upDir * CAR_AUTOFLIP_IMPULSE * CAR_MASS_BT * UU_TO_BT);
+		}
+
+		if (_internalState.isAutoFlipping) {
+			if (_internalState.autoFlipTimer <= 0) {
+				_internalState.isAutoFlipping = false;
+				_internalState.autoFlipTimer = 0;
+			} else {
+				btVector3 forwardDir = basis.getColumn(0);
+
+				_rigidBody->applyTorqueImpulse(forwardDir * CAR_AUTOFLIP_TORQUE * _internalState.autoFlipTorqueScale);
+
+				_internalState.autoFlipTimer -= tickTime;
+			}
+		}
+	}
+
 	{ // Update flip/double jump
 		using namespace RLConst;
 		if (_internalState.isOnGround) {
@@ -433,7 +469,7 @@ void Car::_PostTickUpdate(float tickTime) {
 			}
 
 			if (jumpPressed && _internalState.airTimeSinceJump < DOUBLEJUMP_MAX_DELAY) {
-				if (!_internalState.hasDoubleJumped && !_internalState.hasFlipped) {
+				if (!_internalState.hasDoubleJumped && !_internalState.hasFlipped && !_internalState.isAutoFlipping) {
 					bool shouldFlip = RS_MAX(RS_MAX(abs(controls.yaw), abs(controls.pitch)), abs(controls.roll)) >= config.dodgeDeadzone;
 
 					if (shouldFlip) {
@@ -518,41 +554,6 @@ void Car::_PostTickUpdate(float tickTime) {
 					vel.z() *= powf(1 - FLIP_Z_DAMP_120, tickTime / (1 / 120.f));
 					_rigidBody->setLinearVelocity(vel);
 				}
-			}
-		}
-	}
-
-	{ // Update auto-flip jump
-
-		auto basis = _rigidBody->getWorldTransform().getBasis();
-
-		using namespace RLConst;
-		if (
-			jumpPressed &&
-			_internalState.worldContact.hasContact &&
-			_internalState.worldContact.contactNormal.z > CAR_AUTOFLIP_NORMZ_THRESH
-			) {
-
-			btVector3 upDir = basis.getColumn(2);
-
-			Angle angles = Angle::FromRotMat(basis);
-			_internalState.autoFlipTimer = CAR_AUTOFLIP_TIME * (abs(angles.roll) / M_PI);
-			_internalState.autoFlipTorqueScale = (angles.roll > 0) ? 1 : -1;
-			_internalState.isAutoFlipping = true;
-
-			_rigidBody->applyCentralImpulse(-upDir * CAR_AUTOFLIP_IMPULSE * CAR_MASS_BT * UU_TO_BT);
-		}
-
-		if (_internalState.isAutoFlipping) {
-			if (_internalState.autoFlipTimer <= 0) {
-				_internalState.isAutoFlipping = false;
-				_internalState.autoFlipTimer = 0;
-			} else {
-				btVector3 forwardDir = basis.getColumn(0);
-
-				_rigidBody->applyTorqueImpulse(forwardDir * CAR_AUTOFLIP_TORQUE * _internalState.autoFlipTorqueScale);
-
-				_internalState.autoFlipTimer -= tickTime;
 			}
 		}
 	}
