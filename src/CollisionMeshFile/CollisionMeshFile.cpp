@@ -3,18 +3,21 @@
 #include "../DataStream/DataStreamIn.h"
 
 void CollisionMeshFile::ReadFromFile(string filePath) {
-	constexpr char ERR_BASE_STR[] = " > CollisionMeshFile::ReadFromFile(): ";
+	constexpr char ERROR_PREFIX_STR[] = " > CollisionMeshFile::ReadFromFile(): ";
 
 	DataStreamIn in = DataStreamIn(filePath, false);
 	RS_LOG("  > Loading \"" << filePath << "\"...");
 
+	constexpr int MAX_VERT_OR_TRI_COUNT = 1000 * 1000;
+
 	// Read triangle/vertex counts
 	int32_t numTris, numVertices;
-	in.ReadMultiple(numVertices, numTris);
-	if (numTris <= 0 || numVertices <= 0)
+	in.ReadMultiple(numTris, numVertices);
+	if (RS_MIN(numTris, numVertices) <= 0 || RS_MAX(numTris, numVertices) > MAX_VERT_OR_TRI_COUNT) {
 		RS_ERR_CLOSE(
-			ERR_BASE_STR << "Invalid collision mesh file at \"" << filePath <<
+			ERROR_PREFIX_STR << "Invalid collision mesh file at \"" << filePath <<
 			"\" (bad triangle/vertex count: [" << numTris << ", " << numVertices << "])");
+	}
 
 	tris.resize(numTris);
 	vertices.resize(numVertices);
@@ -25,13 +28,19 @@ void CollisionMeshFile::ReadFromFile(string filePath) {
 	for (Vertex& vert : vertices)
 		vert = in.Read<Vertex>();
 
+	if (in.IsOverflown()) {
+		RS_ERR_CLOSE(
+			ERROR_PREFIX_STR << "Invalid collision mesh file at \"" << filePath <<
+			"\" (input data overflown by " << (in.pos - in.data.size()) << " bytes!)");
+	}
+
 	// Verify that the triangle data is correct
 	for (Triangle& tri : tris) {
 		for (int i = 0; i < 3; i++) {
 			int vertIndex = tri.vertexIndexes[i];
 			if (i < 0 || i >= numVertices) {
 				RS_ERR_CLOSE(
-					ERR_BASE_STR << "Invalid collision mesh file at \"" << filePath <<
+					ERROR_PREFIX_STR << "Invalid collision mesh file at \"" << filePath <<
 					"\" (bad triangle vertex index)");
 			}
 		}

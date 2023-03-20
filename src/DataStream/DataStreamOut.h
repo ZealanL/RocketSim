@@ -1,6 +1,8 @@
 #pragma once
 #include "../BaseInc.h"
 
+#include "SerializeObject.h"
+
 // Basic struct for writing raw data to a file
 struct DataStreamOut {
 	std::filesystem::path filePath;
@@ -16,27 +18,36 @@ struct DataStreamOut {
 			Write<uint32_t>(RS_VERSION_ID);
 	}
 
-	template <typename T>
-	void Write(const T& val) {
+	void WriteBytes(const void* ptr, size_t amount) {
 		if (!fileStream.good())
 			RS_ERR_CLOSE("Failed to write to file " << this->filePath << " during write operation, cannot open file.");
-		
+
 		if (RS_IS_BIG_ENDIAN) {
-			byte reversed[sizeof(T)];
-			memcpy(reversed, &val, sizeof(T));
-			std::reverse(reversed, reversed + sizeof(T));
-			fileStream.write((const char*)reversed, sizeof(T));
+			byte* reversed = (byte*)malloc(amount);
+			memcpy(reversed, ptr, amount);
+			std::reverse(reversed, reversed + amount);
+			fileStream.write((const char*)reversed, amount);
+			free(reversed);
 		} else {
-			fileStream.write((const char*)&val, sizeof(T));
+			fileStream.write((const char*)ptr, amount);
 		}
-		
-		pos += sizeof(T);
+
+		pos += amount;
+	}
+
+	template <typename T>
+	void Write(const T& val) {
+		WriteBytes(&val, sizeof(T));
+	}
+
+	void WriteMultipleFromList(std::vector<SerializeObject> objs) {
+		for (const SerializeObject& obj : objs)
+			WriteBytes(obj.ptr, obj.size);
 	}
 
 	template<typename... Args>
 	void WriteMultiple(Args... args) {
-		https://stackoverflow.com/questions/12030538/calling-a-function-for-each-variadic-template-argument-and-an-array
-		[](...) {}((Write(std::forward<Args>(args)), 0)...);
+		WriteMultipleFromList({ args... });
 	}
 
 };

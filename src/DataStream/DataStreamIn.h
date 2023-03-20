@@ -1,6 +1,8 @@
 #pragma once
 #include "../BaseInc.h"
 
+#include "SerializeObject.h"
+
 // Basic struct for reading raw data from a file
 struct DataStreamIn {
 	vector<char> data;
@@ -36,21 +38,23 @@ struct DataStreamIn {
 		}
 	}
 
+	void ReadBytes(void* out, size_t amount) {
+		if (GetNumBytesLeft() >= amount) {
+			byte* asBytes = (byte*)out;
+			memcpy(asBytes, data.data() + pos, amount);
+
+			if (RS_IS_BIG_ENDIAN)
+				std::reverse(asBytes, asBytes + sizeof(amount));
+		}
+
+		pos += amount;
+	}
+
 	template <typename T>
 	T Read() {
-		if (GetNumBytesLeft() >= sizeof(T)) {
-			byte bytes[sizeof(T)];
-			memcpy(bytes, data.data() + pos, sizeof(T));
-			
-			if (RS_IS_BIG_ENDIAN)
-				std::reverse(bytes, bytes + sizeof(T));
-
-			pos += sizeof(T);
-			return *(T*)bytes;
-		} else {
-			pos += sizeof(T);
-			return T{};
-		}
+		byte bytes[sizeof(T)];
+		ReadBytes(bytes, sizeof(T));
+		return *(T*)bytes;
 	}
 
 	template <typename T>
@@ -58,24 +62,13 @@ struct DataStreamIn {
 		out = Read<T>();
 	}
 
-	template<typename... Args>
-	void ReadMultiple(Args&... args) {
-		https://stackoverflow.com/questions/12030538/calling-a-function-for-each-variadic-template-argument-and-an-array
-		[](...) {}((Read(std::forward<Args&>(args)), 0)...);
+	void ReadMultipleFromList(std::vector<SerializeObject> objs) {
+		for (const SerializeObject& obj : objs)
+			ReadBytes(obj.ptr, obj.size);
 	}
 
+	template <typename... Args>
+	void ReadMultiple(Args&... args) {
+		ReadMultipleFromList({ args... });
+	}
 };
-
-template <>
-inline Vec DataStreamIn::Read() {
-	Vec result;
-	ReadMultiple(result.x, result.y, result.z);
-	return result;
-}
-
-template <>
-inline RotMat DataStreamIn::Read() {
-	RotMat result;
-	ReadMultiple(result.forward, result.right, result.up);
-	return result;
-}
