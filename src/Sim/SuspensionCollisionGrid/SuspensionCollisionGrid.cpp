@@ -18,35 +18,52 @@ void SuspensionCollisionGrid::SetupWorldCollision(const vector<btBvhTriangleMesh
 	int totalCellsWithin = 0;
 	BoolHitTriangleCallback boolCallback = BoolHitTriangleCallback();
 
+	Vec cellSizeBT = GetCellSize() * UU_TO_BT;
+
 	for (btBvhTriangleMeshShape* triMeshShape : triMeshShapes) {
 		
 		btVector3 rbMinBT, rbMaxBT;
 		triMeshShape->getAabb(btTransform(), rbMinBT, rbMaxBT);
 
-		btVector3 borderSize = (GetCellSize() * UU_TO_BT);
+		btVector3 borderSize = (cellSizeBT * UU_TO_BT);
 		rbMinBT -= borderSize;
 		rbMaxBT += borderSize;
 
 		for (int i = 0; i < CELL_AMOUNT_X; i++) {
-			for (int j = 0; j < CELL_AMOUNT_Y; j++) {
-				for (int k = 0; k < CELL_AMOUNT_Z; k++) {
 
-					Cell& cell = Get(i, j, k);
+			Vec
+				cellPlaneMinBT = GetCellMin(i, 0, 0) * UU_TO_BT - cellSizeBT,
+				cellPlaneMaxBT = GetCellMin(i, CELL_AMOUNT_Y - 1, CELL_AMOUNT_Z - 1) * UU_TO_BT + (cellSizeBT * 2);
 
-					if (!cell.worldCollision) {
+			boolCallback.hit = false;
+			triMeshShape->processAllTriangles(&boolCallback, cellPlaneMinBT, cellPlaneMaxBT);
+			if (boolCallback.hit) {
+				for (int j = 0; j < CELL_AMOUNT_Y; j++) {
 
-						Vec
-							cellMinBT = (GetCellMin(i, j, k) - GetCellSize()) * UU_TO_BT,
-							cellMaxBT = cellMinBT + (GetCellSize() * UU_TO_BT * 2);
+					Vec
+						cellColumnMinBT = GetCellMin(i, j, 0) * UU_TO_BT - cellSizeBT,
+						cellColumnMaxBT = GetCellMin(i, j, CELL_AMOUNT_Z - 1) * UU_TO_BT + (cellSizeBT * 2);
 
-						if ((cellMinBT < rbMaxBT) && (cellMaxBT > rbMinBT)) {
-							Vec cellCenter = (cellMinBT + cellMaxBT) / 2;
+					boolCallback.hit = false;
+					triMeshShape->processAllTriangles(&boolCallback, cellColumnMinBT, cellColumnMaxBT);
 
-							boolCallback.hit = false;
-							triMeshShape->processAllTriangles(&boolCallback, cellMinBT, cellMaxBT);
-							if (boolCallback.hit) {
-								cell.worldCollision = true;
-								totalCellsWithin++;
+					if (boolCallback.hit) {
+						for (int k = 0; k < CELL_AMOUNT_Z; k++) {
+
+							Cell& cell = Get(i, j, k);
+
+							if (!cell.worldCollision) {
+
+								Vec
+									cellMinBT = (GetCellMin(i, j, k) * UU_TO_BT - cellSizeBT),
+									cellMaxBT = cellMinBT + (cellSizeBT * 2);
+
+								boolCallback.hit = false;
+								triMeshShape->processAllTriangles(&boolCallback, cellMinBT, cellMaxBT);
+								if (boolCallback.hit) {
+									cell.worldCollision = true;
+									totalCellsWithin++;
+								}
 							}
 						}
 					}
