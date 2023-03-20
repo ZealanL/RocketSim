@@ -554,10 +554,6 @@ Arena::~Arena() {
 
 	// Remove ball
 	delete ball;
-
-	// Remove arena collision meshes
-	for (btTriangleMesh* mesh : _arenaTriMeshes)
-		delete mesh;
 }
 
 btRigidBody* Arena::_AddStaticCollisionShape(btCollisionShape* shape, bool isOwner, btVector3 posBT) {

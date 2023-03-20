@@ -61,7 +61,6 @@ public:
 
 	vector<btRigidBody*> _worldCollisionRBs;
 	vector<btCollisionShape*> _worldCollisionShapes;
-	vector<btTriangleMesh*> _arenaTriMeshes;
 
 	struct {
 		GoalScoreEventFn func = NULL;
