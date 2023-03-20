@@ -16,24 +16,21 @@ struct BoolHitTriangleCallback : public btTriangleCallback {
 void SuspensionCollisionGrid::SetupWorldCollision(const vector<btBvhTriangleMeshShape*>& triMeshShapes) {
 
 	int totalCellsWithin = 0;
+	int totalCellsBled = 0;
 	BoolHitTriangleCallback boolCallback = BoolHitTriangleCallback();
 
 	Vec cellSizeBT = GetCellSize() * UU_TO_BT;
 
-	for (btBvhTriangleMeshShape* triMeshShape : triMeshShapes) {
-		
+	// Enable cell.worldCollision for all cells that contain one or more triangle mesh's geometry
+	for (btBvhTriangleMeshShape* triMeshShape : triMeshShapes) {	
 		btVector3 rbMinBT, rbMaxBT;
 		triMeshShape->getAabb(btTransform(), rbMinBT, rbMaxBT);
-
-		btVector3 borderSize = (cellSizeBT * UU_TO_BT);
-		rbMinBT -= borderSize;
-		rbMaxBT += borderSize;
 
 		for (int i = 0; i < CELL_AMOUNT_X; i++) {
 
 			Vec
-				cellPlaneMinBT = GetCellMin(i, 0, 0) * UU_TO_BT - cellSizeBT,
-				cellPlaneMaxBT = GetCellMin(i, CELL_AMOUNT_Y - 1, CELL_AMOUNT_Z - 1) * UU_TO_BT + (cellSizeBT * 2);
+				cellPlaneMinBT = GetCellMin(i, 0, 0) * UU_TO_BT,
+				cellPlaneMaxBT = GetCellMin(i, CELL_AMOUNT_Y - 1, CELL_AMOUNT_Z - 1) * UU_TO_BT + cellSizeBT;
 
 			boolCallback.hit = false;
 			triMeshShape->processAllTriangles(&boolCallback, cellPlaneMinBT, cellPlaneMaxBT);
@@ -41,8 +38,8 @@ void SuspensionCollisionGrid::SetupWorldCollision(const vector<btBvhTriangleMesh
 				for (int j = 0; j < CELL_AMOUNT_Y; j++) {
 
 					Vec
-						cellColumnMinBT = GetCellMin(i, j, 0) * UU_TO_BT - cellSizeBT,
-						cellColumnMaxBT = GetCellMin(i, j, CELL_AMOUNT_Z - 1) * UU_TO_BT + (cellSizeBT * 2);
+						cellColumnMinBT = GetCellMin(i, j, 0) * UU_TO_BT,
+						cellColumnMaxBT = GetCellMin(i, j, CELL_AMOUNT_Z - 1) * UU_TO_BT + cellSizeBT;
 
 					boolCallback.hit = false;
 					triMeshShape->processAllTriangles(&boolCallback, cellColumnMinBT, cellColumnMaxBT);
@@ -55,8 +52,8 @@ void SuspensionCollisionGrid::SetupWorldCollision(const vector<btBvhTriangleMesh
 							if (!cell.worldCollision) {
 
 								Vec
-									cellMinBT = (GetCellMin(i, j, k) * UU_TO_BT - cellSizeBT),
-									cellMaxBT = cellMinBT + (cellSizeBT * 2);
+									cellMinBT = GetCellMin(i, j, k) * UU_TO_BT,
+									cellMaxBT = cellMinBT + cellSizeBT;
 
 								boolCallback.hit = false;
 								triMeshShape->processAllTriangles(&boolCallback, cellMinBT, cellMaxBT);
@@ -72,9 +69,43 @@ void SuspensionCollisionGrid::SetupWorldCollision(const vector<btBvhTriangleMesh
 		}
 	}
 
+	SuspensionCollisionGrid clone;
+	clone.Allocate();
+
+	// Make cell.worldCollision bleed to all surrounding cells
+	for (int i = 0; i < CELL_AMOUNT_X; i++) {
+		for (int j = 0; j < CELL_AMOUNT_Y; j++) {
+			for (int k = 0; k < CELL_AMOUNT_Z; k++) {
+
+				Cell& cell = Get(i, j, k);
+				if (cell.worldCollision) {
+					for (int i2 = -1; i2 < 2; i2++) {
+						for (int j2 = -1; j2 < 2; j2++) {
+							for (int k2 = -1; k2 < 2; k2++) {
+
+								Cell& otherCell = clone.Get(
+									RS_CLAMP(i + i2, 0, CELL_AMOUNT_X - 1),
+									RS_CLAMP(j + j2, 0, CELL_AMOUNT_Y - 1),
+									RS_CLAMP(k + k2, 0, CELL_AMOUNT_Z - 1)
+								);
+
+								if (!otherCell.worldCollision)
+									totalCellsBled++;
+								otherCell.worldCollision = true;
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	*this = clone;
+
 	RS_LOG(
-		"SuspensionCollisionGrid::Setup(): Built suspension collision grid, " << 
-		totalCellsWithin << "/" << CELL_AMOUNT_TOTAL << " cells contain world collision meshes"
+		"SuspensionCollisionGrid::Setup(): Built suspension collision grid, " <<
+		totalCellsWithin << "/" << CELL_AMOUNT_TOTAL << " cells contain world collision meshes, " <<
+		"bled to an additional " << totalCellsBled << " surrounding cells."
 	);
 }
 
