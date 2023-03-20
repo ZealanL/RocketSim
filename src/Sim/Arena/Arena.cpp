@@ -491,8 +491,36 @@ void Arena::Step(int ticksToSimulate) {
 			}
 		}
 
+#ifndef RS_NO_SUSPCOLGRID
+		{ // Add dynamic bodies to suspension grid
+			for (Car* car : _cars) {
+				btVector3 min, max;
+				car->_rigidBody->getAabb(min, max);
+				_suspColGrid.UpdateDynamicCollisions(min, max, false);
+			}
+
+			btVector3 min, max;
+			ball->_rigidBody->getAabb(min, max);
+			_suspColGrid.UpdateDynamicCollisions(min, max, false);
+		}
+#endif
+
 		for (Car* car : _cars)
 			car->_PreTickUpdate(tickTime, &_suspColGrid);
+
+#ifndef RS_NO_SUSPCOLGRID
+		{ // Remove dynamic bodies from suspension grid
+			for (Car* car : _cars) {
+				btVector3 min, max;
+				car->_rigidBody->getAabb(min, max);
+				_suspColGrid.UpdateDynamicCollisions(min, max, true);
+			}
+
+			btVector3 min, max;
+			ball->_rigidBody->getAabb(min, max);
+			_suspColGrid.UpdateDynamicCollisions(min, max, true);
+		}
+#endif
 
 		for (BoostPad* pad : _boostPads)
 			pad->_PreTickUpdate(tickTime);

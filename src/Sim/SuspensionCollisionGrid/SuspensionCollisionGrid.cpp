@@ -149,3 +149,18 @@ btCollisionObject* SuspensionCollisionGrid::CastSuspensionRay(btVehicleRaycaster
 		}
 	}
 }
+
+void SuspensionCollisionGrid::UpdateDynamicCollisions(Vec minBT, Vec maxBT, bool remove) {
+	int deltaVal = remove ? -1 : 1;
+
+	int i1, j1, k1;
+	GetCellIndicesFromPos(minBT * BT_TO_UU - GetCellSize(), i1, j1, k1);
+
+	int i2, j2, k2;
+	GetCellIndicesFromPos((maxBT * BT_TO_UU + GetCellSize()), i2, j2, k2);
+
+	for (int i = i1; i <= i2; i++)
+		for (int j = j1; j <= j2; j++)
+			for (int k = k1; k <= k2; k++)
+				Get(i, j, k).dynamicObjects += deltaVal;
+}

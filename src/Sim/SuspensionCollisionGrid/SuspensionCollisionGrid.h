@@ -26,7 +26,7 @@ struct SuspensionCollisionGrid {
 
 	struct Cell {
 		bool worldCollision = false;
-		int dynamicObjects = 0; // TODO: Implement dynamic grid update
+		int dynamicObjects = 0;
 	};
 
 	vector<Cell> cellData;
@@ -53,12 +53,15 @@ struct SuspensionCollisionGrid {
 		);
 	}
 
-	Cell& GetCellFromPos(Vec pos) {
-		int 
-			i = RS_CLAMP(pos.x / CELL_SIZE_X + (CELL_AMOUNT_X / 2), 0, CELL_AMOUNT_X - 1),
-			j = RS_CLAMP(pos.y / CELL_SIZE_Y + (CELL_AMOUNT_Y / 2), 0, CELL_AMOUNT_Y - 1),
-			k = RS_CLAMP(pos.z / CELL_SIZE_Z, 0, CELL_AMOUNT_Z - 1);
+	void GetCellIndicesFromPos(Vec pos, int& i, int& j, int& k) {
+		i = RS_CLAMP(pos.x / CELL_SIZE_X + (CELL_AMOUNT_X / 2), 0, CELL_AMOUNT_X - 1),
+		j = RS_CLAMP(pos.y / CELL_SIZE_Y + (CELL_AMOUNT_Y / 2), 0, CELL_AMOUNT_Y - 1),
+		k = RS_CLAMP(pos.z / CELL_SIZE_Z, 0, CELL_AMOUNT_Z - 1);
+	}
 
+	Cell& GetCellFromPos(Vec pos) {
+		int i, j, k;
+		GetCellIndicesFromPos(pos, i, j, k);
 		return Get(i, j, k);
 	}
 
@@ -67,7 +70,9 @@ struct SuspensionCollisionGrid {
 	}
 
 	void SetupWorldCollision(const vector<btBvhTriangleMeshShape*>& triMeshShapes);
+
 	btCollisionObject* CastSuspensionRay(btVehicleRaycaster* raycaster, Vec start, Vec end, btVehicleRaycaster::btVehicleRaycasterResult& result);
+	void UpdateDynamicCollisions(Vec minBT, Vec maxBT, bool remove);
 
 	btRigidBody* defaultWorldCollisionRB = NULL;
 };
