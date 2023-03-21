@@ -23,8 +23,8 @@ subject to the following restrictions:
 
 btQuantizedBvh::btQuantizedBvh() : m_bulletVersion(BT_BULLET_VERSION),
 								   m_useQuantization(false),
-								   //m_traversalMode(TRAVERSAL_STACKLESS_CACHE_FRIENDLY)
-								   m_traversalMode(TRAVERSAL_STACKLESS)
+								   //m_traversalMode(TRAVERSAL_STACKLESS)
+								   m_traversalMode(TRAVERSAL_STACKLESS_CACHE_FRIENDLY)
 								   //m_traversalMode(TRAVERSAL_RECURSIVE)
 								   ,
 								   m_subtreeHeaderCount(0)  //PCK: add this line
