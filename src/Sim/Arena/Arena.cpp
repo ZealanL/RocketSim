@@ -11,6 +11,7 @@ Car* Arena::AddCar(Team team, const CarConfig& config) {
 	car->id = ++_lastCarID;
 
 	car->_BulletSetup(_bulletWorld);
+	car->Respawn();
 
 	return car;
 }
