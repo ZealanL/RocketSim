@@ -313,6 +313,7 @@ Arena::Arena(GameMode gameMode, float tickRate) {
 		radius *= UU_TO_BT;
 
 		ball->_BulletSetup(_bulletWorld, radius);
+		ball->SetState(BallState());
 	}
 
 	{ // Initialize boost pads
