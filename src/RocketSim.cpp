@@ -25,8 +25,11 @@ void RocketSim::Init() {
 
 	beginInitMutex.lock();
 	{
-		if (stage != RocketSimStage::UNINITIALIZED)
-			RS_ERR_CLOSE(MSG_PREFIX << "Cannot initialize more than once!");
+		if (stage != RocketSimStage::UNINITIALIZED) {
+			RS_LOG("WARNING: RocketSim::Init() called again after already initialized, ignoring...");
+			beginInitMutex.unlock();
+			return;
+		}
 
 		RS_LOG("Initializing RocketSim version " RS_VERSION ", created by ZealanL...");
 
