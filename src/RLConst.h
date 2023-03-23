@@ -27,6 +27,7 @@ namespace RLConst {
 	constexpr float CARCAR_COLLISION_FRICTION = 0.09f;
 	constexpr float CARCAR_COLLISION_RESTITUTION = 0.1f;
 
+	constexpr float BALL_REST_Z = 93.15f; // Greater than ball radius because of arena mesh collision margin
 	constexpr float BALL_MAX_ANG_SPEED = 6.f; // Ball can never exceed this angular velocity (radians/s)
 	constexpr float BALL_DRAG = 0.03f; // Net-velocity drag multiplier
 	constexpr float BALL_FRICTION = 0.35f;

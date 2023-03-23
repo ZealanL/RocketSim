@@ -7,7 +7,7 @@
 
 struct BallState {
 	// Position in world space
-	Vec pos = { 0, 0, 93.15f };
+	Vec pos = { 0, 0, RLConst::BALL_REST_Z };
 
 	// Linear velocity
 	Vec vel = { 0, 0, 0 };
