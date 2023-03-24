@@ -41,12 +41,16 @@ public:
 	Vec _velocityImpulseCache = { 0,0,0 };
 	void _FinishPhysicsTick();
 
-	RSAPI float GetRadius() {
+	float GetRadiusBullet() {
 		if (!_collisionShape) {
 			return -1;
 		} else {
 			return _collisionShape->getRadius();
 		}
+	}
+
+	float GetRadius() {
+		return GetRadiusBullet() * BT_TO_UU;
 	}
 
 	~Ball();
