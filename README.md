@@ -26,6 +26,11 @@
 - Serialization of cars/ball/boost pads/arena
 - Boost pad/suspension ray optimization using lookup grid
 
+## Bindings
+If you don't want to work in C++, here are some (unofficial) bindings written in other languages:
+- **Python**: https://github.com/uservar/pyrocketsim by `uservar`
+- **Rust**: https://github.com/VirxEC/rocketsim-rs by `VirxEC`
+
 ## Performance
 RocketSim already heavily outperforms the speed of Rocket League's physics tick step without optimization.
 
