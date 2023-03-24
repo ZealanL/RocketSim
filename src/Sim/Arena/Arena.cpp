@@ -132,7 +132,7 @@ bool Arena::_BulletContactAddedCallback(
 		if (userIndexB == BT_USERINFO_TYPE_BALL) {
 			// Car + Ball
 			arenaInst->
-				_BtCallback_OnCarBallCollision(car, (Ball*)bodyB->getUserPointer(), contactPoint);
+				_BtCallback_OnCarBallCollision(car, (Ball*)bodyB->getUserPointer(), contactPoint, shouldSwap);
 		} else if (userIndexB == BT_USERINFO_TYPE_CAR) {
 			// Car + Car
 			arenaInst->
@@ -146,7 +146,7 @@ bool Arena::_BulletContactAddedCallback(
 	return true;
 }
 
-void Arena::_BtCallback_OnCarBallCollision(Car* car, Ball* ball, btManifoldPoint& manifoldPoint) {
+void Arena::_BtCallback_OnCarBallCollision(Car* car, Ball* ball, btManifoldPoint& manifoldPoint, bool ballIsBodyA) {
 	using namespace RLConst;
 
 	// Manually override manifold friction/restitution
@@ -161,8 +161,14 @@ void Arena::_BtCallback_OnCarBallCollision(Car* car, Ball* ball, btManifoldPoint
 		return;
 	}
 
+	ball->_internalState.ballHitInfo.carID = car->id;
+	ball->_internalState.ballHitInfo.relativePosOnBall = (ballIsBodyA ? manifoldPoint.m_localPointA : manifoldPoint.m_localPointB) * BT_TO_UU;
+	ball->_internalState.ballHitInfo.tickCountWhenHit = this->tickCount;
+	
 	auto carState = car->GetState();
 	auto ballState = ball->GetState();
+
+	ball->_internalState.ballHitInfo.ballPos = ballState.pos;
 
 	btVector3 carForward = car->GetForwardDir();
 	btVector3 relPos = ballState.pos - carState.pos;
@@ -176,9 +182,12 @@ void Arena::_BtCallback_OnCarBallCollision(Car* car, Ball* ball, btManifoldPoint
 		hitDir = (hitDir - forwardDirAdjustment).normalized();
 
 		btVector3 addedVel = (hitDir * relSpeed) * BALL_CAR_EXTRA_IMPULSE_FACTOR_CURVE.GetOutput(relSpeed);
+		ball->_internalState.ballHitInfo.extraHitVel = addedVel;
 
 		// Velocity won't be actually added until the end of this tick
 		ball->_velocityImpulseCache += addedVel * UU_TO_BT;
+	} else {
+		ball->_internalState.ballHitInfo.extraHitVel = Vec();
 	}
 }
 

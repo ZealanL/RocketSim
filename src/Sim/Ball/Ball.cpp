@@ -2,15 +2,35 @@
 
 #include "../../RLConst.h"
 
+void BallHitInfo::Serialize(DataStreamOut& out) {
+	out.WriteMultiple(BALLHITINFO_SERIALIZATION_FIELDS);
+}
+
+void BallHitInfo::Deserialize(DataStreamIn& in) {
+	in.ReadMultiple(BALLHITINFO_SERIALIZATION_FIELDS);
+}
+
+void BallState::Serialize(DataStreamOut& out) {
+	ballHitInfo.Serialize(out);
+	out.WriteMultiple(BALLSTATE_SERIALIZATION_FIELDS);
+}
+
+void BallState::Deserialize(DataStreamIn& in) {
+	ballHitInfo.Deserialize(in);
+	in.ReadMultiple(BALLSTATE_SERIALIZATION_FIELDS);
+}
+
 BallState Ball::GetState() {
-	BallState stateOut;
-	stateOut.pos = _rigidBody->getWorldTransform().getOrigin() * BT_TO_UU;
-	stateOut.vel = _rigidBody->getLinearVelocity() * BT_TO_UU;
-	stateOut.angVel = _rigidBody->getAngularVelocity();
-	return stateOut;
+	_internalState.pos = _rigidBody->getWorldTransform().getOrigin() * BT_TO_UU;
+	_internalState.vel = _rigidBody->getLinearVelocity() * BT_TO_UU;
+	_internalState.angVel = _rigidBody->getAngularVelocity();
+	return _internalState;
 }
 
 void Ball::SetState(const BallState& state) {
+
+	_internalState = state;
+
 	btTransform newTransform;
 	newTransform.setIdentity();
 	newTransform.setOrigin(state.pos * UU_TO_BT);
@@ -93,12 +113,4 @@ void Ball::_FinishPhysicsTick() {
 Ball::~Ball() {
 	delete _rigidBody;
 	delete _collisionShape;
-}
-
-void BallState::Serialize(DataStreamOut& out) {
-	out.WriteMultiple(BALLSTATE_SERIALIZATION_FIELDS);
-}
-
-void BallState::Deserialize(DataStreamIn& in) {
-	in.ReadMultiple(BALLSTATE_SERIALIZATION_FIELDS);
 }
