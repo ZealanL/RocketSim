@@ -32,7 +32,10 @@ public:
 
 	SuspensionCollisionGrid _suspColGrid;
 
-	float tickTime; // Time each tick (1/tickrate)
+	// Time in seconds each tick (1/tickrate)
+	float tickTime; 
+
+	// Returns (1 / tickTime)
 	float GetTickRate() {
 		return 1 / tickTime;
 	}
@@ -77,13 +80,12 @@ public:
 	// Create a new arena from a file written by Arena.WriteToFile()
 	RSAPI static Arena* LoadFromFile(std::filesystem::path path);
 
-	// No copy constructor, use Arena::Clone() instead	
-	Arena(const Arena& other) = delete;
-	Arena& operator =(const Arena& other) = delete;
+	Arena(const Arena& other) = delete; // No copy constructor, use Arena::Clone() instead
+	Arena& operator =(const Arena& other) = delete; // No copy operator, use Arena::Clone() instead
 
-	// No move constructor
-	Arena(Arena&& other) = delete;
-	Arena& operator =(Arena&& other) = delete;
+	
+	Arena(Arena&& other) = delete; // No move constructor
+	Arena& operator =(Arena&& other) = delete; // No move operator
 
 	// Get a deep copy of the arena
 	RSAPI Arena* Clone(bool copyCallbacks);

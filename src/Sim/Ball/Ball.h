@@ -61,6 +61,7 @@ public:
 	Vec _velocityImpulseCache = { 0,0,0 };
 	void _FinishPhysicsTick();
 
+	// NOTE: In BulletPhysics units
 	float GetRadiusBullet() {
 		if (!_collisionShape) {
 			return -1;
@@ -69,6 +70,7 @@ public:
 		}
 	}
 
+	// NOTE: In Unreal Engine units (uu)
 	float GetRadius() {
 		return GetRadiusBullet() * BT_TO_UU;
 	}

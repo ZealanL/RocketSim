@@ -89,6 +89,7 @@ enum class Team : byte {
 
 class Car {
 public:
+	// Configuration for this car
 	CarConfig config;
 	Team team;
 
@@ -108,6 +109,7 @@ public:
 
 	void Demolish();
 
+	// Respawn the car, called after we have been demolished and waited for the respawn timer
 	void Respawn(int seed = -1);
 
 	btVehicleRL* _bulletVehicle;
@@ -120,12 +122,17 @@ public:
 	// Those values are only updated when GetState() is called
 	CarState _internalState;
 
+	// Get the forward direction as a unit vector
 	Vec GetForwardDir() const {
 		return _internalState.rotMat.forward;
 	}
+
+	// Get the rightward direction as a unit vector
 	Vec GetRightDir() const {
 		return _internalState.rotMat.right;
 	}
+
+	// Get the upward direction as a unit vector
 	Vec GetUpDir() const {
 		return _internalState.rotMat.up;
 	}
