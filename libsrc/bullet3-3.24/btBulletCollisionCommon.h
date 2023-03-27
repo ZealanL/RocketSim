@@ -33,7 +33,6 @@ subject to the following restrictions:
 #include "BulletCollision/CollisionShapes/btCompoundShape.h"
 #include "BulletCollision/CollisionShapes/btTetrahedronShape.h"
 #include "BulletCollision/CollisionShapes/btEmptyShape.h"
-#include "BulletCollision/CollisionShapes/btUniformScalingShape.h"
 
 ///Narrowphase Collision Detector
 #include "BulletCollision/CollisionDispatch/btSphereSphereCollisionAlgorithm.h"
