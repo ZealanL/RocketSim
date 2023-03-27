@@ -21,7 +21,6 @@ subject to the following restrictions:
 #include "../NarrowPhaseCollision/btRaycastCallback.h"
 #include "../CollisionShapes/btTriangleShape.h"
 #include "../CollisionShapes/btSphereShape.h"
-#include "../../LinearMath/btIDebugDraw.h"
 #include "../NarrowPhaseCollision/btSubSimplexConvexCast.h"
 #include "../CollisionDispatch/btCollisionObjectWrapper.h"
 

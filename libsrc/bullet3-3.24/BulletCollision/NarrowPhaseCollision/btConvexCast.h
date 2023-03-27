@@ -20,7 +20,6 @@ subject to the following restrictions:
 #include "../../LinearMath/btVector3.h"
 #include "../../LinearMath/btScalar.h"
 class btMinkowskiSumShape;
-#include "../../LinearMath/btIDebugDraw.h"
 
 #ifdef BT_USE_DOUBLE_PRECISION
 #define MAX_CONVEX_CAST_ITERATIONS 64
@@ -56,7 +55,6 @@ public:
 		}
 		CastResult()
 			: m_fraction(btScalar(BT_LARGE_FLOAT)),
-			  m_debugDrawer(0),
 			  m_allowedPenetration(btScalar(0)),
 			  m_subSimplexCastMaxIterations(MAX_CONVEX_CAST_ITERATIONS),
 			  m_subSimplexCastEpsilon(MAX_CONVEX_CAST_EPSILON)
@@ -70,7 +68,6 @@ public:
 		btVector3 m_normal;
 		btVector3 m_hitPoint;
 		btScalar m_fraction;  //input and output
-		btIDebugDraw* m_debugDrawer;
 		btScalar m_allowedPenetration;
 		
 		int m_subSimplexCastMaxIterations;

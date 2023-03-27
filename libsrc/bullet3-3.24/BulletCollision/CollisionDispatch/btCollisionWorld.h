@@ -93,8 +93,6 @@ protected:
 
 	btBroadphaseInterface* m_broadphasePairCache;
 
-	btIDebugDraw* m_debugDrawer;
-
 	///m_forceUpdateAllAabbs can be set to false as an optimization to only update active object AABBs
 	///it is true by default, because it is error-prone (setting the position of static objects wouldn't update their AABB)
 	bool m_forceUpdateAllAabbs;
@@ -146,21 +144,6 @@ public:
 	///the computeOverlappingPairs is usually already called by performDiscreteCollisionDetection (or stepSimulation)
 	///it can be useful to use if you perform ray tests without collision detection/simulation
 	virtual void computeOverlappingPairs();
-
-	virtual void setDebugDrawer(btIDebugDraw* debugDrawer)
-	{
-		m_debugDrawer = debugDrawer;
-	}
-
-	virtual btIDebugDraw* getDebugDrawer()
-	{
-		return m_debugDrawer;
-	}
-
-	virtual void debugDrawWorld();
-
-	virtual void debugDrawObject(const btTransform& worldTransform, const btCollisionShape* shape, const btVector3& color);
-
 	///LocalShapeInfo gives extra information for complex shapes
 	///Currently, only btTriangleMeshShape is available, so it just contains triangleIndex and subpart
 	struct LocalShapeInfo

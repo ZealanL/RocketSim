@@ -51,9 +51,9 @@ public:
 	btGjkPairDetector(const btConvexShape* objectA, const btConvexShape* objectB, int shapeTypeA, int shapeTypeB, btScalar marginA, btScalar marginB, btSimplexSolverInterface* simplexSolver, btConvexPenetrationDepthSolver* penetrationDepthSolver);
 	virtual ~btGjkPairDetector(){};
 
-	virtual void getClosestPoints(const ClosestPointInput& input, Result& output, class btIDebugDraw* debugDraw, bool swapResults = false);
+	virtual void getClosestPoints(const ClosestPointInput& input, Result& output, bool swapResults = false);
 
-	void getClosestPointsNonVirtual(const ClosestPointInput& input, Result& output, class btIDebugDraw* debugDraw);
+	void getClosestPointsNonVirtual(const ClosestPointInput& input, Result& output);
 
 	void setMinkowskiA(const btConvexShape* minkA)
 	{

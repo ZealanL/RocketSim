@@ -6,7 +6,6 @@
 #include "../CollisionShapes/btBvhTriangleMeshShape.h"
 #include "../CollisionDispatch/btCollisionObject.h"
 #include "../NarrowPhaseCollision/btManifoldPoint.h"
-#include "../../LinearMath/btIDebugDraw.h"
 #include "../CollisionDispatch/btCollisionObjectWrapper.h"
 
 //#define DEBUG_INTERNAL_EDGE

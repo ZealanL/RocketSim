@@ -216,15 +216,13 @@ struct btPerturbedContactResult : public btManifoldResult
 	btTransform m_transformB;
 	btTransform m_unPerturbedTransform;
 	bool m_perturbA;
-	btIDebugDraw* m_debugDrawer;
 
-	btPerturbedContactResult(btManifoldResult* originalResult, const btTransform& transformA, const btTransform& transformB, const btTransform& unPerturbedTransform, bool perturbA, btIDebugDraw* debugDrawer)
+	btPerturbedContactResult(btManifoldResult* originalResult, const btTransform& transformA, const btTransform& transformB, const btTransform& unPerturbedTransform, bool perturbA)
 		: m_originalManifoldResult(originalResult),
 		  m_transformA(transformA),
 		  m_transformB(transformB),
 		  m_unPerturbedTransform(unPerturbedTransform),
-		  m_perturbA(perturbA),
-		  m_debugDrawer(debugDrawer)
+		  m_perturbA(perturbA)
 	{
 	}
 	virtual ~btPerturbedContactResult()
@@ -452,7 +450,7 @@ void btConvexConvexAlgorithm ::processCollision(const btCollisionObjectWrapper* 
 					gjkPairDetector.getClosestPoints(input, *resultOut, dispatchInfo.m_debugDraw);
 #else
 
-					gjkPairDetector.getClosestPoints(input, withoutMargin, dispatchInfo.m_debugDraw);
+					gjkPairDetector.getClosestPoints(input, withoutMargin);
 					//gjkPairDetector.getClosestPoints(input,dummy,dispatchInfo.m_debugDraw);
 #endif  //ZERO_MARGIN
 					//btScalar l2 = gjkPairDetector.getCachedSeparatingAxis().length2();
@@ -597,7 +595,7 @@ void btConvexConvexAlgorithm ::processCollision(const btCollisionObjectWrapper* 
 						gjkPairDetector.setIgnoreMargin(true);
 						gjkPairDetector.getClosestPoints(input, *resultOut, dispatchInfo.m_debugDraw);
 #else
-						gjkPairDetector.getClosestPoints(input, dummy, dispatchInfo.m_debugDraw);
+						gjkPairDetector.getClosestPoints(input, dummy);
 #endif  //ZERO_MARGIN
 
 						if (dummy.m_hasContact && dummy.m_depth < 0)
@@ -647,7 +645,7 @@ void btConvexConvexAlgorithm ::processCollision(const btCollisionObjectWrapper* 
 			}
 		}
 
-		gjkPairDetector.getClosestPoints(input, *resultOut, dispatchInfo.m_debugDraw);
+		gjkPairDetector.getClosestPoints(input, *resultOut);
 
 		//now perform 'm_numPerturbationIterations' collision queries with the perturbated collision objects
 
@@ -718,8 +716,8 @@ void btConvexConvexAlgorithm ::processCollision(const btCollisionObjectWrapper* 
 #endif
 						}
 
-						btPerturbedContactResult perturbedResultOut(resultOut, input.m_transformA, input.m_transformB, unPerturbedTransform, perturbeA, dispatchInfo.m_debugDraw);
-						gjkPairDetector.getClosestPoints(input, perturbedResultOut, dispatchInfo.m_debugDraw);
+						btPerturbedContactResult perturbedResultOut(resultOut, input.m_transformA, input.m_transformB, unPerturbedTransform, perturbeA);
+						gjkPairDetector.getClosestPoints(input, perturbedResultOut);
 					}
 				}
 			}

@@ -14,7 +14,6 @@ class btBvhTriangleMeshShape;
 class btCollisionObject;
 struct btCollisionObjectWrapper;
 class btManifoldPoint;
-class btIDebugDraw;
 class btHeightfieldTerrainShape;
 
 enum btInternalEdgeAdjustFlags

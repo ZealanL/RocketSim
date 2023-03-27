@@ -19,7 +19,6 @@ subject to the following restrictions:
 #include "../CollisionDispatch/btCollisionObject.h"
 #include "../CollisionShapes/btCompoundShape.h"
 #include "../BroadphaseCollision/btDbvt.h"
-#include "../../LinearMath/btIDebugDraw.h"
 #include "../../LinearMath/btAabbUtil2.h"
 #include "../CollisionDispatch/btManifoldResult.h"
 #include "../CollisionDispatch/btCollisionObjectWrapper.h"

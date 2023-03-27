@@ -40,7 +40,6 @@ struct btDispatcherInfo
 		  m_dispatchFunc(DISPATCH_DISCRETE),
 		  m_timeOfImpact(btScalar(1.)),
 		  m_useContinuous(true),
-		  m_debugDraw(0),
 		  m_enableSatConvex(false),
 		  m_enableSPU(true),
 		  m_useEpa(true),
@@ -55,7 +54,6 @@ struct btDispatcherInfo
 	int m_dispatchFunc;
 	mutable btScalar m_timeOfImpact;
 	bool m_useContinuous;
-	class btIDebugDraw* m_debugDraw;
 	bool m_enableSatConvex;
 	bool m_enableSPU;
 	bool m_useEpa;

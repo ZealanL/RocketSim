@@ -70,11 +70,11 @@ btGjkPairDetector::btGjkPairDetector(const btConvexShape *objectA, const btConve
 {
 }
 
-void btGjkPairDetector::getClosestPoints(const ClosestPointInput &input, Result &output, class btIDebugDraw *debugDraw, bool swapResults)
+void btGjkPairDetector::getClosestPoints(const ClosestPointInput &input, Result &output, bool swapResults)
 {
 	(void)swapResults;
 
-	getClosestPointsNonVirtual(input, output, debugDraw);
+	getClosestPointsNonVirtual(input, output);
 }
 
 static void btComputeSupport(const btConvexShape *convexA, const btTransform &localTransA, const btConvexShape *convexB, const btTransform &localTransB, const btVector3 &dir, bool check2d, btVector3 &supAworld, btVector3 &supBworld, btVector3 &aMinb)
@@ -683,9 +683,9 @@ static int btDoSimplex(btSimplex *simplex, btVector3 *dir)
 }
 
 #ifdef __SPU__
-void btGjkPairDetector::getClosestPointsNonVirtual(const ClosestPointInput &input, Result &output, class btIDebugDraw *debugDraw)
+void btGjkPairDetector::getClosestPointsNonVirtual(const ClosestPointInput &input, Result &output)
 #else
-void btGjkPairDetector::getClosestPointsNonVirtual(const ClosestPointInput &input, Result &output, class btIDebugDraw *debugDraw)
+void btGjkPairDetector::getClosestPointsNonVirtual(const ClosestPointInput &input, Result &output)
 #endif
 {
 	m_cachedSeparatingDistance = 0.f;
@@ -1023,8 +1023,7 @@ void btGjkPairDetector::getClosestPointsNonVirtual(const ClosestPointInput &inpu
 					*m_simplexSolver,
 					m_minkowskiA, m_minkowskiB,
 					localTransA, localTransB,
-					m_cachedSeparatingAxis, tmpPointOnA, tmpPointOnB,
-					debugDraw);
+					m_cachedSeparatingAxis, tmpPointOnA, tmpPointOnB);
 
 				if (m_cachedSeparatingAxis.length2())
 				{

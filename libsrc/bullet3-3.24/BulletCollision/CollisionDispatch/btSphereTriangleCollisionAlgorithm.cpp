@@ -64,7 +64,7 @@ void btSphereTriangleCollisionAlgorithm::processCollision(const btCollisionObjec
 
 	bool swapResults = m_swapped;
 
-	detector.getClosestPoints(input, *resultOut, dispatchInfo.m_debugDraw, swapResults);
+	detector.getClosestPoints(input, *resultOut, swapResults);
 
 	if (m_ownManifold)
 		resultOut->refreshContactPoints();

@@ -24,7 +24,6 @@ subject to the following restrictions:
 #include "../BroadphaseCollision/btBroadphaseProxy.h"
 #include "../../LinearMath/btAlignedObjectArray.h"
 
-class btIDebugDraw;
 class btOverlappingPairCache;
 class btPoolAllocator;
 class btCollisionConfiguration;

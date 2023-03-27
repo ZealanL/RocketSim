@@ -30,7 +30,6 @@ subject to the following restrictions:
 #include "../ConstraintSolver/btTypedConstraint.h"
 #include "../ConstraintSolver/btContactConstraint.h"
 
-#include "../../LinearMath/btIDebugDraw.h"
 #include "../../BulletCollision/CollisionShapes/btSphereShape.h"
 
 #include "../Dynamics/btActionInterface.h"
@@ -74,7 +73,6 @@ struct InplaceSolverIslandCallback : public btSimulationIslandManager::IslandCal
 	btConstraintSolver* m_solver;
 	btTypedConstraint** m_sortedConstraints;
 	int m_numConstraints;
-	btIDebugDraw* m_debugDrawer;
 	btDispatcher* m_dispatcher;
 
 	btAlignedObjectArray<btCollisionObject*> m_bodies;
@@ -89,7 +87,6 @@ struct InplaceSolverIslandCallback : public btSimulationIslandManager::IslandCal
 		  m_solver(solver),
 		  m_sortedConstraints(NULL),
 		  m_numConstraints(0),
-		  m_debugDrawer(NULL),
 		  m_dispatcher(dispatcher)
 	{
 	}
@@ -101,13 +98,12 @@ struct InplaceSolverIslandCallback : public btSimulationIslandManager::IslandCal
 		return *this;
 	}
 
-	SIMD_FORCE_INLINE void setup(btContactSolverInfo* solverInfo, btTypedConstraint** sortedConstraints, int numConstraints, btIDebugDraw* debugDrawer)
+	SIMD_FORCE_INLINE void setup(btContactSolverInfo* solverInfo, btTypedConstraint** sortedConstraints, int numConstraints)
 	{
 		btAssert(solverInfo);
 		m_solverInfo = solverInfo;
 		m_sortedConstraints = sortedConstraints;
 		m_numConstraints = numConstraints;
-		m_debugDrawer = debugDrawer;
 		m_bodies.resize(0);
 		m_manifolds.resize(0);
 		m_constraints.resize(0);
@@ -118,7 +114,7 @@ struct InplaceSolverIslandCallback : public btSimulationIslandManager::IslandCal
 		if (islandId < 0)
 		{
 			///we don't split islands, so all constraints/contact manifolds/bodies are passed into the solver regardless the island id
-			m_solver->solveGroup(bodies, numBodies, manifolds, numManifolds, &m_sortedConstraints[0], m_numConstraints, *m_solverInfo, m_debugDrawer, m_dispatcher);
+			m_solver->solveGroup(bodies, numBodies, manifolds, numManifolds, &m_sortedConstraints[0], m_numConstraints, *m_solverInfo, m_dispatcher);
 		}
 		else
 		{
@@ -147,7 +143,7 @@ struct InplaceSolverIslandCallback : public btSimulationIslandManager::IslandCal
 
 			if (m_solverInfo->m_minimumSolverBatchSize <= 1)
 			{
-				m_solver->solveGroup(bodies, numBodies, manifolds, numManifolds, startConstraint, numCurConstraints, *m_solverInfo, m_debugDrawer, m_dispatcher);
+				m_solver->solveGroup(bodies, numBodies, manifolds, numManifolds, startConstraint, numCurConstraints, *m_solverInfo, m_dispatcher);
 			}
 			else
 			{
@@ -174,7 +170,7 @@ struct InplaceSolverIslandCallback : public btSimulationIslandManager::IslandCal
 		btPersistentManifold** manifold = m_manifolds.size() ? &m_manifolds[0] : 0;
 		btTypedConstraint** constraints = m_constraints.size() ? &m_constraints[0] : 0;
 
-		m_solver->solveGroup(bodies, m_bodies.size(), manifold, m_manifolds.size(), constraints, m_constraints.size(), *m_solverInfo, m_debugDrawer, m_dispatcher);
+		m_solver->solveGroup(bodies, m_bodies.size(), manifold, m_manifolds.size(), constraints, m_constraints.size(), *m_solverInfo, m_dispatcher);
 		m_bodies.resize(0);
 		m_manifolds.resize(0);
 		m_constraints.resize(0);
@@ -257,46 +253,6 @@ void btDiscreteDynamicsWorld::saveKinematicState(btScalar timeStep)
 			}
 		}
 	}
-}
-
-void btDiscreteDynamicsWorld::debugDrawWorld()
-{
-	BT_PROFILE("debugDrawWorld");
-
-	btCollisionWorld::debugDrawWorld();
-
-	bool drawConstraints = false;
-	if (getDebugDrawer())
-	{
-		int mode = getDebugDrawer()->getDebugMode();
-		if (mode & (btIDebugDraw::DBG_DrawConstraints | btIDebugDraw::DBG_DrawConstraintLimits))
-		{
-			drawConstraints = true;
-		}
-	}
-	if (drawConstraints)
-	{
-		for (int i = getNumConstraints() - 1; i >= 0; i--)
-		{
-			btTypedConstraint* constraint = getConstraint(i);
-			debugDrawConstraint(constraint);
-		}
-	}
-
-	if (getDebugDrawer() && (getDebugDrawer()->getDebugMode() & (btIDebugDraw::DBG_DrawWireframe | btIDebugDraw::DBG_DrawAabb | btIDebugDraw::DBG_DrawNormals)))
-	{
-		int i;
-
-		if (getDebugDrawer() && getDebugDrawer()->getDebugMode())
-		{
-			for (i = 0; i < m_actions.size(); i++)
-			{
-				m_actions[i]->debugDraw(m_debugDrawer);
-			}
-		}
-	}
-	if (getDebugDrawer())
-		getDebugDrawer()->flushLines();
 }
 
 void btDiscreteDynamicsWorld::clearForces()
@@ -407,12 +363,6 @@ int btDiscreteDynamicsWorld::stepSimulation(btScalar timeStep, int maxSubSteps, 
 		}
 	}
 
-	//process some debugging flags
-	if (getDebugDrawer())
-	{
-		btIDebugDraw* debugDrawer = getDebugDrawer();
-		gDisableDeactivation = (debugDrawer->getDebugMode() & btIDebugDraw::DBG_NoDeactivation) != 0;
-	}
 	if (numSimulationSubSteps)
 	{
 		//clamp the number of substeps, to prevent simulation grinding spiralling down to a halt
@@ -458,7 +408,6 @@ void btDiscreteDynamicsWorld::internalSingleStepSimulation(btScalar timeStep)
 
 	dispatchInfo.m_timeStep = timeStep;
 	dispatchInfo.m_stepCount = 0;
-	dispatchInfo.m_debugDraw = getDebugDrawer();
 
 	createPredictiveContacts(timeStep);
 
@@ -688,7 +637,7 @@ void btDiscreteDynamicsWorld::solveConstraints(btContactSolverInfo& solverInfo)
 
 	btTypedConstraint** constraintsPtr = getNumConstraints() ? &m_sortedConstraints[0] : 0;
 
-	m_solverIslandCallback->setup(&solverInfo, constraintsPtr, m_sortedConstraints.size(), getDebugDrawer());
+	m_solverIslandCallback->setup(&solverInfo, constraintsPtr, m_sortedConstraints.size());
 	m_constraintSolver->prepareSolve(getCollisionWorld()->getNumCollisionObjects(), getCollisionWorld()->getDispatcher()->getNumManifolds());
 
 	/// solve all the constraints for this island
@@ -696,7 +645,7 @@ void btDiscreteDynamicsWorld::solveConstraints(btContactSolverInfo& solverInfo)
 
 	m_solverIslandCallback->processConstraints();
 
-	m_constraintSolver->allSolved(solverInfo, m_debugDrawer);
+	m_constraintSolver->allSolved(solverInfo);
 }
 
 void btDiscreteDynamicsWorld::calculateSimulationIslands()
@@ -1105,11 +1054,6 @@ void btDiscreteDynamicsWorld::startProfiling(btScalar timeStep)
 #ifndef BT_NO_PROFILE
 	CProfileManager::Reset();
 #endif  //BT_NO_PROFILE
-}
-
-void btDiscreteDynamicsWorld::debugDrawConstraint(btTypedConstraint* constraint)
-{
-	
 }
 
 void btDiscreteDynamicsWorld::setConstraintSolver(btConstraintSolver* solver)

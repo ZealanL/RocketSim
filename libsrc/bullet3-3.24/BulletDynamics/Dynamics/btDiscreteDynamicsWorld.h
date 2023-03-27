@@ -24,7 +24,6 @@ class btSimulationIslandManager;
 class btTypedConstraint;
 class btActionInterface;
 class btPersistentManifold;
-class btIDebugDraw;
 
 struct InplaceSolverIslandCallback;
 
@@ -151,10 +150,6 @@ public:
 
 	///removeCollisionObject will first check if it is a rigid body, if so call removeRigidBody otherwise call btCollisionWorld::removeCollisionObject
 	virtual void removeCollisionObject(btCollisionObject * collisionObject);
-
-	virtual void debugDrawConstraint(btTypedConstraint * constraint);
-
-	virtual void debugDrawWorld();
 
 	virtual void setConstraintSolver(btConstraintSolver * solver);
 

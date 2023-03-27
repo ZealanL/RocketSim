@@ -16,7 +16,6 @@ subject to the following restrictions:
 #include "btOptimizedBvh.h"
 #include "btStridingMeshInterface.h"
 #include "../../LinearMath/btAabbUtil2.h"
-#include "../../LinearMath/btIDebugDraw.h"
 
 btOptimizedBvh::btOptimizedBvh()
 {

@@ -34,7 +34,7 @@ public:
 
 	virtual ~btBoxBoxDetector(){};
 
-	virtual void getClosestPoints(const ClosestPointInput& input, Result& output, class btIDebugDraw* debugDraw, bool swapResults = false);
+	virtual void getClosestPoints(const ClosestPointInput& input, Result& output, bool swapResults = false);
 };
 
 #endif  //BT_BOX_BOX_DETECTOR_H

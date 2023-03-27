@@ -18,7 +18,6 @@
 #include "btVehicleRaycaster.h"
 #include "btWheelInfo.h"
 #include "../../LinearMath/btMinMax.h"
-#include "../../LinearMath/btIDebugDraw.h"
 #include "../ConstraintSolver/btContactConstraint.h"
 
 #define ROLLING_INFLUENCE_FIX

@@ -195,8 +195,6 @@ public:
 		return m_userConstraintId;
 	}
 
-	virtual void debugDraw(btIDebugDraw* debugDrawer) {}
-
     // Extra utility funcs
 	btVector3 getUpwardsDirFromWheelContacts();
 	float getForwardSpeed();

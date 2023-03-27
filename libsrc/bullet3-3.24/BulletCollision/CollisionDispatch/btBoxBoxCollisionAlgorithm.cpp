@@ -62,7 +62,7 @@ void btBoxBoxCollisionAlgorithm::processCollision(const btCollisionObjectWrapper
 	input.m_transformB = body1Wrap->getWorldTransform();
 
 	btBoxBoxDetector detector(box0, box1);
-	detector.getClosestPoints(input, *resultOut, dispatchInfo.m_debugDraw);
+	detector.getClosestPoints(input, *resultOut);
 
 #ifdef USE_PERSISTENT_CONTACTS
 	//  refreshContactPoints is only necessary when using persistent contact points. otherwise all points are newly added

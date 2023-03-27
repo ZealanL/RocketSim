@@ -54,7 +54,7 @@ struct btDiscreteCollisionDetectorInterface
 	// give either closest points (distance > 0) or penetration (distance)
 	// the normal always points from B towards A
 	//
-	virtual void getClosestPoints(const ClosestPointInput& input, Result& output, class btIDebugDraw* debugDraw, bool swapResults = false) = 0;
+	virtual void getClosestPoints(const ClosestPointInput& input, Result& output, bool swapResults = false) = 0;
 };
 
 struct btStorageResult : public btDiscreteCollisionDetectorInterface::Result

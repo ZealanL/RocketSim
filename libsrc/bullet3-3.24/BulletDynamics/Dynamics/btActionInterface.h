@@ -16,7 +16,6 @@ subject to the following restrictions:
 #ifndef _BT_ACTION_INTERFACE_H
 #define _BT_ACTION_INTERFACE_H
 
-class btIDebugDraw;
 class btCollisionWorld;
 
 #include "../../LinearMath/btScalar.h"
@@ -34,8 +33,6 @@ public:
 	}
 
 	virtual void updateAction(btCollisionWorld* collisionWorld, btScalar deltaTimeStep) = 0;
-
-	virtual void debugDraw(btIDebugDraw* debugDrawer) = 0;
 };
 
 #endif  //_BT_ACTION_INTERFACE_H

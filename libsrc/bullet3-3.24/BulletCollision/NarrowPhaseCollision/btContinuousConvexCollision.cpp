@@ -147,10 +147,6 @@ bool btContinuousConvexCollision::calcTimeOfImpact(
 		//not close enough
 		while (dist > radius)
 		{
-			if (result.m_debugDrawer)
-			{
-				result.m_debugDrawer->drawSphere(c, 0.2f, btVector3(1, 1, 1));
-			}
 			btScalar dLambda = btScalar(0.);
 
 			projectedLinearVelocity = relLinVel.dot(n);
@@ -181,11 +177,6 @@ bool btContinuousConvexCollision::calcTimeOfImpact(
 			btTransformUtil::integrateTransform(fromA, linVelA, angVelA, lambda, interpolatedTransA);
 			btTransformUtil::integrateTransform(fromB, linVelB, angVelB, lambda, interpolatedTransB);
 			relativeTrans = interpolatedTransB.inverseTimes(interpolatedTransA);
-
-			if (result.m_debugDrawer)
-			{
-				result.m_debugDrawer->drawSphere(interpolatedTransA.getOrigin(), 0.2f, btVector3(1, 0, 0));
-			}
 
 			result.DebugDraw(lambda);
 

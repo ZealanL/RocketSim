@@ -25,9 +25,8 @@ SphereTriangleDetector::SphereTriangleDetector(btSphereShape* sphere, btTriangle
 {
 }
 
-void SphereTriangleDetector::getClosestPoints(const ClosestPointInput& input, Result& output, class btIDebugDraw* debugDraw, bool swapResults)
+void SphereTriangleDetector::getClosestPoints(const ClosestPointInput& input, Result& output, bool swapResults)
 {
-	(void)debugDraw;
 	const btTransform& transformA = input.m_transformA;
 	const btTransform& transformB = input.m_transformB;
 
