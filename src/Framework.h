@@ -27,6 +27,7 @@
 #include <mutex>
 #include <bit>
 #include <thread>
+#include <cstring>
 
 #define _USE_MATH_DEFINES // for M_PI and similar
 #include <cmath>
