@@ -808,49 +808,35 @@ void MyNodeOverlapCallback::processNode(int nodeSubPart, int nodeTriangleIndex) 
 	m_numOverlap++;
 	const unsigned char* vertexbase;
 	int numverts;
-	PHY_ScalarType type;
 	int stride;
 	const unsigned char* indexbase;
 	int indexstride;
 	int numfaces;
-	PHY_ScalarType indicestype;
 
 	m_meshInterface->getLockedReadOnlyVertexIndexBase(
 		&vertexbase,
 		numverts,
-		type,
 		stride,
 		&indexbase,
 		indexstride,
 		numfaces,
-		indicestype,
 		nodeSubPart);
 
 	unsigned int* gfxbase = (unsigned int*)(indexbase + nodeTriangleIndex * indexstride);
-	btAssert(indicestype == PHY_INTEGER || indicestype == PHY_SHORT || indicestype == PHY_UCHAR);
 
 	const btVector3& meshScaling = m_meshInterface->getScaling();
 	for (int j = 2; j >= 0; j--) {
-		int graphicsindex = indicestype == PHY_SHORT ? ((unsigned short*)gfxbase)[j] : indicestype == PHY_INTEGER ? gfxbase[j] : ((unsigned char*)gfxbase)[j];
+		int graphicsindex = gfxbase[j];
 
 #ifdef DEBUG_TRIANGLE_MESH
 		printf("%d ,", graphicsindex);
 #endif  //DEBUG_TRIANGLE_MESH
-		if (type == PHY_FLOAT) {
-			float* graphicsbase = (float*)(vertexbase + graphicsindex * stride);
+		float* graphicsbase = (float*)(vertexbase + graphicsindex * stride);
 
-			m_triangle[j] = btVector3(
-				graphicsbase[0] * meshScaling.getX(),
-				graphicsbase[1] * meshScaling.getY(),
-				graphicsbase[2] * meshScaling.getZ());
-		} else {
-			double* graphicsbase = (double*)(vertexbase + graphicsindex * stride);
-
-			m_triangle[j] = btVector3(
-				btScalar(graphicsbase[0]) * meshScaling.getX(),
-				btScalar(graphicsbase[1]) * meshScaling.getY(),
-				btScalar(graphicsbase[2]) * meshScaling.getZ());
-		}
+		m_triangle[j] = btVector3(
+			graphicsbase[0] * meshScaling.getX(),
+			graphicsbase[1] * meshScaling.getY(),
+			graphicsbase[2] * meshScaling.getZ());
 #ifdef DEBUG_TRIANGLE_MESH
 		printf("triangle vertices:%f,%f,%f\n", triangle[j].x(), triangle[j].y(), triangle[j].z());
 #endif  //DEBUG_TRIANGLE_MESH

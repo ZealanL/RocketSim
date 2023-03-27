@@ -34,7 +34,7 @@ btTriangleIndexVertexArray::~btTriangleIndexVertexArray()
 {
 }
 
-void btTriangleIndexVertexArray::getLockedVertexIndexBase(unsigned char** vertexbase, int& numverts, PHY_ScalarType& type, int& vertexStride, unsigned char** indexbase, int& indexstride, int& numfaces, PHY_ScalarType& indicestype, int subpart)
+void btTriangleIndexVertexArray::getLockedVertexIndexBase(unsigned char** vertexbase, int& numverts, int& vertexStride, unsigned char** indexbase, int& indexstride, int& numfaces, int subpart)
 {
 	btAssert(subpart < getNumSubParts());
 
@@ -43,32 +43,26 @@ void btTriangleIndexVertexArray::getLockedVertexIndexBase(unsigned char** vertex
 	numverts = mesh.m_numVertices;
 	(*vertexbase) = (unsigned char*)mesh.m_vertexBase;
 
-	type = mesh.m_vertexType;
-
 	vertexStride = mesh.m_vertexStride;
 
 	numfaces = mesh.m_numTriangles;
 
 	(*indexbase) = (unsigned char*)mesh.m_triangleIndexBase;
 	indexstride = mesh.m_triangleIndexStride;
-	indicestype = mesh.m_indexType;
 }
 
-void btTriangleIndexVertexArray::getLockedReadOnlyVertexIndexBase(const unsigned char** vertexbase, int& numverts, PHY_ScalarType& type, int& vertexStride, const unsigned char** indexbase, int& indexstride, int& numfaces, PHY_ScalarType& indicestype, int subpart) const
+void btTriangleIndexVertexArray::getLockedReadOnlyVertexIndexBase(const unsigned char** vertexbase, int& numverts, int& vertexStride, const unsigned char** indexbase, int& indexstride, int& numfaces, int subpart) const
 {
 	const btIndexedMesh& mesh = m_indexedMeshes[subpart];
 
 	numverts = mesh.m_numVertices;
 	(*vertexbase) = (const unsigned char*)mesh.m_vertexBase;
 
-	type = mesh.m_vertexType;
-
 	vertexStride = mesh.m_vertexStride;
 
 	numfaces = mesh.m_numTriangles;
 	(*indexbase) = (const unsigned char*)mesh.m_triangleIndexBase;
 	indexstride = mesh.m_triangleIndexStride;
-	indicestype = mesh.m_indexType;
 }
 
 bool btTriangleIndexVertexArray::hasPremadeAabb() const

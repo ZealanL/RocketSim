@@ -258,12 +258,10 @@ void btOptimizedBvh::updateBvhNodes(btStridingMeshInterface* meshInterface, int 
 	//get access info to trianglemesh data
 	const unsigned char* vertexbase = 0;
 	int numverts = 0;
-	PHY_ScalarType type = PHY_INTEGER;
 	int stride = 0;
 	const unsigned char* indexbase = 0;
 	int indexstride = 0;
 	int numfaces = 0;
-	PHY_ScalarType indicestype = PHY_INTEGER;
 
 	btVector3 triangleVerts[3];
 	btVector3 aabbMin, aabbMax;
@@ -282,7 +280,7 @@ void btOptimizedBvh::updateBvhNodes(btStridingMeshInterface* meshInterface, int 
 			{
 				if (curNodeSubPart >= 0)
 					meshInterface->unLockReadOnlyVertexBase(curNodeSubPart);
-				meshInterface->getLockedReadOnlyVertexIndexBase(&vertexbase, numverts, type, stride, &indexbase, indexstride, numfaces, indicestype, nodeSubPart);
+				meshInterface->getLockedReadOnlyVertexIndexBase(&vertexbase, numverts, stride, &indexbase, indexstride, numfaces, nodeSubPart);
 
 				curNodeSubPart = nodeSubPart;
 			}
@@ -292,26 +290,12 @@ void btOptimizedBvh::updateBvhNodes(btStridingMeshInterface* meshInterface, int 
 
 			for (int j = 2; j >= 0; j--)
 			{
-				int graphicsindex;
-                                switch (indicestype) {
-                                        case PHY_INTEGER: graphicsindex = gfxbase[j]; break;
-                                        case PHY_SHORT: graphicsindex = ((unsigned short*)gfxbase)[j]; break;
-                                        case PHY_UCHAR: graphicsindex = ((unsigned char*)gfxbase)[j]; break;
-                                        default: btAssert(0);
-                                }
-				if (type == PHY_FLOAT)
-				{
-					float* graphicsbase = (float*)(vertexbase + graphicsindex * stride);
-					triangleVerts[j] = btVector3(
-						graphicsbase[0] * meshScaling.getX(),
-						graphicsbase[1] * meshScaling.getY(),
-						graphicsbase[2] * meshScaling.getZ());
-				}
-				else
-				{
-					double* graphicsbase = (double*)(vertexbase + graphicsindex * stride);
-					triangleVerts[j] = btVector3(btScalar(graphicsbase[0] * meshScaling.getX()), btScalar(graphicsbase[1] * meshScaling.getY()), btScalar(graphicsbase[2] * meshScaling.getZ()));
-				}
+				int graphicsindex = gfxbase[j];
+				float* graphicsbase = (float*)(vertexbase + graphicsindex * stride);
+				triangleVerts[j] = btVector3(
+					graphicsbase[0] * meshScaling.getX(),
+					graphicsbase[1] * meshScaling.getY(),
+					graphicsbase[2] * meshScaling.getZ());
 			}
 
 			aabbMin.setValue(btScalar(BT_LARGE_FLOAT), btScalar(BT_LARGE_FLOAT), btScalar(BT_LARGE_FLOAT));
