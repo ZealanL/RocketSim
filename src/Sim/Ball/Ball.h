@@ -51,26 +51,20 @@ public:
 	Ball(const Ball& other) = delete;
 	Ball(Ball&& other) = delete;
 
-	btRigidBody* _rigidBody;
-	btSphereShape* _collisionShape;
+	struct btRigidBody* _rigidBody;
+	struct btSphereShape* _collisionShape;
 
 	// For construction by Arena
 	static Ball* _AllocBall();
-	void _BulletSetup(btDynamicsWorld* bulletWorld, float radius);
+	void _BulletSetup(struct btDynamicsWorld* bulletWorld, float radius);
 
 	Vec _velocityImpulseCache = { 0,0,0 };
 	void _FinishPhysicsTick();
 
-	// NOTE: In BulletPhysics units
-	float GetRadiusBullet() {
-		if (!_collisionShape) {
-			return -1;
-		} else {
-			return _collisionShape->getRadius();
-		}
-	}
+	// Returns radius in BulletPhysics units
+	float GetRadiusBullet();
 
-	// NOTE: In Unreal Engine units (uu)
+	// Returns radius in Unreal Engine units (uu)
 	float GetRadius() {
 		return GetRadiusBullet() * BT_TO_UU;
 	}

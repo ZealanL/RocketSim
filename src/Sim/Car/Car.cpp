@@ -2,6 +2,13 @@
 #include "../../RLConst.h"
 #include "../SuspensionCollisionGrid/SuspensionCollisionGrid.h"
 
+#include "../../../libsrc/bullet3-3.24/BulletDynamics/Dynamics/btDynamicsWorld.h"
+#include "../../../libsrc/bullet3-3.24/BulletDynamics/Dynamics/btRigidBody.h"
+#include "../../../libsrc/bullet3-3.24/BulletDynamics/Vehicle/btDefaultVehicleRaycaster.h"
+#include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btBoxShape.h"
+#include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btCompoundShape.h"
+#include "../../../src/Sim/btVehicleRL/btVehicleRL.h"
+
 // Update our internal state from bullet and return it
 CarState Car::GetState() {
 	btTransform rbTransform = _rigidBody->getWorldTransform();

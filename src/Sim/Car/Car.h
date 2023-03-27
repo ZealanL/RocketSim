@@ -113,10 +113,10 @@ public:
 	void Respawn(int seed = -1);
 
 	btVehicleRL* _bulletVehicle;
-	btVehicleRaycaster* _bulletVehicleRaycaster;
-	btRigidBody* _rigidBody;
-	btCompoundShape* _compoundShape;
-	btBoxShape* _childHitboxShape;
+	struct btVehicleRaycaster* _bulletVehicleRaycaster;
+	struct btRigidBody* _rigidBody;
+	struct btCompoundShape* _compoundShape;
+	struct btBoxShape* _childHitboxShape;
 
 	// NOTE: Not all values are updated because they are unneeded for internal simulation
 	// Those values are only updated when GetState() is called
@@ -147,7 +147,7 @@ public:
 
 	// For construction by Arena
 	static Car* _AllocateCar();
-	void _BulletSetup(btDynamicsWorld* bulletWorld);
+	void _BulletSetup(struct btDynamicsWorld* bulletWorld);
 	
 	void _Serialize(DataStreamOut& out);
 	void _Deserialize(DataStreamIn& in);

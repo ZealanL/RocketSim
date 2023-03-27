@@ -1,6 +1,8 @@
 #pragma once
 #include "../../BaseInc.h"
 
+#include "../../../libsrc/bullet3-3.24/BulletDynamics/Vehicle/btDefaultVehicleRaycaster.h"
+
 // This is a modified version of btWheelInfo to more accurately follow Rocket League
 struct btWheelInfoRL : public btWheelInfo {
 	bool m_isInContactWithWorld = false;

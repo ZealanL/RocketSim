@@ -3,8 +3,9 @@
 #include "../BulletLink.h"
 
 #define COLLISION_MESH_BASE_PATH "./collision_meshes/"
-#define COLLISION_MESH_SOCCAR_PATH COLLISION_MESH_BASE_PATH "soccar/"
 #define COLLISION_MESH_FILE_EXTENSION ".cmf"
+
+struct btTriangleMesh;
 
 // Collision mesh file structure based off of the one in https://github.com/ZealanL/RLArenaCollisionDumper
 struct CollisionMeshFile {

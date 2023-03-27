@@ -1,6 +1,8 @@
 #pragma once
 #include "../Car/Car.h"
 
+struct btBvhTriangleMeshShape;
+
 struct SuspensionCollisionGrid {
 	constexpr static float
 		EXTENT_X = RLConst::ARENA_EXTENT_X,

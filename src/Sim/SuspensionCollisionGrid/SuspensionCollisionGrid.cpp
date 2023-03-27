@@ -1,6 +1,7 @@
 #include "SuspensionCollisionGrid.h"
 
 #include "../../../libsrc/bullet3-3.24/BulletCollision/NarrowPhaseCollision/btRaycastCallback.h"
+#include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btBvhTriangleMeshShape.h"
 
 // Quick virtual btTriangleCallback child class to simply check if any triangles are processed
 struct BoolHitTriangleCallback : public btTriangleCallback {

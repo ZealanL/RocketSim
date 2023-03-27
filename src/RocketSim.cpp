@@ -1,5 +1,8 @@
 #include "RocketSim.h"
 
+#include "../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btBvhTriangleMeshShape.h"
+#include "../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btTriangleMesh.h"
+
 static std::mutex beginInitMutex;
 
 static RocketSimStage stage = RocketSimStage::UNINITIALIZED;
@@ -36,7 +39,7 @@ void RocketSim::Init() {
 		stage = RocketSimStage::INITIALIZING;
 
 		uint64_t startMS = RS_CUR_MS();
-
+		
 		{ // Load collision meshes
 			string basePath = COLLISION_MESH_SOCCAR_PATH;
 			RS_LOG("Loading arena meshes from \"" << basePath << "\"...");

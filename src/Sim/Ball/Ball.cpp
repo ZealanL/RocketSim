@@ -2,6 +2,10 @@
 
 #include "../../RLConst.h"
 
+#include "../../../libsrc/bullet3-3.24/BulletDynamics/Dynamics/btDynamicsWorld.h"
+#include "../../../libsrc/bullet3-3.24/BulletDynamics/Dynamics/btRigidBody.h"
+#include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btSphereShape.h"
+
 void BallHitInfo::Serialize(DataStreamOut& out) {
 	out.WriteMultiple(BALLHITINFO_SERIALIZATION_FIELDS);
 }
@@ -107,6 +111,14 @@ void Ball::_FinishPhysicsTick() {
 
 		_rigidBody->m_angularVelocity =
 			Math::RoundVec(_rigidBody->m_angularVelocity, 0.00001);
+	}
+}
+
+float Ball::GetRadiusBullet() {
+	if (!_collisionShape) {
+		return -1;
+	} else {
+		return _collisionShape->getRadius();
 	}
 }
 

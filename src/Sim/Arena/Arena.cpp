@@ -1,6 +1,13 @@
 #include "Arena.h"
 
 #include "../../RocketSim.h"
+#include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionDispatch/btDefaultCollisionConfiguration.h"
+#include "../../../libsrc/bullet3-3.24/BulletCollision/BroadphaseCollision/btDbvtBroadphase.h"
+#include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btStaticPlaneShape.h"
+#include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btBvhTriangleMeshShape.h"
+#include "../../../libsrc/bullet3-3.24/BulletCollision//CollisionDispatch/btCollisionDispatcher.h"
+#include "../../../libsrc/bullet3-3.24/BulletDynamics/ConstraintSolver/btSequentialImpulseConstraintSolver.h"
+#include "../../../libsrc/bullet3-3.24/BulletDynamics/Dynamics/btDiscreteDynamicsWorld.h"
 
 Car* Arena::AddCar(Team team, const CarConfig& config) {
 	Car* car = Car::_AllocateCar();

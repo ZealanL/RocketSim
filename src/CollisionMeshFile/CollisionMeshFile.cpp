@@ -2,6 +2,10 @@
 
 #include "../DataStream/DataStreamIn.h"
 
+#include "../../libsrc/bullet3-3.24/BulletDynamics/Dynamics/btRigidBody.h"
+#include "../../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btBvhTriangleMeshShape.h"
+#include "../../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btTriangleMesh.h"
+
 void CollisionMeshFile::ReadFromFile(string filePath) {
 	constexpr char ERROR_PREFIX_STR[] = " > CollisionMeshFile::ReadFromFile(): ";
 

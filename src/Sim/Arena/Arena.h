@@ -8,6 +8,12 @@
 #include "../BoostPad/BoostPadGrid/BoostPadGrid.h"
 #include "../SuspensionCollisionGrid/SuspensionCollisionGrid.h"
 
+struct btDiscreteDynamicsWorld;
+struct btCollisionConfiguration;
+struct btCollisionDispatcher;
+struct btDbvtBroadphase;
+struct btSequentialImpulseConstraintSolver;
+
 enum class GameMode : byte {
 	SOCCAR,
 	// More coming soon!
@@ -62,8 +68,8 @@ public:
 		btSequentialImpulseConstraintSolver* constraintSolver;
 	} _bulletWorldParams;
 
-	vector<btRigidBody*> _worldCollisionRBs;
-	vector<btCollisionShape*> _worldCollisionShapes;
+	vector<struct btRigidBody*> _worldCollisionRBs;
+	vector<struct btCollisionShape*> _worldCollisionShapes;
 
 	struct {
 		GoalScoreEventFn func = NULL;
@@ -106,11 +112,11 @@ public:
 	void _SetupArenaCollisionShapes();
 
 	// Static function called by Bullet internally when adding a collision point
-	static bool _BulletContactAddedCallback(btManifoldPoint& cp, const btCollisionObjectWrapper* colObj0Wrap, int partId0, int index0, const btCollisionObjectWrapper* colObj1Wrap, int partId1, int index1);
+	static bool _BulletContactAddedCallback(struct btManifoldPoint& cp, const struct btCollisionObjectWrapper* colObj0Wrap, int partId0, int index0, const struct btCollisionObjectWrapper* colObj1Wrap, int partId1, int index1);
 
-	void _BtCallback_OnCarBallCollision(Car* car, Ball* ball, btManifoldPoint& manifoldPoint, bool ballIsBodyA);
-	void _BtCallback_OnCarCarCollision(Car* car1, Car* car2, btManifoldPoint& manifoldPoint);
-	void _BtCallback_OnCarWorldCollision(Car* car, btCollisionObject* worldObject, btManifoldPoint& manifoldPoint);
+	void _BtCallback_OnCarBallCollision(Car* car, Ball* ball, struct btManifoldPoint& manifoldPoint, bool ballIsBodyA);
+	void _BtCallback_OnCarCarCollision(Car* car1, Car* car2, struct btManifoldPoint& manifoldPoint);
+	void _BtCallback_OnCarWorldCollision(Car* car, struct btCollisionObject* worldObject, struct btManifoldPoint& manifoldPoint);
 
 private:
 	

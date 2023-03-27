@@ -1,9 +1,11 @@
 #include "btVehicleRL.h"
-#include "../../../libsrc/bullet3-3.24/BulletDynamics/ConstraintSolver/btContactConstraint.h"
 #include "../../RLConst.h"
 #define ROLLING_INFLUENCE_FIX
 
 #include "../SuspensionCollisionGrid/SuspensionCollisionGrid.h"
+
+#include "../../../libsrc/bullet3-3.24/BulletDynamics/Dynamics/btDynamicsWorld.h"
+#include "../../../libsrc/bullet3-3.24/BulletDynamics/ConstraintSolver/btContactConstraint.h"
 
 btVehicleRL::btVehicleRL(const btVehicleTuning& tuning, btRigidBody* chassis, btVehicleRaycaster* raycaster, btDynamicsWorld* world)
 	: m_vehicleRaycaster(raycaster), m_pitchControl(0),  m_dynamicsWorld(world) {
