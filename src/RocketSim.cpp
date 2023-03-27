@@ -22,7 +22,7 @@ const SuspensionCollisionGrid& RocketSim::GetDefaultSuspColGrid() {
 }
 #endif
 
-void RocketSim::Init() {
+void RocketSim::Init(std::filesystem::path collisionMeshesFolder) {
 
 	constexpr char MSG_PREFIX[] = "RocketSim::Init(): ";
 
@@ -39,18 +39,21 @@ void RocketSim::Init() {
 		stage = RocketSimStage::INITIALIZING;
 
 		uint64_t startMS = RS_CUR_MS();
-		
-		{ // Load collision meshes
-			string basePath = COLLISION_MESH_SOCCAR_PATH;
-			RS_LOG("Loading arena meshes from \"" << basePath << "\"...");
 
-			if (!std::filesystem::exists(basePath)) {
+		{ // Load collision meshes
+
+			std::filesystem::path basePath = collisionMeshesFolder;
+			std::filesystem::path soccarMeshesFolder = basePath / "soccar";
+
+			RS_LOG("Loading arena meshes from \"" << soccarMeshesFolder << "\"...");
+
+			if (!std::filesystem::exists(soccarMeshesFolder)) {
 				RS_ERR_CLOSE(
-					"Failed to find arena collision mesh files at \"" << basePath
+					"Failed to find arena collision mesh files at \"" << soccarMeshesFolder
 					<< "\", the collision meshes folder should be in our current directory " << std::filesystem::current_path() << ".")
 			}
 			// Load collision meshes
-			auto dirItr = std::filesystem::directory_iterator(basePath);
+			auto dirItr = std::filesystem::directory_iterator(soccarMeshesFolder);
 			for (auto& entry : dirItr) {
 				auto entryPath = entry.path();
 				if (entryPath.has_extension() && entryPath.extension() == COLLISION_MESH_FILE_EXTENSION) {

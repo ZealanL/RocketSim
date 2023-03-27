@@ -19,7 +19,7 @@ enum class RocketSimStage : byte {
 
 namespace RocketSim {
 
-	void Init();
+	void Init(std::filesystem::path collisionMeshesFolder);
 	void AssertInitialized(const char* errorMsgPrefix);
 
 	RocketSimStage GetStage();
