@@ -444,8 +444,7 @@ void btCollisionWorld::rayTestSingleInternal(const btTransform& rayFromTrans, co
 				btVector3 rayAabbMaxLocal = rayFromLocal;
 				rayAabbMaxLocal.setMax(rayToLocal);
 
-				btBvhTriangleMeshShape* asBvh = (btBvhTriangleMeshShape*)concaveShape;
-				asBvh->processAllTriangles(&rcb, rayAabbMinLocal, rayAabbMaxLocal);
+				concaveShape->processAllTriangles(&rcb, rayAabbMinLocal, rayAabbMaxLocal);
 			}
 		}
 		else

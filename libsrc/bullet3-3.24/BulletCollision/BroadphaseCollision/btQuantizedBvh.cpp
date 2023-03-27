@@ -16,6 +16,7 @@ subject to the following restrictions:
 #include "btQuantizedBvh.h"
 
 #include "../../LinearMath/btAabbUtil2.h"
+#include "../CollisionShapes/btStridingMeshInterface.h"
 
 #define RAYAABB2
 
@@ -367,7 +368,7 @@ void btQuantizedBvh::walkStacklessTree(btNodeOverlapCallback* nodeCallback, cons
 		//PCK: unsigned instead of bool
 		if (isLeafNode && (aabbOverlap != 0))
 		{
-			nodeCallback->processNode(rootNode->m_subPart, rootNode->m_triangleIndex);
+			((MyNodeOverlapCallback*)nodeCallback)->processNode(rootNode->m_subPart, rootNode->m_triangleIndex);
 		}
 
 		//PCK: unsigned instead of bool
@@ -507,7 +508,7 @@ void btQuantizedBvh::walkStacklessTreeAgainstRay(btNodeOverlapCallback* nodeCall
 		//PCK: unsigned instead of bool
 		if (isLeafNode && (rayBoxOverlap != 0))
 		{
-			nodeCallback->processNode(rootNode->m_subPart, rootNode->m_triangleIndex);
+			((MyNodeOverlapCallback*)nodeCallback)->processNode(rootNode->m_subPart, rootNode->m_triangleIndex);
 		}
 
 		//PCK: unsigned instead of bool
@@ -793,6 +794,7 @@ void btQuantizedBvh::assignInternalNodeFromLeafNode(int internalNode, int leafNo
 
 //PCK: include
 #include <new>
+#include "../CollisionShapes/btConcaveShape.h"
 
 #if 0
 //PCK: consts
@@ -801,3 +803,59 @@ static const unsigned BVH_ALIGNMENT_MASK = BVH_ALIGNMENT-1;
 
 static const unsigned BVH_ALIGNMENT_BLOCKS = 2;
 #endif
+
+void MyNodeOverlapCallback::processNode(int nodeSubPart, int nodeTriangleIndex) {
+	m_numOverlap++;
+	const unsigned char* vertexbase;
+	int numverts;
+	PHY_ScalarType type;
+	int stride;
+	const unsigned char* indexbase;
+	int indexstride;
+	int numfaces;
+	PHY_ScalarType indicestype;
+
+	m_meshInterface->getLockedReadOnlyVertexIndexBase(
+		&vertexbase,
+		numverts,
+		type,
+		stride,
+		&indexbase,
+		indexstride,
+		numfaces,
+		indicestype,
+		nodeSubPart);
+
+	unsigned int* gfxbase = (unsigned int*)(indexbase + nodeTriangleIndex * indexstride);
+	btAssert(indicestype == PHY_INTEGER || indicestype == PHY_SHORT || indicestype == PHY_UCHAR);
+
+	const btVector3& meshScaling = m_meshInterface->getScaling();
+	for (int j = 2; j >= 0; j--) {
+		int graphicsindex = indicestype == PHY_SHORT ? ((unsigned short*)gfxbase)[j] : indicestype == PHY_INTEGER ? gfxbase[j] : ((unsigned char*)gfxbase)[j];
+
+#ifdef DEBUG_TRIANGLE_MESH
+		printf("%d ,", graphicsindex);
+#endif  //DEBUG_TRIANGLE_MESH
+		if (type == PHY_FLOAT) {
+			float* graphicsbase = (float*)(vertexbase + graphicsindex * stride);
+
+			m_triangle[j] = btVector3(
+				graphicsbase[0] * meshScaling.getX(),
+				graphicsbase[1] * meshScaling.getY(),
+				graphicsbase[2] * meshScaling.getZ());
+		} else {
+			double* graphicsbase = (double*)(vertexbase + graphicsindex * stride);
+
+			m_triangle[j] = btVector3(
+				btScalar(graphicsbase[0]) * meshScaling.getX(),
+				btScalar(graphicsbase[1]) * meshScaling.getY(),
+				btScalar(graphicsbase[2]) * meshScaling.getZ());
+		}
+#ifdef DEBUG_TRIANGLE_MESH
+		printf("triangle vertices:%f,%f,%f\n", triangle[j].x(), triangle[j].y(), triangle[j].z());
+#endif  //DEBUG_TRIANGLE_MESH
+	}
+
+	m_callback->processTriangle(m_triangle, nodeSubPart, nodeTriangleIndex);
+	m_meshInterface->unLockReadOnlyVertexBase(nodeSubPart);
+}

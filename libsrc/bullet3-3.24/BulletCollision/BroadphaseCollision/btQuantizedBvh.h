@@ -146,9 +146,27 @@ public:
 class btNodeOverlapCallback
 {
 public:
-	virtual ~btNodeOverlapCallback(){};
+	~btNodeOverlapCallback(){};
 
-	virtual void processNode(int subPart, int triangleIndex) = 0;
+	void processNode(int subPart, int triangleIndex) {
+		btAssert(false);
+	}
+};
+
+struct MyNodeOverlapCallback : public btNodeOverlapCallback
+{
+	struct btStridingMeshInterface* m_meshInterface;
+	struct btTriangleCallback* m_callback;
+	btVector3 m_triangle[3];
+	int m_numOverlap;
+
+	MyNodeOverlapCallback(struct btTriangleCallback* callback, struct btStridingMeshInterface* meshInterface)
+		: m_meshInterface(meshInterface),
+		m_callback(callback),
+		m_numOverlap(0) {
+	}
+
+	void processNode(int nodeSubPart, int nodeTriangleIndex);
 };
 
 #include "../../LinearMath/btAlignedAllocator.h"

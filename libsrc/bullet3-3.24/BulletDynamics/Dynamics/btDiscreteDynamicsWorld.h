@@ -75,8 +75,6 @@ protected:
 
 	virtual void calculateSimulationIslands();
 
-	
-
 	virtual void updateActivationState(btScalar timeStep);
 
 	void updateActions(btScalar timeStep);
