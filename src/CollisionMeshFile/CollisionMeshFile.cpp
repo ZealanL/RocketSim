@@ -32,6 +32,7 @@ void CollisionMeshFile::ReadFromFile(string filePath) {
 	for (Vertex& vert : vertices)
 		vert = in.Read<Vertex>();
 
+#ifndef RS_MAX_SPEED
 	if (in.IsOverflown()) {
 		RS_ERR_CLOSE(
 			ERROR_PREFIX_STR << "Invalid collision mesh file at \"" << filePath <<
@@ -42,13 +43,14 @@ void CollisionMeshFile::ReadFromFile(string filePath) {
 	for (Triangle& tri : tris) {
 		for (int i = 0; i < 3; i++) {
 			int vertIndex = tri.vertexIndexes[i];
-			if (i < 0 || i >= numVertices) {
+			if (vertIndex < 0 || vertIndex >= numVertices) {
 				RS_ERR_CLOSE(
 					ERROR_PREFIX_STR << "Invalid collision mesh file at \"" << filePath <<
 					"\" (bad triangle vertex index)");
 			}
 		}
 	}
+#endif
 
 	RS_LOG("   > Loaded " << numVertices << " verts and " << numTris << " tris.");
 }
