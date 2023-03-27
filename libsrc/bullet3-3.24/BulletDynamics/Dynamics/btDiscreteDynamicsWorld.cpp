@@ -36,8 +36,6 @@ subject to the following restrictions:
 #include "../../LinearMath/btQuickprof.h"
 #include "../../LinearMath/btMotionState.h"
 
-#include "../../LinearMath/btSerializer.h"
-
 #if 0
 btAlignedObjectArray<btVector3> debugContacts;
 btAlignedObjectArray<btVector3> debugNormals;
@@ -1083,96 +1081,4 @@ btTypedConstraint* btDiscreteDynamicsWorld::getConstraint(int index)
 const btTypedConstraint* btDiscreteDynamicsWorld::getConstraint(int index) const
 {
 	return m_constraints[index];
-}
-
-void btDiscreteDynamicsWorld::serializeRigidBodies(btSerializer* serializer)
-{
-	int i;
-	//serialize all collision objects
-	for (i = 0; i < m_collisionObjects.size(); i++)
-	{
-		btCollisionObject* colObj = m_collisionObjects[i];
-		if (colObj->getInternalType() & btCollisionObject::CO_RIGID_BODY)
-		{
-			int len = colObj->calculateSerializeBufferSize();
-			btChunk* chunk = serializer->allocate(len, 1);
-			const char* structType = colObj->serialize(chunk->m_oldPtr, serializer);
-			serializer->finalizeChunk(chunk, structType, BT_RIGIDBODY_CODE, colObj);
-		}
-	}
-
-	for (i = 0; i < m_constraints.size(); i++)
-	{
-		btTypedConstraint* constraint = m_constraints[i];
-		int size = constraint->calculateSerializeBufferSize();
-		btChunk* chunk = serializer->allocate(size, 1);
-		const char* structType = constraint->serialize(chunk->m_oldPtr, serializer);
-		serializer->finalizeChunk(chunk, structType, BT_CONSTRAINT_CODE, constraint);
-	}
-}
-
-void btDiscreteDynamicsWorld::serializeDynamicsWorldInfo(btSerializer* serializer)
-{
-#ifdef BT_USE_DOUBLE_PRECISION
-	int len = sizeof(btDynamicsWorldDoubleData);
-	btChunk* chunk = serializer->allocate(len, 1);
-	btDynamicsWorldDoubleData* worldInfo = (btDynamicsWorldDoubleData*)chunk->m_oldPtr;
-#else   //BT_USE_DOUBLE_PRECISION
-	int len = sizeof(btDynamicsWorldFloatData);
-	btChunk* chunk = serializer->allocate(len, 1);
-	btDynamicsWorldFloatData* worldInfo = (btDynamicsWorldFloatData*)chunk->m_oldPtr;
-#endif  //BT_USE_DOUBLE_PRECISION
-
-	memset(worldInfo, 0x00, len);
-
-	m_gravity.serialize(worldInfo->m_gravity);
-	worldInfo->m_solverInfo.m_tau = getSolverInfo().m_tau;
-	worldInfo->m_solverInfo.m_damping = getSolverInfo().m_damping;
-	worldInfo->m_solverInfo.m_friction = getSolverInfo().m_friction;
-	worldInfo->m_solverInfo.m_timeStep = getSolverInfo().m_timeStep;
-
-	worldInfo->m_solverInfo.m_restitution = getSolverInfo().m_restitution;
-	worldInfo->m_solverInfo.m_maxErrorReduction = getSolverInfo().m_maxErrorReduction;
-	worldInfo->m_solverInfo.m_sor = getSolverInfo().m_sor;
-	worldInfo->m_solverInfo.m_erp = getSolverInfo().m_erp;
-
-	worldInfo->m_solverInfo.m_erp2 = getSolverInfo().m_erp2;
-	worldInfo->m_solverInfo.m_globalCfm = getSolverInfo().m_globalCfm;
-	worldInfo->m_solverInfo.m_splitImpulsePenetrationThreshold = getSolverInfo().m_splitImpulsePenetrationThreshold;
-	worldInfo->m_solverInfo.m_splitImpulseTurnErp = getSolverInfo().m_splitImpulseTurnErp;
-
-	worldInfo->m_solverInfo.m_linearSlop = getSolverInfo().m_linearSlop;
-	worldInfo->m_solverInfo.m_warmstartingFactor = getSolverInfo().m_warmstartingFactor;
-	worldInfo->m_solverInfo.m_maxGyroscopicForce = getSolverInfo().m_maxGyroscopicForce;
-	worldInfo->m_solverInfo.m_singleAxisRollingFrictionThreshold = getSolverInfo().m_singleAxisRollingFrictionThreshold;
-
-	worldInfo->m_solverInfo.m_numIterations = getSolverInfo().m_numIterations;
-	worldInfo->m_solverInfo.m_solverMode = getSolverInfo().m_solverMode;
-	worldInfo->m_solverInfo.m_restingContactRestitutionThreshold = getSolverInfo().m_restingContactRestitutionThreshold;
-	worldInfo->m_solverInfo.m_minimumSolverBatchSize = getSolverInfo().m_minimumSolverBatchSize;
-
-	worldInfo->m_solverInfo.m_splitImpulse = getSolverInfo().m_splitImpulse;
-
-	
-#ifdef BT_USE_DOUBLE_PRECISION
-	const char* structType = "btDynamicsWorldDoubleData";
-#else   //BT_USE_DOUBLE_PRECISION
-	const char* structType = "btDynamicsWorldFloatData";
-#endif  //BT_USE_DOUBLE_PRECISION
-	serializer->finalizeChunk(chunk, structType, BT_DYNAMICSWORLD_CODE, worldInfo);
-}
-
-void btDiscreteDynamicsWorld::serialize(btSerializer* serializer)
-{
-	serializer->startSerialization();
-
-	serializeDynamicsWorldInfo(serializer);
-
-	serializeCollisionObjects(serializer);
-
-	serializeRigidBodies(serializer);
-
-	serializeContactManifolds(serializer);
-
-	serializer->finishSerialization();
 }

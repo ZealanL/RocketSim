@@ -15,7 +15,6 @@ subject to the following restrictions:
 
 #include "btTypedConstraint.h"
 #include "../Dynamics/btRigidBody.h"
-#include "../../LinearMath/btSerializer.h"
 
 #define DEFAULT_DEBUGDRAW_SIZE btScalar(0.05f)
 
@@ -98,45 +97,6 @@ btScalar btTypedConstraint::getMotorFactor(btScalar pos, btScalar lowLim, btScal
 		lim_fact = btScalar(0.0f);
 	}
 	return lim_fact;
-}
-
-///fills the dataBuffer and returns the struct name (and 0 on failure)
-const char* btTypedConstraint::serialize(void* dataBuffer, btSerializer* serializer) const
-{
-	btTypedConstraintData2* tcd = (btTypedConstraintData2*)dataBuffer;
-
-	tcd->m_rbA = (btRigidBodyData*)serializer->getUniquePointer(&m_rbA);
-	tcd->m_rbB = (btRigidBodyData*)serializer->getUniquePointer(&m_rbB);
-	char* name = (char*)serializer->findNameForPointer(this);
-	tcd->m_name = (char*)serializer->getUniquePointer(name);
-	if (tcd->m_name)
-	{
-		serializer->serializeName(name);
-	}
-
-	tcd->m_objectType = m_objectType;
-	tcd->m_needsFeedback = m_needsFeedback;
-	tcd->m_overrideNumSolverIterations = m_overrideNumSolverIterations;
-	tcd->m_breakingImpulseThreshold = m_breakingImpulseThreshold;
-	tcd->m_isEnabled = m_isEnabled ? 1 : 0;
-
-	tcd->m_userConstraintId = m_userConstraintId;
-	tcd->m_userConstraintType = m_userConstraintType;
-
-	tcd->m_appliedImpulse = m_appliedImpulse;
-	tcd->m_dbgDrawSize = m_dbgDrawSize;
-
-	tcd->m_disableCollisionsBetweenLinkedBodies = false;
-
-	int i;
-	for (i = 0; i < m_rbA.getNumConstraintRefs(); i++)
-		if (m_rbA.getConstraintRef(i) == this)
-			tcd->m_disableCollisionsBetweenLinkedBodies = true;
-	for (i = 0; i < m_rbB.getNumConstraintRefs(); i++)
-		if (m_rbB.getConstraintRef(i) == this)
-			tcd->m_disableCollisionsBetweenLinkedBodies = true;
-
-	return btTypedConstraintDataName;
 }
 
 btRigidBody& btTypedConstraint::getFixedBody()

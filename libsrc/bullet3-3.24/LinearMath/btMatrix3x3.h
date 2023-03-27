@@ -803,16 +803,6 @@ public:
 	{
 		return m_el[r1][c1] * m_el[r2][c2] - m_el[r1][c2] * m_el[r2][c1];
 	}
-
-	void serialize(struct btMatrix3x3Data & dataOut) const;
-
-	void serializeFloat(struct btMatrix3x3FloatData & dataOut) const;
-
-	void deSerialize(const struct btMatrix3x3Data& dataIn);
-
-	void deSerializeFloat(const struct btMatrix3x3FloatData& dataIn);
-
-	void deSerializeDouble(const struct btMatrix3x3DoubleData& dataIn);
 };
 
 SIMD_FORCE_INLINE btMatrix3x3&
@@ -1386,47 +1376,4 @@ SIMD_FORCE_INLINE bool operator==(const btMatrix3x3& m1, const btMatrix3x3& m2)
 			m1[0][2] == m2[0][2] && m1[1][2] == m2[1][2] && m1[2][2] == m2[2][2]);
 #endif
 }
-
-///for serialization
-struct btMatrix3x3FloatData
-{
-	btVector3FloatData m_el[3];
-};
-
-///for serialization
-struct btMatrix3x3DoubleData
-{
-	btVector3DoubleData m_el[3];
-};
-
-SIMD_FORCE_INLINE void btMatrix3x3::serialize(struct btMatrix3x3Data& dataOut) const
-{
-	for (int i = 0; i < 3; i++)
-		m_el[i].serialize(dataOut.m_el[i]);
-}
-
-SIMD_FORCE_INLINE void btMatrix3x3::serializeFloat(struct btMatrix3x3FloatData& dataOut) const
-{
-	for (int i = 0; i < 3; i++)
-		m_el[i].serializeFloat(dataOut.m_el[i]);
-}
-
-SIMD_FORCE_INLINE void btMatrix3x3::deSerialize(const struct btMatrix3x3Data& dataIn)
-{
-	for (int i = 0; i < 3; i++)
-		m_el[i].deSerialize(dataIn.m_el[i]);
-}
-
-SIMD_FORCE_INLINE void btMatrix3x3::deSerializeFloat(const struct btMatrix3x3FloatData& dataIn)
-{
-	for (int i = 0; i < 3; i++)
-		m_el[i].deSerializeFloat(dataIn.m_el[i]);
-}
-
-SIMD_FORCE_INLINE void btMatrix3x3::deSerializeDouble(const struct btMatrix3x3DoubleData& dataIn)
-{
-	for (int i = 0; i < 3; i++)
-		m_el[i].deSerializeDouble(dataIn.m_el[i]);
-}
-
 #endif  //BT_MATRIX3x3_H

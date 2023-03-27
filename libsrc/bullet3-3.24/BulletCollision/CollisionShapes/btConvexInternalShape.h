@@ -124,47 +124,7 @@ public:
 		(void)index;
 		btAssert(0);
 	}
-
-	virtual int calculateSerializeBufferSize() const;
-
-	///fills the dataBuffer and returns the struct name (and 0 on failure)
-	virtual const char* serialize(void* dataBuffer, btSerializer* serializer) const;
 };
-
-///do not change those serialization structures, it requires an updated sBulletDNAstr/sBulletDNAstr64
-struct btConvexInternalShapeData
-{
-	btCollisionShapeData m_collisionShapeData;
-
-	btVector3FloatData m_localScaling;
-
-	btVector3FloatData m_implicitShapeDimensions;
-
-	float m_collisionMargin;
-
-	int m_padding;
-};
-
-SIMD_FORCE_INLINE int btConvexInternalShape::calculateSerializeBufferSize() const
-{
-	return sizeof(btConvexInternalShapeData);
-}
-
-///fills the dataBuffer and returns the struct name (and 0 on failure)
-SIMD_FORCE_INLINE const char* btConvexInternalShape::serialize(void* dataBuffer, btSerializer* serializer) const
-{
-	btConvexInternalShapeData* shapeData = (btConvexInternalShapeData*)dataBuffer;
-	btCollisionShape::serialize(&shapeData->m_collisionShapeData, serializer);
-
-	m_implicitShapeDimensions.serializeFloat(shapeData->m_implicitShapeDimensions);
-	m_localScaling.serializeFloat(shapeData->m_localScaling);
-	shapeData->m_collisionMargin = float(m_collisionMargin);
-
-	// Fill padding with zeros to appease msan.
-	shapeData->m_padding = 0;
-
-	return "btConvexInternalShapeData";
-}
 
 ///btConvexInternalAabbCachingShape adds local aabb caching for convex shapes, to avoid expensive bounding box calculations
 class btConvexInternalAabbCachingShape : public btConvexInternalShape

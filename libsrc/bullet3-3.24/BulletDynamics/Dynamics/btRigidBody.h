@@ -628,69 +628,6 @@ public:
 	///explicit version is best avoided, it gains energy
 	btVector3 computeGyroscopicForceExplicit(btScalar maxGyroscopicForce) const;
 	btVector3 getLocalInertia() const;
-
-	///////////////////////////////////////////////
-
-	virtual int calculateSerializeBufferSize() const;
-
-	///fills the dataBuffer and returns the struct name (and 0 on failure)
-	virtual const char* serialize(void* dataBuffer, class btSerializer* serializer) const;
-
-	virtual void serializeSingleObject(class btSerializer* serializer) const;
-};
-
-//@todo add m_optionalMotionState and m_constraintRefs to btRigidBodyData
-///do not change those serialization structures, it requires an updated sBulletDNAstr/sBulletDNAstr64
-struct btRigidBodyFloatData
-{
-	btCollisionObjectFloatData m_collisionObjectData;
-	btMatrix3x3FloatData m_invInertiaTensorWorld;
-	btVector3FloatData m_linearVelocity;
-	btVector3FloatData m_angularVelocity;
-	btVector3FloatData m_angularFactor;
-	btVector3FloatData m_linearFactor;
-	btVector3FloatData m_gravity;
-	btVector3FloatData m_gravity_acceleration;
-	btVector3FloatData m_invInertiaLocal;
-	btVector3FloatData m_totalForce;
-	btVector3FloatData m_totalTorque;
-	float m_inverseMass;
-	float m_linearDamping;
-	float m_angularDamping;
-	float m_additionalDampingFactor;
-	float m_additionalLinearDampingThresholdSqr;
-	float m_additionalAngularDampingThresholdSqr;
-	float m_additionalAngularDampingFactor;
-	float m_linearSleepingThreshold;
-	float m_angularSleepingThreshold;
-	int m_additionalDamping;
-};
-
-///do not change those serialization structures, it requires an updated sBulletDNAstr/sBulletDNAstr64
-struct btRigidBodyDoubleData
-{
-	btCollisionObjectDoubleData m_collisionObjectData;
-	btMatrix3x3DoubleData m_invInertiaTensorWorld;
-	btVector3DoubleData m_linearVelocity;
-	btVector3DoubleData m_angularVelocity;
-	btVector3DoubleData m_angularFactor;
-	btVector3DoubleData m_linearFactor;
-	btVector3DoubleData m_gravity;
-	btVector3DoubleData m_gravity_acceleration;
-	btVector3DoubleData m_invInertiaLocal;
-	btVector3DoubleData m_totalForce;
-	btVector3DoubleData m_totalTorque;
-	double m_inverseMass;
-	double m_linearDamping;
-	double m_angularDamping;
-	double m_additionalDampingFactor;
-	double m_additionalLinearDampingThresholdSqr;
-	double m_additionalAngularDampingThresholdSqr;
-	double m_additionalAngularDampingFactor;
-	double m_linearSleepingThreshold;
-	double m_angularSleepingThreshold;
-	int m_additionalDamping;
-	char m_padding[4];
 };
 
 #endif  //BT_RIGIDBODY_H

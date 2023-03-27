@@ -50,6 +50,5 @@ subject to the following restrictions:
 #include "LinearMath/btTransform.h"
 #include "LinearMath/btDefaultMotionState.h"
 #include "LinearMath/btQuickprof.h"
-#include "LinearMath/btSerializer.h"
 
 #endif  //BULLET_COLLISION_COMMON_H

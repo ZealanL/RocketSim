@@ -20,7 +20,6 @@ subject to the following restrictions:
 #include "../../LinearMath/btVector3.h"
 #include "../../LinearMath/btMatrix3x3.h"
 #include "../BroadphaseCollision/btBroadphaseProxy.h"  //for the shape types
-class btSerializer;
 
 ///The btCollisionShape class provides an interface for collision shapes that can be shared among btCollisionObjects.
 ATTRIBUTE_ALIGNED16(class)
@@ -147,28 +146,6 @@ public:
 	{
 		return m_userIndex2;
 	}
-
-	virtual int calculateSerializeBufferSize() const;
-
-	///fills the dataBuffer and returns the struct name (and 0 on failure)
-	virtual const char* serialize(void* dataBuffer, btSerializer* serializer) const;
-
-	virtual void serializeSingleShape(btSerializer * serializer) const;
 };
-
-// clang-format off
-// parser needs * with the name
-///do not change those serialization structures, it requires an updated sBulletDNAstr/sBulletDNAstr64
-struct	btCollisionShapeData
-{
-	char	*m_name;
-	int		m_shapeType;
-	char	m_padding[4];
-};
-// clang-format on
-SIMD_FORCE_INLINE int btCollisionShape::calculateSerializeBufferSize() const
-{
-	return sizeof(btCollisionShapeData);
-}
 
 #endif  //BT_COLLISION_SHAPE_H

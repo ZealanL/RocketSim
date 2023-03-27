@@ -103,42 +103,6 @@ public:
 	{
 		return m_triangleInfoMap;
 	}
-
-	virtual int calculateSerializeBufferSize() const;
-
-	///fills the dataBuffer and returns the struct name (and 0 on failure)
-	virtual const char* serialize(void* dataBuffer, btSerializer* serializer) const;
-
-	virtual void serializeSingleBvh(btSerializer * serializer) const;
-
-	virtual void serializeSingleTriangleInfoMap(btSerializer * serializer) const;
 };
-
-// clang-format off
-
-///do not change those serialization structures, it requires an updated sBulletDNAstr/sBulletDNAstr64
-struct	btTriangleMeshShapeData
-{
-	btCollisionShapeData	m_collisionShapeData;
-
-	btStridingMeshInterfaceData m_meshInterface;
-
-	btQuantizedBvhFloatData		*m_quantizedFloatBvh;
-	btQuantizedBvhDoubleData	*m_quantizedDoubleBvh;
-
-	btTriangleInfoMapData	*m_triangleInfoMap;
-	
-	float	m_collisionMargin;
-
-	char m_pad3[4];
-	
-};
-
-// clang-format on
-
-SIMD_FORCE_INLINE int btBvhTriangleMeshShape::calculateSerializeBufferSize() const
-{
-	return sizeof(btTriangleMeshShapeData);
-}
 
 #endif  //BT_BVH_TRIANGLE_MESH_SHAPE_H

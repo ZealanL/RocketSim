@@ -72,7 +72,6 @@ subject to the following restrictions:
 class btCollisionShape;
 class btConvexShape;
 class btBroadphaseInterface;
-class btSerializer;
 
 #include "../../LinearMath/btVector3.h"
 #include "../../LinearMath/btTransform.h"
@@ -96,10 +95,6 @@ protected:
 	///m_forceUpdateAllAabbs can be set to false as an optimization to only update active object AABBs
 	///it is true by default, because it is error-prone (setting the position of static objects wouldn't update their AABB)
 	bool m_forceUpdateAllAabbs;
-
-	void serializeCollisionObjects(btSerializer* serializer);
-
-	void serializeContactManifolds(btSerializer* serializer);
 
 public:
 	//this constructor doesn't own the dispatcher and paircache/broadphase
@@ -488,9 +483,6 @@ public:
 	{
 		m_forceUpdateAllAabbs = forceUpdateAllAabbs;
 	}
-
-	///Preliminary serialization test for Bullet 2.76. Loading those files requires a separate parser (Bullet/Demos/SerializeDemo)
-	virtual void serialize(btSerializer* serializer);
 };
 
 #endif  //BT_COLLISION_WORLD_H

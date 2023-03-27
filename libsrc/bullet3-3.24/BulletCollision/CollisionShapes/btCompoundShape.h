@@ -166,42 +166,6 @@ public:
 	{
 		return m_updateRevision;
 	}
-
-	virtual int calculateSerializeBufferSize() const;
-
-	///fills the dataBuffer and returns the struct name (and 0 on failure)
-	virtual const char* serialize(void* dataBuffer, btSerializer* serializer) const;
 };
-
-// clang-format off
-
-///do not change those serialization structures, it requires an updated sBulletDNAstr/sBulletDNAstr64
-struct btCompoundShapeChildData
-{
-	btTransformFloatData	m_transform;
-	btCollisionShapeData	*m_childShape;
-	int						m_childShapeType;
-	float					m_childMargin;
-};
-
-///do not change those serialization structures, it requires an updated sBulletDNAstr/sBulletDNAstr64
-struct	btCompoundShapeData
-{
-	btCollisionShapeData		m_collisionShapeData;
-
-	btCompoundShapeChildData	*m_childShapePtr;
-
-	int							m_numChildShapes;
-
-	float	m_collisionMargin;
-
-};
-
-// clang-format on
-
-SIMD_FORCE_INLINE int btCompoundShape::calculateSerializeBufferSize() const
-{
-	return sizeof(btCompoundShapeData);
-}
 
 #endif  //BT_COMPOUND_SHAPE_H

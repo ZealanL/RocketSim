@@ -612,20 +612,6 @@ public:
 	}
 
 	SIMD_FORCE_INLINE const btScalar& getW() const { return m_floats[3]; }
-
-	SIMD_FORCE_INLINE void serialize(struct btQuaternionData& dataOut) const;
-
-	SIMD_FORCE_INLINE void deSerialize(const struct btQuaternionFloatData& dataIn);
-
-	SIMD_FORCE_INLINE void deSerialize(const struct btQuaternionDoubleData& dataIn);
-
-	SIMD_FORCE_INLINE void serializeFloat(struct btQuaternionFloatData& dataOut) const;
-
-	SIMD_FORCE_INLINE void deSerializeFloat(const struct btQuaternionFloatData& dataIn);
-
-	SIMD_FORCE_INLINE void serializeDouble(struct btQuaternionDoubleData& dataOut) const;
-
-	SIMD_FORCE_INLINE void deSerializeDouble(const struct btQuaternionDoubleData& dataIn);
 };
 
 /**@brief Return the product of two quaternions */
@@ -972,50 +958,4 @@ struct btQuaternionDoubleData
 {
 	double m_floats[4];
 };
-
-SIMD_FORCE_INLINE void btQuaternion::serializeFloat(struct btQuaternionFloatData& dataOut) const
-{
-	///could also do a memcpy, check if it is worth it
-	for (int i = 0; i < 4; i++)
-		dataOut.m_floats[i] = float(m_floats[i]);
-}
-
-SIMD_FORCE_INLINE void btQuaternion::deSerializeFloat(const struct btQuaternionFloatData& dataIn)
-{
-	for (int i = 0; i < 4; i++)
-		m_floats[i] = btScalar(dataIn.m_floats[i]);
-}
-
-SIMD_FORCE_INLINE void btQuaternion::serializeDouble(struct btQuaternionDoubleData& dataOut) const
-{
-	///could also do a memcpy, check if it is worth it
-	for (int i = 0; i < 4; i++)
-		dataOut.m_floats[i] = double(m_floats[i]);
-}
-
-SIMD_FORCE_INLINE void btQuaternion::deSerializeDouble(const struct btQuaternionDoubleData& dataIn)
-{
-	for (int i = 0; i < 4; i++)
-		m_floats[i] = btScalar(dataIn.m_floats[i]);
-}
-
-SIMD_FORCE_INLINE void btQuaternion::serialize(struct btQuaternionData& dataOut) const
-{
-	///could also do a memcpy, check if it is worth it
-	for (int i = 0; i < 4; i++)
-		dataOut.m_floats[i] = m_floats[i];
-}
-
-SIMD_FORCE_INLINE void btQuaternion::deSerialize(const struct btQuaternionFloatData& dataIn)
-{
-	for (int i = 0; i < 4; i++)
-		m_floats[i] = (btScalar)dataIn.m_floats[i];
-}
-
-SIMD_FORCE_INLINE void btQuaternion::deSerialize(const struct btQuaternionDoubleData& dataIn)
-{
-	for (int i = 0; i < 4; i++)
-		m_floats[i] = (btScalar)dataIn.m_floats[i];
-}
-
 #endif  //BT_SIMD__QUATERNION_H_

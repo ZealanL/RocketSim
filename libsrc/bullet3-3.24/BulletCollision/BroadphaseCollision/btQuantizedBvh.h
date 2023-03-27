@@ -16,7 +16,6 @@ subject to the following restrictions:
 #ifndef BT_QUANTIZED_BVH_H
 #define BT_QUANTIZED_BVH_H
 
-class btSerializer;
 
 //#define DEBUG_CHECK_DEQUANTIZATION 1
 #ifdef DEBUG_CHECK_DEQUANTIZATION
@@ -425,31 +424,6 @@ public:
 		return m_SubtreeHeaders;
 	}
 
-	////////////////////////////////////////////////////////////////////
-
-	/////Calculate space needed to store BVH for serialization
-	unsigned calculateSerializeBufferSize() const;
-
-	/// Data buffer MUST be 16 byte aligned
-	virtual bool serialize(void* o_alignedDataBuffer, unsigned i_dataBufferSize, bool i_swapEndian) const;
-
-	///deSerializeInPlace loads and initializes a BVH from a buffer in memory 'in place'
-	static btQuantizedBvh* deSerializeInPlace(void* i_alignedDataBuffer, unsigned int i_dataBufferSize, bool i_swapEndian);
-
-	static unsigned int getAlignmentSerializationPadding();
-	//////////////////////////////////////////////////////////////////////
-
-	virtual int calculateSerializeBufferSizeNew() const;
-
-	///fills the dataBuffer and returns the struct name (and 0 on failure)
-	virtual const char* serialize(void* dataBuffer, btSerializer* serializer) const;
-
-	virtual void deSerializeFloat(struct btQuantizedBvhFloatData & quantizedBvhFloatData);
-
-	virtual void deSerializeDouble(struct btQuantizedBvhDoubleData & quantizedBvhDoubleData);
-
-	////////////////////////////////////////////////////////////////////
-
 	SIMD_FORCE_INLINE bool isQuantized()
 	{
 		return m_useQuantization;
@@ -461,83 +435,4 @@ private:
 	// ownsMemory should most likely be false if deserializing, and if you are not, don't call this (it also changes the function signature, which we need)
 	btQuantizedBvh(btQuantizedBvh & other, bool ownsMemory);
 };
-
-// clang-format off
-// parser needs * with the name
-struct btBvhSubtreeInfoData
-{
-	int m_rootNodeIndex;
-	int m_subtreeSize;
-	unsigned short m_quantizedAabbMin[3];
-	unsigned short m_quantizedAabbMax[3];
-};
-
-struct btOptimizedBvhNodeFloatData
-{
-	btVector3FloatData m_aabbMinOrg;
-	btVector3FloatData m_aabbMaxOrg;
-	int m_escapeIndex;
-	int m_subPart;
-	int m_triangleIndex;
-	char m_pad[4];
-};
-
-struct btOptimizedBvhNodeDoubleData
-{
-	btVector3DoubleData m_aabbMinOrg;
-	btVector3DoubleData m_aabbMaxOrg;
-	int m_escapeIndex;
-	int m_subPart;
-	int m_triangleIndex;
-	char m_pad[4];
-};
-
-
-struct btQuantizedBvhNodeData
-{
-	unsigned short m_quantizedAabbMin[3];
-	unsigned short m_quantizedAabbMax[3];
-	int	m_escapeIndexOrTriangleIndex;
-};
-
-struct	btQuantizedBvhFloatData
-{
-	btVector3FloatData			m_bvhAabbMin;
-	btVector3FloatData			m_bvhAabbMax;
-	btVector3FloatData			m_bvhQuantization;
-	int					m_curNodeIndex;
-	int					m_useQuantization;
-	int					m_numContiguousLeafNodes;
-	int					m_numQuantizedContiguousNodes;
-	btOptimizedBvhNodeFloatData	*m_contiguousNodesPtr;
-	btQuantizedBvhNodeData		*m_quantizedContiguousNodesPtr;
-	btBvhSubtreeInfoData	*m_subTreeInfoPtr;
-	int					m_traversalMode;
-	int					m_numSubtreeHeaders;
-	
-};
-
-struct	btQuantizedBvhDoubleData
-{
-	btVector3DoubleData			m_bvhAabbMin;
-	btVector3DoubleData			m_bvhAabbMax;
-	btVector3DoubleData			m_bvhQuantization;
-	int							m_curNodeIndex;
-	int							m_useQuantization;
-	int							m_numContiguousLeafNodes;
-	int							m_numQuantizedContiguousNodes;
-	btOptimizedBvhNodeDoubleData	*m_contiguousNodesPtr;
-	btQuantizedBvhNodeData			*m_quantizedContiguousNodesPtr;
-
-	int							m_traversalMode;
-	int							m_numSubtreeHeaders;
-	btBvhSubtreeInfoData		*m_subTreeInfoPtr;
-};
-// clang-format on
-
-SIMD_FORCE_INLINE int btQuantizedBvh::calculateSerializeBufferSizeNew() const
-{
-	return sizeof(btQuantizedBvhData);
-}
-
 #endif  //BT_QUANTIZED_BVH_H

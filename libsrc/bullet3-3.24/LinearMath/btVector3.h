@@ -704,20 +704,6 @@ public:
 		return isnan(x() + y() + z());
 	}
 
-	SIMD_FORCE_INLINE void serialize(struct btVector3Data & dataOut) const;
-
-	SIMD_FORCE_INLINE void deSerialize(const struct btVector3DoubleData& dataIn);
-
-	SIMD_FORCE_INLINE void deSerialize(const struct btVector3FloatData& dataIn);
-
-	SIMD_FORCE_INLINE void serializeFloat(struct btVector3FloatData & dataOut) const;
-
-	SIMD_FORCE_INLINE void deSerializeFloat(const struct btVector3FloatData& dataIn);
-
-	SIMD_FORCE_INLINE void serializeDouble(struct btVector3DoubleData & dataOut) const;
-
-	SIMD_FORCE_INLINE void deSerializeDouble(const struct btVector3DoubleData& dataIn);
-
 	/**@brief returns index of maximum dot product between this and vectors in array[]
          * @param array The other vectors 
          * @param array_count The number of other vectors 
@@ -1290,61 +1276,6 @@ SIMD_FORCE_INLINE void btPlaneSpace1(const T& n, T& p, T& q)
 		q[1] = n[2] * p[0];
 		q[2] = a * k;
 	}
-}
-
-struct btVector3FloatData
-{
-	float m_floats[4];
-};
-
-struct btVector3DoubleData
-{
-	double m_floats[4];
-};
-
-SIMD_FORCE_INLINE void btVector3::serializeFloat(struct btVector3FloatData& dataOut) const
-{
-	///could also do a memcpy, check if it is worth it
-	for (int i = 0; i < 4; i++)
-		dataOut.m_floats[i] = float(m_floats[i]);
-}
-
-SIMD_FORCE_INLINE void btVector3::deSerializeFloat(const struct btVector3FloatData& dataIn)
-{
-	for (int i = 0; i < 4; i++)
-		m_floats[i] = btScalar(dataIn.m_floats[i]);
-}
-
-SIMD_FORCE_INLINE void btVector3::serializeDouble(struct btVector3DoubleData& dataOut) const
-{
-	///could also do a memcpy, check if it is worth it
-	for (int i = 0; i < 4; i++)
-		dataOut.m_floats[i] = double(m_floats[i]);
-}
-
-SIMD_FORCE_INLINE void btVector3::deSerializeDouble(const struct btVector3DoubleData& dataIn)
-{
-	for (int i = 0; i < 4; i++)
-		m_floats[i] = btScalar(dataIn.m_floats[i]);
-}
-
-SIMD_FORCE_INLINE void btVector3::serialize(struct btVector3Data& dataOut) const
-{
-	///could also do a memcpy, check if it is worth it
-	for (int i = 0; i < 4; i++)
-		dataOut.m_floats[i] = m_floats[i];
-}
-
-SIMD_FORCE_INLINE void btVector3::deSerialize(const struct btVector3FloatData& dataIn)
-{
-	for (int i = 0; i < 4; i++)
-		m_floats[i] = (btScalar)dataIn.m_floats[i];
-}
-
-SIMD_FORCE_INLINE void btVector3::deSerialize(const struct btVector3DoubleData& dataIn)
-{
-	for (int i = 0; i < 4; i++)
-		m_floats[i] = (btScalar)dataIn.m_floats[i];
 }
 
 #endif  //BT_VECTOR3_H

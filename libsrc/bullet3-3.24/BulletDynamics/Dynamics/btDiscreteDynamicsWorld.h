@@ -91,10 +91,6 @@ protected:
 
 	virtual void saveKinematicState(btScalar timeStep);
 
-	void serializeRigidBodies(btSerializer * serializer);
-
-	void serializeDynamicsWorldInfo(btSerializer * serializer);
-    
 public:
 	BT_DECLARE_ALIGNED_ALLOCATOR();
 
@@ -210,9 +206,6 @@ public:
 	{
 		return m_applySpeculativeContactRestitution;
 	}
-
-	///Preliminary serialization test for Bullet 2.76. Loading those files requires a separate parser (see Bullet/Demos/SerializeDemo)
-	virtual void serialize(btSerializer * serializer);
 
 	///Interpolate motion state between previous and current transform, instead of current and next transform.
 	///This can relieve discontinuities in the rendering, due to penetrations

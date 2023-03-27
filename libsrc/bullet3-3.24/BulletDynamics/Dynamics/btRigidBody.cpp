@@ -19,7 +19,6 @@ subject to the following restrictions:
 #include "../../LinearMath/btTransformUtil.h"
 #include "../../LinearMath/btMotionState.h"
 #include "../ConstraintSolver/btTypedConstraint.h"
-#include "../../LinearMath/btSerializer.h"
 
 //'temporarily' global variables
 btScalar gDeactivationTime = btScalar(2.);
@@ -453,53 +452,4 @@ void btRigidBody::removeConstraintRef(btTypedConstraint* c)
 			colObjB->setIgnoreCollisionCheck(colObjA, false);
 		}
 	}
-}
-
-int btRigidBody::calculateSerializeBufferSize() const
-{
-	int sz = sizeof(btRigidBodyData);
-	return sz;
-}
-
-///fills the dataBuffer and returns the struct name (and 0 on failure)
-const char* btRigidBody::serialize(void* dataBuffer, class btSerializer* serializer) const
-{
-	btRigidBodyData* rbd = (btRigidBodyData*)dataBuffer;
-
-	btCollisionObject::serialize(&rbd->m_collisionObjectData, serializer);
-
-	m_invInertiaTensorWorld.serialize(rbd->m_invInertiaTensorWorld);
-	m_linearVelocity.serialize(rbd->m_linearVelocity);
-	m_angularVelocity.serialize(rbd->m_angularVelocity);
-	rbd->m_inverseMass = m_inverseMass;
-	m_angularFactor.serialize(rbd->m_angularFactor);
-	m_linearFactor.serialize(rbd->m_linearFactor);
-	m_gravity.serialize(rbd->m_gravity);
-	m_gravity_acceleration.serialize(rbd->m_gravity_acceleration);
-	m_invInertiaLocal.serialize(rbd->m_invInertiaLocal);
-	m_totalForce.serialize(rbd->m_totalForce);
-	m_totalTorque.serialize(rbd->m_totalTorque);
-	rbd->m_linearDamping = m_linearDamping;
-	rbd->m_angularDamping = m_angularDamping;
-	rbd->m_additionalDamping = m_additionalDamping;
-	rbd->m_additionalDampingFactor = m_additionalDampingFactor;
-	rbd->m_additionalLinearDampingThresholdSqr = m_additionalLinearDampingThresholdSqr;
-	rbd->m_additionalAngularDampingThresholdSqr = m_additionalAngularDampingThresholdSqr;
-	rbd->m_additionalAngularDampingFactor = m_additionalAngularDampingFactor;
-	rbd->m_linearSleepingThreshold = m_linearSleepingThreshold;
-	rbd->m_angularSleepingThreshold = m_angularSleepingThreshold;
-
-	// Fill padding with zeros to appease msan.
-#ifdef BT_USE_DOUBLE_PRECISION
-	memset(rbd->m_padding, 0, sizeof(rbd->m_padding));
-#endif
-
-	return btRigidBodyDataName;
-}
-
-void btRigidBody::serializeSingleObject(class btSerializer* serializer) const
-{
-	btChunk* chunk = serializer->allocate(calculateSerializeBufferSize(), 1);
-	const char* structType = serialize(chunk->m_oldPtr, serializer);
-	serializer->finalizeChunk(chunk, structType, BT_RIGIDBODY_CODE, (void*)this);
 }

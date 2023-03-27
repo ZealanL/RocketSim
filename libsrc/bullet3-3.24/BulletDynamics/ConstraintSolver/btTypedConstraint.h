@@ -28,8 +28,6 @@ subject to the following restrictions:
 #define btTypedConstraintDataName "btTypedConstraintFloatData"
 #endif  //BT_USE_DOUBLE_PRECISION
 
-class btSerializer;
-
 //Don't change any of the existing enum values, so add enum types at the end for serialization compatibility
 enum btTypedConstraintType
 {
@@ -319,11 +317,6 @@ public:
 
 	///return the local value of parameter
 	virtual btScalar getParam(int num, int axis = -1) const = 0;
-
-	virtual int calculateSerializeBufferSize() const;
-
-	///fills the dataBuffer and returns the struct name (and 0 on failure)
-	virtual const char* serialize(void* dataBuffer, btSerializer* serializer) const;
 };
 
 // returns angle in range [-SIMD_2_PI, SIMD_2_PI], closest to one of the limits
@@ -350,91 +343,6 @@ SIMD_FORCE_INLINE btScalar btAdjustAngleToLimits(btScalar angleInRadians, btScal
 	{
 		return angleInRadians;
 	}
-}
-
-// clang-format off
-
-///do not change those serialization structures, it requires an updated sBulletDNAstr/sBulletDNAstr64
-struct	btTypedConstraintFloatData
-{
-	btRigidBodyFloatData		*m_rbA;
-	btRigidBodyFloatData		*m_rbB;
-	char	*m_name;
-
-	int	m_objectType;
-	int	m_userConstraintType;
-	int	m_userConstraintId;
-	int	m_needsFeedback;
-
-	float	m_appliedImpulse;
-	float	m_dbgDrawSize;
-
-	int	m_disableCollisionsBetweenLinkedBodies;
-	int	m_overrideNumSolverIterations;
-
-	float	m_breakingImpulseThreshold;
-	int		m_isEnabled;
-	
-};
-
-
-
-///do not change those serialization structures, it requires an updated sBulletDNAstr/sBulletDNAstr64
-
-#define BT_BACKWARDS_COMPATIBLE_SERIALIZATION
-#ifdef BT_BACKWARDS_COMPATIBLE_SERIALIZATION
-///this structure is not used, except for loading pre-2.82 .bullet files
-struct	btTypedConstraintData
-{
-	btRigidBodyData		*m_rbA;
-	btRigidBodyData		*m_rbB;
-	char	*m_name;
-
-	int	m_objectType;
-	int	m_userConstraintType;
-	int	m_userConstraintId;
-	int	m_needsFeedback;
-
-	float	m_appliedImpulse;
-	float	m_dbgDrawSize;
-
-	int	m_disableCollisionsBetweenLinkedBodies;
-	int	m_overrideNumSolverIterations;
-
-	float	m_breakingImpulseThreshold;
-	int		m_isEnabled;
-	
-};
-#endif //BACKWARDS_COMPATIBLE
-
-struct	btTypedConstraintDoubleData
-{
-	btRigidBodyDoubleData		*m_rbA;
-	btRigidBodyDoubleData		*m_rbB;
-	char	*m_name;
-
-	int	m_objectType;
-	int	m_userConstraintType;
-	int	m_userConstraintId;
-	int	m_needsFeedback;
-
-	double	m_appliedImpulse;
-	double	m_dbgDrawSize;
-
-	int	m_disableCollisionsBetweenLinkedBodies;
-	int	m_overrideNumSolverIterations;
-
-	double	m_breakingImpulseThreshold;
-	int		m_isEnabled;
-	char	padding[4];
-	
-};
-
-// clang-format on
-
-SIMD_FORCE_INLINE int btTypedConstraint::calculateSerializeBufferSize() const
-{
-	return sizeof(btTypedConstraintData2);
 }
 
 class btAngularLimit
