@@ -24,7 +24,6 @@ class btCollisionObject;
 #include "../ConstraintSolver/btSolverBody.h"
 #include "../ConstraintSolver/btSolverConstraint.h"
 #include "../../BulletCollision/NarrowPhaseCollision/btManifoldPoint.h"
-#include "../ConstraintSolver/btConstraintSolver.h"
 
 typedef btScalar (*btSingleConstraintRowSolver)(btSolverBody&, btSolverBody&, const btSolverConstraint&);
 
@@ -47,7 +46,7 @@ struct btSolverAnalyticsData
 
 ///The btSequentialImpulseConstraintSolver is a fast SIMD implementation of the Projected Gauss Seidel (iterative LCP) method.
 ATTRIBUTE_ALIGNED16(class)
-btSequentialImpulseConstraintSolver : public btConstraintSolver
+btSequentialImpulseConstraintSolver
 {
 	
 
@@ -108,14 +107,14 @@ protected:
 
 	btScalar restitutionCurve(btScalar rel_vel, btScalar restitution, btScalar velocityThreshold);
 
-	virtual void convertContacts(btPersistentManifold * *manifoldPtr, int numManifolds, const btContactSolverInfo& infoGlobal);
+	void convertContacts(btPersistentManifold * *manifoldPtr, int numManifolds, const btContactSolverInfo& infoGlobal);
 
 	void convertContact(btPersistentManifold * manifold, const btContactSolverInfo& infoGlobal);
 
-	virtual void convertJoints(btTypedConstraint * *constraints, int numConstraints, const btContactSolverInfo& infoGlobal);
+	void convertJoints(btTypedConstraint * *constraints, int numConstraints, const btContactSolverInfo& infoGlobal);
 	void convertJoint(btSolverConstraint * currentConstraintRow, btTypedConstraint * constraint, const btTypedConstraint::btConstraintInfo1& info1, int solverBodyIdA, int solverBodyIdB, const btContactSolverInfo& infoGlobal);
 
-	virtual void convertBodies(btCollisionObject * *bodies, int numBodies, const btContactSolverInfo& infoGlobal);
+	void convertBodies(btCollisionObject * *bodies, int numBodies, const btContactSolverInfo& infoGlobal);
 
 	btScalar resolveSplitPenetrationSIMD(btSolverBody & bodyA, btSolverBody & bodyB, const btSolverConstraint& contactConstraint)
 	{
@@ -144,20 +143,20 @@ protected:
 	void writeBackContacts(int iBegin, int iEnd, const btContactSolverInfo& infoGlobal);
 	void writeBackJoints(int iBegin, int iEnd, const btContactSolverInfo& infoGlobal);
 	void writeBackBodies(int iBegin, int iEnd, const btContactSolverInfo& infoGlobal);
-	virtual void solveGroupCacheFriendlySplitImpulseIterations(btCollisionObject * *bodies, int numBodies, btPersistentManifold** manifoldPtr, int numManifolds, btTypedConstraint** constraints, int numConstraints, const btContactSolverInfo& infoGlobal);
-	virtual btScalar solveGroupCacheFriendlyFinish(btCollisionObject * *bodies, int numBodies, const btContactSolverInfo& infoGlobal);
-	virtual btScalar solveSingleIteration(int iteration, btCollisionObject** bodies, int numBodies, btPersistentManifold** manifoldPtr, int numManifolds, btTypedConstraint** constraints, int numConstraints, const btContactSolverInfo& infoGlobal);
+	void solveGroupCacheFriendlySplitImpulseIterations(btCollisionObject * *bodies, int numBodies, btPersistentManifold** manifoldPtr, int numManifolds, btTypedConstraint** constraints, int numConstraints, const btContactSolverInfo& infoGlobal);
+	btScalar solveGroupCacheFriendlyFinish(btCollisionObject * *bodies, int numBodies, const btContactSolverInfo& infoGlobal);
+	btScalar solveSingleIteration(int iteration, btCollisionObject** bodies, int numBodies, btPersistentManifold** manifoldPtr, int numManifolds, btTypedConstraint** constraints, int numConstraints, const btContactSolverInfo& infoGlobal);
 
-	virtual btScalar solveGroupCacheFriendlySetup(btCollisionObject * *bodies, int numBodies, btPersistentManifold** manifoldPtr, int numManifolds, btTypedConstraint** constraints, int numConstraints, const btContactSolverInfo& infoGlobal);
-	virtual btScalar solveGroupCacheFriendlyIterations(btCollisionObject * *bodies, int numBodies, btPersistentManifold** manifoldPtr, int numManifolds, btTypedConstraint** constraints, int numConstraints, const btContactSolverInfo& infoGlobal);
+	btScalar solveGroupCacheFriendlySetup(btCollisionObject * *bodies, int numBodies, btPersistentManifold** manifoldPtr, int numManifolds, btTypedConstraint** constraints, int numConstraints, const btContactSolverInfo& infoGlobal);
+	btScalar solveGroupCacheFriendlyIterations(btCollisionObject * *bodies, int numBodies, btPersistentManifold** manifoldPtr, int numManifolds, btTypedConstraint** constraints, int numConstraints, const btContactSolverInfo& infoGlobal);
 
 public:
 	BT_DECLARE_ALIGNED_ALLOCATOR();
 
 	btSequentialImpulseConstraintSolver();
-	virtual ~btSequentialImpulseConstraintSolver();
+	~btSequentialImpulseConstraintSolver();
 
-	virtual btScalar solveGroup(btCollisionObject * *bodies, int numBodies, btPersistentManifold** manifold, int numManifolds, btTypedConstraint** constraints, int numConstraints, const btContactSolverInfo& info, btDispatcher* dispatcher);
+	btScalar solveGroup(btCollisionObject * *bodies, int numBodies, btPersistentManifold** manifold, int numManifolds, btTypedConstraint** constraints, int numConstraints, const btContactSolverInfo& info, btDispatcher* dispatcher);
 
 	///clear internal cached data and reset random seed
 	virtual void reset();
@@ -173,11 +172,6 @@ public:
 	unsigned long getRandSeed() const
 	{
 		return m_btSeed2;
-	}
-
-	virtual btConstraintSolverType getSolverType() const
-	{
-		return BT_SEQUENTIAL_IMPULSE_SOLVER;
 	}
 
 	btSingleConstraintRowSolver getActiveConstraintRowSolverGeneric()

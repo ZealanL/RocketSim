@@ -19,7 +19,7 @@ subject to the following restrictions:
 #include "btDynamicsWorld.h"
 class btDispatcher;
 class btOverlappingPairCache;
-class btConstraintSolver;
+class btSequentialImpulseConstraintSolver;
 class btSimulationIslandManager;
 class btTypedConstraint;
 class btActionInterface;
@@ -39,7 +39,7 @@ protected:
 	btAlignedObjectArray<btTypedConstraint*> m_sortedConstraints;
 	InplaceSolverIslandCallback* m_solverIslandCallback;
 
-	btConstraintSolver* m_constraintSolver;
+	btSequentialImpulseConstraintSolver* m_constraintSolver;
 
 	btSimulationIslandManager* m_islandManager;
 
@@ -93,7 +93,7 @@ public:
 	BT_DECLARE_ALIGNED_ALLOCATOR();
 
 	///this btDiscreteDynamicsWorld constructor gets created objects from the user, and will not delete those
-	btDiscreteDynamicsWorld(btDispatcher * dispatcher, btBroadphaseInterface * pairCache, btConstraintSolver * constraintSolver, btCollisionConfiguration * collisionConfiguration);
+	btDiscreteDynamicsWorld(btDispatcher* dispatcher, btBroadphaseInterface* pairCache, btSequentialImpulseConstraintSolver* constraintSolver, btCollisionConfiguration* collisionConfiguration);
 
 	virtual ~btDiscreteDynamicsWorld();
 
@@ -145,9 +145,9 @@ public:
 	///removeCollisionObject will first check if it is a rigid body, if so call removeRigidBody otherwise call btCollisionWorld::removeCollisionObject
 	virtual void removeCollisionObject(btCollisionObject * collisionObject);
 
-	virtual void setConstraintSolver(btConstraintSolver * solver);
+	virtual void setConstraintSolver(btSequentialImpulseConstraintSolver* solver);
 
-	virtual btConstraintSolver* getConstraintSolver();
+	virtual btSequentialImpulseConstraintSolver* getConstraintSolver();
 
 	virtual int getNumConstraints() const;
 

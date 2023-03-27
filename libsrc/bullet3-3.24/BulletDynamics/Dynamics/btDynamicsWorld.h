@@ -21,8 +21,8 @@ subject to the following restrictions:
 
 class btTypedConstraint;
 class btActionInterface;
-class btConstraintSolver;
 class btDynamicsWorld;
+class btSequentialImpulseConstraintSolver;
 
 /// Type for the callback for each tick
 typedef void (*btInternalTickCallback)(btDynamicsWorld* world, btScalar timeStep);
@@ -89,9 +89,9 @@ public:
 
 	virtual void removeRigidBody(btRigidBody* body) = 0;
 
-	virtual void setConstraintSolver(btConstraintSolver* solver) = 0;
+	virtual void setConstraintSolver(btSequentialImpulseConstraintSolver* solver) = 0;
 
-	virtual btConstraintSolver* getConstraintSolver() = 0;
+	virtual btSequentialImpulseConstraintSolver* getConstraintSolver() = 0;
 
 	virtual int getNumConstraints() const { return 0; }
 

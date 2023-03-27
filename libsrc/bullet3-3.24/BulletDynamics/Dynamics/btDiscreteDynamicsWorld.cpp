@@ -35,6 +35,7 @@ subject to the following restrictions:
 #include "../Dynamics/btActionInterface.h"
 #include "../../LinearMath/btQuickprof.h"
 #include "../../LinearMath/btMotionState.h"
+#include "../../LinearMath/btStackAlloc.h"
 
 #if 0
 btAlignedObjectArray<btVector3> debugContacts;
@@ -68,7 +69,7 @@ public:
 struct InplaceSolverIslandCallback : public btSimulationIslandManager::IslandCallback
 {
 	btContactSolverInfo* m_solverInfo;
-	btConstraintSolver* m_solver;
+	btSequentialImpulseConstraintSolver* m_solver;
 	btTypedConstraint** m_sortedConstraints;
 	int m_numConstraints;
 	btDispatcher* m_dispatcher;
@@ -78,7 +79,7 @@ struct InplaceSolverIslandCallback : public btSimulationIslandManager::IslandCal
 	btAlignedObjectArray<btTypedConstraint*> m_constraints;
 
 	InplaceSolverIslandCallback(
-		btConstraintSolver* solver,
+		btSequentialImpulseConstraintSolver* solver,
 		btStackAlloc* stackAlloc,
 		btDispatcher* dispatcher)
 		: m_solverInfo(NULL),
@@ -175,7 +176,7 @@ struct InplaceSolverIslandCallback : public btSimulationIslandManager::IslandCal
 	}
 };
 
-btDiscreteDynamicsWorld::btDiscreteDynamicsWorld(btDispatcher* dispatcher, btBroadphaseInterface* pairCache, btConstraintSolver* constraintSolver, btCollisionConfiguration* collisionConfiguration)
+btDiscreteDynamicsWorld::btDiscreteDynamicsWorld(btDispatcher* dispatcher, btBroadphaseInterface* pairCache, btSequentialImpulseConstraintSolver* constraintSolver, btCollisionConfiguration* collisionConfiguration)
 	: btDynamicsWorld(dispatcher, pairCache, collisionConfiguration),
 	  m_sortedConstraints(),
 	  m_solverIslandCallback(NULL),
@@ -228,7 +229,7 @@ btDiscreteDynamicsWorld::~btDiscreteDynamicsWorld()
 	}
 	if (m_ownsConstraintSolver)
 	{
-		m_constraintSolver->~btConstraintSolver();
+		m_constraintSolver->~btSequentialImpulseConstraintSolver();
 		btAlignedFree(m_constraintSolver);
 	}
 }
@@ -636,14 +637,10 @@ void btDiscreteDynamicsWorld::solveConstraints(btContactSolverInfo& solverInfo)
 	btTypedConstraint** constraintsPtr = getNumConstraints() ? &m_sortedConstraints[0] : 0;
 
 	m_solverIslandCallback->setup(&solverInfo, constraintsPtr, m_sortedConstraints.size());
-	m_constraintSolver->prepareSolve(getCollisionWorld()->getNumCollisionObjects(), getCollisionWorld()->getDispatcher()->getNumManifolds());
-
 	/// solve all the constraints for this island
 	m_islandManager->buildAndProcessIslands(getCollisionWorld()->getDispatcher(), getCollisionWorld(), m_solverIslandCallback);
 
 	m_solverIslandCallback->processConstraints();
-
-	m_constraintSolver->allSolved(solverInfo);
 }
 
 void btDiscreteDynamicsWorld::calculateSimulationIslands()
@@ -1054,7 +1051,7 @@ void btDiscreteDynamicsWorld::startProfiling(btScalar timeStep)
 #endif  //BT_NO_PROFILE
 }
 
-void btDiscreteDynamicsWorld::setConstraintSolver(btConstraintSolver* solver)
+void btDiscreteDynamicsWorld::setConstraintSolver(btSequentialImpulseConstraintSolver* solver)
 {
 	if (m_ownsConstraintSolver)
 	{
@@ -1065,7 +1062,7 @@ void btDiscreteDynamicsWorld::setConstraintSolver(btConstraintSolver* solver)
 	m_solverIslandCallback->m_solver = solver;
 }
 
-btConstraintSolver* btDiscreteDynamicsWorld::getConstraintSolver()
+btSequentialImpulseConstraintSolver* btDiscreteDynamicsWorld::getConstraintSolver()
 {
 	return m_constraintSolver;
 }

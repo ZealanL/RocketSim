@@ -59,7 +59,7 @@ public:
 		btCollisionConfiguration* collisionConfig;
 		btCollisionDispatcher* collisionDispatcher;
 		btDbvtBroadphase* overlappingPairCache;
-		btConstraintSolver* constraintSolver;
+		btSequentialImpulseConstraintSolver* constraintSolver;
 	} _bulletWorldParams;
 
 	vector<btRigidBody*> _worldCollisionRBs;
