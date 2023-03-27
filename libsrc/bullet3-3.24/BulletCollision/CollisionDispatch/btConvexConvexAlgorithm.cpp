@@ -26,7 +26,6 @@ subject to the following restrictions:
 #include "../BroadphaseCollision/btBroadphaseInterface.h"
 #include "../CollisionDispatch/btCollisionObject.h"
 #include "../CollisionShapes/btConvexShape.h"
-#include "../CollisionShapes/btCapsuleShape.h"
 #include "../CollisionShapes/btTriangleShape.h"
 #include "../CollisionShapes/btConvexPolyhedron.h"
 
@@ -43,8 +42,6 @@ subject to the following restrictions:
 
 #include "../NarrowPhaseCollision/btVoronoiSimplexSolver.h"
 #include "../CollisionShapes/btSphereShape.h"
-
-#include "../NarrowPhaseCollision/btMinkowskiPenetrationDepthSolver.h"
 
 #include "../NarrowPhaseCollision/btGjkEpa2.h"
 #include "../NarrowPhaseCollision/btGjkEpaPenetrationDepthSolver.h"
@@ -292,67 +289,21 @@ void btConvexConvexAlgorithm ::processCollision(const btCollisionObjectWrapper* 
 	if ((min0->getShapeType() == CAPSULE_SHAPE_PROXYTYPE) && (min1->getShapeType() == CAPSULE_SHAPE_PROXYTYPE))
 	{
 		//m_manifoldPtr->clearManifold();
-
-		btCapsuleShape* capsuleA = (btCapsuleShape*)min0;
-		btCapsuleShape* capsuleB = (btCapsuleShape*)min1;
-
-		btScalar threshold = m_manifoldPtr->getContactBreakingThreshold()+ resultOut->m_closestPointDistanceThreshold;
-
-		btScalar dist = capsuleCapsuleDistance(normalOnB, pointOnBWorld, capsuleA->getHalfHeight(), capsuleA->getRadius(),
-											   capsuleB->getHalfHeight(), capsuleB->getRadius(), capsuleA->getUpAxis(), capsuleB->getUpAxis(),
-											   body0Wrap->getWorldTransform(), body1Wrap->getWorldTransform(), threshold);
-
-		if (dist < threshold)
-		{
-			btAssert(normalOnB.length2() >= (SIMD_EPSILON * SIMD_EPSILON));
-			resultOut->addContactPoint(normalOnB, pointOnBWorld, dist);
-		}
-		resultOut->refreshContactPoints();
-		return;
+		btAssert(false);
 	}
 
 	if ((min0->getShapeType() == CAPSULE_SHAPE_PROXYTYPE) && (min1->getShapeType() == SPHERE_SHAPE_PROXYTYPE))
 	{
 		//m_manifoldPtr->clearManifold();
 
-		btCapsuleShape* capsuleA = (btCapsuleShape*)min0;
-		btSphereShape* capsuleB = (btSphereShape*)min1;
-
-		btScalar threshold = m_manifoldPtr->getContactBreakingThreshold()+ resultOut->m_closestPointDistanceThreshold;
-
-		btScalar dist = capsuleCapsuleDistance(normalOnB, pointOnBWorld, capsuleA->getHalfHeight(), capsuleA->getRadius(),
-											   0., capsuleB->getRadius(), capsuleA->getUpAxis(), 1,
-											   body0Wrap->getWorldTransform(), body1Wrap->getWorldTransform(), threshold);
-
-		if (dist < threshold)
-		{
-			btAssert(normalOnB.length2() >= (SIMD_EPSILON * SIMD_EPSILON));
-			resultOut->addContactPoint(normalOnB, pointOnBWorld, dist);
-		}
-		resultOut->refreshContactPoints();
-		return;
+		btAssert(false);
 	}
 
 	if ((min0->getShapeType() == SPHERE_SHAPE_PROXYTYPE) && (min1->getShapeType() == CAPSULE_SHAPE_PROXYTYPE))
 	{
 		//m_manifoldPtr->clearManifold();
 
-		btSphereShape* capsuleA = (btSphereShape*)min0;
-		btCapsuleShape* capsuleB = (btCapsuleShape*)min1;
-
-		btScalar threshold = m_manifoldPtr->getContactBreakingThreshold()+ resultOut->m_closestPointDistanceThreshold;
-
-		btScalar dist = capsuleCapsuleDistance(normalOnB, pointOnBWorld, 0., capsuleA->getRadius(),
-											   capsuleB->getHalfHeight(), capsuleB->getRadius(), 1, capsuleB->getUpAxis(),
-											   body0Wrap->getWorldTransform(), body1Wrap->getWorldTransform(), threshold);
-
-		if (dist < threshold)
-		{
-			btAssert(normalOnB.length2() >= (SIMD_EPSILON * SIMD_EPSILON));
-			resultOut->addContactPoint(normalOnB, pointOnBWorld, dist);
-		}
-		resultOut->refreshContactPoints();
-		return;
+		btAssert(false);
 	}
 #endif  //BT_DISABLE_CAPSULE_CAPSULE_COLLIDER
 

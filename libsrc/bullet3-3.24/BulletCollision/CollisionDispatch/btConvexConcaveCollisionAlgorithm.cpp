@@ -15,8 +15,6 @@ subject to the following restrictions:
 
 #include "btConvexConcaveCollisionAlgorithm.h"
 #include "../../LinearMath/btQuickprof.h"
-#include "../CollisionDispatch/btCollisionObject.h"
-#include "../CollisionShapes/btMultiSphereShape.h"
 #include "../BroadphaseCollision/btBroadphaseProxy.h"
 #include "../CollisionShapes/btConcaveShape.h"
 #include "../CollisionDispatch/btManifoldResult.h"
@@ -26,7 +24,6 @@ subject to the following restrictions:
 #include "../../LinearMath/btIDebugDraw.h"
 #include "../NarrowPhaseCollision/btSubSimplexConvexCast.h"
 #include "../CollisionDispatch/btCollisionObjectWrapper.h"
-#include "../CollisionShapes/btSdfCollisionShape.h"
 
 btConvexConcaveCollisionAlgorithm::btConvexConcaveCollisionAlgorithm(const btCollisionAlgorithmConstructionInfo& ci, const btCollisionObjectWrapper* body0Wrap, const btCollisionObjectWrapper* body1Wrap, bool isSwapped)
 	: btActivatingCollisionAlgorithm(ci, body0Wrap, body1Wrap),
@@ -228,64 +225,7 @@ void btConvexConcaveCollisionAlgorithm::processCollision(const btCollisionObject
 	{
 		if (triBodyWrap->getCollisionShape()->getShapeType() == SDF_SHAPE_PROXYTYPE)
 		{
-			btSdfCollisionShape* sdfShape = (btSdfCollisionShape*)triBodyWrap->getCollisionShape();
-			if (convexBodyWrap->getCollisionShape()->isConvex())
-			{
-				btConvexShape* convex = (btConvexShape*)convexBodyWrap->getCollisionShape();
-				btAlignedObjectArray<btVector3> queryVertices;
-
-				if (convex->isPolyhedral())
-				{
-					btPolyhedralConvexShape* poly = (btPolyhedralConvexShape*)convex;
-					for (int v = 0; v < poly->getNumVertices(); v++)
-					{
-						btVector3 vtx;
-						poly->getVertex(v, vtx);
-						queryVertices.push_back(vtx);
-					}
-				}
-				btScalar maxDist = SIMD_EPSILON;
-
-				if (convex->getShapeType() == SPHERE_SHAPE_PROXYTYPE)
-				{
-					queryVertices.push_back(btVector3(0, 0, 0));
-					btSphereShape* sphere = (btSphereShape*)convex;
-					maxDist = sphere->getRadius() + SIMD_EPSILON;
-				}
-				if (queryVertices.size())
-				{
-					resultOut->setPersistentManifold(m_btConvexTriangleCallback.m_manifoldPtr);
-					//m_btConvexTriangleCallback.m_manifoldPtr->clearManifold();
-
-					btPolyhedralConvexShape* poly = (btPolyhedralConvexShape*)convex;
-					for (int v = 0; v < queryVertices.size(); v++)
-					{
-						const btVector3& vtx = queryVertices[v];
-						btVector3 vtxWorldSpace = convexBodyWrap->getWorldTransform() * vtx;
-						btVector3 vtxInSdf = triBodyWrap->getWorldTransform().invXform(vtxWorldSpace);
-
-						btVector3 normalLocal;
-						btScalar dist;
-						if (sdfShape->queryPoint(vtxInSdf, dist, normalLocal))
-						{
-							if (dist <= maxDist)
-							{
-								normalLocal.safeNormalize();
-								btVector3 normal = triBodyWrap->getWorldTransform().getBasis() * normalLocal;
-
-								if (convex->getShapeType() == SPHERE_SHAPE_PROXYTYPE)
-								{
-									btSphereShape* sphere = (btSphereShape*)convex;
-									dist -= sphere->getRadius();
-									vtxWorldSpace -= sphere->getRadius() * normal;
-								}
-								resultOut->addContactPoint(normal, vtxWorldSpace - normal * dist, dist);
-							}
-						}
-					}
-					resultOut->refreshContactPoints();
-				}
-			}
+			btAssert(false);
 		}
 		else
 		{

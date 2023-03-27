@@ -21,8 +21,6 @@ subject to the following restrictions:
 #include "../NarrowPhaseCollision/btGjkEpaPenetrationDepthSolver.h"
 #include "../CollisionShapes/btSphereShape.h"                 //for raycasting
 #include "../CollisionShapes/btBvhTriangleMeshShape.h"        //for raycasting
-#include "../CollisionShapes/btScaledBvhTriangleMeshShape.h"  //for raycasting
-#include "../CollisionShapes/btHeightfieldTerrainShape.h"     //for raycasting
 #include "../NarrowPhaseCollision/btRaycastCallback.h"
 #include "../CollisionShapes/btCompoundShape.h"
 #include "../NarrowPhaseCollision/btSubSimplexConvexCast.h"
@@ -45,19 +43,13 @@ subject to the following restrictions:
 
 //When the user doesn't provide dispatcher or broadphase, create basic versions (and delete them in destructor)
 #include "../CollisionDispatch/btCollisionDispatcher.h"
-#include "../BroadphaseCollision/btSimpleBroadphase.h"
 #include "../CollisionDispatch/btCollisionConfiguration.h"
 
 ///for debug drawing
 
 //for debug rendering
 #include "../CollisionShapes/btBoxShape.h"
-#include "../CollisionShapes/btCapsuleShape.h"
 #include "../CollisionShapes/btCompoundShape.h"
-#include "../CollisionShapes/btConeShape.h"
-#include "../CollisionShapes/btConvexTriangleMeshShape.h"
-#include "../CollisionShapes/btCylinderShape.h"
-#include "../CollisionShapes/btMultiSphereShape.h"
 #include "../CollisionShapes/btPolyhedralConvexShape.h"
 #include "../CollisionShapes/btSphereShape.h"
 #include "../CollisionShapes/btTriangleCallback.h"
@@ -399,33 +391,13 @@ void btCollisionWorld::rayTestSingleInternal(const btTransform& rayFromTrans, co
 			}
 			else if (collisionShape->getShapeType() == SCALED_TRIANGLE_MESH_SHAPE_PROXYTYPE)
 			{
-				///optimized version for btScaledBvhTriangleMeshShape
-				btScaledBvhTriangleMeshShape* scaledTriangleMesh = (btScaledBvhTriangleMeshShape*)collisionShape;
-				btBvhTriangleMeshShape* triangleMesh = (btBvhTriangleMeshShape*)scaledTriangleMesh->getChildShape();
-
-				//scale the ray positions
-				btVector3 scale = scaledTriangleMesh->getLocalScaling();
-				btVector3 rayFromLocalScaled = rayFromLocal / scale;
-				btVector3 rayToLocalScaled = rayToLocal / scale;
-
-				//perform raycast in the underlying btBvhTriangleMeshShape
-				BridgeTriangleRaycastCallback rcb(rayFromLocalScaled, rayToLocalScaled, &resultCallback, collisionObjectWrap->getCollisionObject(), triangleMesh, colObjWorldTransform);
-				rcb.m_hitFraction = resultCallback.m_closestHitFraction;
-				triangleMesh->performRaycast(&rcb, rayFromLocalScaled, rayToLocalScaled);
+				btAssert(false);
 			}
 			else if (((resultCallback.m_flags&btTriangleRaycastCallback::kF_DisableHeightfieldAccelerator)==0) 
 				&& collisionShape->getShapeType() == TERRAIN_SHAPE_PROXYTYPE 
 				)
 			{
-				///optimized version for btHeightfieldTerrainShape
-				btHeightfieldTerrainShape* heightField = (btHeightfieldTerrainShape*)collisionShape;
-				btTransform worldTocollisionObject = colObjWorldTransform.inverse();
-				btVector3 rayFromLocal = worldTocollisionObject * rayFromTrans.getOrigin();
-				btVector3 rayToLocal = worldTocollisionObject * rayToTrans.getOrigin();
-
-				BridgeTriangleRaycastCallback rcb(rayFromLocal, rayToLocal, &resultCallback, collisionObjectWrap->getCollisionObject(), heightField, colObjWorldTransform);
-				rcb.m_hitFraction = resultCallback.m_closestHitFraction;
-				heightField->performRaycast(&rcb, rayFromLocal, rayToLocal);
+				btAssert(false);
 			}
 			else
 			{
@@ -1337,48 +1309,19 @@ void btCollisionWorld::debugDrawObject(const btTransform& worldTransform, const 
 			}
 			case MULTI_SPHERE_SHAPE_PROXYTYPE:
 			{
-				const btMultiSphereShape* multiSphereShape = static_cast<const btMultiSphereShape*>(shape);
-
-				btTransform childTransform;
-				childTransform.setIdentity();
-
-				for (int i = multiSphereShape->getSphereCount() - 1; i >= 0; i--)
-				{
-					childTransform.setOrigin(multiSphereShape->getSpherePosition(i));
-					getDebugDrawer()->drawSphere(multiSphereShape->getSphereRadius(i), worldTransform * childTransform, color);
-				}
-
-				break;
+				btAssert(false);
 			}
 			case CAPSULE_SHAPE_PROXYTYPE:
 			{
-				const btCapsuleShape* capsuleShape = static_cast<const btCapsuleShape*>(shape);
-
-				btScalar radius = capsuleShape->getRadius();
-				btScalar halfHeight = capsuleShape->getHalfHeight();
-
-				int upAxis = capsuleShape->getUpAxis();
-				getDebugDrawer()->drawCapsule(radius, halfHeight, upAxis, worldTransform, color);
-				break;
+				btAssert(false);
 			}
 			case CONE_SHAPE_PROXYTYPE:
 			{
-				const btConeShape* coneShape = static_cast<const btConeShape*>(shape);
-				btScalar radius = coneShape->getRadius();  //+coneShape->getMargin();
-				btScalar height = coneShape->getHeight();  //+coneShape->getMargin();
-
-				int upAxis = coneShape->getConeUpIndex();
-				getDebugDrawer()->drawCone(radius, height, upAxis, worldTransform, color);
-				break;
+				btAssert(false);
 			}
 			case CYLINDER_SHAPE_PROXYTYPE:
 			{
-				const btCylinderShape* cylinder = static_cast<const btCylinderShape*>(shape);
-				int upAxis = cylinder->getUpAxis();
-				btScalar radius = cylinder->getRadius();
-				btScalar halfHeight = cylinder->getHalfExtentsWithMargin()[upAxis];
-				getDebugDrawer()->drawCylinder(radius, halfHeight, upAxis, worldTransform, color);
-				break;
+				btAssert(false);
 			}
 
 			case STATIC_PLANE_PROXYTYPE:
@@ -1451,13 +1394,7 @@ void btCollisionWorld::debugDrawObject(const btTransform& worldTransform, const 
 
 				if (shape->getShapeType() == CONVEX_TRIANGLEMESH_SHAPE_PROXYTYPE)
 				{
-					btConvexTriangleMeshShape* convexMesh = (btConvexTriangleMeshShape*)shape;
-					//todo: pass camera for some culling
-					btVector3 aabbMax(btScalar(BT_LARGE_FLOAT), btScalar(BT_LARGE_FLOAT), btScalar(BT_LARGE_FLOAT));
-					btVector3 aabbMin(btScalar(-BT_LARGE_FLOAT), btScalar(-BT_LARGE_FLOAT), btScalar(-BT_LARGE_FLOAT));
-					//DebugDrawcallback drawCallback;
-					DebugDrawcallback drawCallback(getDebugDrawer(), worldTransform, color);
-					convexMesh->getMeshInterface()->InternalProcessAllTriangles(&drawCallback, aabbMin, aabbMax);
+					btAssert(false);
 				}
 			}
 		}

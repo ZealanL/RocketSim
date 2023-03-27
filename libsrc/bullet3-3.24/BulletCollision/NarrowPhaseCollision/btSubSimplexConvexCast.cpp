@@ -16,7 +16,6 @@ subject to the following restrictions:
 #include "btSubSimplexConvexCast.h"
 #include "../CollisionShapes/btConvexShape.h"
 
-#include "../CollisionShapes/btMinkowskiSumShape.h"
 #include "../NarrowPhaseCollision/btSimplexSolverInterface.h"
 #include "btPointCollector.h"
 #include "../../LinearMath/btTransformUtil.h"

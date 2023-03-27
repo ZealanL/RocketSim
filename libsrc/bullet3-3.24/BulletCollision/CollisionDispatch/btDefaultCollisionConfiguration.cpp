@@ -29,7 +29,6 @@ subject to the following restrictions:
 #endif  //USE_BUGGY_SPHERE_BOX_ALGORITHM
 #include "../CollisionDispatch/btSphereTriangleCollisionAlgorithm.h"
 #include "../NarrowPhaseCollision/btGjkEpaPenetrationDepthSolver.h"
-#include "../NarrowPhaseCollision/btMinkowskiPenetrationDepthSolver.h"
 #include "../NarrowPhaseCollision/btVoronoiSimplexSolver.h"
 
 #include "../../LinearMath/btPoolAllocator.h"
@@ -45,8 +44,7 @@ btDefaultCollisionConfiguration::btDefaultCollisionConfiguration(const btDefault
 	}
 	else
 	{
-		mem = btAlignedAlloc(sizeof(btMinkowskiPenetrationDepthSolver), 16);
-		m_pdSolver = new (mem) btMinkowskiPenetrationDepthSolver;
+		btAssert(false);
 	}
 
 	//default CreationFunctions, filling the m_doubleDispatch table
