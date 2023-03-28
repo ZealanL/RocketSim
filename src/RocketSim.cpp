@@ -67,6 +67,9 @@ void RocketSim::Init(std::filesystem::path collisionMeshesFolder) {
 			for (uint32_t targetHash : SOCCAR_ARENA_MESH_HASHES)
 				targetHashes.insert(targetHash);
 
+
+			btTriangleMesh* masterTriMesh = new btTriangleMesh();
+
 			// Load collision meshes
 			auto dirItr = std::filesystem::directory_iterator(soccarMeshesFolder);
 			for (auto& entry : dirItr) {
@@ -89,10 +92,21 @@ void RocketSim::Init(std::filesystem::path collisionMeshesFolder) {
 					hashCount++;
 
 					btTriangleMesh* triMesh = meshFile.MakeBulletMesh();
-					auto bvtMesh = new btBvhTriangleMeshShape(triMesh, false);
-					arenaCollisionMeshes.push_back(bvtMesh);
+					
+					for (int i = 0; i < triMesh->m_32bitIndices.size(); i += 3) {
+						btVector3 vertices[3];
+						for (int j = 0; j < 3; j++) {
+							vertices[j] = triMesh->m_4componentVertices[triMesh->m_32bitIndices[i + j]];
+						}
+
+						masterTriMesh->addTriangle(vertices[0], vertices[1], vertices[2]);
+					}
+
+					delete triMesh;
 				}
 			}
+
+			arenaCollisionMeshes.push_back(new btBvhTriangleMeshShape(masterTriMesh, false));
 
 			if (arenaCollisionMeshes.empty()) {
 				RS_ERR_CLOSE(MSG_PREFIX <<
