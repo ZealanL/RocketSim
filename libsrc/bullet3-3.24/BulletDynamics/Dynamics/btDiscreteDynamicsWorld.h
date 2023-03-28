@@ -81,7 +81,7 @@ protected:
 
 	void startProfiling(btScalar timeStep);
 
-	virtual void internalSingleStepSimulation(btScalar timeStep);
+	void internalSingleStepSimulation(btScalar timeStep);
 
 	void releasePredictiveContacts();
 	void createPredictiveContactsInternal(btRigidBody * *bodies, int numBodies, btScalar timeStep);  // can be called in parallel
@@ -98,9 +98,9 @@ public:
 	virtual ~btDiscreteDynamicsWorld();
 
 	///if maxSubSteps > 0, it will interpolate motion between fixedTimeStep's
-	virtual int stepSimulation(btScalar timeStep, int maxSubSteps = 1, btScalar fixedTimeStep = btScalar(1.) / btScalar(60.));
+	int stepSimulation(btScalar timeStep, int maxSubSteps = 1, btScalar fixedTimeStep = btScalar(1.) / btScalar(60.));
 
-    virtual void solveConstraints(btContactSolverInfo & solverInfo);
+    void solveConstraints(btContactSolverInfo & solverInfo);
     
 	virtual void synchronizeMotionStates();
 
