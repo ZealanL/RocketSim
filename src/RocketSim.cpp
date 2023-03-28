@@ -52,12 +52,12 @@ void RocketSim::Init(std::filesystem::path collisionMeshesFolder) {
 			std::filesystem::path basePath = collisionMeshesFolder;
 			std::filesystem::path soccarMeshesFolder = basePath / "soccar";
 
-			RS_LOG("Loading arena meshes from \"" << soccarMeshesFolder << "\"...");
+			RS_LOG("Loading arena meshes from " << soccarMeshesFolder << "...");
 
 			if (!std::filesystem::exists(soccarMeshesFolder)) {
 				RS_ERR_CLOSE(
-					"Failed to find arena collision mesh files at \"" << soccarMeshesFolder
-					<< "\", the collision meshes folder should be in our current directory " << std::filesystem::current_path() << ".")
+					"Failed to find arena collision mesh files at " << soccarMeshesFolder
+					<< ", the collision meshes folder should be in our current directory " << std::filesystem::current_path() << ".")
 			}
 
 			// How many of each collision mesh hash we have loaded
@@ -77,12 +77,12 @@ void RocketSim::Init(std::filesystem::path collisionMeshesFolder) {
 					int& hashCount = hashCounts[meshFile.hash];
 
 					if (hashCount > 0) {
-						RS_WARN(MSG_PREFIX << "Collision mesh \"" << entryPath << "\" is a duplicate (0x" << std::hex << meshFile.hash << "), " <<
+						RS_WARN(MSG_PREFIX << "Collision mesh " << entryPath << " is a duplicate (0x" << std::hex << meshFile.hash << "), " <<
 							"already loaded a mesh with the same hash."
 						);
 					} else if (targetHashes.count(meshFile.hash) == 0) {
 						RS_WARN(MSG_PREFIX <<
-							"Collision mesh \"" << entryPath << "\" does not match any known soccar collision file (0x" << std::hex << meshFile.hash << "), " <<
+							"Collision mesh " << entryPath << " does not match any known soccar collision file (0x" << std::hex << meshFile.hash << "), " <<
 							"make sure they were dumped from a normal soccar arena."
 						)
 					}
@@ -98,8 +98,8 @@ void RocketSim::Init(std::filesystem::path collisionMeshesFolder) {
 
 			if (arenaCollisionMeshes.empty()) {
 				RS_ERR_CLOSE(MSG_PREFIX <<
-					"Failed to find soccar field asset files at \"" << basePath
-					<< "\", the folder exists but has no collision mesh files.")
+					"Failed to find soccar field asset files at " << basePath
+					<< ", the folder exists but has no collision mesh files.")
 			}
 
 			RS_LOG(MSG_PREFIX << "Finished loading " << arenaCollisionMeshes.size() << " arena collision meshes.");
