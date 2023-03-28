@@ -184,12 +184,6 @@ ATTRIBUTE_ALIGNED16(class)
 btQuantizedBvh
 {
 public:
-	enum btTraversalMode
-	{
-		TRAVERSAL_STACKLESS = 0,
-		TRAVERSAL_STACKLESS_CACHE_FRIENDLY,
-		TRAVERSAL_RECURSIVE
-	};
 
 protected:
 	btVector3 m_bvhAabbMin;
@@ -207,7 +201,6 @@ protected:
 	QuantizedNodeArray m_quantizedLeafNodes;
 	QuantizedNodeArray m_quantizedContiguousNodes;
 
-	btTraversalMode m_traversalMode;
 	BvhSubtreeInfoArray m_SubtreeHeaders;
 
 	//This is only used for serialization so we don't have to add serialization directly to btAlignedObjectArray
@@ -314,12 +307,6 @@ protected:
 	///tree traversal designed for small-memory processors like PS3 SPU
 	void walkStacklessQuantizedTreeCacheFriendly(btNodeOverlapCallback * nodeCallback, unsigned short int* quantizedQueryAabbMin, unsigned short int* quantizedQueryAabbMax) const;
 
-	///use the 16-byte stackless 'skipindex' node tree to do a recursive traversal
-	void walkRecursiveQuantizedTreeAgainstQueryAabb(const btQuantizedBvhNode* currentNode, btNodeOverlapCallback* nodeCallback, unsigned short int* quantizedQueryAabbMin, unsigned short int* quantizedQueryAabbMax) const;
-
-	///use the 16-byte stackless 'skipindex' node tree to do a recursive traversal
-	void walkRecursiveQuantizedTreeAgainstQuantizedTree(const btQuantizedBvhNode* treeNodeA, const btQuantizedBvhNode* treeNodeB, btNodeOverlapCallback* nodeCallback) const;
-
 	void updateSubtreeHeaders(int leftChildNodexIndex, int rightChildNodexIndex);
 
 public:
@@ -424,12 +411,6 @@ public:
 			(btScalar)(vecIn[2]) / (m_bvhQuantization.getZ()));
 		vecOut += m_bvhAabbMin;
 		return vecOut;
-	}
-
-	///setTraversalMode let's you choose between stackless, recursive or stackless cache friendly tree traversal. Note this is only implemented for quantized trees.
-	void setTraversalMode(btTraversalMode traversalMode)
-	{
-		m_traversalMode = traversalMode;
 	}
 
 	SIMD_FORCE_INLINE QuantizedNodeArray& getQuantizedNodeArray()

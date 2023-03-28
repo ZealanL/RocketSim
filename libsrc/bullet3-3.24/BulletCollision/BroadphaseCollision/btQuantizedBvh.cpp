@@ -22,10 +22,6 @@ subject to the following restrictions:
 
 btQuantizedBvh::btQuantizedBvh() : m_bulletVersion(BT_BULLET_VERSION),
 								   m_useQuantization(false),
-								   //m_traversalMode(TRAVERSAL_STACKLESS)
-								   m_traversalMode(TRAVERSAL_STACKLESS_CACHE_FRIENDLY)
-								   //m_traversalMode(TRAVERSAL_RECURSIVE)
-								   ,
 								   m_subtreeHeaderCount(0)  //PCK: add this line
 {
 	m_bvhAabbMin.setValue(-SIMD_INFINITY, -SIMD_INFINITY, -SIMD_INFINITY);
@@ -320,24 +316,7 @@ void btQuantizedBvh::reportAabbOverlappingNodex(btNodeOverlapCallback* nodeCallb
 		quantizeWithClamp(quantizedQueryAabbMin, aabbMin, 0);
 		quantizeWithClamp(quantizedQueryAabbMax, aabbMax, 1);
 
-		switch (m_traversalMode)
-		{
-			case TRAVERSAL_STACKLESS:
-				walkStacklessQuantizedTree(nodeCallback, quantizedQueryAabbMin, quantizedQueryAabbMax, 0, m_curNodeIndex);
-				break;
-			case TRAVERSAL_STACKLESS_CACHE_FRIENDLY:
-				walkStacklessQuantizedTreeCacheFriendly(nodeCallback, quantizedQueryAabbMin, quantizedQueryAabbMax);
-				break;
-			case TRAVERSAL_RECURSIVE:
-			{
-				const btQuantizedBvhNode* rootNode = &m_quantizedContiguousNodes[0];
-				walkRecursiveQuantizedTreeAgainstQueryAabb(rootNode, nodeCallback, quantizedQueryAabbMin, quantizedQueryAabbMax);
-			}
-			break;
-			default:
-				//unsupported
-				btAssert(0);
-		}
+		walkStacklessQuantizedTreeCacheFriendly(nodeCallback, quantizedQueryAabbMin, quantizedQueryAabbMax);
 	}
 	else
 	{
@@ -382,58 +361,6 @@ void btQuantizedBvh::walkStacklessTree(btNodeOverlapCallback* nodeCallback, cons
 			escapeIndex = rootNode->m_escapeIndex;
 			rootNode += escapeIndex;
 			curIndex += escapeIndex;
-		}
-	}
-}
-
-/*
-///this was the original recursive traversal, before we optimized towards stackless traversal
-void	btQuantizedBvh::walkTree(btOptimizedBvhNode* rootNode,btNodeOverlapCallback* nodeCallback,const btVector3& aabbMin,const btVector3& aabbMax) const
-{
-	bool isLeafNode, aabbOverlap = TestAabbAgainstAabb2(aabbMin,aabbMax,rootNode->m_aabbMin,rootNode->m_aabbMax);
-	if (aabbOverlap)
-	{
-		isLeafNode = (!rootNode->m_leftChild && !rootNode->m_rightChild);
-		if (isLeafNode)
-		{
-			nodeCallback->processNode(rootNode);
-		} else
-		{
-			walkTree(rootNode->m_leftChild,nodeCallback,aabbMin,aabbMax);
-			walkTree(rootNode->m_rightChild,nodeCallback,aabbMin,aabbMax);
-		}
-	}
-
-}
-*/
-
-void btQuantizedBvh::walkRecursiveQuantizedTreeAgainstQueryAabb(const btQuantizedBvhNode* currentNode, btNodeOverlapCallback* nodeCallback, unsigned short int* quantizedQueryAabbMin, unsigned short int* quantizedQueryAabbMax) const
-{
-	btAssert(m_useQuantization);
-
-	bool isLeafNode;
-	//PCK: unsigned instead of bool
-	unsigned aabbOverlap;
-
-	//PCK: unsigned instead of bool
-	aabbOverlap = testQuantizedAabbAgainstQuantizedAabb(quantizedQueryAabbMin, quantizedQueryAabbMax, currentNode->m_quantizedAabbMin, currentNode->m_quantizedAabbMax);
-	isLeafNode = currentNode->isLeafNode();
-
-	//PCK: unsigned instead of bool
-	if (aabbOverlap != 0)
-	{
-		if (isLeafNode)
-		{
-			nodeCallback->processNode(currentNode->getPartId(), currentNode->getTriangleIndex());
-		}
-		else
-		{
-			//process left and right children
-			const btQuantizedBvhNode* leftChildNode = currentNode + 1;
-			walkRecursiveQuantizedTreeAgainstQueryAabb(leftChildNode, nodeCallback, quantizedQueryAabbMin, quantizedQueryAabbMax);
-
-			const btQuantizedBvhNode* rightChildNode = leftChildNode->isLeafNode() ? leftChildNode + 1 : leftChildNode + leftChildNode->getEscapeIndex();
-			walkRecursiveQuantizedTreeAgainstQueryAabb(rightChildNode, nodeCallback, quantizedQueryAabbMin, quantizedQueryAabbMax);
 		}
 	}
 }
@@ -649,68 +576,6 @@ void btQuantizedBvh::walkStacklessQuantizedTreeAgainstRay(btNodeOverlapCallback*
 	}
 }
 
-void btQuantizedBvh::walkStacklessQuantizedTree(btNodeOverlapCallback* nodeCallback, unsigned short int* quantizedQueryAabbMin, unsigned short int* quantizedQueryAabbMax, int startNodeIndex, int endNodeIndex) const
-{
-	btAssert(m_useQuantization);
-
-	int curIndex = startNodeIndex;
-	int walkIterations = 0;
-	int subTreeSize = endNodeIndex - startNodeIndex;
-	(void)subTreeSize;
-
-	const btQuantizedBvhNode* rootNode = &m_quantizedContiguousNodes[startNodeIndex];
-	int escapeIndex;
-
-	bool isLeafNode;
-	//PCK: unsigned instead of bool
-	unsigned aabbOverlap;
-
-	while (curIndex < endNodeIndex)
-	{
-//#define VISUALLY_ANALYZE_BVH 1
-#ifdef VISUALLY_ANALYZE_BVH
-		//some code snippet to debugDraw aabb, to visually analyze bvh structure
-		static int drawPatch = 0;
-		//need some global access to a debugDrawer
-		extern btIDebugDraw* debugDrawerPtr;
-		if (curIndex == drawPatch)
-		{
-			btVector3 aabbMin, aabbMax;
-			aabbMin = unQuantize(rootNode->m_quantizedAabbMin);
-			aabbMax = unQuantize(rootNode->m_quantizedAabbMax);
-			btVector3 color(1, 0, 0);
-			debugDrawerPtr->drawAabb(aabbMin, aabbMax, color);
-		}
-#endif  //VISUALLY_ANALYZE_BVH
-
-		//catch bugs in tree data
-		btAssert(walkIterations < subTreeSize);
-
-		walkIterations++;
-		//PCK: unsigned instead of bool
-		aabbOverlap = testQuantizedAabbAgainstQuantizedAabb(quantizedQueryAabbMin, quantizedQueryAabbMax, rootNode->m_quantizedAabbMin, rootNode->m_quantizedAabbMax);
-		isLeafNode = rootNode->isLeafNode();
-
-		if (isLeafNode && aabbOverlap)
-		{
-			nodeCallback->processNode(rootNode->getPartId(), rootNode->getTriangleIndex());
-		}
-
-		//PCK: unsigned instead of bool
-		if ((aabbOverlap != 0) || isLeafNode)
-		{
-			rootNode++;
-			curIndex++;
-		}
-		else
-		{
-			escapeIndex = rootNode->getEscapeIndex();
-			rootNode += escapeIndex;
-			curIndex += escapeIndex;
-		}
-	}
-}
-
 //This traversal can be called from Playstation 3 SPU
 void btQuantizedBvh::walkStacklessQuantizedTreeCacheFriendly(btNodeOverlapCallback* nodeCallback, unsigned short int* quantizedQueryAabbMin, unsigned short int* quantizedQueryAabbMax) const
 {
@@ -729,6 +594,61 @@ void btQuantizedBvh::walkStacklessQuantizedTreeCacheFriendly(btNodeOverlapCallba
 			walkStacklessQuantizedTree(nodeCallback, quantizedQueryAabbMin, quantizedQueryAabbMax,
 									   subtree.m_rootNodeIndex,
 									   subtree.m_rootNodeIndex + subtree.m_subtreeSize);
+		}
+	}
+}
+
+void btQuantizedBvh::walkStacklessQuantizedTree(btNodeOverlapCallback* nodeCallback, unsigned short int* quantizedQueryAabbMin, unsigned short int* quantizedQueryAabbMax, int startNodeIndex, int endNodeIndex) const {
+	btAssert(m_useQuantization);
+
+	int curIndex = startNodeIndex;
+	int walkIterations = 0;
+	int subTreeSize = endNodeIndex - startNodeIndex;
+	(void)subTreeSize;
+
+	const btQuantizedBvhNode* rootNode = &m_quantizedContiguousNodes[startNodeIndex];
+	int escapeIndex;
+
+	bool isLeafNode;
+	//PCK: unsigned instead of bool
+	unsigned aabbOverlap;
+
+	while (curIndex < endNodeIndex) {
+		//#define VISUALLY_ANALYZE_BVH 1
+#ifdef VISUALLY_ANALYZE_BVH
+		//some code snippet to debugDraw aabb, to visually analyze bvh structure
+		static int drawPatch = 0;
+		//need some global access to a debugDrawer
+		extern btIDebugDraw* debugDrawerPtr;
+		if (curIndex == drawPatch) {
+			btVector3 aabbMin, aabbMax;
+			aabbMin = unQuantize(rootNode->m_quantizedAabbMin);
+			aabbMax = unQuantize(rootNode->m_quantizedAabbMax);
+			btVector3 color(1, 0, 0);
+			debugDrawerPtr->drawAabb(aabbMin, aabbMax, color);
+		}
+#endif  //VISUALLY_ANALYZE_BVH
+
+		//catch bugs in tree data
+		btAssert(walkIterations < subTreeSize);
+
+		walkIterations++;
+		//PCK: unsigned instead of bool
+		aabbOverlap = testQuantizedAabbAgainstQuantizedAabb(quantizedQueryAabbMin, quantizedQueryAabbMax, rootNode->m_quantizedAabbMin, rootNode->m_quantizedAabbMax);
+		isLeafNode = rootNode->isLeafNode();
+
+		if (isLeafNode && aabbOverlap) {
+			nodeCallback->processNode(rootNode->getPartId(), rootNode->getTriangleIndex());
+		}
+
+		//PCK: unsigned instead of bool
+		if ((aabbOverlap != 0) || isLeafNode) {
+			rootNode++;
+			curIndex++;
+		} else {
+			escapeIndex = rootNode->getEscapeIndex();
+			rootNode += escapeIndex;
+			curIndex += escapeIndex;
 		}
 	}
 }
