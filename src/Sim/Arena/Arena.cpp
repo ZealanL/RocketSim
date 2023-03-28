@@ -3,11 +3,52 @@
 #include "../../RocketSim.h"
 #include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionDispatch/btDefaultCollisionConfiguration.h"
 #include "../../../libsrc/bullet3-3.24/BulletCollision/BroadphaseCollision/btDbvtBroadphase.h"
+#include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btBoxShape.h"
+#include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btSphereShape.h"
 #include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btStaticPlaneShape.h"
 #include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btBvhTriangleMeshShape.h"
-#include "../../../libsrc/bullet3-3.24/BulletCollision//CollisionDispatch/btCollisionDispatcher.h"
+#include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionDispatch/btCollisionDispatcher.h"
 #include "../../../libsrc/bullet3-3.24/BulletDynamics/ConstraintSolver/btSequentialImpulseConstraintSolver.h"
 #include "../../../libsrc/bullet3-3.24/BulletDynamics/Dynamics/btDiscreteDynamicsWorld.h"
+
+RSAPI void Arena::SetMutatorConfig(const MutatorConfig& mutatorConfig) {
+
+	bool
+		ballRadiusChanged = mutatorConfig.ballRadius != this->_mutatorConfig.ballRadius,
+		ballMassChanged = mutatorConfig.ballMass != this->_mutatorConfig.ballMass,
+		carMassChanged = mutatorConfig.carMass != this->_mutatorConfig.carMass,
+		gravityChanged = mutatorConfig.gravity != this->_mutatorConfig.gravity;
+
+	this->_mutatorConfig = mutatorConfig;
+
+	_bulletWorld->setGravity(mutatorConfig.gravity * UU_TO_BT);
+	
+	if (ballRadiusChanged) {
+		// We'll need to remake the ball
+		_bulletWorld->removeCollisionObject(ball->_rigidBody);
+		delete ball->_collisionShape;
+		delete ball->_rigidBody;
+		ball->_BulletSetup(_bulletWorld, mutatorConfig);
+	} else if (ballMassChanged) {
+		btVector3 newBallInertia;
+		ball->_collisionShape->calculateLocalInertia(mutatorConfig.ballMass, newBallInertia);
+		ball->_rigidBody->setMassProps(mutatorConfig.ballMass, newBallInertia);
+	}
+
+	if (carMassChanged) {
+		for (Car* car : _cars) {
+			btVector3 newCarInertia;
+			car->_childHitboxShape->calculateLocalInertia(mutatorConfig.carMass, newCarInertia);
+			car->_rigidBody->setMassProps(mutatorConfig.ballMass, newCarInertia);
+		}
+	}
+
+	// Update ball rigidbody physics values for world contact
+	// NOTE: Cars don't use their rigidbody physics values for world contact
+	ball->_rigidBody->setFriction(mutatorConfig.ballWorldFriction);
+	ball->_rigidBody->setRestitution(mutatorConfig.ballWorldRestitution);
+	ball->_rigidBody->setDamping(mutatorConfig.ballDrag, 0);
+}
 
 Car* Arena::AddCar(Team team, const CarConfig& config) {
 	Car* car = Car::_AllocateCar();
@@ -17,8 +58,8 @@ Car* Arena::AddCar(Team team, const CarConfig& config) {
 	car->team = team;
 	car->id = ++_lastCarID;
 
-	car->_BulletSetup(_bulletWorld);
-	car->Respawn();
+	car->_BulletSetup(_bulletWorld, _mutatorConfig);
+	car->Respawn(_mutatorConfig.carSpawnBoostAmount);
 
 	return car;
 }
@@ -193,7 +234,7 @@ void Arena::_BtCallback_OnCarBallCollision(Car* car, Ball* ball, btManifoldPoint
 		btVector3 forwardDirAdjustment = carForward * hitDir.dot(carForward) * (1 - BALL_CAR_EXTRA_IMPULSE_FORWARD_SCALE);
 		hitDir = (hitDir - forwardDirAdjustment).normalized();
 
-		btVector3 addedVel = (hitDir * relSpeed) * BALL_CAR_EXTRA_IMPULSE_FACTOR_CURVE.GetOutput(relSpeed);
+		btVector3 addedVel = (hitDir * relSpeed) * BALL_CAR_EXTRA_IMPULSE_FACTOR_CURVE.GetOutput(relSpeed) * _mutatorConfig.ballHitExtraForceScale;
 		ball->_internalState.ballHitInfo.extraHitVel = addedVel;
 
 		// Velocity won't be actually added until the end of this tick
@@ -238,8 +279,20 @@ void Arena::_BtCallback_OnCarCarCollision(Car* car1, Car* car2, btManifoldPoint&
 				bool hitWithBumper = (localPoint.x * BT_TO_UU) > BUMP_MIN_FORWARD_DIST;
 				if (hitWithBumper) {
 
-					if (state.isSupersonic) {
-						car2->Demolish();
+					bool isDemo;
+					switch (_mutatorConfig.demoMode) {
+					case DemoMode::ON_CONTACT:
+						isDemo = true; // BOOM
+						break;
+					case DemoMode::DISABLED:
+						isDemo = false;
+						break;
+					default:
+						isDemo = state.isSupersonic;
+					}
+
+					if (isDemo) {
+						car2->Demolish(_mutatorConfig.respawnDelay);
 					} else {
 						bool groundHit = car2->_internalState.isOnGround;
 
@@ -251,11 +304,12 @@ void Arena::_BtCallback_OnCarCarCollision(Car* car1, Car* car2, btManifoldPoint&
 
 						Vec bumpImpulse =
 							velDir * baseScale +
-							hitUpDir * BUMP_UPWARD_VEL_AMOUNT_CURVE.GetOutput(speedTowardsOtherCar);
+							hitUpDir * BUMP_UPWARD_VEL_AMOUNT_CURVE.GetOutput(speedTowardsOtherCar)
+							* _mutatorConfig.bumpForceScale;
 
 						car2->_velocityImpulseCache += bumpImpulse * UU_TO_BT;
 						car1->_internalState.carContact.otherCarID = car2->id;
-						car1->_internalState.carContact.cooldownTimer = BUMP_COOLDOWN_TIME;
+						car1->_internalState.carContact.cooldownTimer = _mutatorConfig.bumpCooldownTime;
 					}
 				}
 			}
@@ -268,8 +322,8 @@ void Arena::_BtCallback_OnCarWorldCollision(Car* car, btCollisionObject* world, 
 	car->_internalState.worldContact.contactNormal = manifoldPoint.m_normalWorldOnB;
 
 	// Manually override manifold friction/restitution
-	manifoldPoint.m_combinedFriction = RLConst::CARWORLD_COLLISION_FRICTION;
-	manifoldPoint.m_combinedRestitution = RLConst::CARWORLD_COLLISION_RESTITUTION;
+	manifoldPoint.m_combinedFriction = _mutatorConfig.carWorldFriction;
+	manifoldPoint.m_combinedRestitution = _mutatorConfig.carWorldRestitution;
 }
 
 Arena::Arena(GameMode gameMode, float tickRate) {
@@ -281,6 +335,7 @@ Arena::Arena(GameMode gameMode, float tickRate) {
 
 	this->gameMode = gameMode;
 	this->tickTime = 1 / tickRate;
+	this->_mutatorConfig = MutatorConfig();
 
 	{ // Initialize world
 
@@ -299,7 +354,7 @@ Arena::Arena(GameMode gameMode, float tickRate) {
 			_bulletWorldParams.collisionConfig
 		);
 
-		_bulletWorld->setGravity(btVector3(0, 0, RLConst::GRAVITY_Z * UU_TO_BT));
+		_bulletWorld->setGravity(_mutatorConfig.gravity * UU_TO_BT);
 
 		// Adjust solver configuration to be closer to older Bullet (Rocket League's Bullet is from somewhere between 2013 and 2015)
 		auto& solverInfo = _bulletWorld->getSolverInfo();
@@ -327,15 +382,7 @@ Arena::Arena(GameMode gameMode, float tickRate) {
 	{ // Initialize ball
 		ball = Ball::_AllocBall();
 
-		float radius;
-		switch (gameMode) {
-		default:
-			radius = RLConst::BALL_COLLISION_RADIUS_NORMAL;
-			break;
-		}
-		radius *= UU_TO_BT;
-
-		ball->_BulletSetup(_bulletWorld, radius);
+		ball->_BulletSetup(_bulletWorld, _mutatorConfig);
 		ball->SetState(BallState());
 	}
 
@@ -390,6 +437,10 @@ void Arena::WriteToFile(std::filesystem::path path) {
 	{ // Serialize ball
 		ball->GetState().Serialize(out);
 	}
+
+	{ // Serialize mutators
+		_mutatorConfig.Serialize(out);
+	}
 }
 
 Arena* Arena::LoadFromFile(std::filesystem::path path) {
@@ -422,6 +473,8 @@ Arena* Arena::LoadFromFile(std::filesystem::path path) {
 			Car* newCar = newArena->DeserializeNewCar(in, team);
 			newCar->id = id;
 		}
+
+		newArena->_lastCarID = lastCarID;
 	}
 
 	// Deserialize boost pads
@@ -447,7 +500,11 @@ Arena* Arena::LoadFromFile(std::filesystem::path path) {
 		newArena->ball->SetState(ballState);
 	}
 
-	newArena->_lastCarID = lastCarID;
+	{ // Serialize mutators
+		newArena->_mutatorConfig.Deserialize(in);
+		newArena->SetMutatorConfig(newArena->_mutatorConfig);
+	}
+
 	return newArena;
 }
 
@@ -495,7 +552,7 @@ Car* Arena::DeserializeNewCar(DataStreamIn& in, Team team) {
 	car->team = team;
 	car->id = ++_lastCarID;
 
-	car->_BulletSetup(_bulletWorld);
+	car->_BulletSetup(_bulletWorld, _mutatorConfig);
 
 	CarState state = CarState();
 	state.Deserialize(in);
@@ -544,7 +601,7 @@ void Arena::Step(int ticksToSimulate) {
 				suspColGridPtr = NULL;
 			}
 #endif
-			car->_PreTickUpdate(tickTime, suspColGridPtr);
+			car->_PreTickUpdate(tickTime, _mutatorConfig, suspColGridPtr);
 		}
 
 		if (gameMode == GameMode::SOCCAR) {
@@ -572,25 +629,28 @@ void Arena::Step(int ticksToSimulate) {
 		_bulletWorld->stepSimulation(tickTime, 0, tickTime);
 
 		for (Car* car : _cars) {
-			car->_PostTickUpdate(tickTime);
-			car->_FinishPhysicsTick();
-
-			_boostPadGrid.CheckCollision(car);
+			car->_PostTickUpdate(tickTime, _mutatorConfig);
+			car->_FinishPhysicsTick(_mutatorConfig);
+			if (gameMode == GameMode::SOCCAR) {
+				_boostPadGrid.CheckCollision(car);
+			}
 		}
 
 		if (gameMode == GameMode::SOCCAR) {
 			for (BoostPad* pad : _boostPads)
-				pad->_PostTickUpdate(tickTime);
+				pad->_PostTickUpdate(tickTime, _mutatorConfig);
 		}
 
-		ball->_FinishPhysicsTick();
+		ball->_FinishPhysicsTick(_mutatorConfig);
 
-		if (_goalScoreCallback.func != NULL) { // Potentially fire goal score callback
-			float ballPosY = ball->_rigidBody->m_worldTransform.m_origin.y() * BT_TO_UU;
-			if (abs(ballPosY) > RLConst::SOCCAR_BALL_SCORE_THRESHOLD_Y) {
-				// Orange goal is at positive Y, so if the ball's Y is positive, it's in orange goal and thus blue scored
-				Team scoringTeam = (ballPosY > 0) ? Team::BLUE : Team::ORANGE;
-				_goalScoreCallback.func(this, scoringTeam, _goalScoreCallback.userInfo);
+		if (gameMode == GameMode::SOCCAR) {
+			if (_goalScoreCallback.func != NULL) { // Potentially fire goal score callback
+				float ballPosY = ball->_rigidBody->m_worldTransform.m_origin.y() * BT_TO_UU;
+				if (abs(ballPosY) > RLConst::SOCCAR_BALL_SCORE_THRESHOLD_Y) {
+					// Orange goal is at positive Y, so if the ball's Y is positive, it's in orange goal and thus blue scored
+					Team scoringTeam = (ballPosY > 0) ? Team::BLUE : Team::ORANGE;
+					_goalScoreCallback.func(this, scoringTeam, _goalScoreCallback.userInfo);
+				}
 			}
 		}
 

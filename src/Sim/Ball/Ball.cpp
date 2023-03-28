@@ -49,22 +49,22 @@ Ball* Ball::_AllocBall() {
 	return new Ball();
 }
 
-void Ball::_BulletSetup(btDynamicsWorld* bulletWorld, float radius) {
-	_collisionShape = new btSphereShape(radius);
+void Ball::_BulletSetup(btDynamicsWorld* bulletWorld, const MutatorConfig& mutatorConfig) {
+	_collisionShape = new btSphereShape(mutatorConfig.ballRadius * UU_TO_BT);
 
 	btRigidBody::btRigidBodyConstructionInfo constructionInfo =
-		btRigidBody::btRigidBodyConstructionInfo(RLConst::BALL_MASS_BT, NULL, _collisionShape);
+		btRigidBody::btRigidBodyConstructionInfo(mutatorConfig.ballMass, NULL, _collisionShape);
 
 	constructionInfo.m_startWorldTransform.setIdentity();
-	constructionInfo.m_startWorldTransform.setOrigin(btVector3(0, 0, radius));
+	constructionInfo.m_startWorldTransform.setOrigin(btVector3(0, 0, mutatorConfig.ballRadius * UU_TO_BT));
 
 	btVector3 localInertial;
-	_collisionShape->calculateLocalInertia(RLConst::BALL_MASS_BT, localInertial);
+	_collisionShape->calculateLocalInertia(mutatorConfig.ballMass, localInertial);
 
 	constructionInfo.m_localInertia = localInertial;
-	constructionInfo.m_linearDamping = RLConst::BALL_DRAG;
-	constructionInfo.m_friction = RLConst::BALL_FRICTION;
-	constructionInfo.m_restitution = RLConst::BALL_RESTITUTION;
+	constructionInfo.m_linearDamping = mutatorConfig.ballDrag;
+	constructionInfo.m_friction = mutatorConfig.ballWorldFriction;
+	constructionInfo.m_restitution = mutatorConfig.ballWorldRestitution;
 
 	_rigidBody = new btRigidBody(constructionInfo);
 	_rigidBody->setUserIndex(BT_USERINFO_TYPE_BALL);
@@ -78,7 +78,7 @@ void Ball::_BulletSetup(btDynamicsWorld* bulletWorld, float radius) {
 	bulletWorld->addRigidBody(_rigidBody);
 }
 
-void Ball::_FinishPhysicsTick() {
+void Ball::_FinishPhysicsTick(const MutatorConfig& mutatorConfig) {
 	using namespace RLConst;
 
 	// Add velocity cache
@@ -92,8 +92,9 @@ void Ball::_FinishPhysicsTick() {
 			vel = _rigidBody->m_linearVelocity,
 			angVel = _rigidBody->m_angularVelocity;
 
-		if (vel.length2() > (BALL_MAX_SPEED * UU_TO_BT) * (BALL_MAX_SPEED * UU_TO_BT))
-			vel = vel.normalized() * (BALL_MAX_SPEED * UU_TO_BT);
+		float ballMaxSpeedBT = mutatorConfig.ballMaxSpeed * UU_TO_BT;
+		if (vel.length2() > ballMaxSpeedBT * ballMaxSpeedBT)
+			vel = vel.normalized() * ballMaxSpeedBT;
 
 		if (angVel.length2() > (BALL_MAX_ANG_SPEED * BALL_MAX_ANG_SPEED))
 			angVel = angVel.normalized() * BALL_MAX_ANG_SPEED;

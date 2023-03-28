@@ -5,6 +5,8 @@
 #include "../../DataStream/DataStreamIn.h"
 #include "../../DataStream/DataStreamOut.h"
 
+#include "../MutatorConfig/MutatorConfig.h"
+
 struct BallHitInfo {
 	uint32_t carID = NULL; // ID of the car that hit the ball
 	Vec relativePosOnBall; // Position of the hit relative to the ball's position
@@ -56,10 +58,10 @@ public:
 
 	// For construction by Arena
 	static Ball* _AllocBall();
-	void _BulletSetup(struct btDynamicsWorld* bulletWorld, float radius);
+	void _BulletSetup(struct btDynamicsWorld* bulletWorld, const MutatorConfig& mutatorConfig);
 
 	Vec _velocityImpulseCache = { 0,0,0 };
-	void _FinishPhysicsTick();
+	void _FinishPhysicsTick(const MutatorConfig& mutatorConfig);
 
 	// Returns radius in BulletPhysics units
 	float GetRadiusBullet();

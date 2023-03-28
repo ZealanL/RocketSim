@@ -42,12 +42,12 @@ void Car::SetState(const CarState& state) {
 	_internalState = state;
 }
 
-void Car::Demolish() {
+void Car::Demolish(float respawnDelay) {
 	_internalState.isDemoed = true;
 	_internalState.demoRespawnTimer = RLConst::DEMO_RESPAWN_TIME;
 }
 
-void Car::Respawn(int seed) {
+void Car::Respawn(int seed, float boostAmount) {
 	using namespace RLConst;
 
 	CarState newState = CarState();
@@ -58,10 +58,11 @@ void Car::Respawn(int seed) {
 	newState.pos = Vec(spawnPos.x, spawnPos.y * (team == Team::BLUE ? 1 : -1), CAR_RESPAWN_Z);
 	newState.rotMat = Angle(spawnPos.yawAng + (team == Team::BLUE ? 0 : M_PI), 0.f, 0.f).ToRotMat();
 
+	newState.boost = boostAmount;
 	this->SetState(newState);
 }
 
-void Car::_PreTickUpdate(float tickTime, SuspensionCollisionGrid* grid) {
+void Car::_PreTickUpdate(float tickTime, const MutatorConfig& mutatorConfig, SuspensionCollisionGrid* grid) {
 	using namespace RLConst;
 
 #ifndef RS_MAX_SPEED
@@ -75,7 +76,7 @@ void Car::_PreTickUpdate(float tickTime, SuspensionCollisionGrid* grid) {
 		if (_internalState.isDemoed) {
 			_internalState.demoRespawnTimer = RS_MAX(_internalState.demoRespawnTimer - tickTime, 0);
 			if (_internalState.demoRespawnTimer == 0)
-				Respawn();
+				Respawn(mutatorConfig.carSpawnBoostAmount);
 		}
 
 		if (_internalState.isDemoed) {
@@ -356,17 +357,17 @@ void Car::_PreTickUpdate(float tickTime, SuspensionCollisionGrid* grid) {
 
 	// Apply boosting force and consume boost
 	if (_internalState.boost > 0 && _internalState.timeSpentBoosting > 0) {
-		_internalState.boost = RS_MAX(_internalState.boost - BOOST_USED_PER_SECOND * tickTime, 0);
+		_internalState.boost = RS_MAX(_internalState.boost - mutatorConfig.boostUsedPerSecond * tickTime, 0);
 
 		float forceScale = 1;
 		if (_internalState.isOnGround && forwardSpeed_UU > BOOST_FORCE_GROUND_DECAY_MIN_VEL)
 			forceScale = (1 - BOOST_FORCE_GROUND_DECAY_AMOUNT);
 
-		_rigidBody->applyCentralImpulse(forwardDir * BOOST_FORCE * forceScale * tickTime);
+		_rigidBody->applyCentralImpulse(forwardDir * mutatorConfig.boostForce * forceScale * tickTime);
 	}
 }
 
-void Car::_PostTickUpdate(float tickTime) {
+void Car::_PostTickUpdate(float tickTime, const MutatorConfig& mutatorConfig) {
 
 	if (_internalState.isDemoed)
 		return;
@@ -407,7 +408,7 @@ void Car::_PostTickUpdate(float tickTime) {
 			// Start jumping
 			_internalState.isJumping = true;
 			_internalState.jumpTime = 0;
-			btVector3 jumpStartForce = GetUpDir() * JUMP_IMMEDIATE_FORCE * UU_TO_BT;
+			btVector3 jumpStartForce = GetUpDir() * mutatorConfig.jumpImmediateForce * UU_TO_BT;
 			_rigidBody->applyCentralImpulse(jumpStartForce * CAR_MASS_BT);
 		}
 
@@ -416,7 +417,7 @@ void Car::_PostTickUpdate(float tickTime) {
 			_internalState.jumpTime += tickTime;
 
 			// Apply extra long-jump force
-			btVector3 extraJumpForce = GetUpDir() * JUMP_ACCEL;
+			btVector3 extraJumpForce = GetUpDir() * mutatorConfig.jumpAccel;
 
 			if (_internalState.jumpTime < JUMP_MIN_TIME) {
 				extraJumpForce *= 0.75f;
@@ -628,7 +629,7 @@ void Car::_PostTickUpdate(float tickTime) {
 	_internalState.lastControls = controls;
 }
 
-void Car::_FinishPhysicsTick() {
+void Car::_FinishPhysicsTick(const MutatorConfig& mutatorConfig) {
 	using namespace RLConst;
 
 	if (_internalState.isDemoed)
@@ -671,7 +672,7 @@ Car* Car::_AllocateCar() {
 	return new Car();
 }
 
-void Car::_BulletSetup(btDynamicsWorld* bulletWorld) {
+void Car::_BulletSetup(btDynamicsWorld* bulletWorld, const MutatorConfig& mutatorConfig) {
 	{ // Set up rigidbody and collision shapes
 		_childHitboxShape = new btBoxShape((config.hitboxSize * UU_TO_BT) / 2);
 		_compoundShape = new btCompoundShape();
@@ -758,6 +759,8 @@ void Car::_BulletSetup(btDynamicsWorld* bulletWorld) {
 			}
 		}
 	}
+
+	_internalState.boost = mutatorConfig.carSpawnBoostAmount;
 }
 
 Car::~Car() {

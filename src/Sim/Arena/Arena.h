@@ -7,6 +7,7 @@
 #include "../../CollisionMeshFile/CollisionMeshFile.h"
 #include "../BoostPad/BoostPadGrid/BoostPadGrid.h"
 #include "../SuspensionCollisionGrid/SuspensionCollisionGrid.h"
+#include "../MutatorConfig/MutatorConfig.h"
 
 struct btDiscreteDynamicsWorld;
 struct btCollisionConfiguration;
@@ -40,6 +41,11 @@ public:
 	BoostPadGrid _boostPadGrid;
 
 	SuspensionCollisionGrid _suspColGrid;
+
+	MutatorConfig _mutatorConfig;
+
+	const MutatorConfig& GetMutatorConfig() { return _mutatorConfig; }
+	RSAPI void SetMutatorConfig(const MutatorConfig& mutatorConfig);
 
 	// Time in seconds each tick (1/tickrate)
 	float tickTime; 

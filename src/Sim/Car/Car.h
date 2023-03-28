@@ -6,6 +6,8 @@
 #include "../../DataStream/DataStreamIn.h"
 #include "../../DataStream/DataStreamOut.h"
 
+#include "../MutatorConfig/MutatorConfig.h"
+
 struct CarState {
 	// Position in world space (UU)
 	Vec pos = { 0, 0, 17 };
@@ -107,10 +109,10 @@ public:
 	RSAPI CarState GetState();
 	RSAPI void SetState(const CarState& state);
 
-	void Demolish();
+	void Demolish(float respawnDelay = RLConst::DEMO_RESPAWN_TIME);
 
 	// Respawn the car, called after we have been demolished and waited for the respawn timer
-	void Respawn(int seed = -1);
+	void Respawn(int seed = -1, float boostAmount = RLConst::BOOST_SPAWN_AMOUNT);
 
 	btVehicleRL* _bulletVehicle;
 	struct btVehicleRaycaster* _bulletVehicleRaycaster;
@@ -139,15 +141,15 @@ public:
 
 	~Car();
 
-	void _PreTickUpdate(float tickTime, struct SuspensionCollisionGrid* grid);
-	void _PostTickUpdate(float tickTime);
+	void _PreTickUpdate(float tickTime, const MutatorConfig& mutatorConfig, struct SuspensionCollisionGrid* grid);
+	void _PostTickUpdate(float tickTime, const MutatorConfig& mutatorConfig);
 
 	Vec _velocityImpulseCache = { 0,0,0 };
-	void _FinishPhysicsTick();
+	void _FinishPhysicsTick(const MutatorConfig& mutatorConfig);
 
 	// For construction by Arena
 	static Car* _AllocateCar();
-	void _BulletSetup(struct btDynamicsWorld* bulletWorld);
+	void _BulletSetup(struct btDynamicsWorld* bulletWorld, const MutatorConfig& mutatorConfig);
 	
 	void _Serialize(DataStreamOut& out);
 	void _Deserialize(DataStreamIn& in);
