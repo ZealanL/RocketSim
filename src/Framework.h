@@ -68,6 +68,8 @@ typedef uint8_t byte;
 // Returns sign of number (1 if positive, -1 if negative, and 0 if 0)
 #define RS_SGN(val) ((val > 0) - (val < 0))
 
+#define RS_WARN(s) RS_LOG("WARNING: " << s)
+
 #define RS_ERR_CLOSE(s) { RS_LOG("FATAL ERROR: " << s); exit(EXIT_FAILURE); }
 
 #if 0 // FOR FUTURE USE: Exports/imports setup

@@ -29,7 +29,7 @@ void RocketSim::Init(std::filesystem::path collisionMeshesFolder) {
 	beginInitMutex.lock();
 	{
 		if (stage != RocketSimStage::UNINITIALIZED) {
-			RS_LOG("WARNING: RocketSim::Init() called again after already initialized, ignoring...");
+			RS_WARN("RocketSim::Init() called again after already initialized, ignoring...");
 			beginInitMutex.unlock();
 			return;
 		}
