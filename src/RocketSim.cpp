@@ -3,6 +3,13 @@
 #include "../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btBvhTriangleMeshShape.h"
 #include "../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btTriangleMesh.h"
 
+constexpr uint32_t SOCCAR_ARENA_MESH_HASHES[] = {
+	0xA160BAF9, 0x2811EEE8, 0xB81AC8B9, 0x760358D3,
+	0x73AE4940, 0x918F4A4E, 0x1F8EE550, 0x255BA8C1,
+	0x14B84668, 0xEC759EBF, 0x94FB0D5C, 0xDEA07102,
+	0xBD4FBEA8,	0x39A47F63, 0x3D79D25D, 0xD84C7A68
+};
+
 static std::mutex beginInitMutex;
 
 static RocketSimStage stage = RocketSimStage::UNINITIALIZED;
@@ -52,6 +59,14 @@ void RocketSim::Init(std::filesystem::path collisionMeshesFolder) {
 					"Failed to find arena collision mesh files at \"" << soccarMeshesFolder
 					<< "\", the collision meshes folder should be in our current directory " << std::filesystem::current_path() << ".")
 			}
+
+			// How many of each collision mesh hash we have loaded
+			// There should be 1 for each of the SOCCAR_ARENA_MESH_HASHES
+			std::unordered_map<uint32_t, int> hashCounts;
+			std::unordered_set<uint32_t> targetHashes;
+			for (uint32_t targetHash : SOCCAR_ARENA_MESH_HASHES)
+				targetHashes.insert(targetHash);
+
 			// Load collision meshes
 			auto dirItr = std::filesystem::directory_iterator(soccarMeshesFolder);
 			for (auto& entry : dirItr) {
@@ -59,6 +74,19 @@ void RocketSim::Init(std::filesystem::path collisionMeshesFolder) {
 				if (entryPath.has_extension() && entryPath.extension() == COLLISION_MESH_FILE_EXTENSION) {
 					CollisionMeshFile meshFile = {};
 					meshFile.ReadFromFile(entryPath.string());
+					int& hashCount = hashCounts[meshFile.hash];
+
+					if (hashCount > 0) {
+						RS_WARN(MSG_PREFIX << "Collision mesh \"" << entryPath << "\" is a duplicate (0x" << std::hex << meshFile.hash << "), " <<
+							"already loaded a mesh with the same hash."
+						);
+					} else if (targetHashes.count(meshFile.hash) == 0) {
+						RS_WARN(MSG_PREFIX <<
+							"Collision mesh \"" << entryPath << "\" does not match any known soccar collision file (0x" << std::hex << meshFile.hash << "), " <<
+							"make sure they were dumped from a normal soccar arena."
+						)
+					}
+					hashCount++;
 
 					btTriangleMesh* triMesh = meshFile.MakeBulletMesh();
 					auto bvtMesh = new btBvhTriangleMeshShape(triMesh, false);

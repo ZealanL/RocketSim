@@ -10,7 +10,6 @@ void CollisionMeshFile::ReadFromFile(string filePath) {
 	constexpr char ERROR_PREFIX_STR[] = " > CollisionMeshFile::ReadFromFile(): ";
 
 	DataStreamIn in = DataStreamIn(filePath, false);
-	RS_LOG("  > Loading \"" << filePath << "\"...");
 
 	constexpr int MAX_VERT_OR_TRI_COUNT = 1000 * 1000;
 
@@ -52,7 +51,9 @@ void CollisionMeshFile::ReadFromFile(string filePath) {
 	}
 #endif
 
-	RS_LOG("   > Loaded " << numVertices << " verts and " << numTris << " tris.");
+	UpdateHash();
+
+	RS_LOG("   > Loaded " << numVertices << " verts and " << numTris << " tris, hash: 0x" << std::hex << hash);
 }
 
 btTriangleMesh* CollisionMeshFile::MakeBulletMesh() {
@@ -65,4 +66,30 @@ btTriangleMesh* CollisionMeshFile::MakeBulletMesh() {
 		result->addTriangleIndices(tri.vertexIndexes[0], tri.vertexIndexes[1], tri.vertexIndexes[2]);
 
 	return result;
+}
+
+void CollisionMeshFile::UpdateHash() {
+	uint32_t hash = vertices.size() + (tris.size() * vertices.size());
+
+	// From: https://stackoverflow.com/questions/20511347/a-good-hash-function-for-a-vector/72073933#72073933
+
+	constexpr uint32_t
+		HASH_VAL_MUELLER = 0x45D9F3B,
+		HASH_VAL_SHIFT = 0x9E3779B9;
+
+	for (Triangle& tri : tris) {
+		for (int i = 0; i < 3; i++) {
+			for (int j = 0; j < 3; j++) {
+				uint32_t curVal = vertices[tri.vertexIndexes[i]][j];
+
+				for (int k = 0; k < 2; k++)
+					curVal = ((curVal >> 16) ^ curVal) * HASH_VAL_MUELLER;
+				
+				curVal = (curVal >> 16) ^ curVal;
+				hash ^= curVal + HASH_VAL_SHIFT + (hash << 6) + (hash >> 2);
+			}
+		}
+	}
+
+	this->hash = hash;
 }
