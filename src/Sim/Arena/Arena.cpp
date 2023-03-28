@@ -45,6 +45,9 @@ Car* Arena::GetCarFromID(uint32_t id) {
 }
 
 void Arena::SetGoalScoreCallback(GoalScoreEventFn callbackFunc, void* userInfo) {
+	if (gameMode == GameMode::THE_VOID)
+		RS_ERR_CLOSE("Cannot set a goal score callback when on THE_VOID gamemode!");
+
 	_goalScoreCallback.func = callbackFunc;
 	_goalScoreCallback.userInfo = userInfo;
 }
@@ -101,8 +104,10 @@ void Arena::ResetToRandomKickoff(int seed) {
 
 	ball->SetState(BallState());
 
-	for (BoostPad* boostPad : _boostPads)
-		boostPad->SetState(BoostPadState());
+	if (gameMode == GameMode::SOCCAR) {
+		for (BoostPad* boostPad : _boostPads)
+			boostPad->SetState(BoostPadState());
+	}
 }
 
 bool Arena::_BulletContactAddedCallback(
@@ -302,19 +307,21 @@ Arena::Arena(GameMode gameMode, float tickRate) {
 		solverInfo.m_erp2 = 0.8f;
 	}
 
-	_SetupArenaCollisionShapes();
+	if (gameMode == GameMode::SOCCAR) {
+		_SetupArenaCollisionShapes();
 
 #ifndef RS_NO_SUSPCOLGRID
-	_suspColGrid = RocketSim::GetDefaultSuspColGrid();
-	_suspColGrid.defaultWorldCollisionRB = _worldCollisionRBs.front();
+		_suspColGrid = RocketSim::GetDefaultSuspColGrid();
+		_suspColGrid.defaultWorldCollisionRB = _worldCollisionRBs.front();
 #endif
 
-	// Give arena collision shapes the proper restitution/friction values
-	for (auto rb : _worldCollisionRBs) {
-		// TODO: Move to RLConst
-		rb->setRestitution(0.3f);
-		rb->setFriction(0.6f);
-		rb->setRollingFriction(0.f);
+		// Give arena collision shapes the proper restitution/friction values
+		for (auto rb : _worldCollisionRBs) {
+			// TODO: Move to RLConst
+			rb->setRestitution(0.3f);
+			rb->setFriction(0.6f);
+			rb->setRollingFriction(0.f);
+		}
 	}
 
 	{ // Initialize ball
@@ -332,7 +339,7 @@ Arena::Arena(GameMode gameMode, float tickRate) {
 		ball->SetState(BallState());
 	}
 
-	{ // Initialize boost pads
+	if (gameMode == GameMode::SOCCAR) { // Initialize boost pads
 		using namespace RLConst::BoostPads;
 
 		_boostPads.reserve(LOCS_AMOUNT_BIG + LOCS_AMOUNT_SMALL);
@@ -374,7 +381,7 @@ void Arena::WriteToFile(std::filesystem::path path) {
 		}
 	}
 
-	{ // Serialize boost pads
+	if (gameMode == GameMode::SOCCAR) { // Serialize boost pads
 		out.Write<uint32_t>(_boostPads.size());
 		for (auto pad : _boostPads)
 			pad->GetState().Serialize(out);
@@ -417,12 +424,13 @@ Arena* Arena::LoadFromFile(std::filesystem::path path) {
 		}
 	}
 
-	{ // Deserialize boost pads
+	// Deserialize boost pads
+	if (gameMode == GameMode::SOCCAR) {
 		uint32_t boostPadAmount = in.Read<uint32_t>();
 
 #ifndef RS_MAX_SPEED
 		if (boostPadAmount != newArena->_boostPads.size())
-			RS_ERR_CLOSE(ERROR_PREFIX << "Failed to load from " << path << 
+			RS_ERR_CLOSE(ERROR_PREFIX << "Failed to load from " << path <<
 				", different boost pad amount written in file (" << boostPadAmount << "/" << newArena->_boostPads.size() << ")");
 #endif
 
@@ -433,7 +441,7 @@ Arena* Arena::LoadFromFile(std::filesystem::path path) {
 		}
 	}
 
-	{ // Serialize ball
+	{ // Deserialize ball
 		BallState ballState = BallState();
 		ballState.Deserialize(in);
 		newArena->ball->SetState(ballState);
@@ -461,6 +469,7 @@ Arena* Arena::Clone(bool copyCallbacks) {
 		newCar->_velocityImpulseCache = car->_velocityImpulseCache;
 	}
 
+	
 	assert(this->_boostPads.size() == newArena->_boostPads.size());
 	for (int i = 0; i < this->_boostPads.size(); i++)
 		newArena->_boostPads[i]->SetState(this->_boostPads[i]->GetState());
@@ -502,46 +511,62 @@ void Arena::Step(int ticksToSimulate) {
 
 		{ // Ball zero-vel sleeping
 			if (ball->_rigidBody->m_linearVelocity.length2() == 0 && ball->_rigidBody->m_angularVelocity.length2() == 0) {
-				// hooooooonk mimimimimimimi hooooooonk mimimimimimimi
 				ball->_rigidBody->setActivationState(ISLAND_SLEEPING);
 			} else {
 				ball->_rigidBody->setActivationState(ACTIVE_TAG);
 			}
 		}
 
+		if (gameMode == GameMode::SOCCAR) {
 #ifndef RS_NO_SUSPCOLGRID
-		{ // Add dynamic bodies to suspension grid
-			for (Car* car : _cars) {
+			{ // Add dynamic bodies to suspension grid
+				for (Car* car : _cars) {
+					btVector3 min, max;
+					car->_rigidBody->getAabb(min, max);
+					_suspColGrid.UpdateDynamicCollisions(min, max, false);
+				}
+
 				btVector3 min, max;
-				car->_rigidBody->getAabb(min, max);
+				ball->_rigidBody->getAabb(min, max);
 				_suspColGrid.UpdateDynamicCollisions(min, max, false);
 			}
-
-			btVector3 min, max;
-			ball->_rigidBody->getAabb(min, max);
-			_suspColGrid.UpdateDynamicCollisions(min, max, false);
-		}
 #endif
+		}
 
-		for (Car* car : _cars)
-			car->_PreTickUpdate(tickTime, &_suspColGrid);
-
-#ifndef RS_NO_SUSPCOLGRID
-		{ // Remove dynamic bodies from suspension grid
-			for (Car* car : _cars) {
-				btVector3 min, max;
-				car->_rigidBody->getAabb(min, max);
-				_suspColGrid.UpdateDynamicCollisions(min, max, true);
+		for (Car* car : _cars) {
+			SuspensionCollisionGrid* suspColGridPtr;
+#ifdef NO_SUSPCOLGRID
+			suspColGridPtr = NULL;
+#else
+			if (gameMode == GameMode::SOCCAR) {
+				suspColGridPtr = &_suspColGrid;
+			} else {
+				suspColGridPtr = NULL;
 			}
-
-			btVector3 min, max;
-			ball->_rigidBody->getAabb(min, max);
-			_suspColGrid.UpdateDynamicCollisions(min, max, true);
-		}
 #endif
+			car->_PreTickUpdate(tickTime, suspColGridPtr);
+		}
 
-		for (BoostPad* pad : _boostPads)
-			pad->_PreTickUpdate(tickTime);
+		if (gameMode == GameMode::SOCCAR) {
+#ifndef RS_NO_SUSPCOLGRID
+			{ // Remove dynamic bodies from suspension grid
+				for (Car* car : _cars) {
+					btVector3 min, max;
+					car->_rigidBody->getAabb(min, max);
+					_suspColGrid.UpdateDynamicCollisions(min, max, true);
+				}
+
+				btVector3 min, max;
+				ball->_rigidBody->getAabb(min, max);
+				_suspColGrid.UpdateDynamicCollisions(min, max, true);
+			}	
+#endif
+		}
+
+		if (gameMode == GameMode::SOCCAR) {
+			for (BoostPad* pad : _boostPads)
+				pad->_PreTickUpdate(tickTime);
+		}
 
 		// Update world
 		_bulletWorld->stepSimulation(tickTime, 0, tickTime);
@@ -553,8 +578,10 @@ void Arena::Step(int ticksToSimulate) {
 			_boostPadGrid.CheckCollision(car);
 		}
 
-		for (BoostPad* pad : _boostPads)
-			pad->_PostTickUpdate(tickTime);
+		if (gameMode == GameMode::SOCCAR) {
+			for (BoostPad* pad : _boostPads)
+				pad->_PostTickUpdate(tickTime);
+		}
 
 		ball->_FinishPhysicsTick();
 
@@ -586,16 +613,18 @@ Arena::~Arena() {
 	for (Car* car : _cars)
 		delete car;
 
-	// Remove all boost pads
-	for (BoostPad* boostPad : _boostPads)
-		delete boostPad;
+	if (gameMode == GameMode::SOCCAR) {
+		// Remove all boost pads
+		for (BoostPad* boostPad : _boostPads)
+			delete boostPad;
 
-	{ // Delete collision RBs and shapes
-		for (btRigidBody* colRB : _worldCollisionRBs)
-			delete colRB;
+		{ // Delete collision RBs and shapes
+			for (btRigidBody* colRB : _worldCollisionRBs)
+				delete colRB;
 
-		for (btCollisionShape* colObject : _worldCollisionShapes)
-			delete colObject;
+			for (btCollisionShape* colObject : _worldCollisionShapes)
+				delete colObject;
+		}
 	}
 
 	// Remove ball

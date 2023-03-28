@@ -16,6 +16,9 @@ struct btSequentialImpulseConstraintSolver;
 
 enum class GameMode : byte {
 	SOCCAR,
+
+	// No goals, boosts, or arena - cars/ball will fall infinitely, ball is frozen until touched
+	THE_VOID, 
 	// More coming soon!
 };
 
