@@ -90,8 +90,6 @@ void RocketSim::Init(std::filesystem::path collisionMeshesFolder) {
 
 					btTriangleMesh* triMesh = meshFile.MakeBulletMesh();
 					auto bvtMesh = new btBvhTriangleMeshShape(triMesh, false);
-					bvtMesh->buildOptimizedBvh();
-
 					arenaCollisionMeshes.push_back(bvtMesh);
 				}
 			}
