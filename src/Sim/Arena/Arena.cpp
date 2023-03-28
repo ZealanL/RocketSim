@@ -592,7 +592,7 @@ void Arena::Step(int ticksToSimulate) {
 
 		for (Car* car : _cars) {
 			SuspensionCollisionGrid* suspColGridPtr;
-#ifdef NO_SUSPCOLGRID
+#ifdef RS_NO_SUSPCOLGRID
 			suspColGridPtr = NULL;
 #else
 			if (gameMode == GameMode::SOCCAR) {
