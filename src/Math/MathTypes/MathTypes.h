@@ -115,6 +115,18 @@ struct RS_ALIGN_16 Vec {
 		return Vec(-x, -y, -z, -_w);
 	}
 
+	bool operator==(const Vec& other) const {
+		return
+			(x == other.x) &&
+			(y == other.y) &&
+			(z == other.y) &&
+			(_w == other._w);
+	}
+
+	bool operator!=(const Vec& other) const {
+		return !(*this == other);
+	}
+
 	friend std::ostream& operator<<(std::ostream& stream, const Vec& vec) {
 		stream << "[ " << vec.x << ", " << vec.y << ", " << vec.z << " ]";
 		return stream;
@@ -184,6 +196,17 @@ struct RS_ALIGN_16 RotMat {
 
 	RSAPI RotMat& operator*=(float val);
 	RSAPI RotMat& operator/=(float val);
+
+	bool operator==(const RotMat& other) const {
+		return
+			(forward == other.forward) &&
+			(right == other.right) &&
+			(up == other.up);
+	}
+
+	bool operator!=(const RotMat& other) const {
+		return !(*this == other);
+	}
 
 	Vec Dot(const Vec& vec) const {
 		return Vec(
