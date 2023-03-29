@@ -109,17 +109,6 @@ public:
 	}
 };
 
-void btTriangleMeshShape::setLocalScaling(const btVector3& scaling)
-{
-	m_meshInterface->setScaling(scaling);
-	recalcLocalAabb();
-}
-
-const btVector3& btTriangleMeshShape::getLocalScaling() const
-{
-	return m_meshInterface->getScaling();
-}
-
 //#define DEBUG_TRIANGLE_MESH
 
 void btTriangleMeshShape::processAllTriangles(btTriangleCallback* callback, const btVector3& aabbMin, const btVector3& aabbMax) const

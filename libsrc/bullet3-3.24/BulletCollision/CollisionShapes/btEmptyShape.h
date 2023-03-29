@@ -38,24 +38,12 @@ public:
 	///getAabb's default implementation is brute force, expected derived classes to implement a fast dedicated version
 	void getAabb(const btTransform& t, btVector3& aabbMin, btVector3& aabbMax) const;
 
-	virtual void setLocalScaling(const btVector3& scaling)
-	{
-		m_localScaling = scaling;
-	}
-	virtual const btVector3& getLocalScaling() const
-	{
-		return m_localScaling;
-	}
+	void calculateLocalInertia(btScalar mass, btVector3 & inertia) const;
 
-	virtual void calculateLocalInertia(btScalar mass, btVector3 & inertia) const;
-
-	virtual const char* getName() const
+	const char* getName() const
 	{
 		return "Empty";
 	}
-
-protected:
-	btVector3 m_localScaling;
 };
 
 #endif  //BT_EMPTY_SHAPE_H

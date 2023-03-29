@@ -89,18 +89,8 @@ public:
 		btVector3 newMargin(getMargin(), getMargin(), getMargin());
 		m_implicitShapeDimensions = implicitShapeDimensionsWithMargin - newMargin;
 	}
-	virtual void setLocalScaling(const btVector3& scaling)
-	{
-		btVector3 oldMargin(getMargin(), getMargin(), getMargin());
-		btVector3 implicitShapeDimensionsWithMargin = m_implicitShapeDimensions + oldMargin;
-		btVector3 unScaledImplicitShapeDimensionsWithMargin = implicitShapeDimensionsWithMargin / m_localScaling;
 
-		btConvexInternalShape::setLocalScaling(scaling);
-
-		m_implicitShapeDimensions = (unScaledImplicitShapeDimensionsWithMargin * m_localScaling) - oldMargin;
-	}
-
-	void getAabb(const btTransform& t, btVector3& aabbMin, btVector3& aabbMax) const override;
+	void getAabb(const btTransform& t, btVector3& aabbMin, btVector3& aabbMax) const;
 
 	void calculateLocalInertia(btScalar mass, btVector3 & inertia) const;
 

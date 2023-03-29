@@ -483,12 +483,6 @@ void btPolyhedralConvexShape::calculateLocalInertia(btScalar mass, btVector3& in
 #endif  //__SPU__
 }
 
-void btPolyhedralConvexAabbCachingShape::setLocalScaling(const btVector3& scaling)
-{
-	btConvexInternalShape::setLocalScaling(scaling);
-	recalcLocalAabb();
-}
-
 btPolyhedralConvexAabbCachingShape::btPolyhedralConvexAabbCachingShape()
 	: btPolyhedralConvexShape(),
 	  m_localAabbMin(1, 1, 1),

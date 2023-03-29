@@ -14,6 +14,13 @@ subject to the following restrictions:
 */
 #include "../CollisionShapes/btCollisionShape.h"
 
+#include "../CollisionShapes/btBoxShape.h"
+#include "../CollisionShapes/btTriangleShape.h"
+#include "../CollisionShapes/btSphereShape.h"
+#include "../CollisionShapes/btStaticPlaneShape.h"
+#include "../CollisionShapes/btTriangleMeshShape.h"
+#include "../CollisionShapes/btCompoundShape.h"
+
 /*
   Make sure this dummy function never changes so that it
   can be used by probes that are checking whether the
@@ -24,6 +31,63 @@ extern "C"
 	void btBulletCollisionProbe();
 
 	void btBulletCollisionProbe() {}
+}
+
+void btCollisionShape::getAabb(const btTransform& t, btVector3& aabbMin, btVector3& aabbMax) const {
+	switch (m_shapeType) {
+	case BOX_SHAPE_PROXYTYPE:
+		return ((btBoxShape*)this)->getAabb(t, aabbMin, aabbMax);
+	case TRIANGLE_SHAPE_PROXYTYPE:
+		return ((btTriangleShape*)this)->getAabb(t, aabbMin, aabbMax);
+	case SPHERE_SHAPE_PROXYTYPE:
+		return ((btSphereShape*)this)->getAabb(t, aabbMin, aabbMax);
+	case STATIC_PLANE_PROXYTYPE:
+		return ((btStaticPlaneShape*)this)->getAabb(t, aabbMin, aabbMax);
+	case TRIANGLE_MESH_SHAPE_PROXYTYPE:
+		return ((btTriangleMeshShape*)this)->getAabb(t, aabbMin, aabbMax);
+	case COMPOUND_SHAPE_PROXYTYPE:
+		return ((btCompoundShape*)this)->getAabb(t, aabbMin, aabbMax);
+	default:
+		btAssert(false);
+	}
+}
+
+btScalar btCollisionShape::getMargin() const {
+	switch (m_shapeType) {
+	case BOX_SHAPE_PROXYTYPE:
+		return ((btBoxShape*)this)->getMargin();
+	case TRIANGLE_SHAPE_PROXYTYPE:
+		return ((btTriangleShape*)this)->getMargin();
+	case SPHERE_SHAPE_PROXYTYPE:
+		return ((btSphereShape*)this)->getMargin();
+	case STATIC_PLANE_PROXYTYPE:
+		return ((btStaticPlaneShape*)this)->getMargin();
+	case TRIANGLE_MESH_SHAPE_PROXYTYPE:
+		return ((btTriangleMeshShape*)this)->getMargin();
+	case COMPOUND_SHAPE_PROXYTYPE:
+		return ((btCompoundShape*)this)->getMargin();
+	default:
+		btAssert(false);
+	}
+}
+
+void btCollisionShape::setMargin(btScalar margin) {
+	switch (m_shapeType) {
+	case BOX_SHAPE_PROXYTYPE:
+		return ((btBoxShape*)this)->setMargin(margin);
+	case TRIANGLE_SHAPE_PROXYTYPE:
+		return ((btTriangleShape*)this)->setMargin(margin);
+	case SPHERE_SHAPE_PROXYTYPE:
+		return ((btSphereShape*)this)->setMargin(margin);
+	case STATIC_PLANE_PROXYTYPE:
+		return ((btStaticPlaneShape*)this)->setMargin(margin);
+	case TRIANGLE_MESH_SHAPE_PROXYTYPE:
+		return ((btTriangleMeshShape*)this)->setMargin(margin);
+	case COMPOUND_SHAPE_PROXYTYPE:
+		return ((btCompoundShape*)this)->setMargin(margin);
+	default:
+		btAssert(false);
+	}
 }
 
 void btCollisionShape::getBoundingSphere(btVector3& center, btScalar& radius) const

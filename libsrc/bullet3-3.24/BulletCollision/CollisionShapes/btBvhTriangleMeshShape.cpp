@@ -119,15 +119,6 @@ void btBvhTriangleMeshShape::processAllTriangles(btTriangleCallback* callback, c
 #endif  //DISABLE_BVH
 }
 
-void btBvhTriangleMeshShape::setLocalScaling(const btVector3& scaling)
-{
-	if ((getLocalScaling() - scaling).length2() > SIMD_EPSILON)
-	{
-		btTriangleMeshShape::setLocalScaling(scaling);
-		buildOptimizedBvh();
-	}
-}
-
 void btBvhTriangleMeshShape::buildOptimizedBvh()
 {
 	if (m_ownsBvh)
@@ -150,9 +141,4 @@ void btBvhTriangleMeshShape::setOptimizedBvh(btOptimizedBvh* bvh, const btVector
 
 	m_bvh = bvh;
 	m_ownsBvh = false;
-	// update the scaling without rebuilding the bvh
-	if ((getLocalScaling() - scaling).length2() > SIMD_EPSILON)
-	{
-		btTriangleMeshShape::setLocalScaling(scaling);
-	}
 }

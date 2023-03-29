@@ -67,8 +67,6 @@ protected:
 
 	btScalar m_collisionMargin;
 
-	btVector3 m_localScaling;
-
 public:
 	BT_DECLARE_ALIGNED_ALLOCATOR();
 
@@ -120,13 +118,6 @@ public:
 	/** Re-calculate the local Aabb. Is called at the end of removeChildShapes. 
 	Use this yourself if you modify the children or their transforms. */
 	void recalculateLocalAabb();
-
-	void setLocalScaling(const btVector3& scaling);
-
-	const btVector3& getLocalScaling() const
-	{
-		return m_localScaling;
-	}
 
 	void calculateLocalInertia(btScalar mass, btVector3 & inertia) const;
 

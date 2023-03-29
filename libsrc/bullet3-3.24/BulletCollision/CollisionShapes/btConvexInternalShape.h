@@ -29,9 +29,6 @@ ATTRIBUTE_ALIGNED16(class)
 btConvexInternalShape : public btConvexShape
 {
 protected:
-	//local scaling. collisionMargin is not scaled !
-	btVector3 m_localScaling;
-
 	btVector3 m_implicitShapeDimensions;
 
 	btScalar m_collisionMargin;
@@ -87,18 +84,7 @@ public:
 	}
 
 	void getAabbSlow(const btTransform& t, btVector3& aabbMin, btVector3& aabbMax) const;
-
-	void setLocalScaling(const btVector3& scaling);
-	const btVector3& getLocalScaling() const
-	{
-		return m_localScaling;
-	}
-
-	const btVector3& getLocalScalingNV() const
-	{
-		return m_localScaling;
-	}
-
+	
 	void setMargin(btScalar margin)
 	{
 		m_collisionMargin = margin;
@@ -158,7 +144,6 @@ protected:
 	}
 
 public:
-	void setLocalScaling(const btVector3& scaling);
 
 	void getAabb(const btTransform& t, btVector3& aabbMin, btVector3& aabbMax) const;
 

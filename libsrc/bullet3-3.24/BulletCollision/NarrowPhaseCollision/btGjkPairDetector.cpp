@@ -347,8 +347,8 @@ btScalar btVec3PointTriDist2(const btVector3 *P,
 	// computed.
 
 	btVector3 d1, d2, a;
-	double u, v, w, p, q, r;
-	double s, t, dist, dist2;
+	btScalar u, v, w, p, q, r;
+	btScalar s, t, dist, dist2;
 	btVector3 witness2;
 
 	btVec3Sub2(&d1, B, x0);

@@ -20,7 +20,7 @@ btBoxShape::btBoxShape(const btVector3& boxHalfExtents)
 	m_shapeType = BOX_SHAPE_PROXYTYPE;
 
 	btVector3 margin(getMargin(), getMargin(), getMargin());
-	m_implicitShapeDimensions = (boxHalfExtents * m_localScaling) - margin;
+	m_implicitShapeDimensions = boxHalfExtents - margin;
 
 	setSafeMargin(boxHalfExtents);
 };

@@ -43,14 +43,17 @@ public:
 	}
 
 	///getAabb returns the axis aligned bounding box in the coordinate frame of the given transform t.
-	virtual void getAabb(const btTransform& t, btVector3& aabbMin, btVector3& aabbMax) const = 0;
+	void getAabb(const btTransform& t, btVector3& aabbMin, btVector3& aabbMax) const;
 
-	virtual void getBoundingSphere(btVector3 & center, btScalar & radius) const;
+	btScalar getMargin() const;
+	void setMargin(btScalar margin);
+
+	void getBoundingSphere(btVector3& center, btScalar& radius) const;
 
 	///getAngularMotionDisc returns the maximum radius needed for Conservative Advancement to handle time-of-impact with rotations.
-	virtual btScalar getAngularMotionDisc() const;
+	btScalar getAngularMotionDisc() const;
 
-	virtual btScalar getContactBreakingThreshold(btScalar defaultContactThresholdFactor) const;
+	btScalar getContactBreakingThreshold(btScalar defaultContactThresholdFactor) const;
 
 	///calculateTemporalAabb calculates the enclosing aabb for the moving object over interval [0..timeStep)
 	///result is conservative
@@ -95,9 +98,10 @@ public:
 	}
 
 #ifndef __SPU__
-	virtual void setLocalScaling(const btVector3& scaling) = 0;
-	virtual const btVector3& getLocalScaling() const = 0;
-	virtual void calculateLocalInertia(btScalar mass, btVector3 & inertia) const = 0;
+
+	void calculateLocalInertia(btScalar mass, btVector3& inertia) const {
+		btAssert(false);
+	}
 
 	//debugging support
 	virtual const char* getName() const = 0;
@@ -110,12 +114,10 @@ public:
 
 	///the getAnisotropicRollingFrictionDirection can be used in combination with setAnisotropicFriction
 	///See Bullet/Demos/RollingFrictionDemo for an example
-	virtual btVector3 getAnisotropicRollingFrictionDirection() const
+	btVector3 getAnisotropicRollingFrictionDirection() const
 	{
 		return btVector3(1, 1, 1);
 	}
-	virtual void setMargin(btScalar margin) = 0;
-	virtual btScalar getMargin() const = 0;
 
 	///optional user data pointer
 	void setUserPointer(void* userPtr)

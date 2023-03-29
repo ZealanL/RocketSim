@@ -53,9 +53,6 @@ public:
 
 	void calculateLocalInertia(btScalar mass, btVector3 & inertia) const;
 
-	void setLocalScaling(const btVector3& scaling);
-	const btVector3& getLocalScaling() const;
-
 	btStridingMeshInterface* getMeshInterface()
 	{
 		return m_meshInterface;

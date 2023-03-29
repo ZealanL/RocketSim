@@ -73,8 +73,6 @@ public:
 	//debugging
 	virtual const char* getName() const { return "BVHTRIANGLEMESH"; }
 
-	virtual void setLocalScaling(const btVector3& scaling);
-
 	btOptimizedBvh* getOptimizedBvh()
 	{
 		return m_bvh;

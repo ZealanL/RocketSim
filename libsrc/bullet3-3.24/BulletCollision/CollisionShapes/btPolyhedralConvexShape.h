@@ -96,9 +96,7 @@ public:
 		btTransformAabb(m_localAabbMin, m_localAabbMax, margin, trans, aabbMin, aabbMax);
 	}
 
-	virtual void setLocalScaling(const btVector3& scaling);
-
-	virtual void getAabb(const btTransform& t, btVector3& aabbMin, btVector3& aabbMax) const;
+	void getAabb(const btTransform& t, btVector3& aabbMin, btVector3& aabbMax) const;
 
 	void recalcLocalAabb();
 };

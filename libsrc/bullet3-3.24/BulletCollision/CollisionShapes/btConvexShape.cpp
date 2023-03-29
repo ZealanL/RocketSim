@@ -62,9 +62,9 @@ void btConvexShape::project(const btTransform& trans, const btVector3& dir, btSc
 	}
 }
 
-static btVector3 convexHullSupport(const btVector3& localDirOrg, const btVector3* points, int numPoints, const btVector3& localScaling)
+static btVector3 convexHullSupport(const btVector3& localDirOrg, const btVector3* points, int numPoints)
 {
-	btVector3 vec = localDirOrg * localScaling;
+	btVector3 vec = localDirOrg;
 
 #if defined(__CELLOS_LV2__) && defined(__SPU__)
 
@@ -107,7 +107,7 @@ static btVector3 convexHullSupport(const btVector3& localDirOrg, const btVector3
 		v_idxMax = spu_sel(i, v_idxMax, retGtMax);
 	}
 	int ptIndex = spu_extract(v_idxMax, 0);
-	const btVector3& supVec = points[ptIndex] * localScaling;
+	const btVector3& supVec = points[ptIndex];
 	return supVec;
 #else
 
@@ -118,7 +118,7 @@ static btVector3 convexHullSupport(const btVector3& localDirOrg, const btVector3
 	{
 		ptIndex = 0;
 	}
-	btVector3 supVec = points[ptIndex] * localScaling;
+	btVector3 supVec = points[ptIndex];
 	return supVec;
 #endif  //__SPU__
 }
@@ -251,7 +251,7 @@ void btConvexShape::getAabbNonVirtual(const btTransform& t, btVector3& aabbMin, 
 		case SPHERE_SHAPE_PROXYTYPE:
 		{
 			btSphereShape* sphereShape = (btSphereShape*)this;
-			btScalar radius = sphereShape->getImplicitShapeDimensions().getX();  // * convexShape->getLocalScaling().getX();
+			btScalar radius = sphereShape->getImplicitShapeDimensions().x();
 			btScalar margin = radius + sphereShape->getMarginNonVirtual();
 			const btVector3& center = t.getOrigin();
 			btVector3 extent(margin, margin, margin);

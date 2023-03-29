@@ -18,7 +18,7 @@ subject to the following restrictions:
 #include "../../LinearMath/btTransformUtil.h"
 
 btStaticPlaneShape::btStaticPlaneShape(const btVector3& planeNormal, btScalar planeConstant)
-	: btConcaveShape(), m_planeNormal(planeNormal.normalized()), m_planeConstant(planeConstant), m_localScaling(btScalar(1.), btScalar(1.), btScalar(1.))
+	: btConcaveShape(), m_planeNormal(planeNormal.normalized()), m_planeConstant(planeConstant)
 {
 	m_shapeType = STATIC_PLANE_PROXYTYPE;
 	//	btAssert( btFuzzyZero(m_planeNormal.length() - btScalar(1.)) );
@@ -81,13 +81,4 @@ void btStaticPlaneShape::calculateLocalInertia(btScalar mass, btVector3& inertia
 	//moving concave objects not supported
 
 	inertia.setValue(btScalar(0.), btScalar(0.), btScalar(0.));
-}
-
-void btStaticPlaneShape::setLocalScaling(const btVector3& scaling)
-{
-	m_localScaling = scaling;
-}
-const btVector3& btStaticPlaneShape::getLocalScaling() const
-{
-	return m_localScaling;
 }

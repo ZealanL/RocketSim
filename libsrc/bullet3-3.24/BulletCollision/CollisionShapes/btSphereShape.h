@@ -29,7 +29,6 @@ public:
 	btSphereShape(btScalar radius) : btConvexInternalShape()
 	{
 		m_shapeType = SPHERE_SHAPE_PROXYTYPE;
-		m_localScaling.setValue(1.0, 1.0, 1.0);
 		m_implicitShapeDimensions.setZero();
 		m_implicitShapeDimensions.setX(radius);
 		m_collisionMargin = radius;
@@ -45,7 +44,7 @@ public:
 
 	void getAabb(const btTransform& t, btVector3& aabbMin, btVector3& aabbMax) const;
 
-	btScalar getRadius() const { return m_implicitShapeDimensions.getX() * m_localScaling.getX(); }
+	btScalar getRadius() const { return m_implicitShapeDimensions.x(); }
 
 	void setUnscaledRadius(btScalar radius)
 	{
