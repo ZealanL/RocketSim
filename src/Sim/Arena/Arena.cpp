@@ -291,6 +291,9 @@ void Arena::_BtCallback_OnCarCarCollision(Car* car1, Car* car2, btManifoldPoint&
 						isDemo = state.isSupersonic;
 					}
 
+					if (isDemo && !_mutatorConfig.enableTeamDemos)
+						isDemo = car1->team != car2->team;
+
 					if (isDemo) {
 						car2->Demolish(_mutatorConfig.respawnDelay);
 					} else {
