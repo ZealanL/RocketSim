@@ -37,11 +37,11 @@ public:
 
 	void processAllTriangles(btTriangleCallback* callback, const btVector3& aabbMin, const btVector3& aabbMax) const;
 
-	virtual btScalar getMargin() const
+	btScalar getMargin() const
 	{
 		return m_collisionMargin;
 	}
-	virtual void setMargin(btScalar collisionMargin)
+	void setMargin(btScalar collisionMargin)
 	{
 		m_collisionMargin = collisionMargin;
 	}

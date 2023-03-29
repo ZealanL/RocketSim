@@ -37,9 +37,9 @@ public:
 
 	virtual ~btTriangleMeshShape();
 
-	virtual btVector3 localGetSupportingVertex(const btVector3& vec) const;
+	btVector3 localGetSupportingVertex(const btVector3& vec) const;
 
-	virtual btVector3 localGetSupportingVertexWithoutMargin(const btVector3& vec) const
+	btVector3 localGetSupportingVertexWithoutMargin(const btVector3& vec) const
 	{
 		btAssert(0);
 		return localGetSupportingVertex(vec);
@@ -47,14 +47,14 @@ public:
 
 	void recalcLocalAabb();
 
-	virtual void getAabb(const btTransform& t, btVector3& aabbMin, btVector3& aabbMax) const;
+	void getAabb(const btTransform& t, btVector3& aabbMin, btVector3& aabbMax) const;
 
 	void processAllTriangles(btTriangleCallback * callback, const btVector3& aabbMin, const btVector3& aabbMax) const;
 
-	virtual void calculateLocalInertia(btScalar mass, btVector3 & inertia) const;
+	void calculateLocalInertia(btScalar mass, btVector3 & inertia) const;
 
-	virtual void setLocalScaling(const btVector3& scaling);
-	virtual const btVector3& getLocalScaling() const;
+	void setLocalScaling(const btVector3& scaling);
+	const btVector3& getLocalScaling() const;
 
 	btStridingMeshInterface* getMeshInterface()
 	{

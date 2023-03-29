@@ -115,30 +115,30 @@ public:
 	}
 
 	///getAabb's default implementation is brute force, expected derived classes to implement a fast dedicated version
-	virtual void getAabb(const btTransform& t, btVector3& aabbMin, btVector3& aabbMax) const;
+	void getAabb(const btTransform& t, btVector3& aabbMin, btVector3& aabbMax) const;
 
 	/** Re-calculate the local Aabb. Is called at the end of removeChildShapes. 
 	Use this yourself if you modify the children or their transforms. */
-	virtual void recalculateLocalAabb();
+	void recalculateLocalAabb();
 
-	virtual void setLocalScaling(const btVector3& scaling);
+	void setLocalScaling(const btVector3& scaling);
 
-	virtual const btVector3& getLocalScaling() const
+	const btVector3& getLocalScaling() const
 	{
 		return m_localScaling;
 	}
 
-	virtual void calculateLocalInertia(btScalar mass, btVector3 & inertia) const;
+	void calculateLocalInertia(btScalar mass, btVector3 & inertia) const;
 
-	virtual void setMargin(btScalar margin)
+	void setMargin(btScalar margin)
 	{
 		m_collisionMargin = margin;
 	}
-	virtual btScalar getMargin() const
+	btScalar getMargin() const
 	{
 		return m_collisionMargin;
 	}
-	virtual const char* getName() const
+	const char* getName() const
 	{
 		return "Compound";
 	}
