@@ -2,6 +2,7 @@
 
 #include "../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btBvhTriangleMeshShape.h"
 #include "../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btTriangleMesh.h"
+#include "../libsrc/bullet3-3.24/BulletCollision/CollisionDispatch/btInternalEdgeUtility.h"
 
 constexpr uint32_t SOCCAR_ARENA_MESH_HASHES[] = {
 	0xA160BAF9, 0x2811EEE8, 0xB81AC8B9, 0x760358D3,
@@ -106,7 +107,11 @@ void RocketSim::Init(std::filesystem::path collisionMeshesFolder) {
 				}
 			}
 
-			arenaCollisionMeshes.push_back(new btBvhTriangleMeshShape(masterTriMesh, false));
+			btBvhTriangleMeshShape* bvhShape = new btBvhTriangleMeshShape(masterTriMesh, false);
+			btTriangleInfoMap* infoMap = new btTriangleInfoMap();
+			btGenerateInternalEdgeInfo(bvhShape, infoMap);
+			bvhShape->setTriangleInfoMap(infoMap);
+			arenaCollisionMeshes.push_back(bvhShape);
 
 			if (arenaCollisionMeshes.empty()) {
 				RS_ERR_CLOSE(MSG_PREFIX <<

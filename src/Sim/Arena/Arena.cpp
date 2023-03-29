@@ -11,6 +11,8 @@
 #include "../../../libsrc/bullet3-3.24/BulletDynamics/ConstraintSolver/btSequentialImpulseConstraintSolver.h"
 #include "../../../libsrc/bullet3-3.24/BulletDynamics/Dynamics/btDiscreteDynamicsWorld.h"
 
+#include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionDispatch/btInternalEdgeUtility.h"
+
 RSAPI void Arena::SetMutatorConfig(const MutatorConfig& mutatorConfig) {
 
 	bool
@@ -153,8 +155,8 @@ void Arena::ResetToRandomKickoff(int seed) {
 
 bool Arena::_BulletContactAddedCallback(
 	btManifoldPoint& contactPoint,
-	const btCollisionObjectWrapper* objA, int partIdA, int indexA,
-	const btCollisionObjectWrapper* objB, int partIdB, int indexB) {
+	const btCollisionObjectWrapper* objA, int partID_A, int indexA,
+	const btCollisionObjectWrapper* objB, int partID_B, int indexB) {
 
 	auto
 		bodyA = objA->m_collisionObject,
@@ -196,6 +198,12 @@ bool Arena::_BulletContactAddedCallback(
 				_BtCallback_OnCarWorldCollision(car, (btCollisionObject*)bodyB->getUserPointer(), contactPoint);
 		}
 	}
+	
+	btAdjustInternalEdgeContacts(
+		contactPoint, 
+		(shouldSwap ? objA : objB), (shouldSwap ? objB : objA),
+		(shouldSwap ? partID_A : partID_B), (shouldSwap ? indexA : indexB)
+	);
 	return true;
 }
 
@@ -685,8 +693,15 @@ Arena::~Arena() {
 			for (btRigidBody* colRB : _worldCollisionRBs)
 				delete colRB;
 
-			for (btCollisionShape* colObject : _worldCollisionShapes)
-				delete colObject;
+			for (btCollisionShape* colShape : _worldCollisionShapes) {
+				if (colShape->getShapeType() == TRIANGLE_MESH_SHAPE_PROXYTYPE) {
+					auto bvhShape = (btBvhTriangleMeshShape*)colShape;
+					btTriangleInfoMap* triInfoMap = bvhShape->getTriangleInfoMap();
+					if (triInfoMap)
+						delete triInfoMap;
+				}
+				delete colShape;
+			}
 		}
 	}
 
@@ -702,6 +717,7 @@ btRigidBody* Arena::_AddStaticCollisionShape(btCollisionShape* shape, bool isOwn
 	shapeRB->setWorldTransform(btTransform(btMatrix3x3::getIdentity(), posBT));
 	_worldCollisionRBs.push_back(shapeRB);
 
+	shapeRB->setUserPointer(this);
 	_bulletWorld->addRigidBody(shapeRB);
 	return shapeRB;
 }
