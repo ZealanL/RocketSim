@@ -558,7 +558,7 @@ void btQuantizedBvh::walkStacklessQuantizedTreeAgainstRay(btNodeOverlapCallback*
 
 		if (isLeafNode && rayBoxOverlap)
 		{
-			nodeCallback->processNode(rootNode->getPartId(), rootNode->getTriangleIndex());
+			((MyNodeOverlapCallback*)nodeCallback)->processNode(rootNode->getPartId(), rootNode->getTriangleIndex());
 		}
 
 		//PCK: unsigned instead of bool
@@ -638,7 +638,7 @@ void btQuantizedBvh::walkStacklessQuantizedTree(btNodeOverlapCallback* nodeCallb
 		isLeafNode = rootNode->isLeafNode();
 
 		if (isLeafNode && aabbOverlap) {
-			nodeCallback->processNode(rootNode->getPartId(), rootNode->getTriangleIndex());
+			((MyNodeOverlapCallback*)nodeCallback)->processNode(rootNode->getPartId(), rootNode->getTriangleIndex());
 		}
 
 		//PCK: unsigned instead of bool
