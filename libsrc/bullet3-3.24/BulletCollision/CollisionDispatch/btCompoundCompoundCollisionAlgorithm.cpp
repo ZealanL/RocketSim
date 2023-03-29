@@ -91,7 +91,7 @@ struct btCompoundCompoundLeafCallback : btDbvt::ICollide
 
 	const btCollisionObjectWrapper* m_compound0ColObjWrap;
 	const btCollisionObjectWrapper* m_compound1ColObjWrap;
-	btDispatcher* m_dispatcher;
+	btCollisionDispatcher* m_dispatcher;
 	const btDispatcherInfo& m_dispatchInfo;
 	btManifoldResult* m_resultOut;
 
@@ -101,7 +101,7 @@ struct btCompoundCompoundLeafCallback : btDbvt::ICollide
 
 	btCompoundCompoundLeafCallback(const btCollisionObjectWrapper* compound1ObjWrap,
 								   const btCollisionObjectWrapper* compound0ObjWrap,
-								   btDispatcher* dispatcher,
+								   btCollisionDispatcher* dispatcher,
 								   const btDispatcherInfo& dispatchInfo,
 								   btManifoldResult* resultOut,
 								   btHashedSimplePairCache* childAlgorithmsCache,

@@ -86,7 +86,7 @@ class btCollisionWorld
 protected:
 	btAlignedObjectArray<btCollisionObject*> m_collisionObjects;
 
-	btDispatcher* m_dispatcher1;
+	btCollisionDispatcher* m_dispatcher1;
 
 	btDispatcherInfo m_dispatchInfo;
 
@@ -98,7 +98,7 @@ protected:
 
 public:
 	//this constructor doesn't own the dispatcher and paircache/broadphase
-	btCollisionWorld(btDispatcher* dispatcher, btBroadphaseInterface* broadphasePairCache, btCollisionConfiguration* collisionConfiguration);
+	btCollisionWorld(btCollisionDispatcher* dispatcher, btBroadphaseInterface* broadphasePairCache, btCollisionConfiguration* collisionConfiguration);
 
 	virtual ~btCollisionWorld();
 
@@ -122,12 +122,12 @@ public:
 		return m_broadphasePairCache->getOverlappingPairCache();
 	}
 
-	btDispatcher* getDispatcher()
+	btCollisionDispatcher* getDispatcher()
 	{
 		return m_dispatcher1;
 	}
 
-	const btDispatcher* getDispatcher() const
+	const btCollisionDispatcher* getDispatcher() const
 	{
 		return m_dispatcher1;
 	}
@@ -463,7 +463,7 @@ public:
 
 	virtual void removeCollisionObject(btCollisionObject* collisionObject);
 
-	virtual void performDiscreteCollisionDetection();
+	void performDiscreteCollisionDetection();
 
 	btDispatcherInfo& getDispatchInfo()
 	{

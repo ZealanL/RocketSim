@@ -17,7 +17,7 @@ subject to the following restrictions:
 #define BT_DISCRETE_DYNAMICS_WORLD_H
 
 #include "btDynamicsWorld.h"
-class btDispatcher;
+class btCollisionDispatcher;
 class btOverlappingPairCache;
 class btSequentialImpulseConstraintSolver;
 class btSimulationIslandManager;
@@ -93,7 +93,7 @@ public:
 	BT_DECLARE_ALIGNED_ALLOCATOR();
 
 	///this btDiscreteDynamicsWorld constructor gets created objects from the user, and will not delete those
-	btDiscreteDynamicsWorld(btDispatcher* dispatcher, btBroadphaseInterface* pairCache, btSequentialImpulseConstraintSolver* constraintSolver, btCollisionConfiguration* collisionConfiguration);
+	btDiscreteDynamicsWorld(btCollisionDispatcher* dispatcher, btBroadphaseInterface* pairCache, btSequentialImpulseConstraintSolver* constraintSolver, btCollisionConfiguration* collisionConfiguration);
 
 	virtual ~btDiscreteDynamicsWorld();
 

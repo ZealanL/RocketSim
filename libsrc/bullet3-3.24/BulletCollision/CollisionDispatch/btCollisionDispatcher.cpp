@@ -17,6 +17,7 @@ subject to the following restrictions:
 #include "../../LinearMath/btQuickprof.h"
 
 #include "../BroadphaseCollision/btCollisionAlgorithm.h"
+#include "../CollisionDispatch/btCollisionDispatcher.h"
 
 #include "../CollisionShapes/btCollisionShape.h"
 #include "../CollisionDispatch/btCollisionObject.h"
@@ -213,7 +214,7 @@ public:
 	}
 };
 
-void btCollisionDispatcher::dispatchAllCollisionPairs(btOverlappingPairCache* pairCache, const btDispatcherInfo& dispatchInfo, btDispatcher* dispatcher)
+void btCollisionDispatcher::dispatchAllCollisionPairs(btOverlappingPairCache* pairCache, const btDispatcherInfo& dispatchInfo, btCollisionDispatcher* dispatcher)
 {
 	//m_blockedForChanges = true;
 

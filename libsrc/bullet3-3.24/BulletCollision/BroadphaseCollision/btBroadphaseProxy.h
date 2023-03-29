@@ -20,7 +20,7 @@ subject to the following restrictions:
 #include "../../LinearMath/btVector3.h"
 #include "../../LinearMath/btAlignedAllocator.h"
 
-/// btDispatcher uses these types
+/// btCollisionDispatcher uses these types
 /// IMPORTANT NOTE:The types are ordered polyhedral, implicit convex and concave
 /// to facilitate type checking
 /// CUSTOM_POLYHEDRAL_SHAPE_TYPE,CUSTOM_CONVEX_SHAPE_TYPE and CUSTOM_CONCAVE_SHAPE_TYPE can be used to extend Bullet without modifying source code
@@ -173,7 +173,7 @@ class btCollisionAlgorithm;
 struct btBroadphaseProxy;
 
 ///The btBroadphasePair class contains a pair of aabb-overlapping objects.
-///A btDispatcher can search a btCollisionAlgorithm that performs exact/narrowphase collision detection on the actual collision shapes.
+///A btCollisionDispatcher can search a btCollisionAlgorithm that performs exact/narrowphase collision detection on the actual collision shapes.
 ATTRIBUTE_ALIGNED16(struct)
 btBroadphasePair
 {

@@ -17,11 +17,11 @@ subject to the following restrictions:
 #define BT_CONVEX_CONCAVE_COLLISION_ALGORITHM_H
 
 #include "btActivatingCollisionAlgorithm.h"
-#include "../BroadphaseCollision/btDispatcher.h"
+#include "../CollisionDispatch/btCollisionDispatcher.h"
 #include "../BroadphaseCollision/btBroadphaseInterface.h"
 #include "../CollisionShapes/btTriangleCallback.h"
 #include "../NarrowPhaseCollision/btPersistentManifold.h"
-class btDispatcher;
+class btCollisionDispatcher;
 #include "../BroadphaseCollision/btBroadphaseProxy.h"
 #include "btCollisionCreateFunc.h"
 
@@ -36,7 +36,7 @@ btConvexTriangleCallback : public btTriangleCallback
 	const btCollisionObjectWrapper* m_triBodyWrap;
 
 	btManifoldResult* m_resultOut;
-	btDispatcher* m_dispatcher;
+	btCollisionDispatcher* m_dispatcher;
 	const btDispatcherInfo* m_dispatchInfoPtr;
 	btScalar m_collisionMarginTriangle;
 
@@ -47,7 +47,7 @@ public:
 
 	btPersistentManifold* m_manifoldPtr;
 
-	btConvexTriangleCallback(btDispatcher * dispatcher, const btCollisionObjectWrapper* body0Wrap, const btCollisionObjectWrapper* body1Wrap, bool isSwapped);
+	btConvexTriangleCallback(btCollisionDispatcher * dispatcher, const btCollisionObjectWrapper* body0Wrap, const btCollisionObjectWrapper* body1Wrap, bool isSwapped);
 
 	void setTimeStepAndCounters(btScalar collisionMarginTriangle, const btDispatcherInfo& dispatchInfo, const btCollisionObjectWrapper* convexBodyWrap, const btCollisionObjectWrapper* triBodyWrap, btManifoldResult* resultOut);
 

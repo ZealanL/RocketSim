@@ -17,7 +17,7 @@ subject to the following restrictions:
 #define BT_BROADPHASE_INTERFACE_H
 
 struct btDispatcherInfo;
-class btDispatcher;
+class btCollisionDispatcher;
 #include "btBroadphaseProxy.h"
 
 class btOverlappingPairCache;
@@ -51,9 +51,9 @@ class btBroadphaseInterface
 public:
 	virtual ~btBroadphaseInterface() {}
 
-	virtual btBroadphaseProxy* createProxy(const btVector3& aabbMin, const btVector3& aabbMax, int shapeType, void* userPtr, int collisionFilterGroup, int collisionFilterMask, btDispatcher* dispatcher) = 0;
-	virtual void destroyProxy(btBroadphaseProxy* proxy, btDispatcher* dispatcher) = 0;
-	virtual void setAabb(btBroadphaseProxy* proxy, const btVector3& aabbMin, const btVector3& aabbMax, btDispatcher* dispatcher) = 0;
+	virtual btBroadphaseProxy* createProxy(const btVector3& aabbMin, const btVector3& aabbMax, int shapeType, void* userPtr, int collisionFilterGroup, int collisionFilterMask, btCollisionDispatcher* dispatcher) = 0;
+	virtual void destroyProxy(btBroadphaseProxy* proxy, btCollisionDispatcher* dispatcher) = 0;
+	virtual void setAabb(btBroadphaseProxy* proxy, const btVector3& aabbMin, const btVector3& aabbMax, btCollisionDispatcher* dispatcher) = 0;
 	virtual void getAabb(btBroadphaseProxy* proxy, btVector3& aabbMin, btVector3& aabbMax) const = 0;
 
 	virtual void rayTest(const btVector3& rayFrom, const btVector3& rayTo, btBroadphaseRayCallback& rayCallback, const btVector3& aabbMin = btVector3(0, 0, 0), const btVector3& aabbMax = btVector3(0, 0, 0)) = 0;
@@ -61,7 +61,7 @@ public:
 	virtual void aabbTest(const btVector3& aabbMin, const btVector3& aabbMax, btBroadphaseAabbCallback& callback) = 0;
 
 	///calculateOverlappingPairs is optional: incremental algorithms (sweep and prune) might do it during the set aabb
-	virtual void calculateOverlappingPairs(btDispatcher* dispatcher) = 0;
+	virtual void calculateOverlappingPairs(btCollisionDispatcher* dispatcher) = 0;
 
 	virtual btOverlappingPairCache* getOverlappingPairCache() = 0;
 	virtual const btOverlappingPairCache* getOverlappingPairCache() const = 0;
@@ -71,7 +71,7 @@ public:
 	virtual void getBroadphaseAabb(btVector3& aabbMin, btVector3& aabbMax) const = 0;
 
 	///reset broadphase internal structures, to ensure determinism/reproducability
-	virtual void resetPool(btDispatcher* dispatcher) { (void)dispatcher; };
+	virtual void resetPool(btCollisionDispatcher* dispatcher) { (void)dispatcher; };
 
 	virtual void printStats() = 0;
 };

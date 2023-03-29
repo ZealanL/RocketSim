@@ -95,13 +95,13 @@ struct btCompoundLeafCallback : btDbvt::ICollide
 public:
 	const btCollisionObjectWrapper* m_compoundColObjWrap;
 	const btCollisionObjectWrapper* m_otherObjWrap;
-	btDispatcher* m_dispatcher;
+	btCollisionDispatcher* m_dispatcher;
 	const btDispatcherInfo& m_dispatchInfo;
 	btManifoldResult* m_resultOut;
 	btCollisionAlgorithm** m_childCollisionAlgorithms;
 	btPersistentManifold* m_sharedManifold;
 
-	btCompoundLeafCallback(const btCollisionObjectWrapper* compoundObjWrap, const btCollisionObjectWrapper* otherObjWrap, btDispatcher* dispatcher, const btDispatcherInfo& dispatchInfo, btManifoldResult* resultOut, btCollisionAlgorithm** childCollisionAlgorithms, btPersistentManifold* sharedManifold)
+	btCompoundLeafCallback(const btCollisionObjectWrapper* compoundObjWrap, const btCollisionObjectWrapper* otherObjWrap, btCollisionDispatcher* dispatcher, const btDispatcherInfo& dispatchInfo, btManifoldResult* resultOut, btCollisionAlgorithm** childCollisionAlgorithms, btPersistentManifold* sharedManifold)
 		: m_compoundColObjWrap(compoundObjWrap), m_otherObjWrap(otherObjWrap), m_dispatcher(dispatcher), m_dispatchInfo(dispatchInfo), m_resultOut(resultOut), m_childCollisionAlgorithms(childCollisionAlgorithms), m_sharedManifold(sharedManifold)
 	{
 	}

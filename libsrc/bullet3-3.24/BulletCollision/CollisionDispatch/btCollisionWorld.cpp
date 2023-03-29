@@ -55,7 +55,7 @@ subject to the following restrictions:
 #include "../CollisionShapes/btTriangleMeshShape.h"
 #include "../CollisionShapes/btStaticPlaneShape.h"
 
-btCollisionWorld::btCollisionWorld(btDispatcher* dispatcher, btBroadphaseInterface* pairCache, btCollisionConfiguration* collisionConfiguration)
+btCollisionWorld::btCollisionWorld(btCollisionDispatcher* dispatcher, btBroadphaseInterface* pairCache, btCollisionConfiguration* collisionConfiguration)
 	: m_dispatcher1(dispatcher),
 	  m_broadphasePairCache(pairCache),
 	  m_forceUpdateAllAabbs(true)
@@ -208,7 +208,7 @@ void btCollisionWorld::performDiscreteCollisionDetection()
 
 	computeOverlappingPairs();
 
-	btDispatcher* dispatcher = getDispatcher();
+	btCollisionDispatcher* dispatcher = getDispatcher();
 	{
 		BT_PROFILE("dispatchAllCollisionPairs");
 		if (dispatcher)

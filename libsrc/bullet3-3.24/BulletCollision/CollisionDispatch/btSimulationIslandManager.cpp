@@ -16,7 +16,7 @@ subject to the following restrictions:
 
 #include "../../LinearMath/btScalar.h"
 #include "btSimulationIslandManager.h"
-#include "../BroadphaseCollision/btDispatcher.h"
+#include "../CollisionDispatch/btCollisionDispatcher.h"
 #include "../NarrowPhaseCollision/btPersistentManifold.h"
 #include "../CollisionDispatch/btCollisionObject.h"
 #include "../CollisionDispatch/btCollisionWorld.h"
@@ -37,7 +37,7 @@ void btSimulationIslandManager::initUnionFind(int n)
 	m_unionFind.reset(n);
 }
 
-void btSimulationIslandManager::findUnions(btDispatcher* /* dispatcher */, btCollisionWorld* colWorld)
+void btSimulationIslandManager::findUnions(btCollisionDispatcher* /* dispatcher */, btCollisionWorld* colWorld)
 {
 	{
 		btOverlappingPairCache* pairCachePtr = colWorld->getPairCache();
@@ -64,7 +64,7 @@ void btSimulationIslandManager::findUnions(btDispatcher* /* dispatcher */, btCol
 }
 
 #ifdef STATIC_SIMULATION_ISLAND_OPTIMIZATION
-void btSimulationIslandManager::updateActivationState(btCollisionWorld* colWorld, btDispatcher* dispatcher)
+void btSimulationIslandManager::updateActivationState(btCollisionWorld* colWorld, btCollisionDispatcher* dispatcher)
 {
 	// put the index into m_controllers into m_tag
 	int index = 0;
@@ -116,7 +116,7 @@ void btSimulationIslandManager::storeIslandActivationState(btCollisionWorld* col
 }
 
 #else  //STATIC_SIMULATION_ISLAND_OPTIMIZATION
-void btSimulationIslandManager::updateActivationState(btCollisionWorld* colWorld, btDispatcher* dispatcher)
+void btSimulationIslandManager::updateActivationState(btCollisionWorld* colWorld, btCollisionDispatcher* dispatcher)
 {
 	initUnionFind(int(colWorld->getCollisionObjectArray().size()));
 
@@ -193,7 +193,7 @@ public:
 	}
 };
 
-void btSimulationIslandManager::buildIslands(btDispatcher* dispatcher, btCollisionWorld* collisionWorld)
+void btSimulationIslandManager::buildIslands(btCollisionDispatcher* dispatcher, btCollisionWorld* collisionWorld)
 {
 	BT_PROFILE("islandUnionFindAndQuickSort");
 
@@ -340,13 +340,13 @@ void btSimulationIslandManager::buildIslands(btDispatcher* dispatcher, btCollisi
 
 
 ///@todo: this is random access, it can be walked 'cache friendly'!
-void btSimulationIslandManager::buildAndProcessIslands(btDispatcher* dispatcher, btCollisionWorld* collisionWorld, IslandCallback* callback)
+void btSimulationIslandManager::buildAndProcessIslands(btCollisionDispatcher* dispatcher, btCollisionWorld* collisionWorld, IslandCallback* callback)
 {
 	buildIslands(dispatcher, collisionWorld);
     processIslands(dispatcher, collisionWorld, callback);
 }
 
-void btSimulationIslandManager::processIslands(btDispatcher* dispatcher, btCollisionWorld* collisionWorld, IslandCallback* callback)
+void btSimulationIslandManager::processIslands(btCollisionDispatcher* dispatcher, btCollisionWorld* collisionWorld, IslandCallback* callback)
 {
     btCollisionObjectArray& collisionObjects = collisionWorld->getCollisionObjectArray();
 	int endIslandIndex = 1;

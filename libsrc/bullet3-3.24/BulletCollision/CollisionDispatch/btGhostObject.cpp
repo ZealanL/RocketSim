@@ -42,7 +42,7 @@ void btGhostObject::addOverlappingObjectInternal(btBroadphaseProxy* otherProxy, 
 	}
 }
 
-void btGhostObject::removeOverlappingObjectInternal(btBroadphaseProxy* otherProxy, btDispatcher* dispatcher, btBroadphaseProxy* thisProxy)
+void btGhostObject::removeOverlappingObjectInternal(btBroadphaseProxy* otherProxy, btCollisionDispatcher* dispatcher, btBroadphaseProxy* thisProxy)
 {
 	btCollisionObject* otherObject = (btCollisionObject*)otherProxy->m_clientObject;
 	btAssert(otherObject);
@@ -80,7 +80,7 @@ void btPairCachingGhostObject::addOverlappingObjectInternal(btBroadphaseProxy* o
 	}
 }
 
-void btPairCachingGhostObject::removeOverlappingObjectInternal(btBroadphaseProxy* otherProxy, btDispatcher* dispatcher, btBroadphaseProxy* thisProxy1)
+void btPairCachingGhostObject::removeOverlappingObjectInternal(btBroadphaseProxy* otherProxy, btCollisionDispatcher* dispatcher, btBroadphaseProxy* thisProxy1)
 {
 	btCollisionObject* otherObject = (btCollisionObject*)otherProxy->m_clientObject;
 	btBroadphaseProxy* actualThisProxy = thisProxy1 ? thisProxy1 : getBroadphaseHandle();

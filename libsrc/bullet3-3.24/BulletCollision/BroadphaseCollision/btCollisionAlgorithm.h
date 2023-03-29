@@ -20,7 +20,7 @@ subject to the following restrictions:
 #include "../../LinearMath/btAlignedObjectArray.h"
 
 struct btBroadphaseProxy;
-class btDispatcher;
+class btCollisionDispatcher;
 class btManifoldResult;
 class btCollisionObject;
 struct btCollisionObjectWrapper;
@@ -36,24 +36,24 @@ struct btCollisionAlgorithmConstructionInfo
 		  m_manifold(0)
 	{
 	}
-	btCollisionAlgorithmConstructionInfo(btDispatcher* dispatcher, int temp)
+	btCollisionAlgorithmConstructionInfo(btCollisionDispatcher* dispatcher, int temp)
 		: m_dispatcher1(dispatcher)
 	{
 		(void)temp;
 	}
 
-	btDispatcher* m_dispatcher1;
+	btCollisionDispatcher* m_dispatcher1;
 	btPersistentManifold* m_manifold;
 
 	//	int	getDispatcherId();
 };
 
-///btCollisionAlgorithm is an collision interface that is compatible with the Broadphase and btDispatcher.
+///btCollisionAlgorithm is an collision interface that is compatible with the Broadphase and btCollisionDispatcher.
 ///It is persistent over frames
 class btCollisionAlgorithm
 {
 protected:
-	btDispatcher* m_dispatcher;
+	btCollisionDispatcher* m_dispatcher;
 
 protected:
 	//	int	getDispatcherId();
