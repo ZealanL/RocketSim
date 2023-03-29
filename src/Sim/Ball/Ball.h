@@ -53,12 +53,12 @@ public:
 	Ball(const Ball& other) = delete;
 	Ball(Ball&& other) = delete;
 
-	struct btRigidBody* _rigidBody;
-	struct btSphereShape* _collisionShape;
+	class btRigidBody* _rigidBody;
+	class btSphereShape* _collisionShape;
 
 	// For construction by Arena
 	static Ball* _AllocBall();
-	void _BulletSetup(struct btDynamicsWorld* bulletWorld, const MutatorConfig& mutatorConfig);
+	void _BulletSetup(class btDynamicsWorld* bulletWorld, const MutatorConfig& mutatorConfig);
 
 	Vec _velocityImpulseCache = { 0,0,0 };
 	void _FinishPhysicsTick(const MutatorConfig& mutatorConfig);

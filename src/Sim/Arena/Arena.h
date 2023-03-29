@@ -9,11 +9,11 @@
 #include "../SuspensionCollisionGrid/SuspensionCollisionGrid.h"
 #include "../MutatorConfig/MutatorConfig.h"
 
-struct btDiscreteDynamicsWorld;
-struct btCollisionConfiguration;
-struct btCollisionDispatcher;
+class btDiscreteDynamicsWorld;
+class btCollisionConfiguration;
+class btCollisionDispatcher;
 struct btDbvtBroadphase;
-struct btSequentialImpulseConstraintSolver;
+class btSequentialImpulseConstraintSolver;
 
 enum class GameMode : byte {
 	SOCCAR,
@@ -77,8 +77,8 @@ public:
 		btSequentialImpulseConstraintSolver* constraintSolver;
 	} _bulletWorldParams;
 
-	vector<struct btRigidBody*> _worldCollisionRBs;
-	vector<struct btCollisionShape*> _worldCollisionShapes;
+	vector<class btRigidBody*> _worldCollisionRBs;
+	vector<class btCollisionShape*> _worldCollisionShapes;
 
 	struct {
 		GoalScoreEventFn func = NULL;
@@ -121,11 +121,11 @@ public:
 	void _SetupArenaCollisionShapes();
 
 	// Static function called by Bullet internally when adding a collision point
-	static bool _BulletContactAddedCallback(struct btManifoldPoint& cp, const struct btCollisionObjectWrapper* colObj0Wrap, int partId0, int index0, const struct btCollisionObjectWrapper* colObj1Wrap, int partId1, int index1);
+	static bool _BulletContactAddedCallback(class btManifoldPoint& cp, const struct btCollisionObjectWrapper* colObj0Wrap, int partId0, int index0, const struct btCollisionObjectWrapper* colObj1Wrap, int partId1, int index1);
 
-	void _BtCallback_OnCarBallCollision(Car* car, Ball* ball, struct btManifoldPoint& manifoldPoint, bool ballIsBodyA);
-	void _BtCallback_OnCarCarCollision(Car* car1, Car* car2, struct btManifoldPoint& manifoldPoint);
-	void _BtCallback_OnCarWorldCollision(Car* car, struct btCollisionObject* worldObject, struct btManifoldPoint& manifoldPoint);
+	void _BtCallback_OnCarBallCollision(Car* car, Ball* ball, class btManifoldPoint& manifoldPoint, bool ballIsBodyA);
+	void _BtCallback_OnCarCarCollision(Car* car1, Car* car2, class btManifoldPoint& manifoldPoint);
+	void _BtCallback_OnCarWorldCollision(Car* car, class btCollisionObject* worldObject, class btManifoldPoint& manifoldPoint);
 
 private:
 	

@@ -1,7 +1,7 @@
 #pragma once
 #include "../Car/Car.h"
 
-struct btBvhTriangleMeshShape;
+class btBvhTriangleMeshShape;
 
 struct SuspensionCollisionGrid {
 	constexpr static float

@@ -116,9 +116,9 @@ public:
 
 	btVehicleRL* _bulletVehicle;
 	struct btVehicleRaycaster* _bulletVehicleRaycaster;
-	struct btRigidBody* _rigidBody;
-	struct btCompoundShape* _compoundShape;
-	struct btBoxShape* _childHitboxShape;
+	class btRigidBody* _rigidBody;
+	class btCompoundShape* _compoundShape;
+	class btBoxShape* _childHitboxShape;
 
 	// NOTE: Not all values are updated because they are unneeded for internal simulation
 	// Those values are only updated when GetState() is called
@@ -149,7 +149,7 @@ public:
 
 	// For construction by Arena
 	static Car* _AllocateCar();
-	void _BulletSetup(struct btDynamicsWorld* bulletWorld, const MutatorConfig& mutatorConfig);
+	void _BulletSetup(class btDynamicsWorld* bulletWorld, const MutatorConfig& mutatorConfig);
 	
 	void _Serialize(DataStreamOut& out);
 	void _Deserialize(DataStreamIn& in);

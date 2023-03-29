@@ -5,7 +5,7 @@
 #define COLLISION_MESH_BASE_PATH "./collision_meshes/"
 #define COLLISION_MESH_FILE_EXTENSION ".cmf"
 
-struct btTriangleMesh;
+class btTriangleMesh;
 
 // Collision mesh file structure based off of the one in https://github.com/ZealanL/RLArenaCollisionDumper
 struct CollisionMeshFile {
