@@ -117,11 +117,15 @@ public:
 	RSAPI ~Arena();
 
 	// NOTE: Passed shape pointer will be freed when arena is deconstructed
-	btRigidBody* _AddStaticCollisionShape(btCollisionShape* shape, bool isOwner, btVector3 posBT = btVector3(0,0,0));
+	class btRigidBody* _AddStaticCollisionShape(btCollisionShape* shape, bool isOwner, btVector3 posBT = btVector3(0,0,0));
 	void _SetupArenaCollisionShapes();
 
 	// Static function called by Bullet internally when adding a collision point
-	static bool _BulletContactAddedCallback(class btManifoldPoint& cp, const struct btCollisionObjectWrapper* colObj0Wrap, int partId0, int index0, const struct btCollisionObjectWrapper* colObj1Wrap, int partId1, int index1);
+	static bool _BulletContactAddedCallback(
+		class btManifoldPoint& cp,
+		const struct btCollisionObjectWrapper* colObjA, int partID_A, int indexA,
+		const struct btCollisionObjectWrapper* colObjB, int partID_B, int indexB
+	);
 
 	void _BtCallback_OnCarBallCollision(Car* car, Ball* ball, class btManifoldPoint& manifoldPoint, bool ballIsBodyA);
 	void _BtCallback_OnCarCarCollision(Car* car1, Car* car2, class btManifoldPoint& manifoldPoint);
