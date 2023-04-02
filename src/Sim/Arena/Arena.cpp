@@ -214,6 +214,16 @@ void Arena::_BtCallback_OnCarBallCollision(Car* car, Ball* ball, btManifoldPoint
 	manifoldPoint.m_combinedFriction = RLConst::CARBALL_COLLISION_FRICTION;
 	manifoldPoint.m_combinedRestitution = RLConst::CARBALL_COLLISION_RESTITUTION;
 
+	ball->_internalState.ballHitInfo.carID = car->id;
+	ball->_internalState.ballHitInfo.relativePosOnBall = (ballIsBodyA ? manifoldPoint.m_localPointA : manifoldPoint.m_localPointB) * BT_TO_UU;
+	ball->_internalState.ballHitInfo.tickCountWhenHit = this->tickCount;
+
+	auto carState = car->GetState();
+	auto ballState = ball->GetState();
+
+	ball->_internalState.ballHitInfo.ballPos = ballState.pos;
+	ball->_internalState.ballHitInfo.extraHitVel = Vec();
+
 	// Once we do an extra car-ball impulse, we need to wait at least 1 tick to do it again
 	if ((tickCount > car->_internalState.lastHitBallTick + 1) || (car->_internalState.lastHitBallTick > tickCount)) {
 		car->_internalState.lastHitBallTick = tickCount;
@@ -221,15 +231,6 @@ void Arena::_BtCallback_OnCarBallCollision(Car* car, Ball* ball, btManifoldPoint
 		// Don't do multiple extra impulses in a row
 		return;
 	}
-
-	ball->_internalState.ballHitInfo.carID = car->id;
-	ball->_internalState.ballHitInfo.relativePosOnBall = (ballIsBodyA ? manifoldPoint.m_localPointA : manifoldPoint.m_localPointB) * BT_TO_UU;
-	ball->_internalState.ballHitInfo.tickCountWhenHit = this->tickCount;
-	
-	auto carState = car->GetState();
-	auto ballState = ball->GetState();
-
-	ball->_internalState.ballHitInfo.ballPos = ballState.pos;
 
 	btVector3 carForward = car->GetForwardDir();
 	btVector3 relPos = ballState.pos - carState.pos;
@@ -247,8 +248,6 @@ void Arena::_BtCallback_OnCarBallCollision(Car* car, Ball* ball, btManifoldPoint
 
 		// Velocity won't be actually added until the end of this tick
 		ball->_velocityImpulseCache += addedVel * UU_TO_BT;
-	} else {
-		ball->_internalState.ballHitInfo.extraHitVel = Vec();
 	}
 }
 
