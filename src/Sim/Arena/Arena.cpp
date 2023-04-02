@@ -1,6 +1,7 @@
 #include "Arena.h"
 
 #include "../../RocketSim.h"
+
 #include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionDispatch/btDefaultCollisionConfiguration.h"
 #include "../../../libsrc/bullet3-3.24/BulletCollision/BroadphaseCollision/btDbvtBroadphase.h"
 #include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btBoxShape.h"
@@ -10,7 +11,6 @@
 #include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionDispatch/btCollisionDispatcher.h"
 #include "../../../libsrc/bullet3-3.24/BulletDynamics/ConstraintSolver/btSequentialImpulseConstraintSolver.h"
 #include "../../../libsrc/bullet3-3.24/BulletDynamics/Dynamics/btDiscreteDynamicsWorld.h"
-
 #include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionDispatch/btInternalEdgeUtility.h"
 
 RSAPI void Arena::SetMutatorConfig(const MutatorConfig& mutatorConfig) {
@@ -93,6 +93,11 @@ void Arena::SetGoalScoreCallback(GoalScoreEventFn callbackFunc, void* userInfo) 
 
 	_goalScoreCallback.func = callbackFunc;
 	_goalScoreCallback.userInfo = userInfo;
+}
+
+void Arena::SetCarBumpCallback(CarBumpEventFn callbackFunc, void* userInfo) {
+	_carBumpCallback.func = callbackFunc;
+	_carBumpCallback.userInfo = userInfo;
 }
 
 void Arena::ResetToRandomKickoff(int seed) {
@@ -303,6 +308,9 @@ void Arena::_BtCallback_OnCarCarCollision(Car* car1, Car* car2, btManifoldPoint&
 
 					if (isDemo && !_mutatorConfig.enableTeamDemos)
 						isDemo = car1->team != car2->team;
+
+					if (_carBumpCallback.func)
+						_carBumpCallback.func(this, car1, car2, isDemo, _carBumpCallback.userInfo);
 
 					if (isDemo) {
 						car2->Demolish(_mutatorConfig.respawnDelay);

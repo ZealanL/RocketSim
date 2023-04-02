@@ -24,6 +24,7 @@ enum class GameMode : byte {
 };
 
 typedef std::function<void(class Arena* arena, Team scoringTeam, void* userInfo)> GoalScoreEventFn;
+typedef std::function<void(class Arena* arena, Car* bumper, Car* victim, bool isDemo, void* userInfo)> CarBumpEventFn;
 
 // The container for all game simulation
 // Stores cars, the ball, all arena collisions, and manages the overall game state
@@ -85,6 +86,12 @@ public:
 		void* userInfo = NULL;
 	} _goalScoreCallback;
 	RSAPI void SetGoalScoreCallback(GoalScoreEventFn callbackFn, void* userInfo = NULL);
+
+	struct {
+		CarBumpEventFn func = NULL;
+		void* userInfo = NULL;
+	} _carBumpCallback;
+	RSAPI void SetCarBumpCallback(CarBumpEventFn callbackFn, void* userInfo = NULL);
 
 	// NOTE: Arena should be destroyed after use
 	RSAPI static Arena* Create(GameMode gameMode, float tickRate = 120);
