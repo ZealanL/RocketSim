@@ -6,21 +6,11 @@
 #include "../../../libsrc/bullet3-3.24/BulletDynamics/Dynamics/btRigidBody.h"
 #include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btSphereShape.h"
 
-void BallHitInfo::Serialize(DataStreamOut& out) {
-	out.WriteMultiple(BALLHITINFO_SERIALIZATION_FIELDS);
-}
-
-void BallHitInfo::Deserialize(DataStreamIn& in) {
-	in.ReadMultiple(BALLHITINFO_SERIALIZATION_FIELDS);
-}
-
 void BallState::Serialize(DataStreamOut& out) {
-	ballHitInfo.Serialize(out);
 	out.WriteMultiple(BALLSTATE_SERIALIZATION_FIELDS);
 }
 
 void BallState::Deserialize(DataStreamIn& in) {
-	ballHitInfo.Deserialize(in);
 	in.ReadMultiple(BALLSTATE_SERIALIZATION_FIELDS);
 }
 

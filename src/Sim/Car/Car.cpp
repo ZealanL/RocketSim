@@ -776,6 +776,8 @@ void CarState::Serialize(DataStreamOut& out) {
 	uint32_t argumentCount = RS_GET_ARGUMENT_COUNT(CARSTATE_SERIALIZATION_FIELDS);
 	out.Write(argumentCount);
 
+	ballHitInfo.Serialize(out);
+
 	out.WriteMultiple(
 		CARSTATE_SERIALIZATION_FIELDS
 	);
@@ -793,6 +795,8 @@ void CarState::Deserialize(DataStreamIn& in) {
 			"File is either corrupt or from a different version of RocketSim."
 		);
 	}
+
+	ballHitInfo.Deserialize(in);
 
 	in.ReadMultiple(
 		CARSTATE_SERIALIZATION_FIELDS

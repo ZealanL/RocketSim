@@ -7,20 +7,6 @@
 
 #include "../MutatorConfig/MutatorConfig.h"
 
-struct BallHitInfo {
-	uint32_t carID = NULL; // ID of the car that hit the ball
-	Vec relativePosOnBall; // Position of the hit relative to the ball's position
-	Vec ballPos; // World position of the ball when the hit occured
-	Vec extraHitVel; // Extra velocity added to base collision velocity
-	uint64_t tickCountWhenHit; // Arena tick count when the hit occured
-
-	void Serialize(DataStreamOut& out);
-	void Deserialize(DataStreamIn& in);
-};
-
-#define BALLHITINFO_SERIALIZATION_FIELDS \
-carID, relativePosOnBall, ballPos, extraHitVel, tickCountWhenHit
-
 struct BallState {
 	// Position in world space
 	Vec pos = { 0, 0, RLConst::BALL_REST_Z };
@@ -30,10 +16,6 @@ struct BallState {
 	 
 	// Angular velocity (axis-angle)
 	Vec angVel = { 0, 0, 0 };
-
-	// Information from the most recent car-ball hit
-	// Does ever not reset automatically
-	BallHitInfo ballHitInfo = BallHitInfo();
 
 	void Serialize(DataStreamOut& out);
 	void Deserialize(DataStreamIn& in);

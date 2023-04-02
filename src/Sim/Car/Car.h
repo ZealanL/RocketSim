@@ -2,10 +2,7 @@
 #include "CarConfig/CarConfig.h"
 #include "../btVehicleRL/btVehicleRL.h"
 #include "../CarControls.h"
-#include "../../RLConst.h"
-#include "../../DataStream/DataStreamIn.h"
-#include "../../DataStream/DataStreamOut.h"
-
+#include "../BallHitInfo/BallHitInfo.h"
 #include "../MutatorConfig/MutatorConfig.h"
 
 struct CarState {
@@ -65,9 +62,7 @@ struct CarState {
 	bool isDemoed = false;
 	float demoRespawnTimer = 0;
 
-	// Set to arena->tickCount when ball is hit
-	// Don't change this unless you know what you're doing
-	uint64_t lastHitBallTick = ~0ULL;
+	BallHitInfo ballHitInfo = BallHitInfo();
 
 	// Controls from last tick, set to this->controls after simulation
 	CarControls lastControls = CarControls();
@@ -80,7 +75,7 @@ struct CarState {
 pos, rotMat, vel, angVel, isOnGround, hasJumped, hasDoubleJumped, hasFlipped, \
 lastRelDodgeTorque, jumpTime, flipTime, isJumping, airTimeSinceJump, boost, \
 timeSpentBoosting, supersonicTime, handbrakeVal, isAutoFlipping, autoFlipTimer, \
-autoFlipTorqueScale, isDemoed, demoRespawnTimer, lastHitBallTick, lastControls, \
+autoFlipTorqueScale, isDemoed, demoRespawnTimer, lastControls, \
 worldContact.hasContact, worldContact.contactNormal, \
 carContact.otherCarID, carContact.cooldownTimer
 

@@ -210,23 +210,26 @@ bool Arena::_BulletContactAddedCallback(
 void Arena::_BtCallback_OnCarBallCollision(Car* car, Ball* ball, btManifoldPoint& manifoldPoint, bool ballIsBodyA) {
 	using namespace RLConst;
 
-	// Manually override manifold friction/restitution
-	manifoldPoint.m_combinedFriction = RLConst::CARBALL_COLLISION_FRICTION;
-	manifoldPoint.m_combinedRestitution = RLConst::CARBALL_COLLISION_RESTITUTION;
-
-	ball->_internalState.ballHitInfo.carID = car->id;
-	ball->_internalState.ballHitInfo.relativePosOnBall = (ballIsBodyA ? manifoldPoint.m_localPointA : manifoldPoint.m_localPointB) * BT_TO_UU;
-	ball->_internalState.ballHitInfo.tickCountWhenHit = this->tickCount;
-
 	auto carState = car->GetState();
 	auto ballState = ball->GetState();
 
-	ball->_internalState.ballHitInfo.ballPos = ballState.pos;
-	ball->_internalState.ballHitInfo.extraHitVel = Vec();
+	// Manually override manifold friction/restitution
+	manifoldPoint.m_combinedFriction = CARBALL_COLLISION_FRICTION;
+	manifoldPoint.m_combinedRestitution = CARBALL_COLLISION_RESTITUTION;
+
+	auto& ballHitInfo = car->_internalState.ballHitInfo;
+
+	ballHitInfo.isValid = true;
+
+	ballHitInfo.relativePosOnBall = (ballIsBodyA ? manifoldPoint.m_localPointA : manifoldPoint.m_localPointB) * BT_TO_UU;
+	ballHitInfo.tickCountWhenHit = this->tickCount;
+
+	ballHitInfo.ballPos = ballState.pos;
+	ballHitInfo.extraHitVel = Vec();
 
 	// Once we do an extra car-ball impulse, we need to wait at least 1 tick to do it again
-	if ((tickCount > car->_internalState.lastHitBallTick + 1) || (car->_internalState.lastHitBallTick > tickCount)) {
-		car->_internalState.lastHitBallTick = tickCount;
+	if ((tickCount > ballHitInfo.tickCountWhenExtraImpulseApplied + 1) || (ballHitInfo.tickCountWhenExtraImpulseApplied > tickCount)) {
+		ballHitInfo.tickCountWhenExtraImpulseApplied = this->tickCount;
 	} else {
 		// Don't do multiple extra impulses in a row
 		return;
@@ -244,7 +247,7 @@ void Arena::_BtCallback_OnCarBallCollision(Car* car, Ball* ball, btManifoldPoint
 		hitDir = (hitDir - forwardDirAdjustment).normalized();
 
 		btVector3 addedVel = (hitDir * relSpeed) * BALL_CAR_EXTRA_IMPULSE_FACTOR_CURVE.GetOutput(relSpeed) * _mutatorConfig.ballHitExtraForceScale;
-		ball->_internalState.ballHitInfo.extraHitVel = addedVel;
+		ballHitInfo.extraHitVel = addedVel;
 
 		// Velocity won't be actually added until the end of this tick
 		ball->_velocityImpulseCache += addedVel * UU_TO_BT;
