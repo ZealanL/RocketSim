@@ -532,9 +532,11 @@ Arena* Arena::LoadFromFile(std::filesystem::path path) {
 Arena* Arena::Clone(bool copyCallbacks) {
 	Arena* newArena = new Arena(this->gameMode, this->GetTickRate());
 	
-	if (copyCallbacks)
+	if (copyCallbacks) {
 		newArena->_goalScoreCallback = this->_goalScoreCallback;
-	
+		newArena->_carBumpCallback = this->_carBumpCallback;
+	}
+
 	newArena->ball->SetState(this->ball->GetState());
 	newArena->ball->_velocityImpulseCache = this->ball->_velocityImpulseCache;
 
