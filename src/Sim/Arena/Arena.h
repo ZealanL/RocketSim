@@ -98,7 +98,6 @@ public:
 	Arena(const Arena& other) = delete; // No copy constructor, use Arena::Clone() instead
 	Arena& operator =(const Arena& other) = delete; // No copy operator, use Arena::Clone() instead
 
-	
 	Arena(Arena&& other) = delete; // No move constructor
 	Arena& operator =(Arena&& other) = delete; // No move operator
 
@@ -112,6 +111,11 @@ public:
 	RSAPI void Step(int ticksToSimulate = 1);
 
 	RSAPI void ResetToRandomKickoff(int seed = -1);
+
+	// Returns true if the ball is probably going in, does not account for wall or ceiling bounces
+	// NOTE: Purposefully overestimates, just like the real RL's shot prediction
+	// To check which goal it will score in, use the ball's velocity
+	RSAPI bool IsBallProbablyGoingIn(float maxTime = 2.f);
 
 	// Free all associated memory
 	RSAPI ~Arena();

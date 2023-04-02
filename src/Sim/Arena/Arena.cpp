@@ -671,6 +671,48 @@ void Arena::Step(int ticksToSimulate) {
 	}
 }
 
+bool Arena::IsBallProbablyGoingIn(float maxTime) {
+	if (gameMode == GameMode::SOCCAR) {
+		Vec ballPos = ball->_rigidBody->m_worldTransform.m_origin * UU_TO_BT;
+		Vec ballVel = ball->_rigidBody->m_linearVelocity * UU_TO_BT;
+
+		if (ballVel.y < FLT_EPSILON)
+			return false;
+
+		float scoreDirSgn = RS_SGN(ballVel.y);
+		float goalScoreY = (RLConst::SOCCAR_GOAL_SCORE_BASE_THRESHOLD_Y + _mutatorConfig.ballRadius) * scoreDirSgn;
+		float distToGoal = abs(ballPos.y - scoreDirSgn);
+
+		float timeToGoal = distToGoal / abs(ballVel.y);
+
+		if (timeToGoal > maxTime)
+			return false;
+		
+		// Roughly account for drag
+		timeToGoal *= 1 + powf(1 - _mutatorConfig.ballDrag, timeToGoal);
+
+		Vec extrapPosWhenScore = ballPos + (ballVel * timeToGoal) + (_mutatorConfig.gravity * timeToGoal * timeToGoal) / 2;
+		
+		// From: https://github.com/RLBot/RLBot/wiki/Useful-Game-Values
+		constexpr float
+			APPROX_GOAL_HALF_WIDTH = 892.755f,
+			APPROX_GOAL_HEIGHT = 642.775;
+
+		float SCORE_MARGIN = _mutatorConfig.ballRadius * 0.64f;
+
+		if (extrapPosWhenScore.z > APPROX_GOAL_HEIGHT + SCORE_MARGIN)
+			return false; // Too high
+
+		if (abs(extrapPosWhenScore.x) > APPROX_GOAL_HALF_WIDTH + SCORE_MARGIN)
+			return false; // Too far to the side
+
+		// Ok it's probably gonna score, or at least be very close
+		return true;
+	} else {
+		return false;
+	}
+}
+
 Arena::~Arena() {
 	// Delete world first
 	delete _bulletWorld;
