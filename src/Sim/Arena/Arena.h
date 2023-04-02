@@ -34,7 +34,8 @@ public:
 	GameMode gameMode;
 
 	uint32_t _lastCarID = 0;
-	vector<Car*> _cars;
+	unordered_set<Car*> _cars;
+	unordered_map<uint32_t, Car*> _carIDMap;
 	
 	Ball* ball;
 
@@ -59,16 +60,23 @@ public:
 	// Total ticks this arena instance has been simulated for, never resets
 	uint64_t tickCount = 0;
 
-	RSAPI const vector<Car*>& GetCars() { return _cars; }
-	RSAPI const vector<BoostPad*>& GetBoostPads() { return _boostPads; }
+	const unordered_set<Car*>& GetCars() { return _cars; }
+	const vector<BoostPad*>& GetBoostPads() { return _boostPads; }
 
+	// Returns true if added, false if car was already added
+	bool _AddCarFromPtr(Car* car);
 	RSAPI Car* AddCar(Team team, const CarConfig& config = CAR_CONFIG_OCTANE);
+
+	// Returns false if the car ID was not found in the cars list
+	RSAPI bool RemoveCar(uint32_t id);
 
 	// Returns false if the car was not found in the cars list
 	// NOTE: If the car was removed, the car will be freed and the pointer will be made invalid
-	RSAPI bool RemoveCar(Car* car);
+	bool RemoveCar(Car* car) {
+		RemoveCar(car->id);
+	}
 
-	RSAPI Car* GetCarFromID(uint32_t id);
+	RSAPI Car* GetCar(uint32_t id);
 
 	btDiscreteDynamicsWorld* _bulletWorld;
 	struct {
@@ -112,6 +120,8 @@ public:
 	RSAPI Arena* Clone(bool copyCallbacks);
 
 	RSAPI static void SerializeCar(DataStreamOut& out, Car* car);
+
+	// NOTE: Car ID will not be restored
 	RSAPI Car* DeserializeNewCar(DataStreamIn& in, Team team);
 
 	// Simulate everything in the arena for a given number of ticks
