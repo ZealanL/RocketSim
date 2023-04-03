@@ -44,7 +44,7 @@ void Car::SetState(const CarState& state) {
 
 void Car::Demolish(float respawnDelay) {
 	_internalState.isDemoed = true;
-	_internalState.demoRespawnTimer = RLConst::DEMO_RESPAWN_TIME;
+	_internalState.demoRespawnTimer = respawnDelay;
 }
 
 void Car::Respawn(int seed, float boostAmount) {
