@@ -73,7 +73,7 @@ public:
 	// Returns false if the car was not found in the cars list
 	// NOTE: If the car was removed, the car will be freed and the pointer will be made invalid
 	bool RemoveCar(Car* car) {
-		RemoveCar(car->id);
+		return RemoveCar(car->id);
 	}
 
 	RSAPI Car* GetCar(uint32_t id);
