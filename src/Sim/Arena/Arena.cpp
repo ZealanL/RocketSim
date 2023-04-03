@@ -280,6 +280,7 @@ void Arena::_BtCallback_OnCarCarCollision(Car* car1, Car* car2, btManifoldPoint&
 	manifoldPoint.m_combinedFriction = RLConst::CARCAR_COLLISION_FRICTION;
 	manifoldPoint.m_combinedRestitution = RLConst::CARCAR_COLLISION_RESTITUTION;
 
+	// Test collision both ways
 	for (int i = 0; i < 2; i++) {
 
 		bool isSwapped = (i == 1);
@@ -290,8 +291,11 @@ void Arena::_BtCallback_OnCarCarCollision(Car* car1, Car* car2, btManifoldPoint&
 			state = car1->GetState(),
 			otherState = car2->GetState();
 
+		if (state.isDemoed || otherState.isDemoed)
+			return;
+
 		if ((state.carContact.otherCarID == car2->id) && (state.carContact.cooldownTimer > 0))
-			return; // In cooldown
+			continue; // In cooldown
 
 		Vec deltaPos = (otherState.pos - state.pos);
 		if (state.vel.Dot(deltaPos) > 0) { // Going towards other car
@@ -323,9 +327,6 @@ void Arena::_BtCallback_OnCarCarCollision(Car* car1, Car* car2, btManifoldPoint&
 					if (isDemo && !_mutatorConfig.enableTeamDemos)
 						isDemo = car1->team != car2->team;
 
-					if (_carBumpCallback.func)
-						_carBumpCallback.func(this, car1, car2, isDemo, _carBumpCallback.userInfo);
-
 					if (isDemo) {
 						car2->Demolish(_mutatorConfig.respawnDelay);
 					} else {
@@ -343,9 +344,13 @@ void Arena::_BtCallback_OnCarCarCollision(Car* car1, Car* car2, btManifoldPoint&
 							* _mutatorConfig.bumpForceScale;
 
 						car2->_velocityImpulseCache += bumpImpulse * UU_TO_BT;
-						car1->_internalState.carContact.otherCarID = car2->id;
-						car1->_internalState.carContact.cooldownTimer = _mutatorConfig.bumpCooldownTime;
 					}
+
+					car1->_internalState.carContact.otherCarID = car2->id;
+					car1->_internalState.carContact.cooldownTimer = _mutatorConfig.bumpCooldownTime;
+
+					if (_carBumpCallback.func)
+						_carBumpCallback.func(this, car1, car2, isDemo, _carBumpCallback.userInfo);
 				}
 			}
 		}
