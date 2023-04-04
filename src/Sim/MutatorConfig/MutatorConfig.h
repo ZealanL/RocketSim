@@ -36,7 +36,7 @@ struct MutatorConfig {
 		jumpAccel = RLConst::JUMP_ACCEL,
 		jumpImmediateForce = RLConst::JUMP_IMMEDIATE_FORCE,
 
-		boostForce = RLConst::BOOST_FORCE,
+		boostAccel = RLConst::BOOST_ACCEL,
 		boostUsedPerSecond = RLConst::BOOST_USED_PER_SECOND,
 
 		respawnDelay = RLConst::DEMO_RESPAWN_TIME,
@@ -66,6 +66,6 @@ struct MutatorConfig {
 #define MUTATOR_CONFIG_SERIALIZATION_FIELDS \
 gravity, carMass, carWorldFriction, carWorldRestitution, ballMass, \
 ballMaxSpeed, ballDrag, ballWorldFriction, ballWorldRestitution, jumpAccel, \
-jumpImmediateForce, boostForce, boostUsedPerSecond, respawnDelay, \
+jumpImmediateForce, boostAccel, boostUsedPerSecond, respawnDelay, \
 carSpawnBoostAmount, bumpCooldownTime, boostPadCooldown_Big, boostPadCooldown_Small, \
 ballHitExtraForceScale, bumpForceScale, ballRadius, demoMode, enableTeamDemos
