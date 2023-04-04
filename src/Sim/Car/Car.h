@@ -135,7 +135,7 @@ public:
 	}
 
 	~Car();
-
+	
 	void _PreTickUpdate(float tickTime, const MutatorConfig& mutatorConfig, struct SuspensionCollisionGrid* grid);
 	void _PostTickUpdate(float tickTime, const MutatorConfig& mutatorConfig);
 
@@ -150,5 +150,13 @@ public:
 	void _Deserialize(DataStreamIn& in);
 
 private:
+	void _UpdateWheels(float tickTime, const MutatorConfig& mutatorConfig, int numWheelsInContact, float forwardSpeed_UU);
+	void _UpdateBoost(float tickTime, const MutatorConfig& mutatorConfig, float forwardSpeed_UU);
+	void _UpdateJump(float tickTime, const MutatorConfig& mutatorConfig, bool jumpPressed);
+	void _UpdateAirControl(float tickTime, const MutatorConfig& mutatorConfig);
+	void _UpdateDoubleJumpOrFlip(float tickTime, const MutatorConfig& mutatorConfig, bool jumpPressed, float forwardSpeed_UU);
+	void _UpdateAutoFlip(float tickTime, const MutatorConfig& mutatorConfig, bool jumpPressed);
+	void _UpdateAutoRoll(float tickTime, const MutatorConfig& mutatorConfig, int numWheelsInContact);
+
 	Car() {};
 };
