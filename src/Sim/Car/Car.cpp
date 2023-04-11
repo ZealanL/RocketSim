@@ -375,7 +375,7 @@ void Car::_UpdateWheels(float tickTime, const MutatorConfig& mutatorConfig, int 
 		realThrottle = 1;
 
 	{ // Update throttle/brake forces
-		float driveSpeedScale = DRIVE_SPEED_TORQUE_FACTOR_CURVE.GetOutput(forwardSpeed_UU);
+		float driveSpeedScale = DRIVE_SPEED_TORQUE_FACTOR_CURVE.GetOutput(absForwardSpeed_UU);
 
 		float engineThrottle = realThrottle;
 
