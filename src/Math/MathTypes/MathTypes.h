@@ -119,7 +119,7 @@ struct RS_ALIGN_16 Vec {
 		return
 			(x == other.x) &&
 			(y == other.y) &&
-			(z == other.y) &&
+			(z == other.z) &&
 			(_w == other._w);
 	}
 
