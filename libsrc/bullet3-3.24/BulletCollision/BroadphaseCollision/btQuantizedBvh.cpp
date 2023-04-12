@@ -453,6 +453,81 @@ void btQuantizedBvh::walkStacklessTreeAgainstRay(btNodeOverlapCallback* nodeCall
 	}
 }
 
+void btQuantizedBvh::walkStacklessTreeAgainstRayNoAABB(btNodeOverlapCallback* nodeCallback, const btVector3& raySource, const btVector3& rayTarget, int startNodeIndex, int endNodeIndex) const {
+	btAssert(!m_useQuantization);
+
+	const btOptimizedBvhNode* rootNode = &m_contiguousNodes[0];
+	int escapeIndex, curIndex = 0;
+	int walkIterations = 0;
+	bool isLeafNode;
+	//PCK: unsigned instead of bool
+	unsigned aabbOverlap = 0;
+	unsigned rayBoxOverlap = 0;
+	btScalar lambda_max = 1.0;
+
+	/* Quick pruning by quantized box */
+	btVector3 rayAabbMin = raySource;
+	btVector3 rayAabbMax = raySource;
+	rayAabbMin.setMin(rayTarget);
+	rayAabbMax.setMax(rayTarget);
+
+#ifdef RAYAABB2
+	btVector3 rayDir = (rayTarget - raySource);
+	rayDir.safeNormalize();// stephengold changed normalize to safeNormalize 2020-02-17
+	lambda_max = rayDir.dot(rayTarget - raySource);
+	///what about division by zero? --> just set rayDirection[i] to 1.0
+	btVector3 rayDirectionInverse;
+	rayDirectionInverse[0] = rayDir[0] == btScalar(0.0) ? btScalar(BT_LARGE_FLOAT) : btScalar(1.0) / rayDir[0];
+	rayDirectionInverse[1] = rayDir[1] == btScalar(0.0) ? btScalar(BT_LARGE_FLOAT) : btScalar(1.0) / rayDir[1];
+	rayDirectionInverse[2] = rayDir[2] == btScalar(0.0) ? btScalar(BT_LARGE_FLOAT) : btScalar(1.0) / rayDir[2];
+	unsigned int sign[3] = { rayDirectionInverse[0] < 0.0, rayDirectionInverse[1] < 0.0, rayDirectionInverse[2] < 0.0 };
+#endif
+
+	btVector3 bounds[2];
+
+	while (curIndex < m_curNodeIndex) {
+		btScalar param = 1.0;
+		//catch bugs in tree data
+		btAssert(walkIterations < m_curNodeIndex);
+
+		walkIterations++;
+
+		bounds[0] = rootNode->m_aabbMinOrg;
+		bounds[1] = rootNode->m_aabbMaxOrg;
+
+		aabbOverlap = TestAabbAgainstAabb2(rayAabbMin, rayAabbMax, rootNode->m_aabbMinOrg, rootNode->m_aabbMaxOrg);
+		//perhaps profile if it is worth doing the aabbOverlap test first
+
+#ifdef RAYAABB2
+		///careful with this check: need to check division by zero (above) and fix the unQuantize method
+		///thanks Joerg/hiker for the reproduction case!
+		///http://www.bulletphysics.com/Bullet/phpBB3/viewtopic.php?f=9&t=1858
+		rayBoxOverlap = aabbOverlap ? btRayAabb2(raySource, rayDirectionInverse, sign, bounds, param, 0.0f, lambda_max) : false;
+
+#else
+		btVector3 normal;
+		rayBoxOverlap = btRayAabb(raySource, rayTarget, bounds[0], bounds[1], param, normal);
+#endif
+
+		isLeafNode = rootNode->m_escapeIndex == -1;
+
+		//PCK: unsigned instead of bool
+		if (isLeafNode && (rayBoxOverlap != 0)) {
+			((MyNodeOverlapCallback*)nodeCallback)->processNode(rootNode->m_subPart, rootNode->m_triangleIndex);
+		}
+
+		//PCK: unsigned instead of bool
+		if ((rayBoxOverlap != 0) || isLeafNode) {
+			rootNode++;
+			curIndex++;
+		} else {
+			escapeIndex = rootNode->m_escapeIndex;
+			rootNode += escapeIndex;
+			curIndex += escapeIndex;
+		}
+	}
+}
+
 void btQuantizedBvh::walkStacklessQuantizedTreeAgainstRay(btNodeOverlapCallback* nodeCallback, const btVector3& raySource, const btVector3& rayTarget, const btVector3& aabbMin, const btVector3& aabbMax, int startNodeIndex, int endNodeIndex) const
 {
 	btAssert(m_useQuantization);
@@ -655,7 +730,11 @@ void btQuantizedBvh::walkStacklessQuantizedTree(btNodeOverlapCallback* nodeCallb
 
 void btQuantizedBvh::reportRayOverlappingNodex(btNodeOverlapCallback* nodeCallback, const btVector3& raySource, const btVector3& rayTarget) const
 {
-	reportBoxCastOverlappingNodex(nodeCallback, raySource, rayTarget, btVector3(0, 0, 0), btVector3(0, 0, 0));
+	if (m_useQuantization) {
+		walkStacklessQuantizedTreeAgainstRay(nodeCallback, raySource, rayTarget, btVector3(0, 0, 0), btVector3(0, 0, 0), 0, m_curNodeIndex);
+	} else {
+		walkStacklessTreeAgainstRayNoAABB(nodeCallback, raySource, rayTarget, 0, m_curNodeIndex);
+	}
 }
 
 void btQuantizedBvh::reportBoxCastOverlappingNodex(btNodeOverlapCallback* nodeCallback, const btVector3& raySource, const btVector3& rayTarget, const btVector3& aabbMin, const btVector3& aabbMax) const
