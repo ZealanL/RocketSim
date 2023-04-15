@@ -61,7 +61,7 @@ Car* Arena::AddCar(Team team, const CarConfig& config) {
 	_AddCarFromPtr(car);
 
 	car->_BulletSetup(_bulletWorld, _mutatorConfig);
-	car->Respawn(_mutatorConfig.carSpawnBoostAmount);
+	car->Respawn(-1, _mutatorConfig.carSpawnBoostAmount);
 
 	return car;
 }

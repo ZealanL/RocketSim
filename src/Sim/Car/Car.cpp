@@ -72,7 +72,7 @@ void Car::_PreTickUpdate(float tickTime, const MutatorConfig& mutatorConfig, Sus
 		if (_internalState.isDemoed) {
 			_internalState.demoRespawnTimer = RS_MAX(_internalState.demoRespawnTimer - tickTime, 0);
 			if (_internalState.demoRespawnTimer == 0)
-				Respawn(mutatorConfig.carSpawnBoostAmount);
+				Respawn(-1, mutatorConfig.carSpawnBoostAmount);
 		}
 
 		if (_internalState.isDemoed) {
