@@ -237,12 +237,12 @@ namespace RLConst {
 	// Output: Max steering angle (radians)
 	const static LinearPieceCurve STEER_ANGLE_FROM_SPEED_CURVE = {
 		{
-			{0,		0.53355587898f},
-			{500,	0.31929576934f},
-			{1000,	0.182030859666},
-			{1500,	0.105695219639},
-			{1750,	0.0850682204068},
-			{3000,	0.0345432074896}
+			{0,		0.53356f},
+			{500,	0.31930f},
+			{1000,	0.18203f},
+			{1500,	0.10570f},
+			{1750,	0.08507f},
+			{3000,	0.03454f}
 		}
 	};
 
@@ -250,8 +250,8 @@ namespace RLConst {
 	// Output: Extended steering angle (radians)
 	const static LinearPieceCurve POWERSLIDE_STEER_ANGLE_FROM_SPEED_CURVE = {
 		{
-			{0,		0.39235002f},
-			{2500,	0.12610004f},
+			{0,		0.39235f},
+			{2500,	0.12610f},
 		}
 	};
 
