@@ -5,6 +5,12 @@
 #include "../BallHitInfo/BallHitInfo.h"
 #include "../MutatorConfig/MutatorConfig.h"
 
+#include "../../../libsrc/bullet3-3.24/BulletDynamics/Dynamics/btRigidBody.h"
+#include "../../../libsrc/bullet3-3.24/BulletDynamics/Vehicle/btDefaultVehicleRaycaster.h"
+#include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btBoxShape.h"
+#include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btCompoundShape.h"
+#include "../../../src/Sim/btVehicleRL/btVehicleRL.h"
+
 struct CarState {
 	// Position in world space (UU)
 	Vec pos = { 0, 0, 17 };
@@ -97,10 +103,6 @@ public:
 	// The controls to simulate the car with
 	CarControls controls;
 
-	// No copy/move constructors
-	Car(const Car& other) = delete;
-	Car(Car&& other) = delete;
-
 	RSAPI CarState GetState();
 	RSAPI void SetState(const CarState& state);
 
@@ -109,11 +111,11 @@ public:
 	// Respawn the car, called after we have been demolished and waited for the respawn timer
 	void Respawn(int seed = -1, float boostAmount = RLConst::BOOST_SPAWN_AMOUNT);
 
-	btVehicleRL* _bulletVehicle;
-	struct btVehicleRaycaster* _bulletVehicleRaycaster;
-	class btRigidBody* _rigidBody;
-	class btCompoundShape* _compoundShape;
-	class btBoxShape* _childHitboxShape;
+	btVehicleRL _bulletVehicle;
+	btDefaultVehicleRaycaster _bulletVehicleRaycaster;
+	btRigidBody _rigidBody;
+	btCompoundShape _compoundShape;
+	btBoxShape _childHitboxShape;
 
 	// NOTE: Not all values are updated because they are unneeded for internal simulation
 	// Those values are only updated when GetState() is called
@@ -133,19 +135,20 @@ public:
 	Vec GetUpDir() const {
 		return _internalState.rotMat.up;
 	}
-
-	~Car();
-	
 	void _PreTickUpdate(float tickTime, const MutatorConfig& mutatorConfig, struct SuspensionCollisionGrid* grid);
 	void _PostTickUpdate(float tickTime, const MutatorConfig& mutatorConfig);
 
 	Vec _velocityImpulseCache = { 0,0,0 };
 	void _FinishPhysicsTick(const MutatorConfig& mutatorConfig);
 
-	// For construction by Arena
-	static Car* _AllocateCar();
 	void _BulletSetup(class btDynamicsWorld* bulletWorld, const MutatorConfig& mutatorConfig);
 	
+	// For construction by Arena
+	static Car* _AllocateCar() { return new Car(); }
+
+	// For removal by Arena
+	static void _DestroyCar(Car* car) { car->~Car(); }
+
 	void _Serialize(DataStreamOut& out);
 	void _Deserialize(DataStreamIn& in);
 
@@ -158,5 +161,13 @@ private:
 	void _UpdateAutoFlip(float tickTime, const MutatorConfig& mutatorConfig, bool jumpPressed);
 	void _UpdateAutoRoll(float tickTime, const MutatorConfig& mutatorConfig, int numWheelsInContact);
 
-	Car() {};
+	Car() {}
+
+	Car(const Car& other) = default;
+	Car& operator=(const Car & other) = default;
+
+	Car(Car&& other) = default;
+	Car& operator=(Car&& other) = default;
+
+	~Car() {}
 };

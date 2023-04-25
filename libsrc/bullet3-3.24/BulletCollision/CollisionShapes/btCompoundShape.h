@@ -70,7 +70,9 @@ protected:
 public:
 	BT_DECLARE_ALIGNED_ALLOCATOR();
 
-	explicit btCompoundShape(bool enableDynamicAabbTree = true, const int initialChildCapacity = 0);
+	btCompoundShape() {}
+
+	explicit btCompoundShape(bool enableDynamicAabbTree, const int initialChildCapacity = 0);
 
 	virtual ~btCompoundShape();
 

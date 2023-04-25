@@ -37,14 +37,14 @@ void BoostPad::_PreTickUpdate(float tickTime) {
 void BoostPad::_CheckCollide(Car* car) {
 	using namespace RLConst::BoostPads;
 
-	Vec carPosBT = car->_rigidBody->m_worldTransform.m_origin;
+	Vec carPosBT = car->_rigidBody.m_worldTransform.m_origin;
 
 	bool colliding = false;
 	if (_internalState.prevLockedCarID == car->id) {
 		// Check with AABB-hitbox collision
 
 		btVector3 carMinBT, carMaxBT;
-		car->_rigidBody->getAabb(carMinBT, carMaxBT);
+		car->_rigidBody.getAabb(carMinBT, carMaxBT);
 
 		// TODO: Account for orientation
 		colliding = (_boxMaxBT > carMinBT) && (_boxMinBT < carMaxBT);

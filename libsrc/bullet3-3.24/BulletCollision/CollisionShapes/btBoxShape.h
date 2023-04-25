@@ -77,6 +77,7 @@ public:
 		}
 	}
 
+	btBoxShape() {}
 	btBoxShape(const btVector3& boxHalfExtents);
 
 	void setMargin(btScalar collisionMargin)

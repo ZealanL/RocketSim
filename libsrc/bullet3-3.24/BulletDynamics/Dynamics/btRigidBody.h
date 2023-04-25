@@ -164,6 +164,8 @@ public:
 		}
 	};
 
+	btRigidBody() {}
+
 	///btRigidBody constructor using construction info
 	btRigidBody(const btRigidBodyConstructionInfo& constructionInfo);
 

@@ -27,29 +27,27 @@ RSAPI void Arena::SetMutatorConfig(const MutatorConfig& mutatorConfig) {
 	
 	if (ballRadiusChanged) {
 		// We'll need to remake the ball
-		_bulletWorld->removeCollisionObject(ball->_rigidBody);
-		delete ball->_collisionShape;
-		delete ball->_rigidBody;
+		_bulletWorld->removeCollisionObject(&ball->_rigidBody);
 		ball->_BulletSetup(_bulletWorld, mutatorConfig);
 	} else if (ballMassChanged) {
 		btVector3 newBallInertia;
-		ball->_collisionShape->calculateLocalInertia(mutatorConfig.ballMass, newBallInertia);
-		ball->_rigidBody->setMassProps(mutatorConfig.ballMass, newBallInertia);
+		ball->_collisionShape.calculateLocalInertia(mutatorConfig.ballMass, newBallInertia);
+		ball->_rigidBody.setMassProps(mutatorConfig.ballMass, newBallInertia);
 	}
 
 	if (carMassChanged) {
 		for (Car* car : _cars) {
 			btVector3 newCarInertia;
-			car->_childHitboxShape->calculateLocalInertia(mutatorConfig.carMass, newCarInertia);
-			car->_rigidBody->setMassProps(mutatorConfig.ballMass, newCarInertia);
+			car->_childHitboxShape.calculateLocalInertia(mutatorConfig.carMass, newCarInertia);
+			car->_rigidBody.setMassProps(mutatorConfig.ballMass, newCarInertia);
 		}
 	}
 
 	// Update ball rigidbody physics values for world contact
 	// NOTE: Cars don't use their rigidbody physics values for world contact
-	ball->_rigidBody->setFriction(mutatorConfig.ballWorldFriction);
-	ball->_rigidBody->setRestitution(mutatorConfig.ballWorldRestitution);
-	ball->_rigidBody->setDamping(mutatorConfig.ballDrag, 0);
+	ball->_rigidBody.setFriction(mutatorConfig.ballWorldFriction);
+	ball->_rigidBody.setRestitution(mutatorConfig.ballWorldRestitution);
+	ball->_rigidBody.setDamping(mutatorConfig.ballDrag, 0);
 }
 
 Car* Arena::AddCar(Team team, const CarConfig& config) {
@@ -89,8 +87,8 @@ bool Arena::RemoveCar(uint32_t id) {
 		Car* car = itr->second;
 		_carIDMap.erase(itr);
 		_cars.erase(car);
-		_bulletWorld->removeCollisionObject(car->_rigidBody);
-		delete car;
+		_bulletWorld->removeCollisionObject(&car->_rigidBody);
+		Car::_DestroyCar(car);
 		return true;
 	} else {
 		return false;
@@ -201,7 +199,7 @@ bool Arena::_BulletContactAddedCallback(
 	if (carInvolved) {
 
 		Car* car = (Car*)bodyA->getUserPointer();
-		Arena* arenaInst = (Arena*)car->_bulletVehicle->m_dynamicsWorld->getWorldUserInfo();
+		Arena* arenaInst = (Arena*)car->_bulletVehicle.m_dynamicsWorld->getWorldUserInfo();
 
 		if (userIndexB == BT_USERINFO_TYPE_BALL) {
 			// Car + Ball
@@ -611,10 +609,10 @@ void Arena::Step(int ticksToSimulate) {
 		_bulletWorld->setWorldUserInfo(this);
 
 		{ // Ball zero-vel sleeping
-			if (ball->_rigidBody->m_linearVelocity.length2() == 0 && ball->_rigidBody->m_angularVelocity.length2() == 0) {
-				ball->_rigidBody->setActivationState(ISLAND_SLEEPING);
+			if (ball->_rigidBody.m_linearVelocity.length2() == 0 && ball->_rigidBody.m_angularVelocity.length2() == 0) {
+				ball->_rigidBody.setActivationState(ISLAND_SLEEPING);
 			} else {
-				ball->_rigidBody->setActivationState(ACTIVE_TAG);
+				ball->_rigidBody.setActivationState(ACTIVE_TAG);
 			}
 		}
 
@@ -623,12 +621,12 @@ void Arena::Step(int ticksToSimulate) {
 			{ // Add dynamic bodies to suspension grid
 				for (Car* car : _cars) {
 					btVector3 min, max;
-					car->_rigidBody->getAabb(min, max);
+					car->_rigidBody.getAabb(min, max);
 					_suspColGrid.UpdateDynamicCollisions(min, max, false);
 				}
 
 				btVector3 min, max;
-				ball->_rigidBody->getAabb(min, max);
+				ball->_rigidBody.getAabb(min, max);
 				_suspColGrid.UpdateDynamicCollisions(min, max, false);
 			}
 #endif
@@ -653,12 +651,12 @@ void Arena::Step(int ticksToSimulate) {
 			{ // Remove dynamic bodies from suspension grid
 				for (Car* car : _cars) {
 					btVector3 min, max;
-					car->_rigidBody->getAabb(min, max);
+					car->_rigidBody.getAabb(min, max);
 					_suspColGrid.UpdateDynamicCollisions(min, max, true);
 				}
 
 				btVector3 min, max;
-				ball->_rigidBody->getAabb(min, max);
+				ball->_rigidBody.getAabb(min, max);
 				_suspColGrid.UpdateDynamicCollisions(min, max, true);
 			}	
 #endif
@@ -689,7 +687,7 @@ void Arena::Step(int ticksToSimulate) {
 
 		if (gameMode == GameMode::SOCCAR) {
 			if (_goalScoreCallback.func != NULL) { // Potentially fire goal score callback
-				float ballPosY = ball->_rigidBody->m_worldTransform.m_origin.y() * BT_TO_UU;
+				float ballPosY = ball->_rigidBody.m_worldTransform.m_origin.y() * BT_TO_UU;
 				if (abs(ballPosY) > RLConst::SOCCAR_BALL_SCORE_THRESHOLD_Y) {
 					// Orange goal is at positive Y, so if the ball's Y is positive, it's in orange goal and thus blue scored
 					Team scoringTeam = (ballPosY > 0) ? Team::BLUE : Team::ORANGE;
@@ -704,8 +702,8 @@ void Arena::Step(int ticksToSimulate) {
 
 bool Arena::IsBallProbablyGoingIn(float maxTime) {
 	if (gameMode == GameMode::SOCCAR) {
-		Vec ballPos = ball->_rigidBody->m_worldTransform.m_origin * UU_TO_BT;
-		Vec ballVel = ball->_rigidBody->m_linearVelocity * UU_TO_BT;
+		Vec ballPos = ball->_rigidBody.m_worldTransform.m_origin * UU_TO_BT;
+		Vec ballVel = ball->_rigidBody.m_linearVelocity * UU_TO_BT;
 
 		if (ballVel.y < FLT_EPSILON)
 			return false;
@@ -757,7 +755,7 @@ Arena::~Arena() {
 
 	// Remove all cars
 	for (Car* car : _cars)
-		delete car;
+		Car::_DestroyCar(car);
 
 	if (gameMode == GameMode::SOCCAR) {
 		// Remove all boost pads
@@ -779,9 +777,6 @@ Arena::~Arena() {
 			}
 		}
 	}
-
-	// Remove ball
-	delete ball;
 }
 
 btRigidBody* Arena::_AddStaticCollisionShape(btCollisionShape* shape, bool isOwner, btVector3 posBT) {
