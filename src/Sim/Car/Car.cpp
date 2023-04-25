@@ -212,7 +212,7 @@ Car* Car::_AllocateCar() {
 void Car::_BulletSetup(btDynamicsWorld* bulletWorld, const MutatorConfig& mutatorConfig) {
 	{ // Set up rigidbody and collision shapes
 		_childHitboxShape = new btBoxShape((config.hitboxSize * UU_TO_BT) / 2);
-		_compoundShape = new btCompoundShape();
+		_compoundShape = new btCompoundShape(false, 1);
 
 		btTransform hitboxOffsetTransform = btTransform();
 		hitboxOffsetTransform.setIdentity();
