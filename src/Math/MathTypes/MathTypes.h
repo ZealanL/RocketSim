@@ -64,9 +64,10 @@ struct RS_ALIGN_16 Vec {
 		return sqrtf(DistSq2D(other));
 	}
 
+	// NOTE: Safe
 	Vec Normalized() const {
 		float length = Length();
-		if (length > 0) {
+		if (length > FLT_EPSILON * FLT_EPSILON) {
 			return *this / length;
 		} else {
 			return Vec();

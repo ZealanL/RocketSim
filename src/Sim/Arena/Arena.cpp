@@ -261,11 +261,9 @@ void Arena::_BtCallback_OnCarBallCollision(Car* car, Ball* ball, btManifoldPoint
 	float relSpeed = RS_MIN(relVel.length(), BALL_CAR_EXTRA_IMPULSE_MAXDELTAVEL_UU);
 
 	if (relSpeed > 0) {
-		btVector3 hitDir = (relPos * btVector3(1, 1, BALL_CAR_EXTRA_IMPULSE_Z_SCALE));
-		hitDir.safeNormalize();
+		btVector3 hitDir = (relPos * btVector3(1, 1, BALL_CAR_EXTRA_IMPULSE_Z_SCALE)).safeNormalized();
 		btVector3 forwardDirAdjustment = carForward * hitDir.dot(carForward) * (1 - BALL_CAR_EXTRA_IMPULSE_FORWARD_SCALE);
-		hitDir = (hitDir - forwardDirAdjustment);
-		hitDir.safeNormalize();
+		hitDir = (hitDir - forwardDirAdjustment).safeNormalized();
 		btVector3 addedVel = (hitDir * relSpeed) * BALL_CAR_EXTRA_IMPULSE_FACTOR_CURVE.GetOutput(relSpeed) * _mutatorConfig.ballHitExtraForceScale;
 		ballHitInfo.extraHitVel = addedVel;
 

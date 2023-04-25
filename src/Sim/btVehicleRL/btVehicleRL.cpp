@@ -322,10 +322,10 @@ void btVehicleRL::calcFrictionImpulses(float timeStep) {
 			btVector3 surfNormalWS = wheel.m_raycastInfo.m_contactNormalWS;
 			float proj = axleDir.dot(surfNormalWS);
 			axleDir -= surfNormalWS * proj;
-			axleDir = axleDir.normalized();
+			axleDir = axleDir.safeNormalized();
 
 			// Wheel forwards direction
-			btVector3 forwardDir = surfNormalWS.cross(axleDir).normalized();
+			btVector3 forwardDir = surfNormalWS.cross(axleDir).safeNormalized();
 
 			float sideImpulse;
 
@@ -407,7 +407,7 @@ btVector3 btVehicleRL::getUpwardsDirFromWheelContacts() {
 		return this->getUpVector();
 	} else {
 		// Average normal of contact
-		return sumContactDir.normalized();
+		return sumContactDir.safeNormalized();
 	}
 }
 

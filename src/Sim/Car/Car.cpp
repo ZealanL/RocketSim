@@ -679,7 +679,7 @@ void Car::_UpdateDoubleJumpOrFlip(float tickTime, const MutatorConfig& mutatorCo
 						if (abs(controls.yaw + controls.roll) < 0.1f && abs(controls.pitch) < 0.1f) {
 							dodgeDir = { 0, 0, 0 };
 						} else {
-							dodgeDir.safeNormalize();
+							dodgeDir = dodgeDir.safeNormalized();
 						}
 
 						_internalState.lastRelDodgeTorque = btVector3(-dodgeDir.y(), dodgeDir.x(), 0);
