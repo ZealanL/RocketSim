@@ -757,12 +757,15 @@ Arena::~Arena() {
 	for (Car* car : _cars)
 		Car::_DestroyCar(car);
 
+	// Remove the ball
+	Ball::_DestroyBall(ball);
+
 	if (gameMode == GameMode::SOCCAR) {
 		// Remove all boost pads
 		for (BoostPad* boostPad : _boostPads)
 			delete boostPad;
 
-		{ // Delete collision RBs and shapes
+		{ // Delete world collision RBs and shapes
 			for (btRigidBody* colRB : _worldCollisionRBs)
 				delete colRB;
 

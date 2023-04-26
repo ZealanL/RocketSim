@@ -41,7 +41,7 @@ public:
 	static Ball* _AllocBall() { return new Ball(); }
 
 	// For removal by Arena
-	static void _DestroyBall(Ball* ball) { ball->~Ball(); }
+	static void _DestroyBall(Ball* ball) { delete ball; }
 
 	void _BulletSetup(class btDynamicsWorld* bulletWorld, const MutatorConfig& mutatorConfig);
 
