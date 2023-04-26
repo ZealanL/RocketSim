@@ -152,6 +152,9 @@ public:
 	void _Serialize(DataStreamOut& out);
 	void _Deserialize(DataStreamIn& in);
 
+	Car(const Car& other) = delete;
+	Car& operator=(const Car& other) = delete;
+
 private:
 	void _UpdateWheels(float tickTime, const MutatorConfig& mutatorConfig, int numWheelsInContact, float forwardSpeed_UU);
 	void _UpdateBoost(float tickTime, const MutatorConfig& mutatorConfig, float forwardSpeed_UU);
@@ -162,12 +165,6 @@ private:
 	void _UpdateAutoRoll(float tickTime, const MutatorConfig& mutatorConfig, int numWheelsInContact);
 
 	Car() {}
-
-	Car(const Car& other) = default;
-	Car& operator=(const Car & other) = default;
-
-	Car(Car&& other) = default;
-	Car& operator=(Car&& other) = default;
 
 	~Car() {}
 };

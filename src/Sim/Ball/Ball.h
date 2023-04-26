@@ -56,6 +56,9 @@ public:
 		return GetRadiusBullet() * BT_TO_UU;
 	}
 
+	Ball(const Ball& other) = delete;
+	Ball& operator=(const Ball& other) = delete;
+
 private:
 	Ball() {}
 	~Ball() {}
