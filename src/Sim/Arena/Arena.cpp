@@ -3,15 +3,9 @@
 #include "../../RocketSim.h"
 
 #include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionDispatch/btDefaultCollisionConfiguration.h"
-#include "../../../libsrc/bullet3-3.24/BulletCollision/BroadphaseCollision/btDbvtBroadphase.h"
+#include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionDispatch/btInternalEdgeUtility.h"
 #include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btBoxShape.h"
 #include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btSphereShape.h"
-#include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btStaticPlaneShape.h"
-#include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btBvhTriangleMeshShape.h"
-#include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionDispatch/btCollisionDispatcher.h"
-#include "../../../libsrc/bullet3-3.24/BulletDynamics/ConstraintSolver/btSequentialImpulseConstraintSolver.h"
-#include "../../../libsrc/bullet3-3.24/BulletDynamics/Dynamics/btDiscreteDynamicsWorld.h"
-#include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionDispatch/btInternalEdgeUtility.h"
 
 RSAPI void Arena::SetMutatorConfig(const MutatorConfig& mutatorConfig) {
 
@@ -23,12 +17,12 @@ RSAPI void Arena::SetMutatorConfig(const MutatorConfig& mutatorConfig) {
 
 	this->_mutatorConfig = mutatorConfig;
 
-	_bulletWorld->setGravity(mutatorConfig.gravity * UU_TO_BT);
+	_bulletWorld.setGravity(mutatorConfig.gravity * UU_TO_BT);
 	
 	if (ballRadiusChanged) {
 		// We'll need to remake the ball
-		_bulletWorld->removeCollisionObject(&ball->_rigidBody);
-		ball->_BulletSetup(_bulletWorld, mutatorConfig);
+		_bulletWorld.removeCollisionObject(&ball->_rigidBody);
+		ball->_BulletSetup(&_bulletWorld, mutatorConfig);
 	} else if (ballMassChanged) {
 		btVector3 newBallInertia;
 		ball->_collisionShape.calculateLocalInertia(mutatorConfig.ballMass, newBallInertia);
@@ -58,7 +52,7 @@ Car* Arena::AddCar(Team team, const CarConfig& config) {
 	
 	_AddCarFromPtr(car);
 
-	car->_BulletSetup(_bulletWorld, _mutatorConfig);
+	car->_BulletSetup(&_bulletWorld, _mutatorConfig);
 	car->Respawn(-1, _mutatorConfig.carSpawnBoostAmount);
 
 	return car;
@@ -87,7 +81,7 @@ bool Arena::RemoveCar(uint32_t id) {
 		Car* car = itr->second;
 		_carIDMap.erase(itr);
 		_cars.erase(car);
-		_bulletWorld->removeCollisionObject(&car->_rigidBody);
+		_bulletWorld.removeCollisionObject(&car->_rigidBody);
 		Car::_DestroyCar(car);
 		return true;
 	} else {
@@ -377,24 +371,25 @@ Arena::Arena(GameMode gameMode, float tickRate) {
 	{ // Initialize world
 
 		btDefaultCollisionConstructionInfo collisionConfigConstructionInfo = {};
+		_bulletWorldParams.collisionConfig.setup(collisionConfigConstructionInfo);
 
-		_bulletWorldParams.collisionConfig = new btDefaultCollisionConfiguration(collisionConfigConstructionInfo);
+		_bulletWorldParams.collisionDispatcher.setup(&_bulletWorldParams.collisionConfig);
+		_bulletWorldParams.constraintSolver = btSequentialImpulseConstraintSolver();
 
-		_bulletWorldParams.collisionDispatcher = new btCollisionDispatcher(_bulletWorldParams.collisionConfig);
-		_bulletWorldParams.constraintSolver = new btSequentialImpulseConstraintSolver();
-		_bulletWorldParams.overlappingPairCache = new btDbvtBroadphase();
+		_bulletWorldParams.overlappingPairCache = new (btAlignedAlloc(sizeof(btHashedOverlappingPairCache), 16)) btHashedOverlappingPairCache();
+		_bulletWorldParams.broadphase = btDbvtBroadphase(_bulletWorldParams.overlappingPairCache);
 
-		_bulletWorld = new btDiscreteDynamicsWorld(
-			_bulletWorldParams.collisionDispatcher,
-			_bulletWorldParams.overlappingPairCache,
-			_bulletWorldParams.constraintSolver,
-			_bulletWorldParams.collisionConfig
+		_bulletWorld.setup(
+			&_bulletWorldParams.collisionDispatcher,
+			&_bulletWorldParams.broadphase,
+			&_bulletWorldParams.constraintSolver,
+			&_bulletWorldParams.collisionConfig
 		);
 
-		_bulletWorld->setGravity(_mutatorConfig.gravity * UU_TO_BT);
+		_bulletWorld.setGravity(_mutatorConfig.gravity * UU_TO_BT);
 
 		// Adjust solver configuration to be closer to older Bullet (Rocket League's Bullet is from somewhere between 2013 and 2015)
-		auto& solverInfo = _bulletWorld->getSolverInfo();
+		auto& solverInfo = _bulletWorld.getSolverInfo();
 		solverInfo.m_splitImpulsePenetrationThreshold = 1.0e30;
 		solverInfo.m_erp2 = 0.8f;
 	}
@@ -404,22 +399,29 @@ Arena::Arena(GameMode gameMode, float tickRate) {
 
 #ifndef RS_NO_SUSPCOLGRID
 		_suspColGrid = RocketSim::GetDefaultSuspColGrid();
-		_suspColGrid.defaultWorldCollisionRB = _worldCollisionRBs.front();
+		_suspColGrid.defaultWorldCollisionRB = &_worldCollisionRBs[0];
 #endif
 
 		// Give arena collision shapes the proper restitution/friction values
-		for (auto rb : _worldCollisionRBs) {
+		for (size_t i = 0; i < _worldCollisionRBAmount; i++) {
+			btRigidBody* rb = &_worldCollisionRBs[i];
 			// TODO: Move to RLConst
 			rb->setRestitution(0.3f);
 			rb->setFriction(0.6f);
 			rb->setRollingFriction(0.f);
 		}
+	} else {
+		_worldCollisionRBs = NULL;
+		_worldCollisionRBAmount = 0;
+		
+		_worldCollisionBvhShapes = NULL;
+		_worldCollisionPlaneShapes = NULL;
 	}
 
 	{ // Initialize ball
 		ball = Ball::_AllocBall();
 
-		ball->_BulletSetup(_bulletWorld, _mutatorConfig);
+		ball->_BulletSetup(&_bulletWorld, _mutatorConfig);
 		ball->SetState(BallState());
 	}
 
@@ -442,7 +444,7 @@ Arena::Arena(GameMode gameMode, float tickRate) {
 	}
 
 	// Set internal tick callback
-	_bulletWorld->setWorldUserInfo(this);
+	_bulletWorld.setWorldUserInfo(this);
 
 	gContactAddedCallback = &Arena::_BulletContactAddedCallback;
 }
@@ -594,7 +596,7 @@ Car* Arena::DeserializeNewCar(DataStreamIn& in, Team team) {
 
 	_AddCarFromPtr(car);
 
-	car->_BulletSetup(_bulletWorld, _mutatorConfig);
+	car->_BulletSetup(&_bulletWorld, _mutatorConfig);
 
 	CarState state = CarState();
 	state.Deserialize(in);
@@ -606,7 +608,7 @@ Car* Arena::DeserializeNewCar(DataStreamIn& in, Team team) {
 void Arena::Step(int ticksToSimulate) {
 	for (int i = 0; i < ticksToSimulate; i++) {
 
-		_bulletWorld->setWorldUserInfo(this);
+		_bulletWorld.setWorldUserInfo(this);
 
 		{ // Ball zero-vel sleeping
 			if (ball->_rigidBody.m_linearVelocity.length2() == 0 && ball->_rigidBody.m_angularVelocity.length2() == 0) {
@@ -668,7 +670,7 @@ void Arena::Step(int ticksToSimulate) {
 		}
 
 		// Update world
-		_bulletWorld->stepSimulation(tickTime, 0, tickTime);
+		_bulletWorld.stepSimulation(tickTime, 0, tickTime);
 
 		for (Car* car : _cars) {
 			car->_PostTickUpdate(tickTime, _mutatorConfig);
@@ -743,15 +745,11 @@ bool Arena::IsBallProbablyGoingIn(float maxTime) {
 }
 
 Arena::~Arena() {
-	// Delete world first
-	delete _bulletWorld;
 
-	{ // Delete world param things
-		delete _bulletWorldParams.collisionConfig;
-		delete _bulletWorldParams.collisionDispatcher;
-		delete _bulletWorldParams.overlappingPairCache;
-		delete _bulletWorldParams.constraintSolver;
-	}
+	// Manually remove all collision objects
+	// Otherwise we run into issues regarding deconstruction order
+	while (_bulletWorld.getNumCollisionObjects() > 0)
+		_bulletWorld.removeCollisionObject(_bulletWorld.getCollisionObjectArray()[0]);
 
 	// Remove all cars
 	for (Car* car : _cars)
@@ -765,71 +763,69 @@ Arena::~Arena() {
 		for (BoostPad* boostPad : _boostPads)
 			delete boostPad;
 
-		{ // Delete world collision RBs and shapes
-			for (btRigidBody* colRB : _worldCollisionRBs)
-				delete colRB;
-
-			for (btCollisionShape* colShape : _worldCollisionShapes) {
-				if (colShape->getShapeType() == TRIANGLE_MESH_SHAPE_PROXYTYPE) {
-					auto bvhShape = (btBvhTriangleMeshShape*)colShape;
-					btTriangleInfoMap* triInfoMap = bvhShape->getTriangleInfoMap();
-					if (triInfoMap)
-						delete triInfoMap;
-				}
-				delete colShape;
-			}
-		}
+		delete[] _worldCollisionRBs;
+		delete[] _worldCollisionPlaneShapes;
+		delete[] _worldCollisionBvhShapes;
 	}
-}
 
-btRigidBody* Arena::_AddStaticCollisionShape(btCollisionShape* shape, bool isOwner, btVector3 posBT) {
-	if (isOwner)
-		_worldCollisionShapes.push_back(shape);
-
-	btRigidBody* shapeRB = new btRigidBody(0, NULL, shape);
-	shapeRB->setWorldTransform(btTransform(btMatrix3x3::getIdentity(), posBT));
-	_worldCollisionRBs.push_back(shapeRB);
-
-	shapeRB->setUserPointer(this);
-	_bulletWorld->addRigidBody(shapeRB);
-	return shapeRB;
+	_bulletWorldParams.overlappingPairCache->~btHashedOverlappingPairCache();
+	btAlignedFree(_bulletWorldParams.overlappingPairCache);
 }
 
 void Arena::_SetupArenaCollisionShapes() {
 	// TODO: This is just for soccar arena (for now)
 	assert(gameMode == GameMode::SOCCAR);
 
-	// Add collision meshes to world
 	auto collisionMeshes = RocketSim::GetArenaCollisionShapes();
-	for (btBvhTriangleMeshShape* meshShape : collisionMeshes)
-		_AddStaticCollisionShape(meshShape, false);
+	_worldCollisionBvhShapes = new btBvhTriangleMeshShape[collisionMeshes.size()];
+
+	constexpr size_t PLANE_COUNT = 4;
+	_worldCollisionPlaneShapes = new btStaticPlaneShape[PLANE_COUNT];
+
+	_worldCollisionRBAmount = collisionMeshes.size() + PLANE_COUNT;
+	_worldCollisionRBs = new btRigidBody[_worldCollisionRBAmount];
+
+	for (size_t i = 0; i < collisionMeshes.size(); i++) {
+		_AddStaticCollisionShape(i, i, collisionMeshes[i], _worldCollisionBvhShapes);
+
+		// Don't free the BVH when we deconstruct this arena
+		_worldCollisionBvhShapes[i].m_ownsBvh = false;
+	}
 
 	{ // Add arena collision planes (floor/walls/ceiling)
 		using namespace RLConst;
 
 		// Floor
+		auto floorShape = btStaticPlaneShape(btVector3(0, 0, 1), 0);
 		_AddStaticCollisionShape(
-			new btStaticPlaneShape(btVector3(0, 0, 1), 0),
-			true
+			collisionMeshes.size() + 0,
+			0,
+			&floorShape, _worldCollisionPlaneShapes
 		);
 
 		// Ceiling
+		auto ceilingShape = btStaticPlaneShape(btVector3(0, 0, -1), 0);
 		_AddStaticCollisionShape(
-			new btStaticPlaneShape(btVector3(0, 0, -1), 0),
-			true,
+			collisionMeshes.size() + 1,
+			1,
+			&ceilingShape, _worldCollisionPlaneShapes,
 			Vec( 0, 0, ARENA_HEIGHT ) * UU_TO_BT
 		);
 
 		// Side walls
+		auto leftWallShape = btStaticPlaneShape(btVector3(1, 0, 0), 0);
 		_AddStaticCollisionShape(
-			new btStaticPlaneShape(btVector3(1, 0, 0), 0),
-			true,
+			collisionMeshes.size() + 2,
+			2,
+			&leftWallShape, _worldCollisionPlaneShapes,
 			Vec( -ARENA_EXTENT_X, 0, ARENA_HEIGHT / 2 ) * UU_TO_BT
 		);
+		auto rightWallShape = btStaticPlaneShape(btVector3(-1, 0, 0), 0);
 		_AddStaticCollisionShape(
-			new btStaticPlaneShape(btVector3(-1, 0, 0), 0),
-			true,
-			Vec( ARENA_EXTENT_X, 0, ARENA_HEIGHT / 2 ) * UU_TO_BT
+			collisionMeshes.size() + 3,
+			3,
+			&rightWallShape, _worldCollisionPlaneShapes,
+			Vec(ARENA_EXTENT_X, 0, ARENA_HEIGHT / 2) * UU_TO_BT
 		);
 	}
 }

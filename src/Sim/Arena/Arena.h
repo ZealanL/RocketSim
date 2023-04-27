@@ -9,11 +9,13 @@
 #include "../SuspensionCollisionGrid/SuspensionCollisionGrid.h"
 #include "../MutatorConfig/MutatorConfig.h"
 
-class btDiscreteDynamicsWorld;
-class btCollisionConfiguration;
-class btCollisionDispatcher;
-struct btDbvtBroadphase;
-class btSequentialImpulseConstraintSolver;
+#include "../../../libsrc/bullet3-3.24/BulletCollision/BroadphaseCollision/btDbvtBroadphase.h"
+#include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btStaticPlaneShape.h"
+#include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btBvhTriangleMeshShape.h"
+#include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionDispatch/btCollisionDispatcher.h"
+#include "../../../libsrc/bullet3-3.24/BulletDynamics/ConstraintSolver/btSequentialImpulseConstraintSolver.h"
+#include "../../../libsrc/bullet3-3.24/BulletDynamics/Dynamics/btDiscreteDynamicsWorld.h"
+#include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionDispatch/btDefaultCollisionConfiguration.h"
 
 enum class GameMode : byte {
 	SOCCAR,
@@ -78,16 +80,19 @@ public:
 
 	RSAPI Car* GetCar(uint32_t id);
 
-	btDiscreteDynamicsWorld* _bulletWorld;
+	btDiscreteDynamicsWorld _bulletWorld;
 	struct {
-		btCollisionConfiguration* collisionConfig;
-		btCollisionDispatcher* collisionDispatcher;
-		btDbvtBroadphase* overlappingPairCache;
-		btSequentialImpulseConstraintSolver* constraintSolver;
+		btDefaultCollisionConfiguration collisionConfig;
+		btCollisionDispatcher collisionDispatcher;
+		btHashedOverlappingPairCache* overlappingPairCache;
+		btDbvtBroadphase broadphase;
+		btSequentialImpulseConstraintSolver constraintSolver;
 	} _bulletWorldParams;
 
-	vector<class btRigidBody*> _worldCollisionRBs;
-	vector<class btCollisionShape*> _worldCollisionShapes;
+	btRigidBody* _worldCollisionRBs;
+	size_t _worldCollisionRBAmount;
+	btBvhTriangleMeshShape* _worldCollisionBvhShapes;
+	btStaticPlaneShape* _worldCollisionPlaneShapes;
 
 	struct {
 		GoalScoreEventFn func = NULL;
@@ -138,19 +143,32 @@ public:
 	RSAPI ~Arena();
 
 	// NOTE: Passed shape pointer will be freed when arena is deconstructed
-	class btRigidBody* _AddStaticCollisionShape(btCollisionShape* shape, bool isOwner, btVector3 posBT = btVector3(0,0,0));
+	template <class T>
+	void _AddStaticCollisionShape(size_t rbIndex, size_t meshListIndex, T* shape, T* meshList, btVector3 posBT = btVector3(0, 0, 0)) {
+		static_assert(std::is_base_of<btCollisionShape, T>::value);
+
+		meshList[meshListIndex] = *shape;
+	
+		assert(rbIndex < _worldCollisionRBAmount);
+		btRigidBody& shapeRB = _worldCollisionRBs[rbIndex];
+		shapeRB = btRigidBody(0, NULL, &meshList[meshListIndex]);
+		shapeRB.setWorldTransform(btTransform(btMatrix3x3::getIdentity(), posBT));
+		shapeRB.setUserPointer(this);
+		_bulletWorld.addRigidBody(&shapeRB);
+	}
+
 	void _SetupArenaCollisionShapes();
 
 	// Static function called by Bullet internally when adding a collision point
 	static bool _BulletContactAddedCallback(
-		class btManifoldPoint& cp,
-		const struct btCollisionObjectWrapper* colObjA, int partID_A, int indexA,
-		const struct btCollisionObjectWrapper* colObjB, int partID_B, int indexB
+		btManifoldPoint& cp,
+		const btCollisionObjectWrapper* colObjA, int partID_A, int indexA,
+		const btCollisionObjectWrapper* colObjB, int partID_B, int indexB
 	);
 
-	void _BtCallback_OnCarBallCollision(Car* car, Ball* ball, class btManifoldPoint& manifoldPoint, bool ballIsBodyA);
-	void _BtCallback_OnCarCarCollision(Car* car1, Car* car2, class btManifoldPoint& manifoldPoint);
-	void _BtCallback_OnCarWorldCollision(Car* car, class btCollisionObject* worldObject, class btManifoldPoint& manifoldPoint);
+	void _BtCallback_OnCarBallCollision(Car* car, Ball* ball, btManifoldPoint& manifoldPoint, bool ballIsBodyA);
+	void _BtCallback_OnCarCarCollision(Car* car1, Car* car2, btManifoldPoint& manifoldPoint);
+	void _BtCallback_OnCarWorldCollision(Car* car, btCollisionObject* worldObject, btManifoldPoint& manifoldPoint);
 
 private:
 	

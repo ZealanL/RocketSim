@@ -55,11 +55,11 @@ subject to the following restrictions:
 #include "../CollisionShapes/btTriangleMeshShape.h"
 #include "../CollisionShapes/btStaticPlaneShape.h"
 
-btCollisionWorld::btCollisionWorld(btCollisionDispatcher* dispatcher, btBroadphaseInterface* pairCache, btCollisionConfiguration* collisionConfiguration)
-	: m_dispatcher1(dispatcher),
-	  m_broadphasePairCache(pairCache),
-	  m_forceUpdateAllAabbs(true)
+void btCollisionWorld::setup(btCollisionDispatcher* dispatcher, btBroadphaseInterface* pairCache, btCollisionConfiguration* collisionConfiguration)
 {
+	m_dispatcher1 = dispatcher;
+	m_broadphasePairCache = pairCache;
+	m_forceUpdateAllAabbs = true;
 }
 
 btCollisionWorld::~btCollisionWorld()

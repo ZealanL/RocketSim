@@ -32,6 +32,8 @@ protected:
 public:
 	BT_DECLARE_ALIGNED_ALLOCATOR();
 
+	btStaticPlaneShape() {}
+
 	btStaticPlaneShape(const btVector3& planeNormal, btScalar planeConstant);
 
 	virtual ~btStaticPlaneShape();

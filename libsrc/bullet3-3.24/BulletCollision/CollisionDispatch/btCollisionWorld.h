@@ -97,8 +97,11 @@ protected:
 	bool m_forceUpdateAllAabbs;
 
 public:
-	//this constructor doesn't own the dispatcher and paircache/broadphase
-	btCollisionWorld(btCollisionDispatcher* dispatcher, btBroadphaseInterface* broadphasePairCache, btCollisionConfiguration* collisionConfiguration);
+
+	btCollisionWorld() {}
+
+	
+	void setup(btCollisionDispatcher* dispatcher, btBroadphaseInterface* broadphasePairCache, btCollisionConfiguration* collisionConfiguration);
 
 	virtual ~btCollisionWorld();
 

@@ -49,9 +49,14 @@ public:
 	btContactSolverInfo m_solverInfo;
 
 
-	btDynamicsWorld(btCollisionDispatcher* dispatcher, btBroadphaseInterface* broadphase, btCollisionConfiguration* collisionConfiguration)
-		: btCollisionWorld(dispatcher, broadphase, collisionConfiguration), m_internalTickCallback(0), m_internalPreTickCallback(0), m_worldUserInfo(0)
+	btDynamicsWorld() = default;
+
+	void setup(btCollisionDispatcher* dispatcher, btBroadphaseInterface* broadphase, btCollisionConfiguration* collisionConfiguration)
 	{
+		btCollisionWorld::setup(dispatcher, broadphase, collisionConfiguration);
+		m_internalTickCallback = 0;
+		m_internalPreTickCallback = 0;
+		m_worldUserInfo = 0;
 	}
 
 	virtual ~btDynamicsWorld()

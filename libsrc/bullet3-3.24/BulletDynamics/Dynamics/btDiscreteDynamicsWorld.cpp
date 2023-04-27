@@ -176,20 +176,20 @@ struct InplaceSolverIslandCallback : public btSimulationIslandManager::IslandCal
 	}
 };
 
-btDiscreteDynamicsWorld::btDiscreteDynamicsWorld(btCollisionDispatcher* dispatcher, btBroadphaseInterface* pairCache, btSequentialImpulseConstraintSolver* constraintSolver, btCollisionConfiguration* collisionConfiguration)
-	: btDynamicsWorld(dispatcher, pairCache, collisionConfiguration),
-	  m_sortedConstraints(),
-	  m_solverIslandCallback(NULL),
-	  m_constraintSolver(constraintSolver),
-	  m_gravity(0, -10, 0),
-	  m_localTime(0),
-	  m_fixedTimeStep(0),
-	  m_synchronizeAllMotionStates(false),
-	  m_applySpeculativeContactRestitution(false),
-	  m_profileTimings(0),
-	  m_latencyMotionStateInterpolation(true)
-
+void btDiscreteDynamicsWorld::setup(btCollisionDispatcher* dispatcher, btBroadphaseInterface* pairCache, btSequentialImpulseConstraintSolver* constraintSolver, btCollisionConfiguration* collisionConfiguration)
 {
+	btDynamicsWorld::setup(dispatcher, pairCache, collisionConfiguration);
+	m_sortedConstraints = {};
+	m_solverIslandCallback = NULL;
+	m_constraintSolver = constraintSolver;
+	m_gravity = btVector3(0, -10, 0);
+	m_localTime = 0;
+	m_fixedTimeStep = 0;
+	m_synchronizeAllMotionStates = false;
+	m_applySpeculativeContactRestitution = false;
+	m_profileTimings = 0;
+	m_latencyMotionStateInterpolation = true;
+
 	if (!m_constraintSolver)
 	{
 		void* mem = btAlignedAlloc(sizeof(btSequentialImpulseConstraintSolver), 16);
@@ -647,7 +647,9 @@ void btDiscreteDynamicsWorld::calculateSimulationIslands()
 {
 	BT_PROFILE("calculateSimulationIslands");
 
-	getSimulationIslandManager()->updateActivationState(getCollisionWorld(), getCollisionWorld()->getDispatcher());
+	auto islandManager = getSimulationIslandManager();
+	auto dispatcher = this->getDispatcher();
+	islandManager->updateActivationState(this, dispatcher);
 
 	{
 		//merge islands based on speculative contact manifolds too
@@ -661,7 +663,7 @@ void btDiscreteDynamicsWorld::calculateSimulationIslands()
 			if (((colObj0) && (!(colObj0)->isStaticOrKinematicObject())) &&
 				((colObj1) && (!(colObj1)->isStaticOrKinematicObject())))
 			{
-				getSimulationIslandManager()->getUnionFind().unite((colObj0)->getIslandTag(), (colObj1)->getIslandTag());
+				islandManager->getUnionFind().unite((colObj0)->getIslandTag(), (colObj1)->getIslandTag());
 			}
 		}
 	}

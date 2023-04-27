@@ -92,8 +92,10 @@ protected:
 public:
 	BT_DECLARE_ALIGNED_ALLOCATOR();
 
+	btDiscreteDynamicsWorld() {}
+
 	///this btDiscreteDynamicsWorld constructor gets created objects from the user, and will not delete those
-	btDiscreteDynamicsWorld(btCollisionDispatcher* dispatcher, btBroadphaseInterface* pairCache, btSequentialImpulseConstraintSolver* constraintSolver, btCollisionConfiguration* collisionConfiguration);
+	void setup(btCollisionDispatcher* dispatcher, btBroadphaseInterface* pairCache, btSequentialImpulseConstraintSolver* constraintSolver, btCollisionConfiguration* collisionConfiguration);
 
 	virtual ~btDiscreteDynamicsWorld();
 

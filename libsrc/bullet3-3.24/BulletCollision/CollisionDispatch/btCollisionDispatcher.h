@@ -104,7 +104,9 @@ public:
 		return m_manifoldsPtr[index];
 	}
 
-	btCollisionDispatcher(btCollisionConfiguration* collisionConfiguration);
+	btCollisionDispatcher() {}
+
+	void setup(btCollisionConfiguration* collisionConfiguration);
 
 	~btCollisionDispatcher();
 

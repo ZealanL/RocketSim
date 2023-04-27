@@ -101,8 +101,12 @@ struct btDbvtBroadphase : btBroadphaseInterface
 	} m_profiling;
 #endif
 	/* Methods		*/
-	btDbvtBroadphase(btOverlappingPairCache* paircache = 0);
+
+	btDbvtBroadphase() = default;
+
+	btDbvtBroadphase(btOverlappingPairCache* paircache);
 	~btDbvtBroadphase();
+
 	void collide(btCollisionDispatcher* dispatcher);
 	void optimize();
 

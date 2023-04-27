@@ -132,7 +132,7 @@ btDbvtBroadphase::btDbvtBroadphase(btOverlappingPairCache* paircache)
 {
 	m_deferedcollide = false;
 	m_needcleanup = true;
-	m_releasepaircache = (paircache != 0) ? false : true;
+	m_releasepaircache = false;
 	m_prediction = 0;
 	m_stageCurrent = 0;
 	m_fixedleft = 0;
@@ -143,7 +143,7 @@ btDbvtBroadphase::btDbvtBroadphase(btOverlappingPairCache* paircache)
 	m_updates_call = 0;
 	m_updates_done = 0;
 	m_updates_ratio = 0;
-	m_paircache = paircache ? paircache : new (btAlignedAlloc(sizeof(btHashedOverlappingPairCache), 16)) btHashedOverlappingPairCache();
+	m_paircache = paircache;
 	m_gid = 0;
 	m_pid = 0;
 	m_cid = 0;
