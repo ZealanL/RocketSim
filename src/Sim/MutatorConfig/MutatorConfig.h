@@ -57,6 +57,8 @@ struct MutatorConfig {
 	DemoMode demoMode = DemoMode::NORMAL;
 	bool enableTeamDemos = false;
 
+	bool enablePhysicsRounding = true;
+
 	MutatorConfig() = default;
 
 	RSAPI void Serialize(DataStreamOut& out) const;
@@ -68,4 +70,5 @@ gravity, carMass, carWorldFriction, carWorldRestitution, ballMass, \
 ballMaxSpeed, ballDrag, ballWorldFriction, ballWorldRestitution, jumpAccel, \
 jumpImmediateForce, boostAccel, boostUsedPerSecond, respawnDelay, \
 carSpawnBoostAmount, bumpCooldownTime, boostPadCooldown_Big, boostPadCooldown_Small, \
-ballHitExtraForceScale, bumpForceScale, ballRadius, demoMode, enableTeamDemos
+ballHitExtraForceScale, bumpForceScale, ballRadius, demoMode, \
+enableTeamDemos, enablePhysicsRounding

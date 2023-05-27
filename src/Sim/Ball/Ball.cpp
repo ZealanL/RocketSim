@@ -87,7 +87,7 @@ void Ball::_FinishPhysicsTick(const MutatorConfig& mutatorConfig) {
 		_rigidBody.m_angularVelocity = angVel;
 	}
 
-	{ // Round physics values to match RL
+	if (mutatorConfig.enablePhysicsRounding) {
 		_rigidBody.m_worldTransform.m_origin =
 			Math::RoundVec(_rigidBody.m_worldTransform.m_origin, 0.01 * UU_TO_BT);
 
