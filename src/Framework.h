@@ -63,6 +63,8 @@ typedef uint8_t byte;
 #define RS_LOG(s) {}
 #endif
 
+#define RS_LOG_BLANK() RS_LOG("")
+
 #define RS_STR(s) ([&]{ std::stringstream __macroStream; __macroStream << s; return __macroStream.str(); }())
 
 // Returns sign of number (1 if positive, -1 if negative, and 0 if 0)
