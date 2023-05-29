@@ -73,7 +73,10 @@ btPersistentManifold* btCollisionDispatcher::getNewManifold(const btCollisionObj
 
 	//optional relative contact breaking threshold, turned on by default (use setDispatcherFlags to switch off feature for improved performance)
 
-	btScalar contactBreakingThreshold = (m_dispatcherFlags & btCollisionDispatcher::CD_USE_RELATIVE_CONTACT_BREAKING_THRESHOLD) ? btMin(body0->getCollisionShape()->getContactBreakingThreshold(gContactBreakingThreshold), body1->getCollisionShape()->getContactBreakingThreshold(gContactBreakingThreshold))
+	btScalar 
+		body0_contactBreakingThrehold = body0->getCollisionShape()->getContactBreakingThreshold(gContactBreakingThreshold),
+		body1_contactBreakingThrehold = body1->getCollisionShape()->getContactBreakingThreshold(gContactBreakingThreshold);
+	btScalar contactBreakingThreshold = (m_dispatcherFlags & btCollisionDispatcher::CD_USE_RELATIVE_CONTACT_BREAKING_THRESHOLD) ? btMin(body0_contactBreakingThrehold, body1_contactBreakingThrehold)
 																																: gContactBreakingThreshold;
 
 	btScalar contactProcessingThreshold = btMin(body0->getContactProcessingThreshold(), body1->getContactProcessingThreshold());
