@@ -566,7 +566,9 @@ void Car::_UpdateAirControl(float tickTime, const MutatorConfig& mutatorConfig) 
 		dirRoll_forward = -GetForwardDir();
 
 	bool doAirControl = false;
-	_internalState.isFlipping = _internalState.hasFlipped && _internalState.flipTime < FLIP_TORQUE_TIME;
+	if (_internalState.isFlipping)
+		_internalState.isFlipping = _internalState.hasFlipped && _internalState.flipTime < FLIP_TORQUE_TIME;
+
 	if (_internalState.isFlipping) {
 
 		btVector3 relDodgeTorque = _internalState.lastRelDodgeTorque;
@@ -654,6 +656,7 @@ void Car::_UpdateDoubleJumpOrFlip(float tickTime, const MutatorConfig& mutatorCo
 					// Begin flipping
 					_internalState.flipTime = 0;
 					_internalState.hasFlipped = true;
+					_internalState.isFlipping = true;
 
 					// Apply initial dodge vel and set later dodge vel
 					// Replicated based on https://github.com/samuelpmish/RLUtilities/blob/develop/src/simulation/car.cc
