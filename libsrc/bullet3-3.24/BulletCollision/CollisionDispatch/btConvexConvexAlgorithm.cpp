@@ -321,10 +321,6 @@ void btConvexConvexAlgorithm ::processCollision(const btCollisionObjectWrapper* 
 		input.m_transformA = body0Wrap->getWorldTransform();
 		input.m_transformB = body1Wrap->getWorldTransform();
 
-
-
-
-
 #ifdef USE_SEPDISTANCE_UTIL2
 		btScalar sepDist = 0.f;
 		if (dispatchInfo.m_useConvexConservativeDistanceUtil) {
