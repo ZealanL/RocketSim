@@ -102,8 +102,11 @@ void Car::_PreTickUpdate(float tickTime, const MutatorConfig& mutatorConfig, Sus
 	float forwardSpeed_UU = _bulletVehicle.getForwardSpeed() * BT_TO_UU;
 	_UpdateWheels(tickTime, mutatorConfig, numWheelsInContact, forwardSpeed_UU);
 
-	if (numWheelsInContact == 0)
+	if (numWheelsInContact == 0) {
 		_UpdateAirControl(tickTime, mutatorConfig);
+	} else {
+		_internalState.isFlipping = false;
+	}
 
 	_UpdateJump(tickTime, mutatorConfig, jumpPressed);
 	_UpdateAutoFlip(tickTime, mutatorConfig, jumpPressed);
@@ -563,7 +566,8 @@ void Car::_UpdateAirControl(float tickTime, const MutatorConfig& mutatorConfig) 
 		dirRoll_forward = -GetForwardDir();
 
 	bool doAirControl = false;
-	if (_internalState.hasFlipped && _internalState.flipTime < FLIP_TORQUE_TIME) {
+	_internalState.isFlipping = _internalState.hasFlipped && _internalState.flipTime < FLIP_TORQUE_TIME;
+	if (_internalState.isFlipping) {
 
 		btVector3 relDodgeTorque = _internalState.lastRelDodgeTorque;
 

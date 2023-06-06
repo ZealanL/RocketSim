@@ -30,6 +30,9 @@ struct CarState {
 	// Active during the duration of a jump or flip
 	float jumpTime = 0, flipTime = 0;
 
+	// True during a flip (not a jump, and not after a flip)
+	bool isFlipping = false;
+
 	// True during a jump (not double jumps or a flip)
 	bool isJumping = false;
 
