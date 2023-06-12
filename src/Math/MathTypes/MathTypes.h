@@ -264,6 +264,16 @@ struct Angle {
 		return (yaw == other.yaw) && (pitch == other.pitch) && (roll == other.roll);
 	}
 
+	Angle GetDeltaTo(const Angle& other) const {
+		Angle delta = Angle(other.yaw - yaw, other.pitch - pitch, other.roll - roll);
+		delta.NormalizeFix();
+		return delta;
+	}
+
+	Angle operator-(const Angle& other) const {
+		return other.GetDeltaTo(*this);
+	}
+
 	friend std::ostream& operator<<(std::ostream& stream, const Angle& ang) {
 		stream << "(YPR)[ " << ang.yaw << ", " << ang.pitch << ", " << ang.roll << " ]";
 		return stream;
