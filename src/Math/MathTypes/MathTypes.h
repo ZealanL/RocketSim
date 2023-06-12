@@ -260,6 +260,10 @@ struct Angle {
 	// Limits yaw/pitch/roll to [-pi,pi]/[-pi/2,pi/2]/[-pi,pi] while still representing the same rotation
 	RSAPI void NormalizeFix();
 
+	bool operator==(const Angle& other) const {
+		return (yaw == other.yaw) && (pitch == other.pitch) && (roll == other.roll);
+	}
+
 	friend std::ostream& operator<<(std::ostream& stream, const Angle& ang) {
 		stream << "(YPR)[ " << ang.yaw << ", " << ang.pitch << ", " << ang.roll << " ]";
 		return stream;
