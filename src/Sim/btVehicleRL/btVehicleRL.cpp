@@ -168,13 +168,17 @@ float btVehicleRL::rayCast(btWheelInfoRL& wheel, SuspensionCollisionGrid* grid) 
 
 		float projVel = wheel.m_raycastInfo.m_contactNormalWS.dot(chassis_velocity_at_contactPoint);
 
-		if (denominator >= 0.1) {
-			wheel.m_suspensionRelativeVelocity = 0;
-			wheel.m_clippedInvContactDotSuspension = 10;
-		} else {
+		if (denominator > 0.1) {
 			float inv = -1 / denominator;
 			wheel.m_suspensionRelativeVelocity = projVel * inv;
+			if (projVel * inv > 100 * 1000) {
+				int x = 0;
+			}
 			wheel.m_clippedInvContactDotSuspension = inv;
+		} else {
+			// Denominator is too tiny to be meaningful
+			wheel.m_suspensionRelativeVelocity = 0;
+			wheel.m_clippedInvContactDotSuspension = 10;
 		}
 
 		{ // Compute m_extraPushback
@@ -284,7 +288,7 @@ void btVehicleRL::updateSuspension(float deltaTime) {
 
 			wheel_info.m_wheelsSuspensionForce = force - (dampingVelScale * wheel_info.m_suspensionRelativeVelocity);
 			wheel_info.m_wheelsSuspensionForce *= wheel_info.m_suspensionForceScale;
-			
+
 			// RL never uses downwards suspension forces
 			if (wheel_info.m_wheelsSuspensionForce < 0)
 				wheel_info.m_wheelsSuspensionForce = 0;
