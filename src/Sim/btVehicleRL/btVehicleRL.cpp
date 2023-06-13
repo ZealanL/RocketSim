@@ -159,21 +159,18 @@ float btVehicleRL::rayCast(btWheelInfoRL& wheel, SuspensionCollisionGrid* grid) 
 				wheel.getSuspensionRestLength() + suspensionTravel
 			);
 
-		float denominator = wheel.m_raycastInfo.m_contactNormalWS.dot(wheel.m_raycastInfo.m_wheelDirectionWS);
+		float denominator = wheel.m_raycastInfo.m_contactNormalWS.dot(getUpVector());
 
 		btVector3 chassis_velocity_at_contactPoint;
-		btVector3 relpos = wheel.m_raycastInfo.m_contactPointWS - getRigidBody()->getCenterOfMassPosition();
+		btVector3 relpos = wheel.m_raycastInfo.m_contactPointWS - m_chassisBody->m_worldTransform.m_origin;
 
-		chassis_velocity_at_contactPoint = getRigidBody()->getVelocityInLocalPoint(relpos);
+		chassis_velocity_at_contactPoint = m_chassisBody->getVelocityInLocalPoint(relpos);
 
 		float projVel = wheel.m_raycastInfo.m_contactNormalWS.dot(chassis_velocity_at_contactPoint);
 
 		if (denominator > 0.1) {
-			float inv = -1 / denominator;
+			float inv = 1 / denominator;
 			wheel.m_suspensionRelativeVelocity = projVel * inv;
-			if (projVel * inv > 100 * 1000) {
-				int x = 0;
-			}
 			wheel.m_clippedInvContactDotSuspension = inv;
 		} else {
 			// Denominator is too tiny to be meaningful
@@ -191,7 +188,14 @@ float btVehicleRL::rayCast(btWheelInfoRL& wheel, SuspensionCollisionGrid* grid) 
 
 			float susRayDeltaDist = wheelTraceLenSq - (realRayLength - wheel.m_wheelsRadius);
 			
-			float collisionResult = resolveSingleCollision(m_chassisBody, object, rayResults.m_hitPointInWorld, rayResults.m_hitNormalInWorld, m_dynamicsWorld->getSolverInfo(), susRayDeltaDist);
+			float collisionResult = resolveSingleCollision(
+				m_chassisBody, 
+				object, 
+				rayResults.m_hitPointInWorld, 
+				rayResults.m_hitNormalInWorld, 
+				m_dynamicsWorld->getSolverInfo(), 
+				susRayDeltaDist
+			);
 			float pushBackScale = (1 / 1.5f);
 			wheel.m_extraPushback = (collisionResult * pushBackScale) / getNumWheels();
 
