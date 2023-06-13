@@ -82,9 +82,9 @@ struct CarState {
 
 #define CARSTATE_SERIALIZATION_FIELDS \
 pos, rotMat, vel, angVel, isOnGround, hasJumped, hasDoubleJumped, hasFlipped, \
-lastRelDodgeTorque, jumpTime, flipTime, isJumping, airTimeSinceJump, boost, \
-timeSpentBoosting, supersonicTime, handbrakeVal, isAutoFlipping, autoFlipTimer, \
-autoFlipTorqueScale, isDemoed, demoRespawnTimer, lastControls, \
+lastRelDodgeTorque, jumpTime, isFlipping, flipTime, isJumping, airTimeSinceJump, \
+boost, timeSpentBoosting, supersonicTime, handbrakeVal, isAutoFlipping, \
+autoFlipTimer, autoFlipTorqueScale, isDemoed, demoRespawnTimer, lastControls, \
 worldContact.hasContact, worldContact.contactNormal, \
 carContact.otherCarID, carContact.cooldownTimer
 
