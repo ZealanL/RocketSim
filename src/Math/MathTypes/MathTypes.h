@@ -7,11 +7,11 @@ struct RS_ALIGN_16 Vec {
 
 	float _w; // 4th component to get compiler to use SIMD operations
 
-	Vec() {
+	constexpr Vec() {
 		x = y = z = _w = 0;
 	}
 
-	Vec(float x, float y, float z, float _w = 0) : x(x), y(y), z(z), _w(_w) {}
+	constexpr Vec(float x, float y, float z, float _w = 0) : x(x), y(y), z(z), _w(_w) {}
 
 	Vec(const btVector3& bulletVec) {
 		*(btVector3*)this = bulletVec;

@@ -136,7 +136,7 @@ namespace RLConst {
 	}
 
 	// NOTE: Angle order is PYR
-	const static Vec
+	constexpr Vec
 		CAR_AIR_CONTROL_TORQUE = Vec(130, 95, 400),
 		CAR_AIR_CONTROL_DAMPING = Vec(30, 20, 50);
 
@@ -162,7 +162,7 @@ namespace RLConst {
 			LOCS_AMOUNT_SMALL = 28,
 			LOCS_AMOUNT_BIG = 6;
 
-		const static Vec LOCS_SMALL[LOCS_AMOUNT_SMALL] = {
+		constexpr Vec LOCS_SMALL[LOCS_AMOUNT_SMALL] = {
 			{0.f,		-4240.f,	70.f },
 			{-1792.f,	-4184.f,	70.f },
 			{1792.f,	-4184.f,	70.f },
@@ -193,7 +193,7 @@ namespace RLConst {
 			{0.f,		4240.f,		70.f }
 		};
 
-		const static Vec LOCS_BIG[LOCS_AMOUNT_BIG] = {
+		constexpr Vec LOCS_BIG[LOCS_AMOUNT_BIG] = {
 			{-3584.f,     0.f, 73.f },
 			{ 3584.f,     0.f, 73.f },
 			{-3072.f,  4096.f, 73.f },
