@@ -55,16 +55,6 @@ MAT_OP_EACH_FLT(/)
 
 #undef MAT_OP_EACH_FLT
 
-RSAPI RotMat RotMat::LookAt(Vec forwardDir, Vec upDir) {
-	Vec 
-		f = forwardDir.Normalized(),
-		tr = upDir.Cross(f),
-		u = f.Cross(tr).Normalized(),
-		r = u.Cross(f).Normalized();
-
-	return RotMat(f, r, u);
-}
-
 //////////////////////////////////////
 
 Angle Angle::FromRotMat(RotMat mat) {

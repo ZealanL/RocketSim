@@ -166,7 +166,15 @@ struct RS_ALIGN_16 RotMat {
 	}
 
 	// NOTE: up does not have to be at a right angle from forward
-	RSAPI static RotMat LookAt(Vec forwardDir, Vec upDir);
+	static RotMat LookAt(Vec forwardDir, Vec upDir) {
+		Vec
+			f = forwardDir.Normalized(),
+			tr = upDir.Cross(f),
+			u = f.Cross(tr).Normalized(),
+			r = u.Cross(f).Normalized();
+
+		return RotMat(f, r, u);
+	}
 
 	Vec operator[](uint32_t index) const {
 		assert(index >= 0 && index < 3);
