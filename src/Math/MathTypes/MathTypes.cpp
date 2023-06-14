@@ -19,6 +19,8 @@ VEC_OP_VEC(/)
 VEC_OP_FLT(*)
 VEC_OP_FLT(/)
 
+////////////////////////////////////
+
 #define MAT_OP_EACH_MAT(op) \
 RotMat RotMat::operator op(const RotMat& other) const { \
 	RotMat result; \
@@ -52,6 +54,18 @@ MAT_OP_EACH_FLT(*)
 MAT_OP_EACH_FLT(/)
 
 #undef MAT_OP_EACH_FLT
+
+RSAPI RotMat RotMat::LookAt(Vec forwardDir, Vec upDir) {
+	Vec 
+		f = forwardDir.Normalized(),
+		tr = upDir.Cross(f),
+		u = f.Cross(tr).Normalized(),
+		r = u.Cross(f).Normalized();
+
+	return RotMat(f, r, u);
+}
+
+//////////////////////////////////////
 
 Angle Angle::FromRotMat(RotMat mat) {
 	Angle result;
