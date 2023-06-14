@@ -454,7 +454,7 @@ Arena* Arena::Create(GameMode gameMode, float tickRate) {
 }
 
 void Arena::WriteToFile(std::filesystem::path path) {
-	DataStreamOut out = DataStreamOut(path);
+	DataStreamOut out = {};
 
 	out.WriteMultiple(gameMode, tickTime, tickCount, _lastCarID);
 
@@ -480,12 +480,14 @@ void Arena::WriteToFile(std::filesystem::path path) {
 	{ // Serialize mutators
 		_mutatorConfig.Serialize(out);
 	}
+
+	out.WriteToFile(path, true);
 }
 
 Arena* Arena::LoadFromFile(std::filesystem::path path) {
 	constexpr char ERROR_PREFIX[] = "Arena::LoadFromFile(): ";
 
-	DataStreamIn in = DataStreamIn(path);
+	DataStreamIn in = DataStreamIn(path, true);
 
 	GameMode gameMode;
 	float tickTime;
