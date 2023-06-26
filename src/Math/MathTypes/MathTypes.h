@@ -7,11 +7,11 @@ struct RS_ALIGN_16 Vec {
 
 	float _w; // 4th component to get compiler to use SIMD operations
 
-	Vec() {
+	constexpr Vec() {
 		x = y = z = _w = 0;
 	}
 
-	Vec(float x, float y, float z, float _w = 0) : x(x), y(y), z(z), _w(_w) {}
+	constexpr Vec(float x, float y, float z, float _w = 0) : x(x), y(y), z(z), _w(_w) {}
 
 	Vec(const btVector3& bulletVec) {
 		*(btVector3*)this = bulletVec;
@@ -41,7 +41,7 @@ struct RS_ALIGN_16 Vec {
 	Vec Cross(const Vec& other) const {
 		return Vec(
 			 (y * other.z) - (z * other.y),
-			-(x * other.z) - (z * other.x),
+			 (z * other.x) - (x * other.z),
 			 (x * other.y) - (y * other.x)
 		);
 	}
@@ -64,9 +64,10 @@ struct RS_ALIGN_16 Vec {
 		return sqrtf(DistSq2D(other));
 	}
 
+	// NOTE: Safe
 	Vec Normalized() const {
 		float length = Length();
-		if (length > 0) {
+		if (length > FLT_EPSILON * FLT_EPSILON) {
 			return *this / length;
 		} else {
 			return Vec();
@@ -115,6 +116,18 @@ struct RS_ALIGN_16 Vec {
 		return Vec(-x, -y, -z, -_w);
 	}
 
+	bool operator==(const Vec& other) const {
+		return
+			(x == other.x) &&
+			(y == other.y) &&
+			(z == other.z) &&
+			(_w == other._w);
+	}
+
+	bool operator!=(const Vec& other) const {
+		return !(*this == other);
+	}
+
 	friend std::ostream& operator<<(std::ostream& stream, const Vec& vec) {
 		stream << "[ " << vec.x << ", " << vec.y << ", " << vec.z << " ]";
 		return stream;
@@ -152,6 +165,17 @@ struct RS_ALIGN_16 RotMat {
 		);
 	}
 
+	// NOTE: up does not have to be at a right angle from forward
+	static RotMat LookAt(Vec forwardDir, Vec upDir) {
+		Vec
+			f = forwardDir.Normalized(),
+			tr = upDir.Cross(f),
+			u = f.Cross(tr).Normalized(),
+			r = u.Cross(f).Normalized();
+
+		return RotMat(f, r, u);
+	}
+
 	Vec operator[](uint32_t index) const {
 		assert(index >= 0 && index < 3);
 		return ((Vec*)(this))[index];
@@ -185,12 +209,34 @@ struct RS_ALIGN_16 RotMat {
 	RSAPI RotMat& operator*=(float val);
 	RSAPI RotMat& operator/=(float val);
 
+	bool operator==(const RotMat& other) const {
+		return
+			(forward == other.forward) &&
+			(right == other.right) &&
+			(up == other.up);
+	}
+
+	bool operator!=(const RotMat& other) const {
+		return !(*this == other);
+	}
+
 	Vec Dot(const Vec& vec) const {
 		return Vec(
 			vec.Dot(forward),
 			vec.Dot(right),
 			vec.Dot(up)
 		);
+	}
+
+	RotMat Dot(const RotMat& other) const {
+		RotMat result;
+
+		for (size_t i = 0; i < 3; i++)
+			for (size_t j = 0; j < 3; j++) 
+				for (size_t k = 0; k < 3; k++)
+					result[i][j] += (*this)[i][j] * other[k][j];
+
+		return result;
 	}
 
 	RotMat Transpose() const {
@@ -224,6 +270,20 @@ struct Angle {
 
 	// Limits yaw/pitch/roll to [-pi,pi]/[-pi/2,pi/2]/[-pi,pi] while still representing the same rotation
 	RSAPI void NormalizeFix();
+
+	bool operator==(const Angle& other) const {
+		return (yaw == other.yaw) && (pitch == other.pitch) && (roll == other.roll);
+	}
+
+	Angle GetDeltaTo(const Angle& other) const {
+		Angle delta = Angle(other.yaw - yaw, other.pitch - pitch, other.roll - roll);
+		delta.NormalizeFix();
+		return delta;
+	}
+
+	Angle operator-(const Angle& other) const {
+		return other.GetDeltaTo(*this);
+	}
 
 	friend std::ostream& operator<<(std::ostream& stream, const Angle& ang) {
 		stream << "(YPR)[ " << ang.yaw << ", " << ang.pitch << ", " << ang.roll << " ]";

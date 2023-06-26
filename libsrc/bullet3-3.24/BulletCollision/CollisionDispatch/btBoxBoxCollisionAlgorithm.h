@@ -18,7 +18,7 @@ subject to the following restrictions:
 
 #include "btActivatingCollisionAlgorithm.h"
 #include "../BroadphaseCollision/btBroadphaseProxy.h"
-#include "../BroadphaseCollision/btDispatcher.h"
+#include "../CollisionDispatch/btCollisionDispatcher.h"
 #include "../CollisionDispatch/btCollisionCreateFunc.h"
 
 class btPersistentManifold;

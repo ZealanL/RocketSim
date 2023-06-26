@@ -16,14 +16,8 @@ subject to the following restrictions:
 #include "btConvexInternalShape.h"
 
 btConvexInternalShape::btConvexInternalShape()
-	: m_localScaling(btScalar(1.), btScalar(1.), btScalar(1.)),
-	  m_collisionMargin(CONVEX_DISTANCE_MARGIN)
+	  : m_collisionMargin(CONVEX_DISTANCE_MARGIN)
 {
-}
-
-void btConvexInternalShape::setLocalScaling(const btVector3& scaling)
-{
-	m_localScaling = scaling.absolute();
 }
 
 void btConvexInternalShape::getAabbSlow(const btTransform& trans, btVector3& minAabb, btVector3& maxAabb) const
@@ -82,12 +76,6 @@ btConvexInternalAabbCachingShape::btConvexInternalAabbCachingShape()
 void btConvexInternalAabbCachingShape::getAabb(const btTransform& trans, btVector3& aabbMin, btVector3& aabbMax) const
 {
 	getNonvirtualAabb(trans, aabbMin, aabbMax, getMargin());
-}
-
-void btConvexInternalAabbCachingShape::setLocalScaling(const btVector3& scaling)
-{
-	btConvexInternalShape::setLocalScaling(scaling);
-	recalcLocalAabb();
 }
 
 void btConvexInternalAabbCachingShape::recalcLocalAabb()

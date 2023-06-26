@@ -347,8 +347,8 @@ btScalar btVec3PointTriDist2(const btVector3 *P,
 	// computed.
 
 	btVector3 d1, d2, a;
-	double u, v, w, p, q, r;
-	double s, t, dist, dist2;
+	btScalar u, v, w, p, q, r;
+	btScalar s, t, dist, dist2;
 	btVector3 witness2;
 
 	btVec3Sub2(&d1, B, x0);
@@ -691,30 +691,25 @@ void btGjkPairDetector::getClosestPointsNonVirtual(const ClosestPointInput &inpu
 	m_cachedSeparatingDistance = 0.f;
 
 	btScalar distance = btScalar(0.);
-	btVector3 normalInB(btScalar(0.), btScalar(0.), btScalar(0.));
-
+	btVector3	normalInB(btScalar(0.), btScalar(0.), btScalar(0.));
 	btVector3 pointOnA, pointOnB;
-	btTransform localTransA = input.m_transformA;
+	btTransform	localTransA = input.m_transformA;
 	btTransform localTransB = input.m_transformB;
 	btVector3 positionOffset = (localTransA.getOrigin() + localTransB.getOrigin()) * btScalar(0.5);
 	localTransA.getOrigin() -= positionOffset;
 	localTransB.getOrigin() -= positionOffset;
 
-	bool check2d = m_minkowskiA->isConvex2d() && m_minkowskiB->isConvex2d();
-
 	btScalar marginA = m_marginA;
 	btScalar marginB = m_marginB;
 
-
 	//for CCD we don't use margins
-	if (m_ignoreMargin)
-	{
+	if (m_ignoreMargin) {
 		marginA = btScalar(0.);
 		marginB = btScalar(0.);
 	}
 
 	m_curIter = 0;
-	int gGjkMaxIter = 1000;  //this is to catch invalid input, perhaps check for #NaN?
+	int gGjkMaxIter = 1000;//this is to catch invalid input, perhaps check for #NaN?
 	m_cachedSeparatingAxis.setValue(0, 1, 0);
 
 	bool isValid = false;
@@ -723,297 +718,141 @@ void btGjkPairDetector::getClosestPointsNonVirtual(const ClosestPointInput &inpu
 	m_degenerateSimplex = 0;
 
 	m_lastUsedMethod = -1;
-	int status = -2;
-	btVector3 orgNormalInB(0, 0, 0);
-	btScalar margin = marginA + marginB;
 
-	//we add a separate implementation to check if the convex shapes intersect
-	//See also "Real-time Collision Detection with Implicit Objects" by Leif Olvang
-	//Todo: integrate the simplex penetration check directly inside the Bullet btVoronoiSimplexSolver
-	//and remove this temporary code from libCCD
-	//this fixes issue https://github.com/bulletphysics/bullet3/issues/1703
-	//note, for large differences in shapes, use double precision build!
 	{
 		btScalar squaredDistance = BT_LARGE_FLOAT;
 		btScalar delta = btScalar(0.);
 
-		btSimplex simplex1;
-		btSimplex *simplex = &simplex1;
-		btSimplexInit(simplex);
-
-		btVector3 dir(1, 0, 0);
-
-		{
-			btVector3 lastSupV;
-			btVector3 supAworld;
-			btVector3 supBworld;
-			btComputeSupport(m_minkowskiA, localTransA, m_minkowskiB, localTransB, dir, check2d, supAworld, supBworld, lastSupV);
-
-			btSupportVector last;
-			last.v = lastSupV;
-			last.v1 = supAworld;
-			last.v2 = supBworld;
-
-			btSimplexAdd(simplex, &last);
-
-			dir = -lastSupV;
-
-			// start iterations
-			for (int iterations = 0; iterations < gGjkMaxIter; iterations++)
-			{
-				// obtain support point
-				btComputeSupport(m_minkowskiA, localTransA, m_minkowskiB, localTransB, dir, check2d, supAworld, supBworld, lastSupV);
-
-				// check if farthest point in Minkowski difference in direction dir
-				// isn't somewhere before origin (the test on negative dot product)
-				// - because if it is, objects are not intersecting at all.
-				btScalar delta = lastSupV.dot(dir);
-				if (delta < 0)
-				{
-					//no intersection, besides margin
-					status = -1;
-					break;
-				}
-
-				// add last support vector to simplex
-				last.v = lastSupV;
-				last.v1 = supAworld;
-				last.v2 = supBworld;
-
-				btSimplexAdd(simplex, &last);
-
-				// if btDoSimplex returns 1 if objects intersect, -1 if objects don't
-				// intersect and 0 if algorithm should continue
-
-				btVector3 newDir;
-				int do_simplex_res = btDoSimplex(simplex, &dir);
-
-				if (do_simplex_res == 1)
-				{
-					status = 0;  // intersection found
-					break;
-				}
-				else if (do_simplex_res == -1)
-				{
-					// intersection not found
-					status = -1;
-					break;
-				}
-
-				if (btFuzzyZero(btVec3Dot(&dir, &dir)))
-				{
-					// intersection not found
-					status = -1;
-				}
-
-				if (dir.length2() < SIMD_EPSILON)
-				{
-					//no intersection, besides margin
-					status = -1;
-					break;
-				}
-
-				if (dir.fuzzyZero())
-				{
-					// intersection not found
-					status = -1;
-					break;
-				}
-			}
-		}
+		btScalar margin = marginA + marginB;
 
 		m_simplexSolver->reset();
-		if (status == 0)
+
+		while (true)
 		{
-			//status = 0;
-			//printf("Intersect!\n");
-		}
 
-		if (status == -1)
-		{
-			//printf("not intersect\n");
-		}
-		//printf("dir=%f,%f,%f\n",dir[0],dir[1],dir[2]);
-		if (1)
-		{
-			for (;;)
-			//while (true)
-			{
-				btVector3 separatingAxisInA = (-m_cachedSeparatingAxis) * localTransA.getBasis();
-				btVector3 separatingAxisInB = m_cachedSeparatingAxis * localTransB.getBasis();
+			btVector3 seperatingAxisInA = (-m_cachedSeparatingAxis) * input.m_transformA.getBasis();
+			btVector3 seperatingAxisInB = m_cachedSeparatingAxis * input.m_transformB.getBasis();
 
-				btVector3 pInA = m_minkowskiA->localGetSupportVertexWithoutMarginNonVirtual(separatingAxisInA);
-				btVector3 qInB = m_minkowskiB->localGetSupportVertexWithoutMarginNonVirtual(separatingAxisInB);
+			btVector3 pInA = m_minkowskiA->localGetSupportVertexWithoutMarginNonVirtual(seperatingAxisInA);
+			btVector3 qInB = m_minkowskiB->localGetSupportVertexWithoutMarginNonVirtual(seperatingAxisInB);
 
-				btVector3 pWorld = localTransA(pInA);
-				btVector3 qWorld = localTransB(qInB);
+			btVector3  pWorld = localTransA(pInA);
+			btVector3  qWorld = localTransB(qInB);
 
-				if (check2d)
-				{
-					pWorld[2] = 0.f;
-					qWorld[2] = 0.f;
+			btVector3 w = pWorld - qWorld;
+			delta = m_cachedSeparatingAxis.dot(w);
+
+			// potential exit, they don't overlap
+			if ((delta > btScalar(0.0)) && (delta * delta > squaredDistance * input.m_maximumDistanceSquared)) {
+				m_degenerateSimplex = 10;
+				checkSimplex = true;
+				//checkPenetration = false;
+				break;
+			}
+
+			//exit 0: the new point is already in the simplex, or we didn't come any closer
+			if (m_simplexSolver->inSimplex(w)) {
+				m_degenerateSimplex = 1;
+				checkSimplex = true;
+				break;
+			}
+			// are we getting any closer ?
+			btScalar f0 = squaredDistance - delta;
+			btScalar f1 = squaredDistance * REL_ERROR2;
+
+			if (f0 <= f1) {
+				if (f0 <= btScalar(0.)) {
+					m_degenerateSimplex = 2;
+				} else {
+					m_degenerateSimplex = 11;
 				}
+				checkSimplex = true;
+				break;
+			}
 
-				btVector3 w = pWorld - qWorld;
-				delta = m_cachedSeparatingAxis.dot(w);
+			//add current vertex to simplex
+			m_simplexSolver->addVertex(w, pWorld, qWorld);
+			btVector3 newCachedSeparatingAxis;
 
-				// potential exit, they don't overlap
-				if ((delta > btScalar(0.0)) && (delta * delta > squaredDistance * input.m_maximumDistanceSquared))
-				{
-					m_degenerateSimplex = 10;
-					checkSimplex = true;
-					//checkPenetration = false;
-					break;
-				}
+			//calculate the closest point to the origin (update vector v)
+			if (!m_simplexSolver->closest(newCachedSeparatingAxis)) {
+				m_degenerateSimplex = 3;
+				checkSimplex = true;
+				break;
+			}
 
-				//exit 0: the new point is already in the simplex, or we didn't come any closer
-				if (m_simplexSolver->inSimplex(w))
-				{
-					m_degenerateSimplex = 1;
-					checkSimplex = true;
-					break;
-				}
-				// are we getting any closer ?
-				btScalar f0 = squaredDistance - delta;
-				btScalar f1 = squaredDistance * REL_ERROR2;
-
-				if (f0 <= f1)
-				{
-					if (f0 <= btScalar(0.))
-					{
-						m_degenerateSimplex = 2;
-					}
-					else
-					{
-						m_degenerateSimplex = 11;
-					}
-					checkSimplex = true;
-					break;
-				}
-
-				//add current vertex to simplex
-				m_simplexSolver->addVertex(w, pWorld, qWorld);
-				btVector3 newCachedSeparatingAxis;
-
-				//calculate the closest point to the origin (update vector v)
-				if (!m_simplexSolver->closest(newCachedSeparatingAxis))
-				{
-					m_degenerateSimplex = 3;
-					checkSimplex = true;
-					break;
-				}
-
-				if (newCachedSeparatingAxis.length2() < REL_ERROR2)
-				{
-					m_cachedSeparatingAxis = newCachedSeparatingAxis;
-					m_degenerateSimplex = 6;
-					checkSimplex = true;
-					break;
-				}
-
-				btScalar previousSquaredDistance = squaredDistance;
-				squaredDistance = newCachedSeparatingAxis.length2();
-#if 0
-				///warning: this termination condition leads to some problems in 2d test case see Bullet/Demos/Box2dDemo
-				if (squaredDistance > previousSquaredDistance)
-				{
-					m_degenerateSimplex = 7;
-					squaredDistance = previousSquaredDistance;
-					checkSimplex = false;
-					break;
-				}
-#endif  //
-
-				//redundant m_simplexSolver->compute_points(pointOnA, pointOnB);
-
-				//are we getting any closer ?
-				if (previousSquaredDistance - squaredDistance <= SIMD_EPSILON * previousSquaredDistance)
-				{
-					//				m_simplexSolver->backup_closest(m_cachedSeparatingAxis);
-					checkSimplex = true;
-					m_degenerateSimplex = 12;
-
-					break;
-				}
-
+			if (newCachedSeparatingAxis.length2() < REL_ERROR2) {
 				m_cachedSeparatingAxis = newCachedSeparatingAxis;
-
-				//degeneracy, this is typically due to invalid/uninitialized worldtransforms for a btCollisionObject
-				if (m_curIter++ > gGjkMaxIter)
-				{
-#if defined(DEBUG) || defined(_DEBUG)
-
-					printf("btGjkPairDetector maxIter exceeded:%i\n", m_curIter);
-					printf("sepAxis=(%f,%f,%f), squaredDistance = %f, shapeTypeA=%i,shapeTypeB=%i\n",
-						   m_cachedSeparatingAxis.getX(),
-						   m_cachedSeparatingAxis.getY(),
-						   m_cachedSeparatingAxis.getZ(),
-						   squaredDistance,
-						   m_minkowskiA->getShapeType(),
-						   m_minkowskiB->getShapeType());
-
-#endif
-					break;
-				}
-
-				bool check = (!m_simplexSolver->fullSimplex());
-				//bool check = (!m_simplexSolver->fullSimplex() && squaredDistance > SIMD_EPSILON * m_simplexSolver->maxVertex());
-
-				if (!check)
-				{
-					//do we need this backup_closest here ?
-					//				m_simplexSolver->backup_closest(m_cachedSeparatingAxis);
-					m_degenerateSimplex = 13;
-					break;
-				}
+				m_degenerateSimplex = 6;
+				checkSimplex = true;
+				break;
 			}
 
-			if (checkSimplex)
-			{
-				m_simplexSolver->compute_points(pointOnA, pointOnB);
-				normalInB = m_cachedSeparatingAxis;
+			btScalar previousSquaredDistance = squaredDistance;
+			squaredDistance = newCachedSeparatingAxis.length2();
 
-				btScalar lenSqr = m_cachedSeparatingAxis.length2();
 
-				//valid normal
-				if (lenSqr < REL_ERROR2)
-				{
-					m_degenerateSimplex = 5;
-				}
-				if (lenSqr > SIMD_EPSILON * SIMD_EPSILON)
-				{
-					btScalar rlen = btScalar(1.) / btSqrt(lenSqr);
-					normalInB *= rlen;  //normalize
+			//redundant m_simplexSolver->compute_points(pointOnA, pointOnB);
 
-					btScalar s = btSqrt(squaredDistance);
+			//are we getting any closer ?
+			if (previousSquaredDistance - squaredDistance <= SIMD_EPSILON * previousSquaredDistance) {
+				//				m_simplexSolver->backup_closest(m_cachedSeparatingAxis);
+				checkSimplex = true;
+				m_degenerateSimplex = 12;
 
-					btAssert(s > btScalar(0.0));
-					pointOnA -= m_cachedSeparatingAxis * (marginA / s);
-					pointOnB += m_cachedSeparatingAxis * (marginB / s);
-					distance = ((btScalar(1.) / rlen) - margin);
-					isValid = true;
-					orgNormalInB = normalInB;
+				break;
+			}
 
-					m_lastUsedMethod = 1;
-				}
-				else
-				{
-					m_lastUsedMethod = 2;
-				}
+			m_cachedSeparatingAxis = newCachedSeparatingAxis;
+
+			//degeneracy, this is typically due to invalid/uninitialized worldtransforms for a btCollisionObject   
+			if (m_curIter++ > gGjkMaxIter) {
+				break;
+
+			}
+
+			bool check = (!m_simplexSolver->fullSimplex());
+			if (!check) {
+				m_degenerateSimplex = 13;
+				break;
 			}
 		}
+
+		if (checkSimplex) {
+			m_simplexSolver->compute_points(pointOnA, pointOnB);
+			normalInB = m_cachedSeparatingAxis;
+			btScalar lenSqr = m_cachedSeparatingAxis.length2();
+
+			//valid normal
+			if (lenSqr < 0.0001) {
+				m_degenerateSimplex = 5;
+			}
+			if (lenSqr > SIMD_EPSILON * SIMD_EPSILON) {
+				btScalar rlen = btScalar(1.) / btSqrt(lenSqr);
+				normalInB *= rlen; //normalize
+				btScalar s = btSqrt(squaredDistance);
+
+				btAssert(s > btScalar(0.0));
+				pointOnA -= m_cachedSeparatingAxis * (marginA / s);
+				pointOnB += m_cachedSeparatingAxis * (marginB / s);
+				distance = ((btScalar(1.) / rlen) - margin);
+				isValid = true;
+
+				m_lastUsedMethod = 1;
+		} else {
+				m_lastUsedMethod = 2;
+			}
+	}
 
 		bool catchDegeneratePenetrationCase =
-			(m_catchDegeneracies && m_penetrationDepthSolver && m_degenerateSimplex && ((distance + margin) < gGjkEpaPenetrationTolerance));
+			(m_catchDegeneracies && m_penetrationDepthSolver && m_degenerateSimplex && ((distance + margin) < 0.01));
 
 		//if (checkPenetration && !isValid)
-		if ((checkPenetration && (!isValid || catchDegeneratePenetrationCase)) || (status == 0))
-		{
+		if (checkPenetration && (!isValid || catchDegeneratePenetrationCase)) {
 			//penetration case
 
 			//if there is no way to handle penetrations, bail out
-			if (m_penetrationDepthSolver)
-			{
+			if (m_penetrationDepthSolver) {
 				// Penetration depth case.
 				btVector3 tmpPointOnA, tmpPointOnB;
 
@@ -1023,160 +862,98 @@ void btGjkPairDetector::getClosestPointsNonVirtual(const ClosestPointInput &inpu
 					*m_simplexSolver,
 					m_minkowskiA, m_minkowskiB,
 					localTransA, localTransB,
-					m_cachedSeparatingAxis, tmpPointOnA, tmpPointOnB);
+					m_cachedSeparatingAxis, tmpPointOnA, tmpPointOnB
+				);
 
-				if (m_cachedSeparatingAxis.length2())
-				{
-					if (isValid2)
-					{
-						btVector3 tmpNormalInB = tmpPointOnB - tmpPointOnA;
-						btScalar lenSqr = tmpNormalInB.length2();
-						if (lenSqr <= (SIMD_EPSILON * SIMD_EPSILON))
-						{
-							tmpNormalInB = m_cachedSeparatingAxis;
-							lenSqr = m_cachedSeparatingAxis.length2();
-						}
 
-						if (lenSqr > (SIMD_EPSILON * SIMD_EPSILON))
-						{
-							tmpNormalInB /= btSqrt(lenSqr);
-							btScalar distance2 = -(tmpPointOnA - tmpPointOnB).length();
+				if (isValid2) {
+					btVector3 tmpNormalInB = tmpPointOnB - tmpPointOnA;
+					btScalar lenSqr = tmpNormalInB.length2();
+					if (lenSqr <= (SIMD_EPSILON * SIMD_EPSILON)) {
+						tmpNormalInB = m_cachedSeparatingAxis;
+						lenSqr = m_cachedSeparatingAxis.length2();
+					}
+
+					if (lenSqr > (SIMD_EPSILON * SIMD_EPSILON)) {
+						tmpNormalInB /= btSqrt(lenSqr);
+						btScalar distance2 = -(tmpPointOnA - tmpPointOnB).length();
+						//only replace valid penetrations when the result is deeper (check)
+						if (!isValid || (distance2 < distance)) {
+							distance = distance2;
+							pointOnA = tmpPointOnA;
+							pointOnB = tmpPointOnB;
+							normalInB = tmpNormalInB;
+							isValid = true;
 							m_lastUsedMethod = 3;
-							//only replace valid penetrations when the result is deeper (check)
-							if (!isValid || (distance2 < distance))
-							{
-								distance = distance2;
-								pointOnA = tmpPointOnA;
-								pointOnB = tmpPointOnB;
-								normalInB = tmpNormalInB;
-								isValid = true;
-							}
-							else
-							{
-								m_lastUsedMethod = 8;
-							}
+						} else {
+							m_lastUsedMethod = 8;
 						}
-						else
-						{
-							m_lastUsedMethod = 9;
-						}
+					} else {
+						m_lastUsedMethod = 9;
 					}
-					else
+				} else
 
-					{
-						///this is another degenerate case, where the initial GJK calculation reports a degenerate case
-						///EPA reports no penetration, and the second GJK (using the supporting vector without margin)
-						///reports a valid positive distance. Use the results of the second GJK instead of failing.
-						///thanks to Jacob.Langford for the reproduction case
-						///http://code.google.com/p/bullet/issues/detail?id=250
-
-						if (m_cachedSeparatingAxis.length2() > btScalar(0.))
-						{
-							btScalar distance2 = (tmpPointOnA - tmpPointOnB).length() - margin;
-							//only replace valid distances when the distance is less
-							if (!isValid || (distance2 < distance))
-							{
-								distance = distance2;
-								pointOnA = tmpPointOnA;
-								pointOnB = tmpPointOnB;
-								pointOnA -= m_cachedSeparatingAxis * marginA;
-								pointOnB += m_cachedSeparatingAxis * marginB;
-								normalInB = m_cachedSeparatingAxis;
-								normalInB.normalize();
-
-								isValid = true;
-								m_lastUsedMethod = 6;
-							}
-							else
-							{
-								m_lastUsedMethod = 5;
-							}
-						}
-					}
-				}
-				else
 				{
-					//printf("EPA didn't return a valid value\n");
+					///this is another degenerate case, where the initial GJK calculation reports a degenerate case
+					///EPA reports no penetration, and the second GJK (using the supporting vector without margin)
+					///reports a valid positive distance. Use the results of the second GJK instead of failing.
+					///thanks to Jacob.Langford for the reproduction case
+					///http://code.google.com/p/bullet/issues/detail?id=250
+
+
+					if (m_cachedSeparatingAxis.length2() > btScalar(0.)) {
+						btScalar distance2 = (tmpPointOnA - tmpPointOnB).length() - margin;
+						//only replace valid distances when the distance is less
+						if (!isValid || (distance2 < distance)) {
+							distance = distance2;
+							pointOnA = tmpPointOnA;
+							pointOnB = tmpPointOnB;
+							pointOnA -= m_cachedSeparatingAxis * marginA;
+							pointOnB += m_cachedSeparatingAxis * marginB;
+							normalInB = m_cachedSeparatingAxis;
+							normalInB.normalize();
+							isValid = true;
+							m_lastUsedMethod = 6;
+						} else {
+							m_lastUsedMethod = 5;
+						}
+					}
 				}
-			}
+
+}
+
 		}
 	}
 
-	if (isValid && ((distance < 0) || (distance * distance < input.m_maximumDistanceSquared)))
-	{
+	if (isValid && ((distance < 0) || (distance * distance < input.m_maximumDistanceSquared))) {
+
+		if (m_fixContactNormalDirection) {
+			///@workaround for sticky convex collisions
+			//in some degenerate cases (usually when the use uses very small margins) 
+			//the contact normal is pointing the wrong direction
+			//so fix it now (until we can deal with all degenerate cases in GJK and EPA)
+			//contact normals need to point from B to A in all cases, so we can simply check if the contact normal really points from B to A
+			//We like to use a dot product of the normal against the difference of the centroids, 
+			//once the centroid is available in the API
+			//until then we use the center of the aabb to approximate the centroid
+			btVector3 aabbMin, aabbMax;
+			m_minkowskiA->getAabb(localTransA, aabbMin, aabbMax);
+			btVector3 posA = (aabbMax + aabbMin) * btScalar(0.5);
+
+			m_minkowskiB->getAabb(localTransB, aabbMin, aabbMax);
+			btVector3 posB = (aabbMin + aabbMax) * btScalar(0.5);
+
+			btVector3 diff = posA - posB;
+			if (diff.dot(normalInB) < 0.f)
+				normalInB *= -1.f;
+		}
 		m_cachedSeparatingAxis = normalInB;
 		m_cachedSeparatingDistance = distance;
-		if (1)
-		{
-			///todo: need to track down this EPA penetration solver degeneracy
-			///the penetration solver reports penetration but the contact normal
-			///connecting the contact points is pointing in the opposite direction
-			///until then, detect the issue and revert the normal
-
-			btScalar d2 = 0.f;
-			{
-				btVector3 separatingAxisInA = (-orgNormalInB) * localTransA.getBasis();
-				btVector3 separatingAxisInB = orgNormalInB * localTransB.getBasis();
-
-				btVector3 pInA = m_minkowskiA->localGetSupportVertexWithoutMarginNonVirtual(separatingAxisInA);
-				btVector3 qInB = m_minkowskiB->localGetSupportVertexWithoutMarginNonVirtual(separatingAxisInB);
-
-				btVector3 pWorld = localTransA(pInA);
-				btVector3 qWorld = localTransB(qInB);
-				btVector3 w = pWorld - qWorld;
-				d2 = orgNormalInB.dot(w) - margin;
-			}
-
-			btScalar d1 = 0;
-			{
-				btVector3 separatingAxisInA = (normalInB)*localTransA.getBasis();
-				btVector3 separatingAxisInB = -normalInB * localTransB.getBasis();
-
-				btVector3 pInA = m_minkowskiA->localGetSupportVertexWithoutMarginNonVirtual(separatingAxisInA);
-				btVector3 qInB = m_minkowskiB->localGetSupportVertexWithoutMarginNonVirtual(separatingAxisInB);
-
-				btVector3 pWorld = localTransA(pInA);
-				btVector3 qWorld = localTransB(qInB);
-				btVector3 w = pWorld - qWorld;
-				d1 = (-normalInB).dot(w) - margin;
-			}
-			btScalar d0 = 0.f;
-			{
-				btVector3 separatingAxisInA = (-normalInB) * input.m_transformA.getBasis();
-				btVector3 separatingAxisInB = normalInB * input.m_transformB.getBasis();
-
-				btVector3 pInA = m_minkowskiA->localGetSupportVertexWithoutMarginNonVirtual(separatingAxisInA);
-				btVector3 qInB = m_minkowskiB->localGetSupportVertexWithoutMarginNonVirtual(separatingAxisInB);
-
-				btVector3 pWorld = localTransA(pInA);
-				btVector3 qWorld = localTransB(qInB);
-				btVector3 w = pWorld - qWorld;
-				d0 = normalInB.dot(w) - margin;
-			}
-
-			if (d1 > d0)
-			{
-				m_lastUsedMethod = 10;
-				normalInB *= -1;
-			}
-
-			if (orgNormalInB.length2())
-			{
-				if (d2 > d0 && d2 > d1 && d2 > distance)
-				{
-					normalInB = orgNormalInB;
-					distance = d2;
-				}
-			}
-		}
 
 		output.addContactPoint(
 			normalInB,
 			pointOnB + positionOffset,
 			distance);
-	}
-	else
-	{
-		//printf("invalid gjk query\n");
+
 	}
 }

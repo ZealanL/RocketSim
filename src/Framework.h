@@ -1,6 +1,6 @@
 #pragma once
 
-#define RS_VERSION "1.1.0"
+#define RS_VERSION "1.2.0"
 
 #include <stdint.h>
 #include <iostream>
@@ -63,10 +63,14 @@ typedef uint8_t byte;
 #define RS_LOG(s) {}
 #endif
 
+#define RS_LOG_BLANK() RS_LOG("")
+
 #define RS_STR(s) ([&]{ std::stringstream __macroStream; __macroStream << s; return __macroStream.str(); }())
 
 // Returns sign of number (1 if positive, -1 if negative, and 0 if 0)
 #define RS_SGN(val) ((val > 0) - (val < 0))
+
+#define RS_WARN(s) RS_LOG("WARNING: " << s)
 
 #define RS_ERR_CLOSE(s) { RS_LOG("FATAL ERROR: " << s); exit(EXIT_FAILURE); }
 

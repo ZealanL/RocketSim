@@ -346,6 +346,9 @@ public:
 	/**@brief Return a normalized version of this vector */
 	SIMD_FORCE_INLINE btVector3 normalized() const;
 
+	/**@brief Return a safely normalized version of this vector */
+	SIMD_FORCE_INLINE btVector3 safeNormalized() const;
+
 	/**@brief Return a rotated version of this vector
    * @param wAxis The axis to rotate about 
    * @param angle The angle to rotate by */
@@ -951,6 +954,12 @@ SIMD_FORCE_INLINE btVector3 btVector3::normalized() const
 	btVector3 nrm = *this;
 
 	return nrm.normalize();
+}
+
+SIMD_FORCE_INLINE btVector3 btVector3::safeNormalized() const {
+	btVector3 nrm = *this;
+
+	return nrm.safeNormalize();
 }
 
 SIMD_FORCE_INLINE btVector3 btVector3::rotate(const btVector3& wAxis, const btScalar _angle) const

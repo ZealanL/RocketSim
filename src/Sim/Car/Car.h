@@ -2,9 +2,14 @@
 #include "CarConfig/CarConfig.h"
 #include "../btVehicleRL/btVehicleRL.h"
 #include "../CarControls.h"
-#include "../../RLConst.h"
-#include "../../DataStream/DataStreamIn.h"
-#include "../../DataStream/DataStreamOut.h"
+#include "../BallHitInfo/BallHitInfo.h"
+#include "../MutatorConfig/MutatorConfig.h"
+
+#include "../../../libsrc/bullet3-3.24/BulletDynamics/Dynamics/btRigidBody.h"
+#include "../../../libsrc/bullet3-3.24/BulletDynamics/Vehicle/btDefaultVehicleRaycaster.h"
+#include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btBoxShape.h"
+#include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btCompoundShape.h"
+#include "../../../src/Sim/btVehicleRL/btVehicleRL.h"
 
 struct CarState {
 	// Position in world space (UU)
@@ -24,6 +29,9 @@ struct CarState {
 
 	// Active during the duration of a jump or flip
 	float jumpTime = 0, flipTime = 0;
+
+	// True during a flip (not a jump, and not after a flip)
+	bool isFlipping = false;
 
 	// True during a jump (not double jumps or a flip)
 	bool isJumping = false;
@@ -63,9 +71,7 @@ struct CarState {
 	bool isDemoed = false;
 	float demoRespawnTimer = 0;
 
-	// Set to arena->tickCount when ball is hit
-	// Don't change this unless you know what you're doing
-	uint64_t lastHitBallTick = ~0ULL;
+	BallHitInfo ballHitInfo = BallHitInfo();
 
 	// Controls from last tick, set to this->controls after simulation
 	CarControls lastControls = CarControls();
@@ -76,9 +82,9 @@ struct CarState {
 
 #define CARSTATE_SERIALIZATION_FIELDS \
 pos, rotMat, vel, angVel, isOnGround, hasJumped, hasDoubleJumped, hasFlipped, \
-lastRelDodgeTorque, jumpTime, flipTime, isJumping, airTimeSinceJump, boost, \
-timeSpentBoosting, supersonicTime, handbrakeVal, isAutoFlipping, autoFlipTimer, \
-autoFlipTorqueScale, isDemoed, demoRespawnTimer, lastHitBallTick, lastControls, \
+lastRelDodgeTorque, jumpTime, isFlipping, flipTime, isJumping, airTimeSinceJump, \
+boost, timeSpentBoosting, supersonicTime, handbrakeVal, isAutoFlipping, \
+autoFlipTimer, autoFlipTorqueScale, isDemoed, demoRespawnTimer, lastControls, \
 worldContact.hasContact, worldContact.contactNormal, \
 carContact.otherCarID, carContact.cooldownTimer
 
@@ -100,23 +106,19 @@ public:
 	// The controls to simulate the car with
 	CarControls controls;
 
-	// No copy/move constructors
-	Car(const Car& other) = delete;
-	Car(Car&& other) = delete;
-
 	RSAPI CarState GetState();
 	RSAPI void SetState(const CarState& state);
 
-	void Demolish();
+	void Demolish(float respawnDelay = RLConst::DEMO_RESPAWN_TIME);
 
 	// Respawn the car, called after we have been demolished and waited for the respawn timer
-	void Respawn(int seed = -1);
+	void Respawn(int seed = -1, float boostAmount = RLConst::BOOST_SPAWN_AMOUNT);
 
-	btVehicleRL* _bulletVehicle;
-	struct btVehicleRaycaster* _bulletVehicleRaycaster;
-	struct btRigidBody* _rigidBody;
-	struct btCompoundShape* _compoundShape;
-	struct btBoxShape* _childHitboxShape;
+	btVehicleRL _bulletVehicle;
+	btDefaultVehicleRaycaster _bulletVehicleRaycaster;
+	btRigidBody _rigidBody;
+	btCompoundShape _compoundShape;
+	btBoxShape _childHitboxShape;
 
 	// NOTE: Not all values are updated because they are unneeded for internal simulation
 	// Those values are only updated when GetState() is called
@@ -136,22 +138,36 @@ public:
 	Vec GetUpDir() const {
 		return _internalState.rotMat.up;
 	}
-
-	~Car();
-
-	void _PreTickUpdate(float tickTime, struct SuspensionCollisionGrid* grid);
-	void _PostTickUpdate(float tickTime);
+	void _PreTickUpdate(float tickTime, const MutatorConfig& mutatorConfig, struct SuspensionCollisionGrid* grid);
+	void _PostTickUpdate(float tickTime, const MutatorConfig& mutatorConfig);
 
 	Vec _velocityImpulseCache = { 0,0,0 };
-	void _FinishPhysicsTick();
+	void _FinishPhysicsTick(const MutatorConfig& mutatorConfig);
 
-	// For construction by Arena
-	static Car* _AllocateCar();
-	void _BulletSetup(struct btDynamicsWorld* bulletWorld);
+	void _BulletSetup(class btDynamicsWorld* bulletWorld, const MutatorConfig& mutatorConfig);
 	
+	// For construction by Arena
+	static Car* _AllocateCar() { return new Car(); }
+
+	// For removal by Arena
+	static void _DestroyCar(Car* car) { delete car; }
+
 	void _Serialize(DataStreamOut& out);
 	void _Deserialize(DataStreamIn& in);
 
+	Car(const Car& other) = delete;
+	Car& operator=(const Car& other) = delete;
+
 private:
-	Car() {};
+	void _UpdateWheels(float tickTime, const MutatorConfig& mutatorConfig, int numWheelsInContact, float forwardSpeed_UU);
+	void _UpdateBoost(float tickTime, const MutatorConfig& mutatorConfig, float forwardSpeed_UU);
+	void _UpdateJump(float tickTime, const MutatorConfig& mutatorConfig, bool jumpPressed);
+	void _UpdateAirControl(float tickTime, const MutatorConfig& mutatorConfig);
+	void _UpdateDoubleJumpOrFlip(float tickTime, const MutatorConfig& mutatorConfig, bool jumpPressed, float forwardSpeed_UU);
+	void _UpdateAutoFlip(float tickTime, const MutatorConfig& mutatorConfig, bool jumpPressed);
+	void _UpdateAutoRoll(float tickTime, const MutatorConfig& mutatorConfig, int numWheelsInContact);
+
+	Car() {}
+
+	~Car() {}
 };

@@ -9,7 +9,7 @@
 //	RS_DONT_LOG: Define this to disable all logging output
 //	RS_NO_SUSPCOLGRID: Disable the suspension-collision grid optimization
 
-struct btBvhTriangleMeshShape;
+class btBvhTriangleMeshShape;
 
 enum class RocketSimStage : byte {
 	UNINITIALIZED,

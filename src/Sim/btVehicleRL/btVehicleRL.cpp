@@ -159,22 +159,23 @@ float btVehicleRL::rayCast(btWheelInfoRL& wheel, SuspensionCollisionGrid* grid) 
 				wheel.getSuspensionRestLength() + suspensionTravel
 			);
 
-		float denominator = wheel.m_raycastInfo.m_contactNormalWS.dot(wheel.m_raycastInfo.m_wheelDirectionWS);
+		float denominator = wheel.m_raycastInfo.m_contactNormalWS.dot(getUpVector());
 
 		btVector3 chassis_velocity_at_contactPoint;
-		btVector3 relpos = wheel.m_raycastInfo.m_contactPointWS - getRigidBody()->getCenterOfMassPosition();
+		btVector3 relpos = wheel.m_raycastInfo.m_contactPointWS - m_chassisBody->m_worldTransform.m_origin;
 
-		chassis_velocity_at_contactPoint = getRigidBody()->getVelocityInLocalPoint(relpos);
+		chassis_velocity_at_contactPoint = m_chassisBody->getVelocityInLocalPoint(relpos);
 
 		float projVel = wheel.m_raycastInfo.m_contactNormalWS.dot(chassis_velocity_at_contactPoint);
 
-		if (denominator >= 0.1) {
-			wheel.m_suspensionRelativeVelocity = 0;
-			wheel.m_clippedInvContactDotSuspension = 10;
-		} else {
-			float inv = -1 / denominator;
+		if (denominator > 0.1) {
+			float inv = 1 / denominator;
 			wheel.m_suspensionRelativeVelocity = projVel * inv;
 			wheel.m_clippedInvContactDotSuspension = inv;
+		} else {
+			// Denominator is too tiny to be meaningful
+			wheel.m_suspensionRelativeVelocity = 0;
+			wheel.m_clippedInvContactDotSuspension = 10;
 		}
 
 		{ // Compute m_extraPushback
@@ -187,7 +188,14 @@ float btVehicleRL::rayCast(btWheelInfoRL& wheel, SuspensionCollisionGrid* grid) 
 
 			float susRayDeltaDist = wheelTraceLenSq - (realRayLength - wheel.m_wheelsRadius);
 			
-			float collisionResult = resolveSingleCollision(m_chassisBody, object, rayResults.m_hitPointInWorld, rayResults.m_hitNormalInWorld, m_dynamicsWorld->getSolverInfo(), susRayDeltaDist);
+			float collisionResult = resolveSingleCollision(
+				m_chassisBody, 
+				object, 
+				rayResults.m_hitPointInWorld, 
+				rayResults.m_hitNormalInWorld, 
+				m_dynamicsWorld->getSolverInfo(), 
+				susRayDeltaDist
+			);
 			float pushBackScale = (1 / 1.5f);
 			wheel.m_extraPushback = (collisionResult * pushBackScale) / getNumWheels();
 
@@ -284,7 +292,7 @@ void btVehicleRL::updateSuspension(float deltaTime) {
 
 			wheel_info.m_wheelsSuspensionForce = force - (dampingVelScale * wheel_info.m_suspensionRelativeVelocity);
 			wheel_info.m_wheelsSuspensionForce *= wheel_info.m_suspensionForceScale;
-			
+
 			// RL never uses downwards suspension forces
 			if (wheel_info.m_wheelsSuspensionForce < 0)
 				wheel_info.m_wheelsSuspensionForce = 0;
@@ -322,10 +330,10 @@ void btVehicleRL::calcFrictionImpulses(float timeStep) {
 			btVector3 surfNormalWS = wheel.m_raycastInfo.m_contactNormalWS;
 			float proj = axleDir.dot(surfNormalWS);
 			axleDir -= surfNormalWS * proj;
-			axleDir = axleDir.normalized();
+			axleDir = axleDir.safeNormalized();
 
 			// Wheel forwards direction
-			btVector3 forwardDir = surfNormalWS.cross(axleDir).normalized();
+			btVector3 forwardDir = surfNormalWS.cross(axleDir).safeNormalized();
 
 			float sideImpulse;
 
@@ -407,7 +415,7 @@ btVector3 btVehicleRL::getUpwardsDirFromWheelContacts() {
 		return this->getUpVector();
 	} else {
 		// Average normal of contact
-		return sumContactDir.normalized();
+		return sumContactDir.safeNormalized();
 	}
 }
 

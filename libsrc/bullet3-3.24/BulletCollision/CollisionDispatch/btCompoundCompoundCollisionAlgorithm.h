@@ -20,16 +20,16 @@ subject to the following restrictions:
 #include "btCompoundCollisionAlgorithm.h"
 
 #include "../CollisionDispatch/btActivatingCollisionAlgorithm.h"
-#include "../BroadphaseCollision/btDispatcher.h"
+#include "../CollisionDispatch/btCollisionDispatcher.h"
 #include "../BroadphaseCollision/btBroadphaseInterface.h"
 
 #include "../NarrowPhaseCollision/btPersistentManifold.h"
-class btDispatcher;
+class btCollisionDispatcher;
 #include "../BroadphaseCollision/btBroadphaseProxy.h"
 #include "../CollisionDispatch/btCollisionCreateFunc.h"
 #include "../../LinearMath/btAlignedObjectArray.h"
 #include "../CollisionDispatch/btHashedSimplePairCache.h"
-class btDispatcher;
+class btCollisionDispatcher;
 class btCollisionObject;
 
 class btCollisionShape;

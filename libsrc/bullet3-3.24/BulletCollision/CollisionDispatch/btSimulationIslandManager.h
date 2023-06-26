@@ -23,7 +23,7 @@ subject to the following restrictions:
 
 class btCollisionObject;
 class btCollisionWorld;
-class btDispatcher;
+class btCollisionDispatcher;
 class btPersistentManifold;
 
 ///SimulationIslandManager creates and handles simulation islands, using btUnionFind
@@ -44,10 +44,10 @@ public:
 
 	btUnionFind& getUnionFind() { return m_unionFind; }
 
-	virtual void updateActivationState(btCollisionWorld* colWorld, btDispatcher* dispatcher);
+	virtual void updateActivationState(btCollisionWorld* colWorld, btCollisionDispatcher* dispatcher);
 	virtual void storeIslandActivationState(btCollisionWorld* world);
 
-	void findUnions(btDispatcher* dispatcher, btCollisionWorld* colWorld);
+	void findUnions(btCollisionDispatcher* dispatcher, btCollisionWorld* colWorld);
 
 	struct IslandCallback
 	{
@@ -56,11 +56,11 @@ public:
 		virtual void processIsland(btCollisionObject** bodies, int numBodies, class btPersistentManifold** manifolds, int numManifolds, int islandId) = 0;
 	};
 
-	void buildAndProcessIslands(btDispatcher* dispatcher, btCollisionWorld* collisionWorld, IslandCallback* callback);
+	void buildAndProcessIslands(btCollisionDispatcher* dispatcher, btCollisionWorld* collisionWorld, IslandCallback* callback);
     
-	void buildIslands(btDispatcher* dispatcher, btCollisionWorld* colWorld);
+	void buildIslands(btCollisionDispatcher* dispatcher, btCollisionWorld* colWorld);
 
-    void processIslands(btDispatcher* dispatcher, btCollisionWorld* collisionWorld, IslandCallback* callback);
+    void processIslands(btCollisionDispatcher* dispatcher, btCollisionWorld* collisionWorld, IslandCallback* callback);
     
 	bool getSplitIslands()
 	{

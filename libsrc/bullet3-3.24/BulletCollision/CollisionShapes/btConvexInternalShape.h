@@ -29,9 +29,6 @@ ATTRIBUTE_ALIGNED16(class)
 btConvexInternalShape : public btConvexShape
 {
 protected:
-	//local scaling. collisionMargin is not scaled !
-	btVector3 m_localScaling;
-
 	btVector3 m_implicitShapeDimensions;
 
 	btScalar m_collisionMargin;
@@ -86,24 +83,13 @@ public:
 		getAabbSlow(t, aabbMin, aabbMax);
 	}
 
-	virtual void getAabbSlow(const btTransform& t, btVector3& aabbMin, btVector3& aabbMax) const;
-
-	virtual void setLocalScaling(const btVector3& scaling);
-	virtual const btVector3& getLocalScaling() const
-	{
-		return m_localScaling;
-	}
-
-	const btVector3& getLocalScalingNV() const
-	{
-		return m_localScaling;
-	}
-
-	virtual void setMargin(btScalar margin)
+	void getAabbSlow(const btTransform& t, btVector3& aabbMin, btVector3& aabbMax) const;
+	
+	void setMargin(btScalar margin)
 	{
 		m_collisionMargin = margin;
 	}
-	virtual btScalar getMargin() const
+	btScalar getMargin() const
 	{
 		return m_collisionMargin;
 	}
@@ -113,12 +99,12 @@ public:
 		return m_collisionMargin;
 	}
 
-	virtual int getNumPreferredPenetrationDirections() const
+	int getNumPreferredPenetrationDirections() const
 	{
 		return 0;
 	}
 
-	virtual void getPreferredPenetrationDirection(int index, btVector3& penetrationVector) const
+	void getPreferredPenetrationDirection(int index, btVector3& penetrationVector) const
 	{
 		(void)penetrationVector;
 		(void)index;
@@ -158,9 +144,8 @@ protected:
 	}
 
 public:
-	virtual void setLocalScaling(const btVector3& scaling);
 
-	virtual void getAabb(const btTransform& t, btVector3& aabbMin, btVector3& aabbMax) const;
+	void getAabb(const btTransform& t, btVector3& aabbMin, btVector3& aabbMax) const;
 
 	void recalcLocalAabb();
 };

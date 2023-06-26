@@ -28,23 +28,21 @@ protected:
 
 	btVector3 m_planeNormal;
 	btScalar m_planeConstant;
-	btVector3 m_localScaling;
 
 public:
 	BT_DECLARE_ALIGNED_ALLOCATOR();
+
+	btStaticPlaneShape() {}
 
 	btStaticPlaneShape(const btVector3& planeNormal, btScalar planeConstant);
 
 	virtual ~btStaticPlaneShape();
 
-	virtual void getAabb(const btTransform& t, btVector3& aabbMin, btVector3& aabbMax) const;
+	void getAabb(const btTransform& t, btVector3& aabbMin, btVector3& aabbMax) const;
 
 	void processAllTriangles(btTriangleCallback * callback, const btVector3& aabbMin, const btVector3& aabbMax) const;
 
-	virtual void calculateLocalInertia(btScalar mass, btVector3 & inertia) const;
-
-	virtual void setLocalScaling(const btVector3& scaling);
-	virtual const btVector3& getLocalScaling() const;
+	void calculateLocalInertia(btScalar mass, btVector3 & inertia) const;
 
 	const btVector3& getPlaneNormal() const
 	{

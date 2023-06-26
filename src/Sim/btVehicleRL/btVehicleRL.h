@@ -17,6 +17,8 @@ struct btWheelInfoRL : public btWheelInfo {
 	// Extra force applied when compressed significantly
 	float m_extraPushback = 0;
 
+	btWheelInfoRL() {}
+
 	btWheelInfoRL(btWheelInfoConstructionInfo& constructionInfo) : btWheelInfo(constructionInfo) {}
 };
 
@@ -65,6 +67,8 @@ public:
 	int m_indexForwardAxis;
 
 	void defaultInit(const btVehicleTuning& tuning);
+
+	btVehicleRL() {}
 
 	//constructor to create a car from an existing rigidbody
 	btVehicleRL(const btVehicleTuning& tuning, btRigidBody* chassis, btVehicleRaycaster* raycaster, btDynamicsWorld* world);

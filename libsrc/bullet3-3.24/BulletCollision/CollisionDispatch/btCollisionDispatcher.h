@@ -38,7 +38,7 @@ typedef void (*btNearCallback)(btBroadphasePair& collisionPair, btCollisionDispa
 
 ///btCollisionDispatcher supports algorithms that handle ConvexConvex and ConvexConcave collision pairs.
 ///Time of Impact, Closest Points and Penetration Depth.
-class btCollisionDispatcher : public btDispatcher
+class btCollisionDispatcher
 {
 protected:
 	int m_dispatcherFlags;
@@ -104,23 +104,25 @@ public:
 		return m_manifoldsPtr[index];
 	}
 
-	btCollisionDispatcher(btCollisionConfiguration* collisionConfiguration);
+	btCollisionDispatcher() {}
 
-	virtual ~btCollisionDispatcher();
+	void setup(btCollisionConfiguration* collisionConfiguration);
 
-	virtual btPersistentManifold* getNewManifold(const btCollisionObject* b0, const btCollisionObject* b1);
+	~btCollisionDispatcher();
 
-	virtual void releaseManifold(btPersistentManifold* manifold);
+	btPersistentManifold* getNewManifold(const btCollisionObject* b0, const btCollisionObject* b1);
 
-	virtual void clearManifold(btPersistentManifold* manifold);
+	void releaseManifold(btPersistentManifold* manifold);
+
+	void clearManifold(btPersistentManifold* manifold);
 
 	btCollisionAlgorithm* findAlgorithm(const btCollisionObjectWrapper* body0Wrap, const btCollisionObjectWrapper* body1Wrap, btPersistentManifold* sharedManifold, ebtDispatcherQueryType queryType);
 
-	virtual bool needsCollision(const btCollisionObject* body0, const btCollisionObject* body1);
+	bool needsCollision(const btCollisionObject* body0, const btCollisionObject* body1);
 
-	virtual bool needsResponse(const btCollisionObject* body0, const btCollisionObject* body1);
+	bool needsResponse(const btCollisionObject* body0, const btCollisionObject* body1);
 
-	virtual void dispatchAllCollisionPairs(btOverlappingPairCache* pairCache, const btDispatcherInfo& dispatchInfo, btDispatcher* dispatcher);
+	void dispatchAllCollisionPairs(btOverlappingPairCache* pairCache, const btDispatcherInfo& dispatchInfo, btCollisionDispatcher* dispatcher);
 
 	void setNearCallback(btNearCallback nearCallback)
 	{
@@ -135,9 +137,9 @@ public:
 	//by default, Bullet will use this near callback
 	static void defaultNearCallback(btBroadphasePair& collisionPair, btCollisionDispatcher& dispatcher, const btDispatcherInfo& dispatchInfo);
 
-	virtual void* allocateCollisionAlgorithm(int size);
+	void* allocateCollisionAlgorithm(int size);
 
-	virtual void freeCollisionAlgorithm(void* ptr);
+	void freeCollisionAlgorithm(void* ptr);
 
 	btCollisionConfiguration* getCollisionConfiguration()
 	{
@@ -154,12 +156,12 @@ public:
 		m_collisionConfiguration = config;
 	}
 
-	virtual btPoolAllocator* getInternalManifoldPool()
+	btPoolAllocator* getInternalManifoldPool()
 	{
 		return m_persistentManifoldPoolAllocator;
 	}
 
-	virtual const btPoolAllocator* getInternalManifoldPool() const
+	const btPoolAllocator* getInternalManifoldPool() const
 	{
 		return m_persistentManifoldPoolAllocator;
 	}

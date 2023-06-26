@@ -18,16 +18,16 @@ subject to the following restrictions:
 #define BT_COMPOUND_COLLISION_ALGORITHM_H
 
 #include "btActivatingCollisionAlgorithm.h"
-#include "../BroadphaseCollision/btDispatcher.h"
+#include "../CollisionDispatch/btCollisionDispatcher.h"
 #include "../BroadphaseCollision/btBroadphaseInterface.h"
 
 #include "../NarrowPhaseCollision/btPersistentManifold.h"
-class btDispatcher;
+class btCollisionDispatcher;
 #include "../BroadphaseCollision/btBroadphaseProxy.h"
 #include "btCollisionCreateFunc.h"
 #include "../../LinearMath/btAlignedObjectArray.h"
 #include "../BroadphaseCollision/btDbvt.h"
-class btDispatcher;
+class btCollisionDispatcher;
 class btCollisionObject;
 
 class btCollisionShape;

@@ -6,6 +6,8 @@
 #include "../../DataStream/DataStreamIn.h"
 #include "../../DataStream/DataStreamOut.h"
 
+#include "../MutatorConfig/MutatorConfig.h"
+
 struct BoostPadState {
 	bool isActive = true;
 	float cooldown = 0;
@@ -39,7 +41,7 @@ public:
 	void _CheckCollide(Car* car);
 
 	void _PreTickUpdate(float tickTime);
-	void _PostTickUpdate(float tickTime);
+	void _PostTickUpdate(float tickTime, const MutatorConfig& mutatorConfig);
 private:
 	BoostPad() {}
 };

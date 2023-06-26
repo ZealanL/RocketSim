@@ -33,7 +33,7 @@ subject to the following restrictions:
 
 #include "../../LinearMath/btPoolAllocator.h"
 
-btDefaultCollisionConfiguration::btDefaultCollisionConfiguration(const btDefaultCollisionConstructionInfo& constructionInfo)
+void btDefaultCollisionConfiguration::setup(const btDefaultCollisionConstructionInfo& constructionInfo)
 //btDefaultCollisionConfiguration::btDefaultCollisionConfiguration(btStackAlloc*	stackAlloc,btPoolAllocator*	persistentManifoldPool,btPoolAllocator*	collisionAlgorithmPool)
 {
 	void* mem = NULL;

@@ -17,7 +17,7 @@ subject to the following restrictions:
 #define BT_SEQUENTIAL_IMPULSE_CONSTRAINT_SOLVER_H
 
 class btPersistentManifold;
-class btDispatcher;
+class btCollisionDispatcher;
 class btCollisionObject;
 #include "../ConstraintSolver/btTypedConstraint.h"
 #include "../ConstraintSolver/btContactSolverInfo.h"
@@ -156,7 +156,7 @@ public:
 	btSequentialImpulseConstraintSolver();
 	~btSequentialImpulseConstraintSolver();
 
-	btScalar solveGroup(btCollisionObject * *bodies, int numBodies, btPersistentManifold** manifold, int numManifolds, btTypedConstraint** constraints, int numConstraints, const btContactSolverInfo& info, btDispatcher* dispatcher);
+	btScalar solveGroup(btCollisionObject * *bodies, int numBodies, btPersistentManifold** manifold, int numManifolds, btTypedConstraint** constraints, int numConstraints, const btContactSolverInfo& info, btCollisionDispatcher* dispatcher);
 
 	///clear internal cached data and reset random seed
 	virtual void reset();

@@ -72,7 +72,7 @@ struct InplaceSolverIslandCallback : public btSimulationIslandManager::IslandCal
 	btSequentialImpulseConstraintSolver* m_solver;
 	btTypedConstraint** m_sortedConstraints;
 	int m_numConstraints;
-	btDispatcher* m_dispatcher;
+	btCollisionDispatcher* m_dispatcher;
 
 	btAlignedObjectArray<btCollisionObject*> m_bodies;
 	btAlignedObjectArray<btPersistentManifold*> m_manifolds;
@@ -81,7 +81,7 @@ struct InplaceSolverIslandCallback : public btSimulationIslandManager::IslandCal
 	InplaceSolverIslandCallback(
 		btSequentialImpulseConstraintSolver* solver,
 		btStackAlloc* stackAlloc,
-		btDispatcher* dispatcher)
+		btCollisionDispatcher* dispatcher)
 		: m_solverInfo(NULL),
 		  m_solver(solver),
 		  m_sortedConstraints(NULL),
@@ -176,20 +176,20 @@ struct InplaceSolverIslandCallback : public btSimulationIslandManager::IslandCal
 	}
 };
 
-btDiscreteDynamicsWorld::btDiscreteDynamicsWorld(btDispatcher* dispatcher, btBroadphaseInterface* pairCache, btSequentialImpulseConstraintSolver* constraintSolver, btCollisionConfiguration* collisionConfiguration)
-	: btDynamicsWorld(dispatcher, pairCache, collisionConfiguration),
-	  m_sortedConstraints(),
-	  m_solverIslandCallback(NULL),
-	  m_constraintSolver(constraintSolver),
-	  m_gravity(0, -10, 0),
-	  m_localTime(0),
-	  m_fixedTimeStep(0),
-	  m_synchronizeAllMotionStates(false),
-	  m_applySpeculativeContactRestitution(false),
-	  m_profileTimings(0),
-	  m_latencyMotionStateInterpolation(true)
-
+void btDiscreteDynamicsWorld::setup(btCollisionDispatcher* dispatcher, btBroadphaseInterface* pairCache, btSequentialImpulseConstraintSolver* constraintSolver, btCollisionConfiguration* collisionConfiguration)
 {
+	btDynamicsWorld::setup(dispatcher, pairCache, collisionConfiguration);
+	m_sortedConstraints = {};
+	m_solverIslandCallback = NULL;
+	m_constraintSolver = constraintSolver;
+	m_gravity = btVector3(0, -10, 0);
+	m_localTime = 0;
+	m_fixedTimeStep = 0;
+	m_synchronizeAllMotionStates = false;
+	m_applySpeculativeContactRestitution = false;
+	m_profileTimings = 0;
+	m_latencyMotionStateInterpolation = true;
+
 	if (!m_constraintSolver)
 	{
 		void* mem = btAlignedAlloc(sizeof(btSequentialImpulseConstraintSolver), 16);
@@ -647,7 +647,9 @@ void btDiscreteDynamicsWorld::calculateSimulationIslands()
 {
 	BT_PROFILE("calculateSimulationIslands");
 
-	getSimulationIslandManager()->updateActivationState(getCollisionWorld(), getCollisionWorld()->getDispatcher());
+	auto islandManager = getSimulationIslandManager();
+	auto dispatcher = this->getDispatcher();
+	islandManager->updateActivationState(this, dispatcher);
 
 	{
 		//merge islands based on speculative contact manifolds too
@@ -661,7 +663,7 @@ void btDiscreteDynamicsWorld::calculateSimulationIslands()
 			if (((colObj0) && (!(colObj0)->isStaticOrKinematicObject())) &&
 				((colObj1) && (!(colObj1)->isStaticOrKinematicObject())))
 			{
-				getSimulationIslandManager()->getUnionFind().unite((colObj0)->getIslandTag(), (colObj1)->getIslandTag());
+				islandManager->getUnionFind().unite((colObj0)->getIslandTag(), (colObj1)->getIslandTag());
 			}
 		}
 	}
@@ -696,10 +698,10 @@ public:
 	btCollisionObject* m_me;
 	btScalar m_allowedPenetration;
 	btOverlappingPairCache* m_pairCache;
-	btDispatcher* m_dispatcher;
+	btCollisionDispatcher* m_dispatcher;
 
 public:
-	btClosestNotMeConvexResultCallback(btCollisionObject* me, const btVector3& fromA, const btVector3& toA, btOverlappingPairCache* pairCache, btDispatcher* dispatcher) : btCollisionWorld::ClosestConvexResultCallback(fromA, toA),
+	btClosestNotMeConvexResultCallback(btCollisionObject* me, const btVector3& fromA, const btVector3& toA, btOverlappingPairCache* pairCache, btCollisionDispatcher* dispatcher) : btCollisionWorld::ClosestConvexResultCallback(fromA, toA),
 																																										   m_me(me),
 																																										   m_allowedPenetration(0.0f),
 																																										   m_pairCache(pairCache),
@@ -807,7 +809,7 @@ void btDiscreteDynamicsWorld::createPredictiveContactsInternal(btRigidBody** bod
 					class StaticOnlyCallback : public btClosestNotMeConvexResultCallback
 					{
 					public:
-						StaticOnlyCallback(btCollisionObject* me, const btVector3& fromA, const btVector3& toA, btOverlappingPairCache* pairCache, btDispatcher* dispatcher) : btClosestNotMeConvexResultCallback(me, fromA, toA, pairCache, dispatcher)
+						StaticOnlyCallback(btCollisionObject* me, const btVector3& fromA, const btVector3& toA, btOverlappingPairCache* pairCache, btCollisionDispatcher* dispatcher) : btClosestNotMeConvexResultCallback(me, fromA, toA, pairCache, dispatcher)
 						{
 						}
 
@@ -909,7 +911,7 @@ void btDiscreteDynamicsWorld::integrateTransformsInternal(btRigidBody** bodies, 
 					class StaticOnlyCallback : public btClosestNotMeConvexResultCallback
 					{
 					public:
-						StaticOnlyCallback(btCollisionObject* me, const btVector3& fromA, const btVector3& toA, btOverlappingPairCache* pairCache, btDispatcher* dispatcher) : btClosestNotMeConvexResultCallback(me, fromA, toA, pairCache, dispatcher)
+						StaticOnlyCallback(btCollisionObject* me, const btVector3& fromA, const btVector3& toA, btOverlappingPairCache* pairCache, btCollisionDispatcher* dispatcher) : btClosestNotMeConvexResultCallback(me, fromA, toA, pairCache, dispatcher)
 						{
 						}
 

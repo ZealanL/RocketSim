@@ -22,8 +22,7 @@ btCompoundShape::btCompoundShape(bool enableDynamicAabbTree, const int initialCh
 	  m_localAabbMax(btScalar(-BT_LARGE_FLOAT), btScalar(-BT_LARGE_FLOAT), btScalar(-BT_LARGE_FLOAT)),
 	  m_dynamicAabbTree(0),
 	  m_updateRevision(1),
-	  m_collisionMargin(btScalar(0.)),
-	  m_localScaling(btScalar(1.), btScalar(1.), btScalar(1.))
+	  m_collisionMargin(btScalar(0.))
 {
 	m_shapeType = COMPOUND_SHAPE_PROXYTYPE;
 
@@ -256,23 +255,6 @@ void btCompoundShape::calculatePrincipalAxisTransform(const btScalar* masses, bt
 
 	tensor.diagonalize(principal.getBasis(), btScalar(0.00001), 20);
 	inertia.setValue(tensor[0][0], tensor[1][1], tensor[2][2]);
-}
-
-void btCompoundShape::setLocalScaling(const btVector3& scaling)
-{
-	for (int i = 0; i < m_children.size(); i++)
-	{
-		btTransform childTrans = getChildTransform(i);
-		btVector3 childScale = m_children[i].m_childShape->getLocalScaling();
-		//		childScale = childScale * (childTrans.getBasis() * scaling);
-		childScale = childScale * scaling / m_localScaling;
-		m_children[i].m_childShape->setLocalScaling(childScale);
-		childTrans.setOrigin((childTrans.getOrigin()) * scaling / m_localScaling);
-		updateChildTransform(i, childTrans, false);
-	}
-
-	m_localScaling = scaling;
-	recalculateLocalAabb();
 }
 
 void btCompoundShape::createAabbTreeFromChildren()

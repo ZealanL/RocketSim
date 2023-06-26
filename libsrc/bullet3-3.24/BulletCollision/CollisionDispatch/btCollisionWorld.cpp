@@ -55,11 +55,11 @@ subject to the following restrictions:
 #include "../CollisionShapes/btTriangleMeshShape.h"
 #include "../CollisionShapes/btStaticPlaneShape.h"
 
-btCollisionWorld::btCollisionWorld(btDispatcher* dispatcher, btBroadphaseInterface* pairCache, btCollisionConfiguration* collisionConfiguration)
-	: m_dispatcher1(dispatcher),
-	  m_broadphasePairCache(pairCache),
-	  m_forceUpdateAllAabbs(true)
+void btCollisionWorld::setup(btCollisionDispatcher* dispatcher, btBroadphaseInterface* pairCache, btCollisionConfiguration* collisionConfiguration)
 {
+	m_dispatcher1 = dispatcher;
+	m_broadphasePairCache = pairCache;
+	m_forceUpdateAllAabbs = true;
 }
 
 btCollisionWorld::~btCollisionWorld()
@@ -208,7 +208,7 @@ void btCollisionWorld::performDiscreteCollisionDetection()
 
 	computeOverlappingPairs();
 
-	btDispatcher* dispatcher = getDispatcher();
+	btCollisionDispatcher* dispatcher = getDispatcher();
 	{
 		BT_PROFILE("dispatchAllCollisionPairs");
 		if (dispatcher)
@@ -284,20 +284,7 @@ void btCollisionWorld::rayTestSingleInternal(const btTransform& rayFromTrans, co
 		btVoronoiSimplexSolver simplexSolver;
 		btSubsimplexConvexCast subSimplexConvexCaster(castShape, convexShape, &simplexSolver);
 
-		btGjkConvexCast gjkConvexCaster(castShape, convexShape, &simplexSolver);
-
-		//btContinuousConvexCollision convexCaster(castShape,convexShape,&simplexSolver,0);
-
-		btConvexCast* convexCasterPtr = 0;
-		//use kF_UseSubSimplexConvexCastRaytest by default
-		if (resultCallback.m_flags & btTriangleRaycastCallback::kF_UseGjkConvexCastRaytest)
-			convexCasterPtr = &gjkConvexCaster;
-		else
-			convexCasterPtr = &subSimplexConvexCaster;
-
-		btConvexCast& convexCaster = *convexCasterPtr;
-
-		if (convexCaster.calcTimeOfImpact(rayFromTrans, rayToTrans, colObjWorldTransform, colObjWorldTransform, castResult))
+		if (subSimplexConvexCaster.calcTimeOfImpact(rayFromTrans, rayToTrans, colObjWorldTransform, colObjWorldTransform, castResult))
 		{
 			//add hit
 			if (castResult.m_normal.length2() > btScalar(0.0001))

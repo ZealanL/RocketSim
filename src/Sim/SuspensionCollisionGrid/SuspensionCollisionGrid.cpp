@@ -136,8 +136,10 @@ btCollisionObject* SuspensionCollisionGrid::CastSuspensionRay(btVehicleRaycaster
 				planeNormal = Vec(0, 0, -1);
 			}
 		} else {
-			distToPlane = abs(abs(start.x) - RLConst::ARENA_EXTENT_X * UU_TO_BT) / abs(dir.x);
-			planeNormal = Vec(-RS_SGN(end.x), 0, 0);
+			if (RS_SGN(dir.x) == RS_SGN(start.x)) {
+				distToPlane = abs(abs(start.x) - RLConst::ARENA_EXTENT_X * UU_TO_BT) / abs(dir.x);
+				planeNormal = Vec(-RS_SGN(end.x), 0, 0);
+			}
 		}
 
 		if (distToPlane < dist) {

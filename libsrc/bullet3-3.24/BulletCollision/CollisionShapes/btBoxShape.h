@@ -44,7 +44,7 @@ public:
 		return m_implicitShapeDimensions;  //scaling is included, margin is not
 	}
 
-	virtual btVector3 localGetSupportingVertex(const btVector3& vec) const
+	btVector3 localGetSupportingVertex(const btVector3& vec) const
 	{
 		btVector3 halfExtents = getHalfExtentsWithoutMargin();
 		btVector3 margin(getMargin(), getMargin(), getMargin());
@@ -64,7 +64,7 @@ public:
 						 btFsels(vec.z(), halfExtents.z(), -halfExtents.z()));
 	}
 
-	virtual void batchedUnitVectorGetSupportingVertexWithoutMargin(const btVector3* vectors, btVector3* supportVerticesOut, int numVectors) const
+	void batchedUnitVectorGetSupportingVertexWithoutMargin(const btVector3* vectors, btVector3* supportVerticesOut, int numVectors) const
 	{
 		const btVector3& halfExtents = getHalfExtentsWithoutMargin();
 
@@ -77,9 +77,10 @@ public:
 		}
 	}
 
+	btBoxShape() {}
 	btBoxShape(const btVector3& boxHalfExtents);
 
-	virtual void setMargin(btScalar collisionMargin)
+	void setMargin(btScalar collisionMargin)
 	{
 		//correct the m_implicitShapeDimensions for the margin
 		btVector3 oldMargin(getMargin(), getMargin(), getMargin());
@@ -89,22 +90,12 @@ public:
 		btVector3 newMargin(getMargin(), getMargin(), getMargin());
 		m_implicitShapeDimensions = implicitShapeDimensionsWithMargin - newMargin;
 	}
-	virtual void setLocalScaling(const btVector3& scaling)
-	{
-		btVector3 oldMargin(getMargin(), getMargin(), getMargin());
-		btVector3 implicitShapeDimensionsWithMargin = m_implicitShapeDimensions + oldMargin;
-		btVector3 unScaledImplicitShapeDimensionsWithMargin = implicitShapeDimensionsWithMargin / m_localScaling;
 
-		btConvexInternalShape::setLocalScaling(scaling);
+	void getAabb(const btTransform& t, btVector3& aabbMin, btVector3& aabbMax) const;
 
-		m_implicitShapeDimensions = (unScaledImplicitShapeDimensionsWithMargin * m_localScaling) - oldMargin;
-	}
+	void calculateLocalInertia(btScalar mass, btVector3 & inertia) const;
 
-	virtual void getAabb(const btTransform& t, btVector3& aabbMin, btVector3& aabbMax) const;
-
-	virtual void calculateLocalInertia(btScalar mass, btVector3 & inertia) const;
-
-	virtual void getPlane(btVector3 & planeNormal, btVector3 & planeSupport, int i) const
+	void getPlane(btVector3 & planeNormal, btVector3 & planeSupport, int i) const
 	{
 		//this plane might not be aligned...
 		btVector4 plane;
@@ -113,22 +104,22 @@ public:
 		planeSupport = localGetSupportingVertex(-planeNormal);
 	}
 
-	virtual int getNumPlanes() const
+	int getNumPlanes() const
 	{
 		return 6;
 	}
 
-	virtual int getNumVertices() const
+	int getNumVertices() const
 	{
 		return 8;
 	}
 
-	virtual int getNumEdges() const
+	int getNumEdges() const
 	{
 		return 12;
 	}
 
-	virtual void getVertex(int i, btVector3& vtx) const
+	void getVertex(int i, btVector3& vtx) const
 	{
 		btVector3 halfExtents = getHalfExtentsWithMargin();
 
@@ -138,7 +129,7 @@ public:
 			halfExtents.z() * (1 - ((i & 4) >> 2)) - halfExtents.z() * ((i & 4) >> 2));
 	}
 
-	virtual void getPlaneEquation(btVector4 & plane, int i) const
+	void getPlaneEquation(btVector4 & plane, int i) const
 	{
 		btVector3 halfExtents = getHalfExtentsWithoutMargin();
 
@@ -167,7 +158,7 @@ public:
 		}
 	}
 
-	virtual void getEdge(int i, btVector3& pa, btVector3& pb) const
+	void getEdge(int i, btVector3& pa, btVector3& pb) const
 	//virtual void getEdge(int i,Edge& edge) const
 	{
 		int edgeVert0 = 0;
@@ -233,7 +224,7 @@ public:
 		getVertex(edgeVert1, pb);
 	}
 
-	virtual bool isInside(const btVector3& pt, btScalar tolerance) const
+	bool isInside(const btVector3& pt, btScalar tolerance) const
 	{
 		btVector3 halfExtents = getHalfExtentsWithoutMargin();
 
@@ -255,12 +246,12 @@ public:
 		return "Box";
 	}
 
-	virtual int getNumPreferredPenetrationDirections() const
+	int getNumPreferredPenetrationDirections() const
 	{
 		return 6;
 	}
 
-	virtual void getPreferredPenetrationDirection(int index, btVector3& penetrationVector) const
+	void getPreferredPenetrationDirection(int index, btVector3& penetrationVector) const
 	{
 		switch (index)
 		{

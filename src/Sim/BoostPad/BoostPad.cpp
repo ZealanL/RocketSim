@@ -37,14 +37,14 @@ void BoostPad::_PreTickUpdate(float tickTime) {
 void BoostPad::_CheckCollide(Car* car) {
 	using namespace RLConst::BoostPads;
 
-	Vec carPosBT = car->_rigidBody->m_worldTransform.m_origin;
+	Vec carPosBT = car->_rigidBody.m_worldTransform.m_origin;
 
 	bool colliding = false;
 	if (_internalState.prevLockedCarID == car->id) {
 		// Check with AABB-hitbox collision
 
 		btVector3 carMinBT, carMaxBT;
-		car->_rigidBody->getAabb(carMinBT, carMaxBT);
+		car->_rigidBody.getAabb(carMinBT, carMaxBT);
 
 		// TODO: Account for orientation
 		colliding = (_boxMaxBT > carMinBT) && (_boxMinBT < carMaxBT);
@@ -60,7 +60,7 @@ void BoostPad::_CheckCollide(Car* car) {
 		_internalState.curLockedCar = car;
 }
 
-void BoostPad::_PostTickUpdate(float tickTime) {
+void BoostPad::_PostTickUpdate(float tickTime, const MutatorConfig& mutatorConfig) {
 	using namespace RLConst::BoostPads;
 
 	uint32_t lockedCarID = 0;
@@ -72,7 +72,7 @@ void BoostPad::_PostTickUpdate(float tickTime) {
 			_internalState.curLockedCar->_internalState.boost = RS_MIN(_internalState.curLockedCar->_internalState.boost + boostToAdd, 100);
 
 			_internalState.isActive = false;
-			_internalState.cooldown = isBig ? COOLDOWN_BIG : COOLDOWN_SMALL;
+			_internalState.cooldown = isBig ? mutatorConfig.boostPadCooldown_Big : mutatorConfig.boostPadCooldown_Small;
 		}
 	}
 

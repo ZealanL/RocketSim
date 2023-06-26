@@ -5,19 +5,10 @@
 #include "../../DataStream/DataStreamIn.h"
 #include "../../DataStream/DataStreamOut.h"
 
-struct BallHitInfo {
-	uint32_t carID = NULL; // ID of the car that hit the ball
-	Vec relativePosOnBall; // Position of the hit relative to the ball's position
-	Vec ballPos; // World position of the ball when the hit occured
-	Vec extraHitVel; // Extra velocity added to base collision velocity
-	uint64_t tickCountWhenHit; // Arena tick count when the hit occured
+#include "../MutatorConfig/MutatorConfig.h"
 
-	void Serialize(DataStreamOut& out);
-	void Deserialize(DataStreamIn& in);
-};
-
-#define BALLHITINFO_SERIALIZATION_FIELDS \
-carID, relativePosOnBall, ballPos, extraHitVel, tickCountWhenHit
+#include "../../../libsrc/bullet3-3.24/BulletDynamics/Dynamics/btRigidBody.h"
+#include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btSphereShape.h"
 
 struct BallState {
 	// Position in world space
@@ -28,10 +19,6 @@ struct BallState {
 	 
 	// Angular velocity (axis-angle)
 	Vec angVel = { 0, 0, 0 };
-
-	// Information from the most recent car-ball hit
-	// Does ever not reset automatically
-	BallHitInfo ballHitInfo = BallHitInfo();
 
 	void Serialize(DataStreamOut& out);
 	void Deserialize(DataStreamIn& in);
@@ -47,19 +34,19 @@ public:
 	RSAPI BallState GetState();
 	RSAPI void SetState(const BallState& state);
 
-	// No copy/move constructor
-	Ball(const Ball& other) = delete;
-	Ball(Ball&& other) = delete;
-
-	struct btRigidBody* _rigidBody;
-	struct btSphereShape* _collisionShape;
+	btRigidBody _rigidBody;
+	btSphereShape _collisionShape;
 
 	// For construction by Arena
-	static Ball* _AllocBall();
-	void _BulletSetup(struct btDynamicsWorld* bulletWorld, float radius);
+	static Ball* _AllocBall() { return new Ball(); }
+
+	// For removal by Arena
+	static void _DestroyBall(Ball* ball) { delete ball; }
+
+	void _BulletSetup(class btDynamicsWorld* bulletWorld, const MutatorConfig& mutatorConfig);
 
 	Vec _velocityImpulseCache = { 0,0,0 };
-	void _FinishPhysicsTick();
+	void _FinishPhysicsTick(const MutatorConfig& mutatorConfig);
 
 	// Returns radius in BulletPhysics units
 	float GetRadiusBullet();
@@ -69,8 +56,10 @@ public:
 		return GetRadiusBullet() * BT_TO_UU;
 	}
 
-	~Ball();
+	Ball(const Ball& other) = delete;
+	Ball& operator=(const Ball& other) = delete;
 
 private:
 	Ball() {}
+	~Ball() {}
 };

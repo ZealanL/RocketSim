@@ -34,6 +34,8 @@ subject to the following restrictions:
 ATTRIBUTE_ALIGNED16(class)
 btBvhTriangleMeshShape : public btTriangleMeshShape
 {
+
+public:
 	btOptimizedBvh* m_bvh;
 	btTriangleInfoMap* m_triangleInfoMap;
 
@@ -45,8 +47,9 @@ btBvhTriangleMeshShape : public btTriangleMeshShape
 	bool m_pad[11];  ////need padding due to alignment
 #endif
 
-public:
 	BT_DECLARE_ALIGNED_ALLOCATOR();
+
+	btBvhTriangleMeshShape() {}
 
 	btBvhTriangleMeshShape(btStridingMeshInterface * meshInterface, bool useQuantizedAabbCompression, bool buildBvh = true);
 
@@ -72,8 +75,6 @@ public:
 
 	//debugging
 	virtual const char* getName() const { return "BVHTRIANGLEMESH"; }
-
-	virtual void setLocalScaling(const btVector3& scaling);
 
 	btOptimizedBvh* getOptimizedBvh()
 	{

@@ -5,31 +5,21 @@
 
 // Basic struct for writing raw data to a file
 struct DataStreamOut {
-	std::filesystem::path filePath;
-	std::ofstream fileStream;
+	vector<byte> data;
 	size_t pos = 0;
 
-	DataStreamOut(std::filesystem::path filePath, bool writeVersionCheck = true) : filePath(filePath) {
-		this->fileStream = std::ofstream(filePath, std::ios::binary);
-		if (!fileStream.good())
-			RS_ERR_CLOSE("Failed to write to file " << filePath << ", cannot open file.");
-
-		if (writeVersionCheck)
-			Write<uint32_t>(RS_VERSION_ID);
-	}
+	DataStreamOut() = default;
 
 	void WriteBytes(const void* ptr, size_t amount) {
-		if (!fileStream.good())
-			RS_ERR_CLOSE("Failed to write to file " << this->filePath << " during write operation, cannot open file.");
-
+		data.reserve(amount);
 		if (RS_IS_BIG_ENDIAN) {
 			byte* reversed = (byte*)malloc(amount);
 			memcpy(reversed, ptr, amount);
 			std::reverse(reversed, reversed + amount);
-			fileStream.write((const char*)reversed, amount);
+			data.insert(data.end(), (byte*)reversed, (byte*)reversed + amount);
 			free(reversed);
 		} else {
-			fileStream.write((const char*)ptr, amount);
+			data.insert(data.end(), (byte*)ptr, (byte*)ptr + amount);
 		}
 
 		pos += amount;
@@ -50,6 +40,24 @@ struct DataStreamOut {
 		WriteMultipleFromList({ args... });
 	}
 
+	void WriteVersionCheck() {
+		Write<uint32_t>(RS_VERSION_ID);
+	}
+
+	void WriteToFile(std::filesystem::path filePath, bool writeVersionCheck) {
+		std::ofstream fileStream = std::ofstream(filePath, std::ios::binary);
+		if (!fileStream.good())
+			RS_ERR_CLOSE("Failed to write to file " << filePath << ", cannot open file.");
+
+		if (writeVersionCheck) {
+			uint32_t version = RS_VERSION_ID;
+			byte* versionBytes = (byte*)&version;
+			data.insert(data.begin(), versionBytes, versionBytes + sizeof(version));
+		}
+
+		if (!data.empty())
+			fileStream.write((char*)data.data(), data.size());
+	}
 };
 
 template <>

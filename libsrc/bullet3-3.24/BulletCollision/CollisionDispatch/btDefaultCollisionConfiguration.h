@@ -77,7 +77,8 @@ protected:
 	btCollisionAlgorithmCreateFunc* m_convexPlaneCF;
 
 public:
-	btDefaultCollisionConfiguration(const btDefaultCollisionConstructionInfo& constructionInfo = btDefaultCollisionConstructionInfo());
+	btDefaultCollisionConfiguration() = default;
+	void setup(const btDefaultCollisionConstructionInfo& constructionInfo = btDefaultCollisionConstructionInfo());
 
 	virtual ~btDefaultCollisionConfiguration();
 

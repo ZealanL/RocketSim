@@ -155,12 +155,12 @@ public:
 
 struct MyNodeOverlapCallback : public btNodeOverlapCallback
 {
-	struct btStridingMeshInterface* m_meshInterface;
-	struct btTriangleCallback* m_callback;
+	class btStridingMeshInterface* m_meshInterface;
+	class btTriangleCallback* m_callback;
 	btVector3 m_triangle[3];
 	int m_numOverlap;
 
-	MyNodeOverlapCallback(struct btTriangleCallback* callback, struct btStridingMeshInterface* meshInterface)
+	MyNodeOverlapCallback(class btTriangleCallback* callback, class btStridingMeshInterface* meshInterface)
 		: m_meshInterface(meshInterface),
 		m_callback(callback),
 		m_numOverlap(0) {
@@ -184,12 +184,6 @@ ATTRIBUTE_ALIGNED16(class)
 btQuantizedBvh
 {
 public:
-	enum btTraversalMode
-	{
-		TRAVERSAL_STACKLESS = 0,
-		TRAVERSAL_STACKLESS_CACHE_FRIENDLY,
-		TRAVERSAL_RECURSIVE
-	};
 
 protected:
 	btVector3 m_bvhAabbMin;
@@ -207,7 +201,6 @@ protected:
 	QuantizedNodeArray m_quantizedLeafNodes;
 	QuantizedNodeArray m_quantizedContiguousNodes;
 
-	btTraversalMode m_traversalMode;
 	BvhSubtreeInfoArray m_SubtreeHeaders;
 
 	//This is only used for serialization so we don't have to add serialization directly to btAlignedObjectArray
@@ -310,15 +303,10 @@ protected:
 	void walkStacklessQuantizedTreeAgainstRay(btNodeOverlapCallback * nodeCallback, const btVector3& raySource, const btVector3& rayTarget, const btVector3& aabbMin, const btVector3& aabbMax, int startNodeIndex, int endNodeIndex) const;
 	void walkStacklessQuantizedTree(btNodeOverlapCallback * nodeCallback, unsigned short int* quantizedQueryAabbMin, unsigned short int* quantizedQueryAabbMax, int startNodeIndex, int endNodeIndex) const;
 	void walkStacklessTreeAgainstRay(btNodeOverlapCallback * nodeCallback, const btVector3& raySource, const btVector3& rayTarget, const btVector3& aabbMin, const btVector3& aabbMax, int startNodeIndex, int endNodeIndex) const;
+	void walkStacklessTreeAgainstRayNoAABB(btNodeOverlapCallback * nodeCallback, const btVector3& raySource, const btVector3& rayTarget, int startNodeIndex, int endNodeIndex) const;
 
 	///tree traversal designed for small-memory processors like PS3 SPU
 	void walkStacklessQuantizedTreeCacheFriendly(btNodeOverlapCallback * nodeCallback, unsigned short int* quantizedQueryAabbMin, unsigned short int* quantizedQueryAabbMax) const;
-
-	///use the 16-byte stackless 'skipindex' node tree to do a recursive traversal
-	void walkRecursiveQuantizedTreeAgainstQueryAabb(const btQuantizedBvhNode* currentNode, btNodeOverlapCallback* nodeCallback, unsigned short int* quantizedQueryAabbMin, unsigned short int* quantizedQueryAabbMax) const;
-
-	///use the 16-byte stackless 'skipindex' node tree to do a recursive traversal
-	void walkRecursiveQuantizedTreeAgainstQuantizedTree(const btQuantizedBvhNode* treeNodeA, const btQuantizedBvhNode* treeNodeB, btNodeOverlapCallback* nodeCallback) const;
 
 	void updateSubtreeHeaders(int leftChildNodexIndex, int rightChildNodexIndex);
 
@@ -424,12 +412,6 @@ public:
 			(btScalar)(vecIn[2]) / (m_bvhQuantization.getZ()));
 		vecOut += m_bvhAabbMin;
 		return vecOut;
-	}
-
-	///setTraversalMode let's you choose between stackless, recursive or stackless cache friendly tree traversal. Note this is only implemented for quantized trees.
-	void setTraversalMode(btTraversalMode traversalMode)
-	{
-		m_traversalMode = traversalMode;
 	}
 
 	SIMD_FORCE_INLINE QuantizedNodeArray& getQuantizedNodeArray()
