@@ -54,6 +54,10 @@ struct MutatorConfig {
 	float
 		ballRadius = RLConst::BALL_COLLISION_RADIUS_NORMAL;
 
+	bool 
+		unlimitedFlips = false,
+		unlimitedDoubleJumps = false;
+
 	DemoMode demoMode = DemoMode::NORMAL;
 	bool enableTeamDemos = false;
 
@@ -70,5 +74,5 @@ gravity, carMass, carWorldFriction, carWorldRestitution, ballMass, \
 ballMaxSpeed, ballDrag, ballWorldFriction, ballWorldRestitution, jumpAccel, \
 jumpImmediateForce, boostAccel, boostUsedPerSecond, respawnDelay, \
 carSpawnBoostAmount, bumpCooldownTime, boostPadCooldown_Big, boostPadCooldown_Small, \
-ballHitExtraForceScale, bumpForceScale, ballRadius, demoMode, \
-enableTeamDemos, enablePhysicsRounding
+ballHitExtraForceScale, bumpForceScale, ballRadius, unlimitedFlips, unlimitedDoubleJumps, \
+demoMode, enableTeamDemos, enablePhysicsRounding

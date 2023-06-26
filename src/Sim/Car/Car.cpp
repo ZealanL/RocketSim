@@ -649,9 +649,22 @@ void Car::_UpdateDoubleJumpOrFlip(float tickTime, const MutatorConfig& mutatorCo
 		}
 
 		if (jumpPressed && _internalState.airTimeSinceJump < DOUBLEJUMP_MAX_DELAY) {
-			if (!_internalState.hasDoubleJumped && !_internalState.hasFlipped && !_internalState.isAutoFlipping) {
-				float inputMagnitude = abs(controls.yaw) + abs(controls.pitch) + abs(controls.roll);
-				if (inputMagnitude >= config.dodgeDeadzone) {
+			float inputMagnitude = abs(controls.yaw) + abs(controls.pitch) + abs(controls.roll);
+			bool isFlipInput = inputMagnitude >= config.dodgeDeadzone;
+
+			bool canUse;
+			
+			if (isFlipInput) {
+				canUse = (!_internalState.hasDoubleJumped && !_internalState.hasFlipped) || mutatorConfig.unlimitedFlips;
+			} else {
+				canUse = (!_internalState.hasDoubleJumped && !_internalState.hasFlipped) || mutatorConfig.unlimitedDoubleJumps;
+			}
+			
+			if (_internalState.isAutoFlipping)
+				canUse = false;
+
+			if (canUse) {
+				if (isFlipInput) {
 					// Begin flipping
 					_internalState.flipTime = 0;
 					_internalState.hasFlipped = true;
