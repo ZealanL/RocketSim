@@ -92,14 +92,21 @@ void btCollisionShape::setMargin(btScalar margin) {
 
 void btCollisionShape::getBoundingSphere(btVector3& center, btScalar& radius) const
 {
-	btTransform tr;
-	tr.setIdentity();
-	btVector3 aabbMin, aabbMax;
+	switch (m_shapeType) {
+	case SPHERE_SHAPE_PROXYTYPE:
+		center = btVector3(0, 0, 0);
+		radius = ((btSphereShape*)this)->getRadius() + 0.08;
+		break;
+	default:
+		btTransform tr;
+		tr.setIdentity();
+		btVector3 aabbMin, aabbMax;
 
-	getAabb(tr, aabbMin, aabbMax);
+		getAabb(tr, aabbMin, aabbMax);
 
-	radius = (aabbMax - aabbMin).length() * btScalar(0.5);
-	center = (aabbMin + aabbMax) * btScalar(0.5);
+		radius = (aabbMax - aabbMin).length() * btScalar(0.5);
+		center = (aabbMin + aabbMax) * btScalar(0.5);
+	}
 }
 
 btScalar btCollisionShape::getContactBreakingThreshold(btScalar defaultContactThreshold) const
