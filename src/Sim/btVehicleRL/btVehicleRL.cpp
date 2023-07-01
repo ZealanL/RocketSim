@@ -178,7 +178,7 @@ float btVehicleRL::rayCast(btWheelInfoRL& wheel, SuspensionCollisionGrid* grid) 
 			wheel.m_clippedInvContactDotSuspension = 10;
 		}
 
-		{ // Compute m_extraPushback
+		if (object->isStaticObject()) { // Compute m_extraPushback when colliding with static object
 
 			// Temporarily disable factors
 			// This will prevent resolveSingleCollision from actually applying force to us
