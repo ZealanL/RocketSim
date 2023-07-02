@@ -1,5 +1,10 @@
 #include "RocketSim.h"
 
+#ifdef RS_PYBIND
+// Make sure it gets compiled
+#include "../python/src/PYB.h"
+#endif
+
 #include "../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btBvhTriangleMeshShape.h"
 #include "../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btTriangleMesh.h"
 #include "../libsrc/bullet3-3.24/BulletCollision/CollisionDispatch/btInternalEdgeUtility.h"
