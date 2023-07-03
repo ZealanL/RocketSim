@@ -20,14 +20,18 @@ if (TARGET_LANGUAGE STREQUAL "python" OR TARGET_LANGUAGE STREQUAL "both")
 	add_subdirectory("python/pybind11")
 
 	# Get all binding headers
-	file(GLOB_RECURSE FILES_ROCKETSIM_PYB "${PROJECT_SOURCE_DIR}/python/src/*.h")
+	file(GLOB_RECURSE FILES_ROCKETSIM_PYB "${PROJECT_SOURCE_DIR}/python/src/*.cpp" "${PROJECT_SOURCE_DIR}/python/src/*.h")
 
-	# Create pybind module
-	pybind11_add_module(RocketSimPy ${FILES_ROCKETSIM} ${FILES_BULLET} ${FILES_ROCKETSIM_PYB})
+	# Create pybind11 module
+	pybind11_add_module(rocketsim ${FILES_ROCKETSIM} ${FILES_BULLET} ${FILES_ROCKETSIM_PYB})
 
-	set_target_properties(RocketSimPy PROPERTIES LINKER_LANGUAGE CXX)
-	set_target_properties(RocketSimPy PROPERTIES CXX_STANDARD 20)
+	set_target_properties(rocketsim PROPERTIES LINKER_LANGUAGE CXX)
+	set_target_properties(rocketsim PROPERTIES CXX_STANDARD 20)
+	
+	# Set output dir
+	#set_target_properties(rocketsim PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/python/rocketsim")
+	#set_target_properties(rocketsim PROPERTIES LIBRARY_OUTPUT_DIRECTORY_RELEASES "${PROJECT_SOURCE_DIR}/python/rocketsim")
 
 	# Enable pybind code with define RS_PYBIND
-	target_compile_definitions(RocketSimPy PUBLIC -DRS_PYBIND)
+	target_compile_definitions(rocketsim PUBLIC -DRS_PYBIND)
 endif()

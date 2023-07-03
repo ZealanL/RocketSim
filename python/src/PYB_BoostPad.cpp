@@ -3,7 +3,7 @@
 
 PYB_INIT_F(BoostPad) {
 #define PYB_CUR_CLASS BoostPadState
-	PYB_CLASS()
+	PYB_CLASS(BoostPadState)
 		PYB_DEFAULT_INITS()
 		PYBP(cooldown)
 		PYBP(curLockedCar)
@@ -12,7 +12,7 @@ PYB_INIT_F(BoostPad) {
 		;
 
 #define PYB_CUR_CLASS BoostPad
-	PYB_CLASS()
+	PYB_CLASS(BoostPad)
 		.def("get_state", &BoostPad::GetState)
 		.def("set_state", &BoostPad::SetState)
 		PYBP(isBig)

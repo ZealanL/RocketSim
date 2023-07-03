@@ -3,10 +3,9 @@
 
 PYB_INIT_F(MathTypes) {
 #define PYB_CUR_CLASS Vec
-	PYB_CLASS()
+	PYB_CLASS(Vec)
 		PYB_DEFAULT_INITS()
 		.def(pyb::init<float, float, float>(), PYBA("x"), PYBA("y"), PYBA("z"))
-		
 		PYBP(x)
 		PYBP(y)
 		PYBP(z)
@@ -43,7 +42,7 @@ PYB_INIT_F(MathTypes) {
 		;
 
 #define PYB_CUR_CLASS RotMat
-	PYB_CLASS()
+	PYB_CLASS(RotMat)
 		PYB_DEFAULT_INITS()
 		.def(pyb::init<Vec, Vec, Vec>(), PYBA("forward"), PYBA("right"), PYBA("up"))
 		.def("__getitem__", [](const RotMat& mat, std::pair <size_t, size_t> i) { return mat[i.first][i.second]; })
@@ -63,7 +62,7 @@ PYB_INIT_F(MathTypes) {
 		;
 
 #define PYB_CUR_CLASS Angle
-	PYB_CLASS()
+	PYB_CLASS(Angle)
 		PYB_DEFAULT_INITS()
 		.def(pyb::init<float, float, float>(), PYBA("yaw"), PYBA("pitch"), PYBA("roll"))
 

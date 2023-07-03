@@ -3,7 +3,7 @@
 
 PYB_INIT_F(Car) {
 #define PYB_CUR_CLASS CarControls
-	PYB_CLASS()
+	PYB_CLASS(CarControls)
 		PYB_DEFAULT_INITS()
 		PYBP(boost)
 		PYBP(handbrake)
@@ -16,7 +16,7 @@ PYB_INIT_F(Car) {
 		;
 
 #define PYB_CUR_CLASS CarState
-	PYB_CLASS()
+	PYB_CLASS(CarState)
 		PYB_DEFAULT_INITS()
 		PYBP(airTimeSinceJump)
 		PYBP(angVel)
@@ -51,7 +51,7 @@ PYB_INIT_F(Car) {
 		;
 
 #define PYB_CUR_CLASS WheelPairConfig
-	PYB_CLASS()
+	PYB_CLASS(WheelPairConfig)
 		PYB_DEFAULT_INITS()
 		PYBP(connectionPointOffset)
 		PYBP(suspensionRestLength)
@@ -59,7 +59,7 @@ PYB_INIT_F(Car) {
 		;
 
 #define PYB_CUR_CLASS CarConfig
-	PYB_CLASS()
+	PYB_CLASS(CarConfig)
 		PYB_DEFAULT_INITS()
 		PYBP(backWheels)
 		PYBP(dodgeDeadzone)
@@ -74,15 +74,14 @@ PYB_INIT_F(Car) {
 		.def_readonly_static("PLANK", &CAR_CONFIG_PLANK)
 		;
 
-#define PYB_CUR_CLASS Car
-	PYB_CLASS()
-		PYBP(config)
-		PYBP(controls)
-		PYBP(id)
-		PYBP(team)
-		.def_readonly("vel_impulse_cache", &Car::_velocityImpulseCache)
-		.def("get_state", &Car::GetState)
-		.def("set_state", &Car::SetState)
+#define PYB_CUR_CLASS CarWrapper
+	pyb::class_<CarWrapper>(m, "Car")
+		PYBP_W(config)
+		PYBP_W(controls)
+		PYBP_W(id)
+		PYBP_W(team)
+		.def("get_state", [](const CarWrapper& inst) { return inst.ptr->GetState(); })
+		.def("set_state", [](const CarWrapper& inst, const CarState& newState) { inst.ptr->SetState(newState); })
 		;
 }
 #endif

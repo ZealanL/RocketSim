@@ -10,7 +10,7 @@ PYB_INIT_F(MutatorConfig) {
 
 
 #define PYB_CUR_CLASS MutatorConfig
-	PYB_CLASS()
+	PYB_CLASS(MutatorConfig)
 		PYB_DEFAULT_INITS()
 		PYBP(ballDrag)
 		PYBP(ballHitExtraForceScale)
