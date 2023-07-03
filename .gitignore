@@ -34,3 +34,4 @@ out/
 *.filters
 *.user
 
+CMakeSettings.json
