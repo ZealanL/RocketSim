@@ -31,7 +31,7 @@ struct SuspensionCollisionGrid {
 		int dynamicObjects = 0;
 	};
 
-	vector<Cell> cellData;
+	std::vector<Cell> cellData;
 
 	void Allocate() {
 		cellData.resize(CELL_AMOUNT_TOTAL);
@@ -71,7 +71,7 @@ struct SuspensionCollisionGrid {
 		return Vec(CELL_SIZE_X, CELL_SIZE_Y, CELL_SIZE_Z);
 	}
 
-	void SetupWorldCollision(const vector<btBvhTriangleMeshShape*>& triMeshShapes);
+	void SetupWorldCollision(const std::vector<btBvhTriangleMeshShape*>& triMeshShapes);
 
 	btCollisionObject* CastSuspensionRay(btVehicleRaycaster* raycaster, Vec start, Vec end, btVehicleRaycaster::btVehicleRaycasterResult& result);
 	void UpdateDynamicCollisions(Vec minBT, Vec maxBT, bool remove);

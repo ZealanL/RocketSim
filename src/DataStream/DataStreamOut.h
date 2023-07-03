@@ -5,7 +5,7 @@
 
 // Basic struct for writing raw data to a file
 struct DataStreamOut {
-	vector<byte> data;
+	std::vector<byte> data;
 	size_t pos = 0;
 
 	DataStreamOut() = default;

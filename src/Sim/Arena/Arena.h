@@ -36,12 +36,12 @@ public:
 	GameMode gameMode;
 
 	uint32_t _lastCarID = 0;
-	unordered_set<Car*> _cars;
-	unordered_map<uint32_t, Car*> _carIDMap;
+	std::unordered_set<Car*> _cars;
+	std::unordered_map<uint32_t, Car*> _carIDMap;
 	
 	Ball* ball;
 
-	vector<BoostPad*> _boostPads;
+	std::vector<BoostPad*> _boostPads;
 	BoostPadGrid _boostPadGrid;
 
 	SuspensionCollisionGrid _suspColGrid;
@@ -62,8 +62,8 @@ public:
 	// Total ticks this arena instance has been simulated for, never resets
 	uint64_t tickCount = 0;
 
-	const unordered_set<Car*>& GetCars() { return _cars; }
-	const vector<BoostPad*>& GetBoostPads() { return _boostPads; }
+	const std::unordered_set<Car*>& GetCars() { return _cars; }
+	const std::vector<BoostPad*>& GetBoostPads() { return _boostPads; }
 
 	// Returns true if added, false if car was already added
 	bool _AddCarFromPtr(Car* car);

@@ -23,12 +23,12 @@ struct CollisionMeshFile {
 		}
 	};
 
-	vector<Triangle> tris;
-	vector<Vertex> vertices;
+	std::vector<Triangle> tris;
+	std::vector<Vertex> vertices;
 
 	uint32_t hash;
 
-	void ReadFromFile(string filePath);
+	void ReadFromFile(std::string filePath);
 	btTriangleMesh* MakeBulletMesh();
 	void UpdateHash();
 };

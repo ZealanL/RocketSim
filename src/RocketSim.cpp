@@ -18,8 +18,8 @@ RocketSimStage RocketSim::GetStage() {
 	return stage;
 }
 
-static vector<btBvhTriangleMeshShape*> arenaCollisionMeshes;
-const vector<btBvhTriangleMeshShape*>& RocketSim::GetArenaCollisionShapes() {
+static std::vector<btBvhTriangleMeshShape*> arenaCollisionMeshes;
+const std::vector<btBvhTriangleMeshShape*>& RocketSim::GetArenaCollisionShapes() {
 	return arenaCollisionMeshes;
 }
 
