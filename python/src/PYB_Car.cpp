@@ -74,14 +74,14 @@ PYB_INIT_F(Car) {
 		.def_readonly_static("PLANK", &CAR_CONFIG_PLANK)
 		;
 
-#define PYB_CUR_CLASS CarWrapper
-	pyb::class_<CarWrapper>(m, "Car")
-		PYBP_W(config)
-		PYBP_W(controls)
-		PYBP_W(id)
-		PYBP_W(team)
-		.def("get_state", [](const CarWrapper& inst) { return inst.ptr->GetState(); })
-		.def("set_state", [](const CarWrapper& inst, const CarState& newState) { inst.ptr->SetState(newState); })
+#define PYB_CUR_CLASS Car
+	pyb::class_<Car>(m, "Car")
+		PYBP(config)
+		PYBP(controls)
+		PYBP(id)
+		PYBP(team)
+		.def("get_state", &Car::GetState)
+		.def("set_state", &Car::SetState, PYBA("state"))
 		;
 }
 #endif

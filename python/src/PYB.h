@@ -1,6 +1,6 @@
 #pragma once
 #ifdef RS_PYBIND
-#include "../../src/RocketSim.h" 
+#include "Wrappers.h"
 
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
@@ -45,22 +45,11 @@ inline const char* PYB_MakePythonString(const char* name) {
 			}
 		}
 		*result += tolower(c);
-		
+
 		last = c;
 	}
 	return result->c_str();
 }
-
-template <typename T>
-struct RSPtrWrapper {
-	T* ptr;
-
-	RSPtrWrapper() : ptr(NULL) {}
-	RSPtrWrapper(T* ptr) : ptr(ptr) {}
-};
-
-typedef RSPtrWrapper<Car> CarWrapper;
-typedef RSPtrWrapper<Ball> BallWrapper;
 
 PYB_INIT_F(MathTypes);
 PYB_INIT_F(Math);

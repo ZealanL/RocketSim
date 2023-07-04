@@ -10,12 +10,12 @@ PYB_INIT_F(Ball) {
 		PYBP(vel)
 		;
 
-#define PYB_CUR_CLASS BallWrapper
-	pyb::class_<BallWrapper>(m, "Ball")
-		.def("get_radius", [](const BallWrapper& inst) { return inst.ptr->GetRadius(); })
-		.def("get_state", [](const BallWrapper& inst) { return inst.ptr->GetState(); })
-		.def("set_state", [](const BallWrapper& inst, const BallState& newState) { inst.ptr->SetState(newState); })
-		.def("get_rot", [](const BallWrapper& inst) { return (RotMat)(inst.ptr->_rigidBody.m_worldTransform.m_basis);  })
+#define PYB_CUR_CLASS Ball
+	pyb::class_<Ball>(m, "Ball")
+		.def("get_radius", &Ball::GetRadius)
+		.def("get_state", &Ball::GetState)
+		.def("set_state", &Ball::SetState, PYBA("state"))
+		.def("get_rot", [](std::shared_ptr<Ball> inst) { return (RotMat)(inst->_rigidBody.m_worldTransform.m_basis); })
 		;
 }
 #endif

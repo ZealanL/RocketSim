@@ -2,51 +2,60 @@
 #include "PYB.h"
 
 PYB_INIT_F(Arena) {
-#define PYB_CUR_CLASS Arena
-	PYB_CLASS(Arena)
-		.def_static("create", &Arena::Create, PYBA("gamemode"), PYBA("tickrate") = float(120.f), pyb::return_value_policy::take_ownership)
-		.def("clone", &Arena::Clone, pyb::return_value_policy::take_ownership)
+#define PYB_CUR_CLASS ArenaWrapper
+	pyb::class_<ArenaWrapper>(m, "Arena")
+		.def(pyb::init<GameMode, float>(), PYBA("gamemode"), PYBA("tickrate") = float(120.f))
+
+		// TODO: Implement
+		//.def("clone", &Arena::Clone, pyb::return_value_policy::take_ownership)
 
 		.def("get_cars",
-			[](const Arena& arena) {
-				auto cars = vector<CarWrapper>();
-				for (Car* car : arena._cars) {
-					cars.push_back(CarWrapper(car));
+			[](const ArenaWrapper& arena) {
+				auto cars = std::vector<std::shared_ptr<Car>>();
+				for (auto pair : arena.cars) {
+					cars.push_back(pair.second);
 				}
 				return pyb::cast(cars);
 			}
 		)
 
 		.def("get_boostpads",
-			[](const Arena& arena) {
+			[](const ArenaWrapper& arena) {
 				// Just do a straight cast
-				return pyb::cast(arena._boostPads);
+				return pyb::cast(arena.boostPads);
 			}
 		)
 
-		.def("add_car", [](Arena& arena, Team team, const CarConfig& config) { return CarWrapper(arena.AddCar(team, config)); }, PYBA("team"), PYBA("config") = CarConfig(CAR_CONFIG_OCTANE))
+		.def("add_car", &ArenaWrapper::AddCar, PYBA("team"), PYBA("config") = CarConfig(CAR_CONFIG_OCTANE))
+		.def("remove_car",
+			[](ArenaWrapper& arena, std::shared_ptr<Car> car) {
+				return arena.RemoveCar(car);
+			}, PYBA("car")
+		)
 
-		.def("remove_car", [](Arena& arena, const CarWrapper& carWrap) { return arena.RemoveCar(carWrap.ptr); }, PYBA("car"))
-		.def("remove_car", [](Arena& arena, uint32_t id) { return arena.RemoveCar(id); }, PYBA("car_id"))
+		.def("remove_car",
+			[](ArenaWrapper& arena, uint32_t id) {
+				return arena.RemoveCar(id);
+			}, PYBA("id"))
 
-		.def("reset_to_random_kickoff", &Arena::ResetToRandomKickoff, PYBA("seed") = int(-1))
-		.def("get_tickrate", &Arena::GetTickRate)
-		.def("get_last_car_id", [](Arena& arena) { return arena._lastCarID; })
+		.def("get_car", &ArenaWrapper::GetCar, PYBA("id"))
+		PYBP(ball)
+		.def("get_tickrate", &ArenaWrapper::GetTickRate)
+		.def("get_ticktime", &ArenaWrapper::GetTickTime)
 
-		.def("get_car", [](Arena& arena, uint32_t id) { return CarWrapper(arena.GetCar(id)); }, PYBA("id"))
+		.def("reset_to_random_kickoff", 
+			[](const ArenaWrapper& arena, int seed) {
+				arena.arena->ResetToRandomKickoff(seed);
+			}, PYBA("seed") = int(-1))
 
+		.def("get_last_car_id", [](ArenaWrapper& arena) { return arena.arena->_lastCarID; })
+		.def("get_tickcount", [](ArenaWrapper& arena) { return arena.arena->tickCount; })
 
-		.def("step", &Arena::Step, PYBA("ticks"))
+		.def("step", &ArenaWrapper::Step, PYBA("ticks"))
 
-		.def("get_mutator_config", &Arena::GetMutatorConfig)
-		.def("set_mutator_config", &Arena::SetMutatorConfig)
-
-		.def("get_ball", [](Arena& arena) { return BallWrapper(arena.ball); })
-
-
-		PYBP(gameMode)
-		PYBP(tickCount)
-		PYBP(tickTime)
+		.def("get_mutator_config", &ArenaWrapper::GetMutatorConfig)
+		.def("set_mutator_config", &ArenaWrapper::SetMutatorConfig, PYBA("config"))
+		.def("get_gamemode", &ArenaWrapper::GetGameMode)
 		;
 }
 #endif
