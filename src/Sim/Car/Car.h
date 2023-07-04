@@ -158,6 +158,8 @@ public:
 	Car(const Car& other) = delete;
 	Car& operator=(const Car& other) = delete;
 
+	~Car() {}
+
 private:
 	void _UpdateWheels(float tickTime, const MutatorConfig& mutatorConfig, int numWheelsInContact, float forwardSpeed_UU);
 	void _UpdateBoost(float tickTime, const MutatorConfig& mutatorConfig, float forwardSpeed_UU);
@@ -168,6 +170,4 @@ private:
 	void _UpdateAutoRoll(float tickTime, const MutatorConfig& mutatorConfig, int numWheelsInContact);
 
 	Car() {}
-
-	~Car() {}
 };
