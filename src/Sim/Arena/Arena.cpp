@@ -82,7 +82,8 @@ bool Arena::RemoveCar(uint32_t id) {
 		_carIDMap.erase(itr);
 		_cars.erase(car);
 		_bulletWorld.removeCollisionObject(&car->_rigidBody);
-		Car::_DestroyCar(car);
+		if (ownsCars)
+			Car::_DestroyCar(car);
 		return true;
 	} else {
 		return false;
@@ -754,11 +755,13 @@ Arena::~Arena() {
 		_bulletWorld.removeCollisionObject(_bulletWorld.getCollisionObjectArray()[0]);
 
 	// Remove all cars
-	for (Car* car : _cars)
-		Car::_DestroyCar(car);
+	if (ownsCars)
+		for (Car* car : _cars)
+			Car::_DestroyCar(car);
 
 	// Remove the ball
-	Ball::_DestroyBall(ball);
+	if (ownsBall)
+		Ball::_DestroyBall(ball);
 
 	if (gameMode == GameMode::SOCCAR) {
 		// Remove all boost pads

@@ -37,9 +37,12 @@ public:
 
 	uint32_t _lastCarID = 0;
 	unordered_set<Car*> _cars;
+	bool ownsCars = true; // If true, deleting this arena instance deletes all of the cars
+
 	unordered_map<uint32_t, Car*> _carIDMap;
 	
 	Ball* ball;
+	bool ownsBall = true; // If true, deleting this arena instance deletes the ball
 
 	vector<BoostPad*> _boostPads;
 	BoostPadGrid _boostPadGrid;
