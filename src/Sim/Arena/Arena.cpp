@@ -755,18 +755,22 @@ Arena::~Arena() {
 		_bulletWorld.removeCollisionObject(_bulletWorld.getCollisionObjectArray()[0]);
 
 	// Remove all cars
-	if (ownsCars)
+	if (ownsCars) {
 		for (Car* car : _cars)
 			Car::_DestroyCar(car);
+	}
 
 	// Remove the ball
-	if (ownsBall)
+	if (ownsBall) {
 		Ball::_DestroyBall(ball);
+	}
 
 	if (gameMode == GameMode::SOCCAR) {
-		// Remove all boost pads
-		for (BoostPad* boostPad : _boostPads)
-			delete boostPad;
+		if (ownsBoostPads) {
+			// Remove all boost pads
+			for (BoostPad* boostPad : _boostPads)
+				delete boostPad;
+		}
 
 		delete[] _worldCollisionRBs;
 		delete[] _worldCollisionPlaneShapes;
