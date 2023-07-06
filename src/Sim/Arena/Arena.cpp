@@ -83,7 +83,7 @@ bool Arena::RemoveCar(uint32_t id) {
 		_cars.erase(car);
 		_bulletWorld.removeCollisionObject(&car->_rigidBody);
 		if (ownsCars)
-			Car::_DestroyCar(car);
+			delete car;
 		return true;
 	} else {
 		return false;
@@ -749,6 +749,10 @@ bool Arena::IsBallProbablyGoingIn(float maxTime) {
 
 Arena::~Arena() {
 
+	// Remove all from bullet world constraints
+	for (size_t i = 0; i < _bulletWorld.getNumConstraints(); i++)
+		_bulletWorld.removeConstraint(_bulletWorld.getConstraint(i));
+
 	// Manually remove all collision objects
 	// Otherwise we run into issues regarding deconstruction order
 	while (_bulletWorld.getNumCollisionObjects() > 0)
@@ -757,7 +761,7 @@ Arena::~Arena() {
 	// Remove all cars
 	if (ownsCars) {
 		for (Car* car : _cars)
-			Car::_DestroyCar(car);
+			delete car;
 	}
 
 	// Remove the ball

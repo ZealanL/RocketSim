@@ -149,9 +149,6 @@ public:
 	// For construction by Arena
 	static Car* _AllocateCar() { return new Car(); }
 
-	// For removal by Arena
-	static void _DestroyCar(Car* car) { delete car; }
-
 	void _Serialize(DataStreamOut& out);
 	void _Deserialize(DataStreamIn& in);
 
