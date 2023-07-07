@@ -29,6 +29,9 @@ out/
 *.pyd
 *.whl
 
+# Arena collision mesh files
+*.cmf
+
 # Visual Studio (not using anything VS-related)
 .vs/
 *.vcxproj
