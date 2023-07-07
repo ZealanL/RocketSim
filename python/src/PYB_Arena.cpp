@@ -3,11 +3,34 @@
 
 PYB_INIT_F(Arena) {
 #define PYB_CUR_CLASS ArenaWrapper
-	pyb::class_<ArenaWrapper>(m, "Arena")
+	pyb::class_<ArenaWrapper, std::shared_ptr<ArenaWrapper>>(m, "Arena")
 		.def(pyb::init<GameMode, float>(), PYBA("gamemode"), PYBA("tickrate") = float(120.f))
 
-		// TODO: Implement
-		//.def("clone", &Arena::Clone, pyb::return_value_policy::take_ownership)
+		.def("clone", 
+			[](const ArenaWrapper& arena, bool copyCallbacks) -> std::shared_ptr<ArenaWrapper> {
+				return std::shared_ptr<ArenaWrapper>(
+					new ArenaWrapper(
+						arena.arena->Clone(copyCallbacks)
+					)
+				);
+			},
+			PYBA("copy_callbacks") = bool(false),
+			pyb::return_value_policy::take_ownership
+		)
+
+		.def("set_goal_scored_callback",
+			[](std::shared_ptr<ArenaWrapper> arena, ArenaWrapper::CallbackFn_Goal fn) {
+				ArenaWrapper::SetCB_Goal(arena, fn, NULL);
+			},
+			PYBA("callback_func")
+		)
+
+		.def("set_bump_callback",
+			[](std::shared_ptr<ArenaWrapper> arena, ArenaWrapper::CallbackFn_Bump fn) {
+				ArenaWrapper::SetCB_Bump(arena, fn, NULL);
+			},
+			PYBA("callback_func")
+		)
 
 		.def("get_cars",
 			[](const ArenaWrapper& arena) {

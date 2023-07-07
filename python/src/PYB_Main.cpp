@@ -18,8 +18,9 @@ PYBIND11_MODULE(rocketsim, m) {
 
 		// Arena is last since it depends on other things
 		PYB_INIT_Arena(m);
+
 	} catch (std::exception e) {
-		RS_ERR_CLOSE("Failed to initialize pybind11 module: " << e.what());
+		RS_ERR_CLOSE("Failed to initialize pybind11 module: Got exception: " << e.what());
 	}
 }
 #endif

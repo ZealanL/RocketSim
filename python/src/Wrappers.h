@@ -1,12 +1,49 @@
 #pragma once
 #include "../../src/RocketSim.h"
 
+#ifdef RS_PYBIND
+
+template <typename FuncType>
+struct PyArenaCallback {
+	bool isValid;
+	FuncType func = NULL;
+	void* userInfo;
+
+	std::shared_ptr<struct ArenaWrapper> arenaWrapper;
+
+	PyArenaCallback() {
+		arenaWrapper = NULL;
+		isValid = false;
+	}
+
+	PyArenaCallback(std::shared_ptr<struct ArenaWrapper> arenaWrapper, FuncType func, void* userInfo) : arenaWrapper(arenaWrapper), func(func), userInfo(userInfo) {
+		isValid = true;
+	}
+
+	template <typename ...Args>
+	void Call(Args... args) {
+		if (isValid) {
+			func(arenaWrapper, args...);
+		}
+	}
+
+	operator bool() const {
+		return isValid;
+	}
+};
+
 struct ArenaWrapper {
+	typedef std::function<void(std::shared_ptr<ArenaWrapper>, Team)> CallbackFn_Goal;
+	typedef std::function<void(std::shared_ptr<ArenaWrapper>, std::shared_ptr<Car>, std::shared_ptr<Car>, bool)> CallbackFn_Bump;
+
 	std::shared_ptr<Arena> arena;
 
 	std::shared_ptr<Ball> ball;
 	std::unordered_map<uint32_t, std::shared_ptr<Car>> cars;
 	std::vector<std::shared_ptr<BoostPad>> boostPads;
+
+	PyArenaCallback<CallbackFn_Goal> cb_goal = {};
+	PyArenaCallback<CallbackFn_Bump> cb_bump = {};
 
 	ArenaWrapper() {
 		arena = NULL;
@@ -76,4 +113,34 @@ struct ArenaWrapper {
 	GameMode GetGameMode() {
 		return arena->gameMode;
 	}
+
+	static void SetCB_Goal(std::shared_ptr<ArenaWrapper> wrapper, CallbackFn_Goal fn, void* userInfo) {
+		wrapper->cb_goal = { wrapper, fn, userInfo };
+		wrapper->arena->SetGoalScoreCallback(ArenaWrapper::CB_Goal, &wrapper->cb_goal);
+	}
+
+	static void SetCB_Bump(std::shared_ptr<ArenaWrapper> wrapper, CallbackFn_Bump fn, void* userInfo) {
+		wrapper->cb_bump = { wrapper, fn, userInfo };
+		wrapper->arena->SetCarBumpCallback(ArenaWrapper::CB_Bump, &wrapper->cb_bump);
+	}
+
+	static void CB_Goal(Arena* arena, Team scoringTeam, void* userInfo) {
+		auto* cbInst = (PyArenaCallback<CallbackFn_Goal>*)userInfo;
+		std::shared_ptr<ArenaWrapper> wrapper = cbInst->arenaWrapper;
+		cbInst->Call(scoringTeam);
+	}
+
+	static void CB_Bump(Arena* arena, Car* bumper, Car* victim, bool isDemo, void* userInfo) {
+		auto* cbInst = (PyArenaCallback<CallbackFn_Bump>*)userInfo;
+		std::shared_ptr<ArenaWrapper> wrapper = cbInst->arenaWrapper;
+		cbInst->Call(wrapper->GetCar(bumper->id), wrapper->GetCar(victim->id), isDemo);
+	}
+
+	~ArenaWrapper() {
+		if (arena) {
+			arena->SetGoalScoreCallback(NULL);
+			arena->SetCarBumpCallback(NULL);
+		}
+	}
 };
+#endif
