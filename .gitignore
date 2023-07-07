@@ -26,6 +26,8 @@ out/
 *.pdb
 *.ilk
 *.tmp
+*.pyd
+*.whl
 
 # Visual Studio (not using anything VS-related)
 .vs/
