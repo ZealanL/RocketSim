@@ -27,15 +27,15 @@ struct DataStreamIn {
 		return versionID == RS_VERSION_ID;
 	}
 
-	bool IsDone() {
+	bool IsDone() const {
 		return pos >= data.size();
 	}
 
-	bool IsOverflown() {
+	bool IsOverflown() const {
 		return pos > data.size();
 	}
 
-	size_t GetNumBytesLeft() {
+	size_t GetNumBytesLeft() const {
 		if (IsDone()) {
 			return 0;
 		} else {
