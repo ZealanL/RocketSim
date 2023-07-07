@@ -29,8 +29,8 @@ if (TARGET_LANGUAGE STREQUAL "python" OR TARGET_LANGUAGE STREQUAL "both")
 	set_target_properties(rocketsim PROPERTIES CXX_STANDARD 20)
 	
 	# Set output dir
-	#set_target_properties(rocketsim PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/python/rocketsim")
-	#set_target_properties(rocketsim PROPERTIES LIBRARY_OUTPUT_DIRECTORY_RELEASES "${PROJECT_SOURCE_DIR}/python/rocketsim")
+	set_target_properties(rocketsim PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/python")
+	set_target_properties(rocketsim PROPERTIES LIBRARY_OUTPUT_DIRECTORY_RELEASES "${PROJECT_SOURCE_DIR}/python")
 
 	# Enable pybind code with define RS_PYBIND
 	target_compile_definitions(rocketsim PUBLIC -DRS_PYBIND)
