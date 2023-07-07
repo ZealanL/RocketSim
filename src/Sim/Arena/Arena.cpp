@@ -454,9 +454,7 @@ Arena* Arena::Create(GameMode gameMode, float tickRate) {
 	return new Arena(gameMode, tickRate);
 }
 
-void Arena::WriteToFile(std::filesystem::path path) {
-	DataStreamOut out = {};
-
+void Arena::Serialize(DataStreamOut& out) {
 	out.WriteMultiple(gameMode, tickTime, tickCount, _lastCarID);
 
 	{ // Serialize cars
@@ -481,14 +479,10 @@ void Arena::WriteToFile(std::filesystem::path path) {
 	{ // Serialize mutators
 		_mutatorConfig.Serialize(out);
 	}
-
-	out.WriteToFile(path, true);
 }
 
-Arena* Arena::LoadFromFile(std::filesystem::path path) {
-	constexpr char ERROR_PREFIX[] = "Arena::LoadFromFile(): ";
-
-	DataStreamIn in = DataStreamIn(path, true);
+Arena* Arena::DeserializeNew(DataStreamIn& in) {
+	constexpr char ERROR_PREFIX[] = "Arena::Deserialize(): ";
 
 	GameMode gameMode;
 	float tickTime;
@@ -509,7 +503,7 @@ Arena* Arena::LoadFromFile(std::filesystem::path path) {
 
 #ifndef RS_MAX_SPEED
 			if (newArena->_carIDMap.count(id))
-				RS_ERR_CLOSE(ERROR_PREFIX << "Failed to load from " << path << ", got repeated car ID of " << id << ".");
+				RS_ERR_CLOSE(ERROR_PREFIX << "Failed to load, got repeated car ID of " << id << ".");
 #endif
 
 			Car* newCar = newArena->DeserializeNewCar(in, team);
@@ -529,8 +523,8 @@ Arena* Arena::LoadFromFile(std::filesystem::path path) {
 
 #ifndef RS_MAX_SPEED
 		if (boostPadAmount != newArena->_boostPads.size())
-			RS_ERR_CLOSE(ERROR_PREFIX << "Failed to load from " << path <<
-				", different boost pad amount written in file (" << boostPadAmount << "/" << newArena->_boostPads.size() << ")");
+			RS_ERR_CLOSE(ERROR_PREFIX << "Failed to load, " <<
+				"different boost pad amount written in file (" << boostPadAmount << "/" << newArena->_boostPads.size() << ")");
 #endif
 
 		for (auto pad : newArena->_boostPads) {

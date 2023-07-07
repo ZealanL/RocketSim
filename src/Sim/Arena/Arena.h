@@ -113,11 +113,11 @@ public:
 	// NOTE: Arena should be destroyed after use
 	RSAPI static Arena* Create(GameMode gameMode, float tickRate = 120);
 	
-	// Serialize cars, ball, and boostpads to a file
-	RSAPI void WriteToFile(std::filesystem::path path);
+	// Serialize entire arena state including cars, ball, and boostpads
+	RSAPI void Serialize(DataStreamOut& out);
 
-	// Create a new arena from a file written by Arena.WriteToFile()
-	RSAPI static Arena* LoadFromFile(std::filesystem::path path);
+	// Load new arena from serialized data
+	RSAPI static Arena* DeserializeNew(DataStreamIn& in);
 
 	Arena(const Arena& other) = delete; // No copy constructor, use Arena::Clone() instead
 	Arena& operator =(const Arena& other) = delete; // No copy operator, use Arena::Clone() instead
