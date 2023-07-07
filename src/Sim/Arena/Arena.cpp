@@ -750,8 +750,8 @@ bool Arena::IsBallProbablyGoingIn(float maxTime) {
 Arena::~Arena() {
 
 	// Remove all from bullet world constraints
-	for (size_t i = 0; i < _bulletWorld.getNumConstraints(); i++)
-		_bulletWorld.removeConstraint(_bulletWorld.getConstraint(i));
+	while (_bulletWorld.getNumConstraints() > 0)
+		_bulletWorld.removeConstraint(0);
 
 	// Manually remove all collision objects
 	// Otherwise we run into issues regarding deconstruction order
