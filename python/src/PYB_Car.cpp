@@ -44,6 +44,7 @@ PYB_INIT_F(Car) {
 		PYBP(supersonicTime)
 		PYBP(timeSpentBoosting)
 		PYBP(vel)
+		PYB_SERIALS()
 
 		// TODO: Add worldContact struct properly
 		.def("get_has_world_contact", [](const CarState& carState) { return carState.worldContact.hasContact; })

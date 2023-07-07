@@ -7,6 +7,9 @@ PYBIND11_MODULE(rocketsim, m) {
 	m.def("is_ready", []() { return RocketSim::GetStage() == RocketSimStage::INITIALIZED; });
 
 	try {
+		PYB_INIT_DataStreamIn(m);
+		PYB_INIT_DataStreamOut(m);
+
 		PYB_INIT_Ball(m);
 		PYB_INIT_BallHitInfo(m);
 		PYB_INIT_BoostPad(m);

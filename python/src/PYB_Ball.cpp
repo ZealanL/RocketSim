@@ -8,6 +8,7 @@ PYB_INIT_F(Ball) {
 		PYBP(angVel)
 		PYBP(pos)
 		PYBP(vel)
+		PYB_SERIALS()
 		;
 
 #define PYB_CUR_CLASS Ball

@@ -9,6 +9,7 @@ PYB_INIT_F(BoostPad) {
 		PYBP(curLockedCar)
 		PYBP(isActive)
 		PYBP(prevLockedCarID)
+		PYB_SERIALS()
 		;
 
 #define PYB_CUR_CLASS BoostPad

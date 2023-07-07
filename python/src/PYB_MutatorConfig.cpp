@@ -38,6 +38,7 @@ PYB_INIT_F(MutatorConfig) {
 		PYBP(respawnDelay)
 		PYBP(unlimitedDoubleJumps)
 		PYBP(unlimitedFlips)
+		PYB_SERIALS()
 		;
 }
 #endif

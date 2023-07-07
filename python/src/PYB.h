@@ -13,8 +13,13 @@ namespace pyb = pybind11;
 
 #define PYB_CLASS(className) pyb::class_<className>(m, #className)
 #define PYB_INIT_F(name) void PYB_INIT_##name(pyb::module& m)
-#define PYB_DEFAULT_INITS() .def(pyb::init<>()) .def(pyb::init<const PYB_CUR_CLASS&>())
+#define PYB_DEFAULT_INITS() \
+	.def(pyb::init<>()) \
+	.def(pyb::init<const PYB_CUR_CLASS&>())
 #define PYBA pyb::arg
+#define PYB_SERIALS() \
+	.def("serialize", &PYB_CUR_CLASS::Serialize, PYBA("stream_out")) \
+	.def("deserialize", &PYB_CUR_CLASS::Deserialize, PYBA("stream_in")) \
 
 #define PYBS(s) PYB_MakePythonString(s)
 
@@ -54,6 +59,9 @@ inline const char* PYB_MakePythonString(const char* name) {
 
 PYB_INIT_F(MathTypes);
 PYB_INIT_F(Math);
+
+PYB_INIT_F(DataStreamIn);
+PYB_INIT_F(DataStreamOut);
 
 PYB_INIT_F(Arena);
 PYB_INIT_F(Ball);

@@ -49,6 +49,8 @@ struct ArenaWrapper {
 		arena = NULL;
 	}
 
+	ArenaWrapper(DataStreamIn& streamIn) : ArenaWrapper(Arena::DeserializeNew(streamIn)) {}
+
 	ArenaWrapper(GameMode gameMode, float tickRate) : ArenaWrapper(Arena::Create(gameMode, tickRate)) {}
 
 	ArenaWrapper(Arena* arena) {
@@ -112,6 +114,10 @@ struct ArenaWrapper {
 
 	GameMode GetGameMode() {
 		return arena->gameMode;
+	}
+
+	void Serialize(DataStreamOut& out) {
+		arena->Serialize(out);
 	}
 
 	static void SetCB_Goal(std::shared_ptr<ArenaWrapper> wrapper, CallbackFn_Goal fn, void* userInfo) {

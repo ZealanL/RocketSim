@@ -79,6 +79,31 @@ PYB_INIT_F(Arena) {
 		.def("get_mutator_config", &ArenaWrapper::GetMutatorConfig)
 		.def("set_mutator_config", &ArenaWrapper::SetMutatorConfig, PYBA("config"))
 		.def("get_gamemode", &ArenaWrapper::GetGameMode)
+
+		.def("serialize", &ArenaWrapper::Serialize, PYBA("stream_out"))
+		.def_static("deserialize_new", 
+			[](DataStreamIn& streamIn) {
+				return std::shared_ptr<ArenaWrapper>(new ArenaWrapper(streamIn));
+			},
+			PYBA("stream_in")
+		)
+
+		.def("serialize_to_file", 
+			[](ArenaWrapper& arena, wstring path) {
+				DataStreamOut streamOut = {};
+				arena.Serialize(streamOut);
+				streamOut.WriteToFile(path, true);
+			}, 
+			PYBA("path")
+		)
+
+		.def_static("deserialize_new_from_file",
+			[](wstring path) {
+				DataStreamIn streamIn = DataStreamIn(path, true);
+				return std::shared_ptr<ArenaWrapper>(new ArenaWrapper(streamIn));
+			},
+			PYBA("path")
+		)
 		;
 }
 #endif

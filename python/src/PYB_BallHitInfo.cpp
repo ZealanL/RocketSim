@@ -11,6 +11,7 @@ PYB_INIT_F(BallHitInfo) {
 		PYBP(relativePosOnBall)
 		PYBP(tickCountWhenExtraImpulseApplied)
 		PYBP(tickCountWhenHit)
+		PYB_SERIALS()
 		;
 }
 #endif
