@@ -31,6 +31,7 @@ struct DataStreamOut {
 	}
 
 	void WriteMultipleFromList(std::vector<SerializeObject> objs) {
+		Write<uint32_t>(objs.size());
 		for (const SerializeObject& obj : objs)
 			WriteBytes(obj.ptr, obj.size);
 	}

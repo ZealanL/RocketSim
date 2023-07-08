@@ -68,6 +68,10 @@ struct DataStreamIn {
 	}
 
 	void ReadMultipleFromList(std::vector<SerializeObject> objs) {
+		uint32_t amount = Read<uint32_t>();
+		if (amount != objs.size())
+			RS_ERR_CLOSE("DataStreamIn::ReadMultipleFromList(): Prop count mismatch, expected " << objs.size() << " but have " << amount << ".");
+		
 		for (const SerializeObject& obj : objs)
 			ReadBytes(obj.ptr, obj.size);
 	}
