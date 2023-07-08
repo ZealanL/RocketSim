@@ -15,6 +15,8 @@ struct DataStreamIn {
 		if (!fileStream.good())
 			RS_ERR_CLOSE("Failed to read file " << filePath << ", cannot open file.");
 
+		fileStream >> std::noskipws;
+
 		data = vector<byte>(std::istreambuf_iterator<char>(fileStream), std::istreambuf_iterator<char>());
 
 		if (versionCheck && !DoVersionCheck()) {
