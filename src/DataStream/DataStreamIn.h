@@ -5,7 +5,7 @@
 
 // Basic struct for reading raw data from a file
 struct DataStreamIn {
-	vector<byte> data;
+	std::vector<byte> data;
 	size_t pos = 0;
 
 	DataStreamIn() = default;
@@ -14,10 +14,9 @@ struct DataStreamIn {
 		std::ifstream fileStream = std::ifstream(filePath, std::ios::binary);
 		if (!fileStream.good())
 			RS_ERR_CLOSE("Failed to read file " << filePath << ", cannot open file.");
-
+		
 		fileStream >> std::noskipws;
-
-		data = vector<byte>(std::istreambuf_iterator<char>(fileStream), std::istreambuf_iterator<char>());
+		data = std::vector<byte>(std::istreambuf_iterator<char>(fileStream), std::istreambuf_iterator<char>());
 
 		if (versionCheck && !DoVersionCheck()) {
 			RS_ERR_CLOSE("Failed to read file " << filePath << ", file is invalid or from a different version of RocketSim.");

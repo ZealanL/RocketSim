@@ -14,7 +14,7 @@ struct BoolHitTriangleCallback : public btTriangleCallback {
 	}
 };
 
-void SuspensionCollisionGrid::SetupWorldCollision(const vector<btBvhTriangleMeshShape*>& triMeshShapes) {
+void SuspensionCollisionGrid::SetupWorldCollision(const std::vector<btBvhTriangleMeshShape*>& triMeshShapes) {
 
 	int totalCellsWithin = 0;
 	int totalCellsBled = 0;

@@ -2,7 +2,7 @@
 #include "../BaseInc.h"
 
 struct LinearPieceCurve {
-	map<float, float> valueMappings;
+	std::map<float, float> valueMappings;
 
 	RSAPI float GetOutput(float input, float defaultOutput = 1) const;
 };

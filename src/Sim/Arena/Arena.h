@@ -36,16 +36,17 @@ public:
 	GameMode gameMode;
 
 	uint32_t _lastCarID = 0;
-	unordered_set<Car*> _cars;
+	std::unordered_set<Car*> _cars;
 	bool ownsCars = true; // If true, deleting this arena instance deletes all cars
 
-	unordered_map<uint32_t, Car*> _carIDMap;
+	std::unordered_map<uint32_t, Car*> _carIDMap;
 	
 	Ball* ball;
 	bool ownsBall = true; // If true, deleting this arena instance deletes the ball
-
-	vector<BoostPad*> _boostPads;
+	
+	std::vector<BoostPad*> _boostPads;
 	bool ownsBoostPads = true; // If true, deleing this arena instance deletes all boost pads
+	
 	BoostPadGrid _boostPadGrid;
 
 	SuspensionCollisionGrid _suspColGrid;
@@ -66,8 +67,8 @@ public:
 	// Total ticks this arena instance has been simulated for, never resets
 	uint64_t tickCount = 0;
 
-	const unordered_set<Car*>& GetCars() { return _cars; }
-	const vector<BoostPad*>& GetBoostPads() { return _boostPads; }
+	const std::unordered_set<Car*>& GetCars() { return _cars; }
+	const std::vector<BoostPad*>& GetBoostPads() { return _boostPads; }
 
 	// Returns true if added, false if car was already added
 	bool _AddCarFromPtr(Car* car);

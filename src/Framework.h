@@ -33,20 +33,6 @@
 #include <cmath>
 #include <math.h>
 
-// Remove need for std namespace scope for very common datatypes
-using std::vector;
-using std::map;
-using std::unordered_map;
-using std::set;
-using std::multiset;
-using std::unordered_set;
-using std::list;
-using std::stack;
-using std::deque;
-using std::string;
-using std::wstring;
-using std::pair;
-
 typedef uint8_t byte;
 
 // Current millisecond time

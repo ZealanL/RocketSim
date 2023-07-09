@@ -112,7 +112,7 @@ void Arena::ResetToRandomKickoff(int seed) {
 
 	// TODO: Make shuffling of kickoff setup more efficient (?)
 
-	static thread_local vector<int> kickoffOrder;
+	static thread_local std::vector<int> kickoffOrder;
 	if (kickoffOrder.empty()) {
 		for (int i = 0; i < CAR_SPAWN_LOCATION_AMOUNT; i++)
 			kickoffOrder.push_back(i);
@@ -126,7 +126,7 @@ void Arena::ResetToRandomKickoff(int seed) {
 		std::shuffle(kickoffOrder.begin(), kickoffOrder.end(), randEngine);
 	}
 
-	vector<Car*> blueCars, orangeCars;
+	std::vector<Car*> blueCars, orangeCars;
 	for (Car* car : _cars)
 		((car->team == Team::BLUE) ? blueCars : orangeCars).push_back(car);
 
@@ -136,7 +136,7 @@ void Arena::ResetToRandomKickoff(int seed) {
 
 		for (int teamIndex = 0; teamIndex < 2; teamIndex++) {
 			bool isBlue = (teamIndex == 0);
-			vector<Car*> teamCars = isBlue ? blueCars : orangeCars;
+			std::vector<Car*> teamCars = isBlue ? blueCars : orangeCars;
 
 			if (i < teamCars.size()) {
 				CarState spawnState;
