@@ -34,7 +34,7 @@ namespace pyb = pybind11;
 
 // NOTE: Literally leaks memory, but should only be called once for each string, so its fine
 inline const char* PYB_MakePythonString(const char* name) {
-	string* result = new string();
+	std::string* result = new std::string();
 	char last = NULL;
 	bool isInAcronym = false;
 	for (const char* pc = name; *pc; pc++) {

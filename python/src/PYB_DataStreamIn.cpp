@@ -19,7 +19,7 @@ PYB_INIT_F(DataStreamIn) {
 		.def("read_version_check", &DataStreamIn::DoVersionCheck)
 
 		.def_static("read_from_file",
-			[](wstring path, bool readVersionCheck) {
+			[](std::wstring path, bool readVersionCheck) {
 				return DataStreamIn(path, readVersionCheck);
 			},
 			PYBA("path"), PYBA("read_version_check")

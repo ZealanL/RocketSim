@@ -15,7 +15,7 @@ PYB_INIT_F(DataStreamOut) {
 		)
 
 		.def("write_to_file", 
-			[](DataStreamOut& out, wstring path, bool writeVersionCheck) { 
+			[](DataStreamOut& out, std::wstring path, bool writeVersionCheck) { 
 				out.WriteToFile(path, writeVersionCheck); 
 			},
 			PYBA("file_path"), PYBA("write_version_check") = true

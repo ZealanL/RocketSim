@@ -91,7 +91,7 @@ PYB_INIT_F(Arena) {
 		.def("deserialize_new_car", &ArenaWrapper::DeserializeNewCar, PYBA("stream_in"), PYBA("team"))
 
 		.def("serialize_to_file", 
-			[](ArenaWrapper& arena, wstring path) {
+			[](ArenaWrapper& arena, std::wstring path) {
 				DataStreamOut streamOut = {};
 				arena.Serialize(streamOut);
 				streamOut.WriteToFile(path, true);
@@ -100,7 +100,7 @@ PYB_INIT_F(Arena) {
 		)
 
 		.def_static("deserialize_new_from_file",
-			[](wstring path) {
+			[](std::wstring path) {
 				DataStreamIn streamIn = DataStreamIn(path, true);
 				return std::shared_ptr<ArenaWrapper>(new ArenaWrapper(streamIn));
 			},
