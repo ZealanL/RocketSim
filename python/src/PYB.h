@@ -12,6 +12,7 @@ namespace pyb = pybind11;
 #define PYB_CUR_CLASS null
 
 #define PYB_CLASS(className) pyb::class_<className>(m, #className)
+#define PYB_CLASS_SH(className) pyb::class_<className, std::shared_ptr<className>>(m, #className)
 #define PYB_INIT_F(name) void PYB_INIT_##name(pyb::module& m)
 #define PYB_DEFAULT_INITS() \
 	.def(pyb::init<>()) \

@@ -138,6 +138,7 @@ public:
 	Vec GetUpDir() const {
 		return _internalState.rotMat.up;
 	}
+
 	void _PreTickUpdate(float tickTime, const MutatorConfig& mutatorConfig, struct SuspensionCollisionGrid* grid);
 	void _PostTickUpdate(float tickTime, const MutatorConfig& mutatorConfig);
 
@@ -149,7 +150,7 @@ public:
 	// For construction by Arena
 	static Car* _AllocateCar() { return new Car(); }
 
-	void _Serialize(DataStreamOut& out);
+	RSAPI void Serialize(DataStreamOut& out);
 	void _Deserialize(DataStreamIn& in);
 
 	Car(const Car& other) = delete;

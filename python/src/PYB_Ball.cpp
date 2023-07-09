@@ -12,7 +12,7 @@ PYB_INIT_F(Ball) {
 		;
 
 #define PYB_CUR_CLASS Ball
-	pyb::class_<Ball>(m, "Ball")
+	PYB_CLASS_SH(Ball)
 		.def("get_radius", &Ball::GetRadius)
 		.def("get_state", &Ball::GetState)
 		.def("set_state", &Ball::SetState, PYBA("state"))

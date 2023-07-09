@@ -460,9 +460,9 @@ void Arena::Serialize(DataStreamOut& out) {
 	{ // Serialize cars
 		out.Write<uint32_t>(_cars.size());
 		for (auto car : _cars) {
-			out.WriteMultiple(car->team, car->id);
-
-			SerializeCar(out, car);
+			out.Write(car->team);
+			out.Write(car->id);
+			car->Serialize(out);
 		}
 	}
 
@@ -499,7 +499,8 @@ Arena* Arena::DeserializeNew(DataStreamIn& in) {
 		for (int i = 0; i < carAmount; i++) {
 			Team team;
 			uint32_t id;
-			in.ReadMultiple(team, id);
+			in.Read(team);
+			in.Read(id);
 
 #ifndef RS_MAX_SPEED
 			if (newArena->_carIDMap.count(id))
@@ -579,13 +580,6 @@ Arena* Arena::Clone(bool copyCallbacks) {
 	return newArena;
 }
 
-void Arena::SerializeCar(DataStreamOut& out, Car* car) {
-	car->_Serialize(out);
-
-	CarState state = car->GetState();
-	state.Serialize(out);
-}
-
 Car* Arena::DeserializeNewCar(DataStreamIn& in, Team team) {
 	Car* car = Car::_AllocateCar();
 	car->_Deserialize(in);
@@ -594,10 +588,7 @@ Car* Arena::DeserializeNewCar(DataStreamIn& in, Team team) {
 	_AddCarFromPtr(car);
 
 	car->_BulletSetup(&_bulletWorld, _mutatorConfig);
-
-	CarState state = CarState();
-	state.Deserialize(in);
-	car->SetState(state);
+	car->SetState(car->_internalState);
 
 	return car;
 }

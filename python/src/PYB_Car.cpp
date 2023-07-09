@@ -76,11 +76,14 @@ PYB_INIT_F(Car) {
 		;
 
 #define PYB_CUR_CLASS Car
-	pyb::class_<Car>(m, "Car")
+	PYB_CLASS_SH(Car)
 		PYBP(config)
 		PYBP(controls)
 		PYBP(id)
 		PYBP(team)
+
+		.def("serialize", &Car::Serialize, PYBA("steam_out"))
+
 		.def("get_state", &Car::GetState)
 		.def("set_state", &Car::SetState, PYBA("state"))
 		;

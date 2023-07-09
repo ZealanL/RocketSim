@@ -14,7 +14,6 @@ PYB_INIT_F(DataStreamOut) {
 			}
 		)
 
-		.def("write_version_check", &DataStreamOut::WriteVersionCheck)
 		.def("write_to_file", 
 			[](DataStreamOut& out, wstring path, bool writeVersionCheck) { 
 				out.WriteToFile(path, writeVersionCheck); 

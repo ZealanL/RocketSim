@@ -294,10 +294,6 @@ void Car::_BulletSetup(btDynamicsWorld* bulletWorld, const MutatorConfig& mutato
 }
 
 void CarState::Serialize(DataStreamOut& out) {
-
-	uint32_t argumentCount = RS_GET_ARGUMENT_COUNT(CARSTATE_SERIALIZATION_FIELDS);
-	out.Write(argumentCount);
-
 	ballHitInfo.Serialize(out);
 
 	out.WriteMultiple(
@@ -307,17 +303,6 @@ void CarState::Serialize(DataStreamOut& out) {
 
 void CarState::Deserialize(DataStreamIn& in) {
 
-	uint32_t trueArgumentCount = RS_GET_ARGUMENT_COUNT(CARSTATE_SERIALIZATION_FIELDS);
-	uint32_t argumentCount = in.Read<uint32_t>();
-
-	if (argumentCount != trueArgumentCount) {
-		RS_ERR_CLOSE(
-			"CarState::Deserialize(): Failed to deserialize, number of arguments does not match " <<
-			"(" << argumentCount << "/" << trueArgumentCount << "). " <<
-			"File is either corrupt or from a different version of RocketSim."
-		);
-	}
-
 	ballHitInfo.Deserialize(in);
 
 	in.ReadMultiple(
@@ -325,14 +310,18 @@ void CarState::Deserialize(DataStreamIn& in) {
 	);
 }
 
-void Car::_Serialize(DataStreamOut& out) {
+void Car::Serialize(DataStreamOut& out) {
 	out.WriteMultiple(CAR_CONTROLS_SERIALIZATION_FIELDS(controls));
 	out.WriteMultiple(CAR_CONFIG_SERIALIZATION_FIELDS(config));
+	GetState().Serialize(out);
 }
 
 void Car::_Deserialize(DataStreamIn& in) {
 	in.ReadMultiple(CAR_CONTROLS_SERIALIZATION_FIELDS(controls));
 	in.ReadMultiple(CAR_CONFIG_SERIALIZATION_FIELDS(config));
+	CarState newState;
+	newState.Deserialize(in);
+	_internalState = newState;
 }
 
 void Car::_UpdateWheels(float tickTime, const MutatorConfig& mutatorConfig, int numWheelsInContact, float forwardSpeed_UU) {

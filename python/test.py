@@ -1,5 +1,5 @@
 import rocketsim
-from rocketsim import Arena, Car, CarConfig, CarState, Ball, BallState, GameMode, Team, Vec
+from rocketsim import Arena, Car, CarConfig, CarState, Ball, BallState, GameMode, Team, Vec, DataStreamIn, DataStreamOut
 
 rocketsim.init("../collision_meshes")
 
@@ -34,9 +34,19 @@ ball_state = arena.ball.get_state()
 car_state = car.get_state()
 print("After {} ticks, car is at: {}, ball is at: {}".format(arena.get_tickcount(), car_state.pos, ball_state.pos))
 
-# Save current arena state to a file
-file_path = "test_arena_file.bin"
-arena.serialize_to_file(file_path)
+file_path = "_test_file.bin"
+print("Serializing arena to \"" + file_path + "\"...")
+ds_out = DataStreamOut()
+arena.serialize(ds_out)
+ds_out.write_to_file(file_path, True)
 
-# Load that file into a new arena
-new_arena = Arena.deserialize_new_from_file(file_path)
+print("Deserializing new arena...")
+ds_in = DataStreamIn.read_from_file(file_path, True)
+new_arena = arena.deserialize_new(ds_in)
+
+print("Stepping both arenas for 20 ticks...")
+arena.step(20)
+new_arena.step(20)
+
+print(" - Original arena's car is at:\t", arena.get_cars()[0].get_state().pos)
+print(" - New arena's car is at:\t", new_arena.get_cars()[0].get_state().pos)

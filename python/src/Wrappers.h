@@ -120,6 +120,13 @@ struct ArenaWrapper {
 		arena->Serialize(out);
 	}
 
+	std::shared_ptr<Car> DeserializeNewCar(DataStreamIn& in, Team team) {
+		Car* car = arena->DeserializeNewCar(in, team);
+		std::shared_ptr<Car> carPtr = std::shared_ptr<Car>(car);
+		cars[car->id] = carPtr;
+		return carPtr;
+	}
+
 	static void SetCB_Goal(std::shared_ptr<ArenaWrapper> wrapper, CallbackFn_Goal fn, void* userInfo) {
 		wrapper->cb_goal = { wrapper, fn, userInfo };
 		wrapper->arena->SetGoalScoreCallback(ArenaWrapper::CB_Goal, &wrapper->cb_goal);

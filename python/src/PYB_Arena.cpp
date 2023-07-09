@@ -88,6 +88,8 @@ PYB_INIT_F(Arena) {
 			PYBA("stream_in")
 		)
 
+		.def("deserialize_new_car", &ArenaWrapper::DeserializeNewCar, PYBA("stream_in"), PYBA("team"))
+
 		.def("serialize_to_file", 
 			[](ArenaWrapper& arena, wstring path) {
 				DataStreamOut streamOut = {};

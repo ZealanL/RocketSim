@@ -128,8 +128,6 @@ public:
 	// Get a deep copy of the arena
 	RSAPI Arena* Clone(bool copyCallbacks);
 
-	RSAPI static void SerializeCar(DataStreamOut& out, Car* car);
-
 	// NOTE: Car ID will not be restored
 	RSAPI Car* DeserializeNewCar(DataStreamIn& in, Team team);
 
