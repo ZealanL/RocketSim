@@ -31,8 +31,11 @@ Documentation is available at: https://zealanl.github.io/RocketSimDocs/
 
 ## Bindings
 If you don't want to work in C++, here are some (unofficial) bindings written in other languages:
+- **Python**: https://github.com/mtheall/RocketSim by `mtheall`
 - **Python**: https://github.com/uservar/pyrocketsim by `uservar`
 - **Rust**: https://github.com/VirxEC/rocketsim-rs by `VirxEC`
+
+Official Python bindings are currently in the works.
 
 ## Performance
 RocketSim already heavily outperforms the speed of Rocket League's physics tick step without optimization.
@@ -46,15 +49,17 @@ Compiler: MSVC 14.16
 =================================
 Arena: Default (Soccar)
 Cars: 2 on each team (2v2)
-Inputs: Randomly pregenerated, changed every 2-60 ticks for each car
+Inputs: Randomly pre-generated, changed every 2-60 ticks for each car
 =================================
 Single-thread performance (calculated using average CPU cycles per tick on the RocketSim thread) (1M ticks simulated):
 v1.0.0 = 30,334tps
+v1.1.0 = 48,191tps
+v1.2.0 = 50,763tps
 ```
 
 ## Simulation Accuracy
-RocketSim is not perfectly accurate, but it's close enough that it shouldnt matter (for ML bots or humans).
-Bots that work well in RocketSim will work well in the actual game, and visa-versa.
+RocketSim is not perfectly accurate, but it's close enough that it shouldn't matter (for ML bots or humans).
+Bots that work well in RocketSim will work well in the actual game and visa-versa.
 
 ## Issues & PRs
 Feel free to make issues and pull requests if you encounter any issues!
