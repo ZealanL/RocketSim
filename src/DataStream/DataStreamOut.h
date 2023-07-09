@@ -41,10 +41,6 @@ struct DataStreamOut {
 		WriteMultipleFromList({ args... });
 	}
 
-	void WriteVersionCheck() {
-		Write<uint32_t>(RS_VERSION_ID);
-	}
-
 	void WriteToFile(std::filesystem::path filePath, bool writeVersionCheck) {
 		std::ofstream fileStream = std::ofstream(filePath, std::ios::binary);
 		if (!fileStream.good())
