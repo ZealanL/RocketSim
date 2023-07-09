@@ -32,11 +32,13 @@ out/
 # Arena collision mesh files
 *.cmf
 
+# Raw binary files
+*.bin
+
 # Visual Studio (not using anything VS-related)
 .vs/
 *.vcxproj
 *.sln
 *.filters
 *.user
-
 CMakeSettings.json
