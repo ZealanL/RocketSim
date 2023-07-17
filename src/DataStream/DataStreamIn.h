@@ -14,7 +14,8 @@ struct DataStreamIn {
 		std::ifstream fileStream = std::ifstream(filePath, std::ios::binary);
 		if (!fileStream.good())
 			RS_ERR_CLOSE("Failed to read file " << filePath << ", cannot open file.");
-
+		
+		fileStream >> std::noskipws;
 		data = std::vector<byte>(std::istreambuf_iterator<char>(fileStream), std::istreambuf_iterator<char>());
 
 		if (versionCheck && !DoVersionCheck()) {
@@ -27,15 +28,15 @@ struct DataStreamIn {
 		return versionID == RS_VERSION_ID;
 	}
 
-	bool IsDone() {
+	bool IsDone() const {
 		return pos >= data.size();
 	}
 
-	bool IsOverflown() {
+	bool IsOverflown() const {
 		return pos > data.size();
 	}
 
-	size_t GetNumBytesLeft() {
+	size_t GetNumBytesLeft() const {
 		if (IsDone()) {
 			return 0;
 		} else {
@@ -68,6 +69,10 @@ struct DataStreamIn {
 	}
 
 	void ReadMultipleFromList(std::vector<SerializeObject> objs) {
+		uint32_t amount = Read<uint32_t>();
+		if (amount != objs.size())
+			RS_ERR_CLOSE("DataStreamIn::ReadMultipleFromList(): Prop count mismatch, expected " << objs.size() << " but have " << amount << ".");
+		
 		for (const SerializeObject& obj : objs)
 			ReadBytes(obj.ptr, obj.size);
 	}

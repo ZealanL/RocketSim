@@ -138,6 +138,7 @@ public:
 	Vec GetUpDir() const {
 		return _internalState.rotMat.up;
 	}
+
 	void _PreTickUpdate(float tickTime, const MutatorConfig& mutatorConfig, struct SuspensionCollisionGrid* grid);
 	void _PostTickUpdate(float tickTime, const MutatorConfig& mutatorConfig);
 
@@ -149,14 +150,13 @@ public:
 	// For construction by Arena
 	static Car* _AllocateCar() { return new Car(); }
 
-	// For removal by Arena
-	static void _DestroyCar(Car* car) { delete car; }
-
-	void _Serialize(DataStreamOut& out);
+	RSAPI void Serialize(DataStreamOut& out);
 	void _Deserialize(DataStreamIn& in);
 
 	Car(const Car& other) = delete;
 	Car& operator=(const Car& other) = delete;
+
+	~Car() {}
 
 private:
 	void _UpdateWheels(float tickTime, const MutatorConfig& mutatorConfig, int numWheelsInContact, float forwardSpeed_UU);
@@ -168,6 +168,4 @@ private:
 	void _UpdateAutoRoll(float tickTime, const MutatorConfig& mutatorConfig, int numWheelsInContact);
 
 	Car() {}
-
-	~Car() {}
 };

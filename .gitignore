@@ -26,6 +26,14 @@ out/
 *.pdb
 *.ilk
 *.tmp
+*.pyd
+*.whl
+
+# Arena collision mesh files
+*.cmf
+
+# Raw binary files
+*.bin
 
 # Visual Studio (not using anything VS-related)
 .vs/
@@ -33,4 +41,4 @@ out/
 *.sln
 *.filters
 *.user
-
+CMakeSettings.json

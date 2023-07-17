@@ -15,7 +15,9 @@ void CollisionMeshFile::ReadFromFile(std::string filePath) {
 
 	// Read triangle/vertex counts
 	int32_t numTris, numVertices;
-	in.ReadMultiple(numTris, numVertices);
+	in.Read(numTris);
+	in.Read(numVertices);
+
 	if (RS_MIN(numTris, numVertices) <= 0 || RS_MAX(numTris, numVertices) > MAX_VERT_OR_TRI_COUNT) {
 		RS_ERR_CLOSE(
 			ERROR_PREFIX_STR << "Invalid collision mesh file at \"" << filePath <<
