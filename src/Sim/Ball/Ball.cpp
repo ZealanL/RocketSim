@@ -4,6 +4,13 @@
 
 #include "../../../libsrc/bullet3-3.24/BulletDynamics/Dynamics/btDynamicsWorld.h"
 
+bool BallState::Matches(const BallState& other, float marginPos, float marginVel, float marginAngVel) const {
+	return
+		pos.DistSq(other.pos) < (marginPos * marginPos) &&
+		vel.DistSq(other.vel) < (marginVel * marginVel) &&
+		angVel.DistSq(other.angVel) < (marginAngVel * marginAngVel);
+}
+
 void BallState::Serialize(DataStreamOut& out) {
 	out.WriteMultiple(BALLSTATE_SERIALIZATION_FIELDS);
 }

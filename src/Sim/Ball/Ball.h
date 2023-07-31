@@ -20,6 +20,8 @@ struct BallState {
 	// Angular velocity (axis-angle)
 	Vec angVel = { 0, 0, 0 };
 
+	bool Matches(const BallState& other, float marginPos = 0.8, float marginVel = 0.4, float marginAngVel = 0.02) const;
+
 	void Serialize(DataStreamOut& out);
 	void Deserialize(DataStreamIn& in);
 };
