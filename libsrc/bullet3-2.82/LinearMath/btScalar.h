@@ -90,13 +90,8 @@ inline int	btGetVersion()
 		#endif //__MINGW32__
 
 #ifdef BT_DEBUG
-	#ifdef _MSC_VER
-		#include <stdio.h>
-		#define btAssert(x) { if(!(x)){printf("Assert "__FILE__ ":%u ("#x")\n", __LINE__);__debugbreak();	}}
-	#else//_MSC_VER
-		#include <assert.h>
-		#define btAssert assert
-	#endif//_MSC_VER
+	#include <assert.h>
+	#define btAssert assert
 #else
 		#define btAssert(x)
 #endif
