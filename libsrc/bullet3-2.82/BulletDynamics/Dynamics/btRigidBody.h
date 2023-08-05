@@ -58,6 +58,7 @@ enum	btRigidBodyFlags
 ///Deactivated (sleeping) rigid bodies don't take any processing time, except a minor broadphase collision detection impact (to allow active objects to activate/wake up sleeping objects)
 class btRigidBody  : public btCollisionObject
 {
+public:
 
 	btMatrix3x3	m_invInertiaTensorWorld;
 	btVector3		m_linearVelocity;
@@ -94,18 +95,12 @@ class btRigidBody  : public btCollisionObject
 	
 	int				m_debugBodyId;
 	
-
-protected:
-
 	ATTRIBUTE_ALIGNED16(btVector3		m_deltaLinearVelocity);
 	btVector3		m_deltaAngularVelocity;
 	btVector3		m_angularFactor;
 	btVector3		m_invMass;
 	btVector3		m_pushVelocity;
 	btVector3		m_turnVelocity;
-
-
-public:
 
 
 	///The btRigidBodyConstructionInfo structure provides information to create a rigid body. Setting mass to zero creates a fixed (non-dynamic) rigid body.
@@ -183,12 +178,8 @@ public:
                 btAssert(m_constraintRefs.size()==0); 
         }
 
-protected:
-
 	///setupRigidBody is only used internally by the constructor
 	void	setupRigidBody(const btRigidBodyConstructionInfo& constructionInfo);
-
-public:
 
 	void			proceedToTransform(const btTransform& newTrans); 
 	
