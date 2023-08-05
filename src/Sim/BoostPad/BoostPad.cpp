@@ -2,7 +2,7 @@
 
 #include "../../RLConst.h"
 
-#include "../../../libsrc/bullet3-3.24/BulletDynamics/Dynamics/btRigidBody.h"
+#include "../../../libsrc/bullet3-2.82/BulletDynamics/Dynamics/btRigidBody.h"
 
 BoostPad* BoostPad::_AllocBoostPad() {
 	return new BoostPad();

@@ -3,8 +3,8 @@
 // BulletLink.h: Includes most basic bullet headers, and defines some convenient typedefs/wrappers/etc.
 
 // Bullet v3 (https://github.com/bulletphysics/bullet3)
-#include "../libsrc/bullet3-3.24/LinearMath/btVector3.h"
-#include "../libsrc/bullet3-3.24/LinearMath/btMatrix3x3.h"
+#include "../libsrc/bullet3-2.82/LinearMath/btVector3.h"
+#include "../libsrc/bullet3-2.82/LinearMath/btMatrix3x3.h"
 
 #include <ostream>
 

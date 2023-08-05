@@ -5,9 +5,9 @@
 #include "../python/src/PYB.h"
 #endif
 
-#include "../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btBvhTriangleMeshShape.h"
-#include "../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btTriangleMesh.h"
-#include "../libsrc/bullet3-3.24/BulletCollision/CollisionDispatch/btInternalEdgeUtility.h"
+#include "../libsrc/bullet3-2.82/BulletCollision/CollisionShapes/btBvhTriangleMeshShape.h"
+#include "../libsrc/bullet3-2.82/BulletCollision/CollisionShapes/btTriangleMesh.h"
+#include "../libsrc/bullet3-2.82/BulletCollision/CollisionDispatch/btInternalEdgeUtility.h"
 
 constexpr uint32_t SOCCAR_ARENA_MESH_HASHES[] = {
 	0xA160BAF9, 0x2811EEE8, 0xB81AC8B9, 0x760358D3,

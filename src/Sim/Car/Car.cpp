@@ -2,7 +2,7 @@
 #include "../../RLConst.h"
 #include "../SuspensionCollisionGrid/SuspensionCollisionGrid.h"
 
-#include "../../../libsrc/bullet3-3.24/BulletDynamics/Dynamics/btDynamicsWorld.h"
+#include "../../../libsrc/bullet3-2.82/BulletDynamics/Dynamics/btDynamicsWorld.h"
 
 // Update our internal state from bullet and return it
 CarState Car::GetState() {

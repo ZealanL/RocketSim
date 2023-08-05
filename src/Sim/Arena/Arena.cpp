@@ -2,10 +2,10 @@
 
 #include "../../RocketSim.h"
 
-#include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionDispatch/btDefaultCollisionConfiguration.h"
-#include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionDispatch/btInternalEdgeUtility.h"
-#include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btBoxShape.h"
-#include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btSphereShape.h"
+#include "../../../libsrc/bullet3-2.82/BulletCollision/CollisionDispatch/btDefaultCollisionConfiguration.h"
+#include "../../../libsrc/bullet3-2.82/BulletCollision/CollisionDispatch/btInternalEdgeUtility.h"
+#include "../../../libsrc/bullet3-2.82/BulletCollision/CollisionShapes/btBoxShape.h"
+#include "../../../libsrc/bullet3-2.82/BulletCollision/CollisionShapes/btSphereShape.h"
 
 RSAPI void Arena::SetMutatorConfig(const MutatorConfig& mutatorConfig) {
 

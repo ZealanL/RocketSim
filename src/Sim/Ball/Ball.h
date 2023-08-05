@@ -7,8 +7,8 @@
 
 #include "../MutatorConfig/MutatorConfig.h"
 
-#include "../../../libsrc/bullet3-3.24/BulletDynamics/Dynamics/btRigidBody.h"
-#include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btSphereShape.h"
+#include "../../../libsrc/bullet3-2.82/BulletDynamics/Dynamics/btRigidBody.h"
+#include "../../../libsrc/bullet3-2.82/BulletCollision/CollisionShapes/btSphereShape.h"
 
 struct BallState {
 	// Position in world space

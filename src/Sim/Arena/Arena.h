@@ -9,13 +9,13 @@
 #include "../SuspensionCollisionGrid/SuspensionCollisionGrid.h"
 #include "../MutatorConfig/MutatorConfig.h"
 
-#include "../../../libsrc/bullet3-3.24/BulletCollision/BroadphaseCollision/btDbvtBroadphase.h"
-#include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btStaticPlaneShape.h"
-#include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btBvhTriangleMeshShape.h"
-#include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionDispatch/btCollisionDispatcher.h"
-#include "../../../libsrc/bullet3-3.24/BulletDynamics/ConstraintSolver/btSequentialImpulseConstraintSolver.h"
-#include "../../../libsrc/bullet3-3.24/BulletDynamics/Dynamics/btDiscreteDynamicsWorld.h"
-#include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionDispatch/btDefaultCollisionConfiguration.h"
+#include "../../../libsrc/bullet3-2.82/BulletCollision/BroadphaseCollision/btDbvtBroadphase.h"
+#include "../../../libsrc/bullet3-2.82/BulletCollision/CollisionShapes/btStaticPlaneShape.h"
+#include "../../../libsrc/bullet3-2.82/BulletCollision/CollisionShapes/btBvhTriangleMeshShape.h"
+#include "../../../libsrc/bullet3-2.82/BulletCollision/CollisionDispatch/btCollisionDispatcher.h"
+#include "../../../libsrc/bullet3-2.82/BulletDynamics/ConstraintSolver/btSequentialImpulseConstraintSolver.h"
+#include "../../../libsrc/bullet3-2.82/BulletDynamics/Dynamics/btDiscreteDynamicsWorld.h"
+#include "../../../libsrc/bullet3-2.82/BulletCollision/CollisionDispatch/btDefaultCollisionConfiguration.h"
 
 enum class GameMode : byte {
 	SOCCAR,

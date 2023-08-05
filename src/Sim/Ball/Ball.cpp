@@ -2,7 +2,7 @@
 
 #include "../../RLConst.h"
 
-#include "../../../libsrc/bullet3-3.24/BulletDynamics/Dynamics/btDynamicsWorld.h"
+#include "../../../libsrc/bullet3-2.82/BulletDynamics/Dynamics/btDynamicsWorld.h"
 
 bool BallState::Matches(const BallState& other, float marginPos, float marginVel, float marginAngVel) const {
 	return

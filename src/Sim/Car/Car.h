@@ -5,10 +5,10 @@
 #include "../BallHitInfo/BallHitInfo.h"
 #include "../MutatorConfig/MutatorConfig.h"
 
-#include "../../../libsrc/bullet3-3.24/BulletDynamics/Dynamics/btRigidBody.h"
-#include "../../../libsrc/bullet3-3.24/BulletDynamics/Vehicle/btDefaultVehicleRaycaster.h"
-#include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btBoxShape.h"
-#include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btCompoundShape.h"
+#include "../../../libsrc/bullet3-2.82/BulletDynamics/Dynamics/btRigidBody.h"
+#include "../../../libsrc/bullet3-2.82/BulletDynamics/Vehicle/btDefaultVehicleRaycaster.h"
+#include "../../../libsrc/bullet3-2.82/BulletCollision/CollisionShapes/btBoxShape.h"
+#include "../../../libsrc/bullet3-2.82/BulletCollision/CollisionShapes/btCompoundShape.h"
 #include "../../../src/Sim/btVehicleRL/btVehicleRL.h"
 
 struct CarState {
