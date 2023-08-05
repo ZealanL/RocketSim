@@ -302,21 +302,6 @@ void	btDiscreteDynamicsWorld::debugDrawWorld()
 			debugDrawConstraint(constraint);
 		}
 	}
-
-
-
-    if (getDebugDrawer() && (getDebugDrawer()->getDebugMode() & (btIDebugDraw::DBG_DrawWireframe | btIDebugDraw::DBG_DrawAabb | btIDebugDraw::DBG_DrawNormals)))
-	{
-		int i;
-
-		if (getDebugDrawer() && getDebugDrawer()->getDebugMode())
-		{
-			for (i=0;i<m_actions.size();i++)
-			{
-				m_actions[i]->debugDraw(m_debugDrawer);
-			}
-		}
-	}
 }
 
 void	btDiscreteDynamicsWorld::clearForces()

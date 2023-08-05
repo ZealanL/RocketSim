@@ -37,9 +37,6 @@ public:
 	}
 
 	virtual void updateAction( btCollisionWorld* collisionWorld, btScalar deltaTimeStep)=0;
-
-	virtual void debugDraw(btIDebugDraw* debugDrawer) = 0;
-
 };
 
 #endif //_BT_ACTION_INTERFACE_H
