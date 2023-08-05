@@ -13,7 +13,7 @@ add_library(RocketSim ${FILES_ROCKETSIM} ${FILES_BULLET})
 set_target_properties(RocketSim PROPERTIES LINKER_LANGUAGE CXX)
 set_target_properties(RocketSim PROPERTIES CXX_STANDARD 20)
 
-if (TARGET_LANGUAGE STREQUAL "python" OR TARGET_LANGUAGE STREQUAL "both")
+if (TARGET_LANGUAGE STREQUAL "python")
 	message(STATUS "Building RocketSim Python bindings using pybind11...")
 
 	# Add pybind11 CMake project
