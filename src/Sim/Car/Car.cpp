@@ -725,7 +725,7 @@ void Car::_UpdateDoubleJumpOrFlip(float tickTime, const MutatorConfig& mutatorCo
 		}
 	}
 
-	if (_internalState.hasFlipped) {
+	if (_internalState.isFlipping) {
 		// Replicated from https://github.com/samuelpmish/RLUtilities/blob/develop/src/mechanics/dodge.cc
 		_internalState.flipTime += tickTime;
 		if (_internalState.flipTime <= FLIP_TORQUE_TIME) {
