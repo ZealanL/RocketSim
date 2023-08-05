@@ -60,6 +60,8 @@ class btRigidBody  : public btCollisionObject
 {
 public:
 
+	btRigidBody() = default;
+
 	btMatrix3x3	m_invInertiaTensorWorld;
 	btVector3		m_linearVelocity;
 	btVector3		m_angularVelocity;

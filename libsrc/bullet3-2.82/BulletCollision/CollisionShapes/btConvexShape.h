@@ -31,9 +31,7 @@ subject to the following restrictions:
 ATTRIBUTE_ALIGNED16(class) btConvexShape : public btCollisionShape
 {
 
-
 public:
-
 	BT_DECLARE_ALIGNED_ALLOCATOR();
 
 	btConvexShape ();

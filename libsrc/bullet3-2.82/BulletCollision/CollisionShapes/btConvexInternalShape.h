@@ -29,7 +29,7 @@ subject to the following restrictions:
 ATTRIBUTE_ALIGNED16(class) btConvexInternalShape : public btConvexShape
 {
 
-	protected:
+public:
 
 	//local scaling. collisionMargin is not scaled !
 	btVector3	m_localScaling;

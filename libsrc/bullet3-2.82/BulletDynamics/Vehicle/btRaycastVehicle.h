@@ -220,8 +220,10 @@ public:
 
 class btDefaultVehicleRaycaster : public btVehicleRaycaster
 {
-	btDynamicsWorld*	m_dynamicsWorld;
 public:
+	btDefaultVehicleRaycaster() = default;
+	btDynamicsWorld*	m_dynamicsWorld;
+
 	btDefaultVehicleRaycaster(btDynamicsWorld* world)
 		:m_dynamicsWorld(world)
 	{

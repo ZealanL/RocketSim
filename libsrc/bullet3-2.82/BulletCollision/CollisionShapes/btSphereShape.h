@@ -24,6 +24,9 @@ ATTRIBUTE_ALIGNED16(class) btSphereShape : public btConvexInternalShape
 {
 	
 public:
+
+	btSphereShape() = default;
+
 	BT_DECLARE_ALIGNED_ALLOCATOR();
 
 	btSphereShape (btScalar radius) : btConvexInternalShape ()
