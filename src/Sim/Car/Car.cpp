@@ -592,7 +592,7 @@ void Car::_UpdateAirControl(float tickTime, const MutatorConfig& mutatorConfig) 
 		float pitchTorqueScale = 1;
 		if (controls.pitch || controls.yaw || controls.roll) {
 
-			if (_internalState.hasFlipped && _internalState.flipTime < FLIP_PITCHLOCK_TIME)
+			if (_internalState.isFlipping && _internalState.flipTime < FLIP_PITCHLOCK_TIME)
 				pitchTorqueScale = 0;
 
 			// TODO: Use actual dot product operator functions (?)
