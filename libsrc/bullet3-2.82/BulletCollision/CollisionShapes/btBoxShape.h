@@ -31,6 +31,8 @@ ATTRIBUTE_ALIGNED16(class) btBoxShape: public btPolyhedralConvexShape
 
 public:
 
+	btBoxShape() = default;
+
 BT_DECLARE_ALIGNED_ALLOCATOR();
 
 	btVector3 getHalfExtentsWithMargin() const

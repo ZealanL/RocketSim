@@ -36,8 +36,9 @@ struct InplaceSolverIslandCallback;
 ///those classes replace the obsolete CcdPhysicsEnvironment/CcdPhysicsController
 ATTRIBUTE_ALIGNED16(class) btDiscreteDynamicsWorld : public btDynamicsWorld
 {
-protected:
-	
+public:
+	btDiscreteDynamicsWorld() = default;
+
     btAlignedObjectArray<btTypedConstraint*>	m_sortedConstraints;
 	InplaceSolverIslandCallback* 	m_solverIslandCallback;
 

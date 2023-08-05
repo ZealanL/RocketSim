@@ -968,27 +968,6 @@ int								hasbounds=0;
 node += nextLine(node);
 
 pos.resize(nnode);
-for(int i=0;i<pos.size();++i)
-	{
-	int			index=0;
-	//int			bound=0;
-	float	x,y,z;
-	//sscanf(node,"%d %f %f %f",&index,&x,&y,&z);
-
-//	sn>>index;
-//	sn>>x;sn>>y;sn>>z;
-	node += nextLine(node);
-
-	//for(int j=0;j<nattrb;++j) 
-	//	sn>>a;
-
-	//if(hasbounds) 
-	//	sn>>bound;
-
-	pos[index].setX(btScalar(x));
-	pos[index].setY(btScalar(y));
-	pos[index].setZ(btScalar(z));
-	}
 btSoftBody*						psb=new btSoftBody(&worldInfo,nnode,&pos[0],0);
 #if 0
 if(face&&face[0])
