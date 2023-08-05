@@ -629,7 +629,7 @@ void Car::_UpdateDoubleJumpOrFlip(float tickTime, const MutatorConfig& mutatorCo
 	if (_internalState.isOnGround) {
 		_internalState.hasDoubleJumped = false;
 		_internalState.hasFlipped = false;
-		_internalState.airTimeSinceJump = false;
+		_internalState.airTimeSinceJump = 0;
 	} else {
 		if (_internalState.hasJumped && !_internalState.isJumping) {
 			_internalState.airTimeSinceJump += tickTime;
