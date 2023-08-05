@@ -6,7 +6,7 @@
 #include "../MutatorConfig/MutatorConfig.h"
 
 #include "../../../libsrc/bullet3-2.82/BulletDynamics/Dynamics/btRigidBody.h"
-#include "../../../libsrc/bullet3-2.82/BulletDynamics/Vehicle/btDefaultVehicleRaycaster.h"
+#include "../../../libsrc/bullet3-2.82/BulletDynamics/Vehicle/btRaycastVehicle.h"
 #include "../../../libsrc/bullet3-2.82/BulletCollision/CollisionShapes/btBoxShape.h"
 #include "../../../libsrc/bullet3-2.82/BulletCollision/CollisionShapes/btCompoundShape.h"
 #include "../../../src/Sim/btVehicleRL/btVehicleRL.h"
