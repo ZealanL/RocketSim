@@ -53,6 +53,7 @@ SIMD_FORCE_INLINE bool operator==(const btCompoundShapeChild& c1, const btCompou
 /// Currently, removal of child shapes is only supported when disabling the aabb tree (pass 'false' in the constructor of btCompoundShape)
 ATTRIBUTE_ALIGNED16(class) btCompoundShape	: public btCollisionShape
 {
+public:
 	btAlignedObjectArray<btCompoundShapeChild> m_children;
 	btVector3						m_localAabbMin;
 	btVector3						m_localAabbMax;
@@ -64,10 +65,10 @@ ATTRIBUTE_ALIGNED16(class) btCompoundShape	: public btCollisionShape
 
 	btScalar	m_collisionMargin;
 
-protected:
+
 	btVector3	m_localScaling;
 
-public:
+
 	BT_DECLARE_ALIGNED_ALLOCATOR();
 
 	btCompoundShape(bool enableDynamicAabbTree = true);
