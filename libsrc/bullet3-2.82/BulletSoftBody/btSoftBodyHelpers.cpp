@@ -441,13 +441,13 @@ void			btSoftBodyHelpers::DrawInfos(		btSoftBody* psb,
 		char					buff[1024];
 		if(masses)
 		{
-			sprintf(buff," M(%.2f)",1/n.m_im);
-			strcat(text,buff);
+			//sprintf(buff," M(%.2f)",1/n.m_im);
+			//strcat(text,buff);
 		}
 		if(areas)
 		{
-			sprintf(buff," A(%.2f)",n.m_area);
-			strcat(text,buff);
+			//sprintf(buff," A(%.2f)",n.m_area);
+			//strcat(text,buff);
 		}
 		if(text[0]) idraw->draw3dText(n.m_x,text);
 	}
@@ -963,8 +963,8 @@ int								nnode=0;
 int								ndims=0;
 int								nattrb=0;
 int								hasbounds=0;
-int result = sscanf(node,"%d %d %d %d",&nnode,&ndims,&nattrb,&hasbounds);
-result = sscanf(node,"%d %d %d %d",&nnode,&ndims,&nattrb,&hasbounds);
+//int result = sscanf(node,"%d %d %d %d",&nnode,&ndims,&nattrb,&hasbounds);
+//result = sscanf(node,"%d %d %d %d",&nnode,&ndims,&nattrb,&hasbounds);
 node += nextLine(node);
 
 pos.resize(nnode);
@@ -973,7 +973,7 @@ for(int i=0;i<pos.size();++i)
 	int			index=0;
 	//int			bound=0;
 	float	x,y,z;
-	sscanf(node,"%d %f %f %f",&index,&x,&y,&z);
+	//sscanf(node,"%d %f %f %f",&index,&x,&y,&z);
 
 //	sn>>index;
 //	sn>>x;sn>>y;sn>>z;
@@ -1019,7 +1019,7 @@ if(ele&&ele[0])
 	int								ntetra=0;
 	int								ncorner=0;
 	int								neattrb=0;
-	sscanf(ele,"%d %d %d",&ntetra,&ncorner,&neattrb);
+	//sscanf(ele,"%d %d %d",&ntetra,&ncorner,&neattrb);
 	ele += nextLine(ele);
 	
 	//se>>ntetra;se>>ncorner;se>>neattrb;
@@ -1030,7 +1030,7 @@ if(ele&&ele[0])
 
 		//se>>index;
 		//se>>ni[0];se>>ni[1];se>>ni[2];se>>ni[3];
-		sscanf(ele,"%d %d %d %d %d",&index,&ni[0],&ni[1],&ni[2],&ni[3]);
+		//sscanf(ele,"%d %d %d %d %d",&index,&ni[0],&ni[1],&ni[2],&ni[3]);
 		ele+=nextLine(ele);
 		//for(int j=0;j<neattrb;++j) 
 		//	se>>a;

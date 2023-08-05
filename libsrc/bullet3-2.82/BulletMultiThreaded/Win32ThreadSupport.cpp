@@ -234,7 +234,7 @@ void Win32ThreadSupport::startThreads(const Win32ThreadConstructionInfo& threadC
 
 	for (int i=0;i<threadConstructionInfo.m_numThreads;i++)
 	{
-		printf("starting thread %d\n",i);
+		//printf("starting thread %d\n",i);
 
 		btSpuStatus&	spuStatus = m_activeSpuStatus[i];
 
@@ -247,10 +247,10 @@ void Win32ThreadSupport::startThreads(const Win32ThreadConstructionInfo& threadC
 
 		spuStatus.m_userPtr=0;
 
-		sprintf(spuStatus.m_eventStartHandleName,"eventStart%s%d",threadConstructionInfo.m_uniqueName,i);
+		//sprintf(spuStatus.m_eventStartHandleName,"eventStart%s%d",threadConstructionInfo.m_uniqueName,i);
 		spuStatus.m_eventStartHandle = CreateEventA (0,false,false,spuStatus.m_eventStartHandleName);
 
-		sprintf(spuStatus.m_eventCompletetHandleName,"eventComplete%s%d",threadConstructionInfo.m_uniqueName,i);
+		//sprintf(spuStatus.m_eventCompletetHandleName,"eventComplete%s%d",threadConstructionInfo.m_uniqueName,i);
 		spuStatus.m_eventCompletetHandle = CreateEventA (0,false,false,spuStatus.m_eventCompletetHandleName);
 
 		m_completeHandles[i] = spuStatus.m_eventCompletetHandle;
@@ -268,7 +268,7 @@ void Win32ThreadSupport::startThreads(const Win32ThreadConstructionInfo& threadC
 		spuStatus.m_lsMemory = threadConstructionInfo.m_lsMemoryFunc();
 		spuStatus.m_userThreadFunc = threadConstructionInfo.m_userThreadFunc;
 
-		printf("started thread %d with threadHandle %p\n",i,handle);
+		//printf("started thread %d with threadHandle %p\n",i,handle);
 		
 	}
 
