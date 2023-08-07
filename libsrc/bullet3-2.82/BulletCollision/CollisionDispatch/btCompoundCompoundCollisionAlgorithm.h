@@ -27,6 +27,7 @@ class btDispatcher;
 #include "BulletCollision/CollisionDispatch/btCollisionCreateFunc.h"
 #include "LinearMath/btAlignedObjectArray.h"
 #include "BulletCollision/CollisionDispatch/btHashedSimplePairCache.h"
+#include "btCompoundCollisionAlgorithm.h"
 class btDispatcher;
 class btCollisionObject;
 
@@ -35,7 +36,7 @@ typedef bool (*btShapePairCallback)(const btCollisionShape* pShape0, const btCol
 extern btShapePairCallback gCompoundCompoundChildShapePairCallback;
 
 /// btCompoundCompoundCollisionAlgorithm  supports collision between two btCompoundCollisionShape shapes
-class btCompoundCompoundCollisionAlgorithm  : public btActivatingCollisionAlgorithm
+class btCompoundCompoundCollisionAlgorithm  : public btCompoundCollisionAlgorithm
 {
 
 	class btHashedSimplePairCache*	m_childCollisionAlgorithmCache;

@@ -28,7 +28,7 @@ subject to the following restrictions:
 btShapePairCallback gCompoundCompoundChildShapePairCallback = 0;
 
 btCompoundCompoundCollisionAlgorithm::btCompoundCompoundCollisionAlgorithm( const btCollisionAlgorithmConstructionInfo& ci,const btCollisionObjectWrapper* body0Wrap,const btCollisionObjectWrapper* body1Wrap,bool isSwapped)
-:btActivatingCollisionAlgorithm(ci,body0Wrap,body1Wrap),
+:btCompoundCollisionAlgorithm(ci,body0Wrap,body1Wrap, isSwapped),
 m_sharedManifold(ci.m_manifold)
 {
 	m_ownsManifold = false;
