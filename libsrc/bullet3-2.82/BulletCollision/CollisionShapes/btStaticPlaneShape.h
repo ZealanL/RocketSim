@@ -22,7 +22,8 @@ subject to the following restrictions:
 ///The btStaticPlaneShape simulates an infinite non-moving (static) collision plane.
 ATTRIBUTE_ALIGNED16(class) btStaticPlaneShape : public btConcaveShape
 {
-protected:
+public:
+	btStaticPlaneShape() = default;
 	btVector3	m_localAabbMin;
 	btVector3	m_localAabbMax;
 	
@@ -30,7 +31,6 @@ protected:
 	btScalar      m_planeConstant;
 	btVector3	m_localScaling;
 
-public:
 	BT_DECLARE_ALIGNED_ALLOCATOR();
 
 	btStaticPlaneShape(const btVector3& planeNormal,btScalar planeConstant);

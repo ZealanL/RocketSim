@@ -33,7 +33,8 @@ subject to the following restrictions:
 ///See Demos\ConcaveDemo\ConcavePhysicsDemo.cpp for an example.
 ATTRIBUTE_ALIGNED16(class) btBvhTriangleMeshShape : public btTriangleMeshShape
 {
-
+public:
+	btBvhTriangleMeshShape() = default;
 	btOptimizedBvh*	m_bvh;
 	btTriangleInfoMap*	m_triangleInfoMap;
 
@@ -41,11 +42,10 @@ ATTRIBUTE_ALIGNED16(class) btBvhTriangleMeshShape : public btTriangleMeshShape
 	bool m_ownsBvh;
 	bool m_pad[11];////need padding due to alignment
 
-public:
+
 
 	BT_DECLARE_ALIGNED_ALLOCATOR();
 
-	
 	btBvhTriangleMeshShape(btStridingMeshInterface* meshInterface, bool useQuantizedAabbCompression, bool buildBvh = true);
 
 	///optionally pass in a larger bvh aabb, used for quantization. This allows for deformations within this aabb

@@ -33,12 +33,11 @@ subject to the following restrictions:
  *It can be used in combination with btVector3, btQuaternion and btMatrix3x3 linear algebra classes. */
 ATTRIBUTE_ALIGNED16(class) btTransform {
 	
+public:
   ///Storage for the rotation
 	btMatrix3x3 m_basis;
   ///Storage for the translation
 	btVector3   m_origin;
-
-public:
 	
   /**@brief No initialization constructor */
 	btTransform() {}

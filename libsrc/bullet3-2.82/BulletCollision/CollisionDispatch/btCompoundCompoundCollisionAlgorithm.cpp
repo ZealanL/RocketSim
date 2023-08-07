@@ -22,6 +22,7 @@ subject to the following restrictions:
 #include "LinearMath/btAabbUtil2.h"
 #include "BulletCollision/CollisionDispatch/btManifoldResult.h"
 #include "BulletCollision/CollisionDispatch/btCollisionObjectWrapper.h"
+#include <BulletCollision/CollisionDispatch/btCompoundCollisionAlgorithm.h>
 
 
 btShapePairCallback gCompoundCompoundChildShapePairCallback = 0;
@@ -331,6 +332,9 @@ void btCompoundCompoundCollisionAlgorithm::processCollision (const btCollisionOb
 
 	const btDbvt* tree0 = compoundShape0->getDynamicAabbTree();
 	const btDbvt* tree1 = compoundShape1->getDynamicAabbTree();
+	if (!tree0 || !tree1) {
+		return btCompoundCollisionAlgorithm::processCollision(body0Wrap, body1Wrap, dispatchInfo, resultOut);
+	}
 
 	btCompoundCompoundLeafCallback callback(col0ObjWrap,col1ObjWrap,this->m_dispatcher,dispatchInfo,resultOut,this->m_childCollisionAlgorithmCache,m_sharedManifold);
 

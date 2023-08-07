@@ -206,7 +206,7 @@ void Car::_FinishPhysicsTick(const MutatorConfig& mutatorConfig) {
 void Car::_BulletSetup(btDynamicsWorld* bulletWorld, const MutatorConfig& mutatorConfig) {
 	// Set up rigidbody and collision shapes
 	_childHitboxShape = btBoxShape((config.hitboxSize * UU_TO_BT) / 2);
-	_compoundShape = btCompoundShape(false, 1);
+	_compoundShape = btCompoundShape(false);
 
 	btTransform hitboxOffsetTransform = btTransform();
 	hitboxOffsetTransform.setIdentity();

@@ -41,19 +41,21 @@ enum btDynamicsWorldType
 class btDynamicsWorld : public btCollisionWorld
 {
 
-protected:
+public:
 		btInternalTickCallback m_internalTickCallback;
 		btInternalTickCallback m_internalPreTickCallback;
 		void*	m_worldUserInfo;
 
 		btContactSolverInfo	m_solverInfo;
 
-public:
+		btDynamicsWorld() = default;
 		
 
-		btDynamicsWorld(btDispatcher* dispatcher,btBroadphaseInterface* broadphase,btCollisionConfiguration* collisionConfiguration)
-		:btCollisionWorld(dispatcher,broadphase,collisionConfiguration), m_internalTickCallback(0),m_internalPreTickCallback(0), m_worldUserInfo(0)
-		{
+		void setup(btDispatcher* dispatcher,btBroadphaseInterface* broadphase,btCollisionConfiguration* collisionConfiguration) {
+			btCollisionWorld::setup(dispatcher, broadphase, collisionConfiguration);
+			m_internalTickCallback = 0;
+			m_internalPreTickCallback = 0;
+			m_worldUserInfo = 0;
 		}
 
 		virtual ~btDynamicsWorld()

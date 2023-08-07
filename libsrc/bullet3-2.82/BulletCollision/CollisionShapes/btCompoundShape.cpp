@@ -21,7 +21,6 @@ subject to the following restrictions:
 btCompoundShape::btCompoundShape(bool enableDynamicAabbTree)
 : m_localAabbMin(btScalar(BT_LARGE_FLOAT),btScalar(BT_LARGE_FLOAT),btScalar(BT_LARGE_FLOAT)),
 m_localAabbMax(btScalar(-BT_LARGE_FLOAT),btScalar(-BT_LARGE_FLOAT),btScalar(-BT_LARGE_FLOAT)),
-m_dynamicAabbTree(0),
 m_updateRevision(1),
 m_collisionMargin(btScalar(0.)),
 m_localScaling(btScalar(1.),btScalar(1.),btScalar(1.))
@@ -33,6 +32,8 @@ m_localScaling(btScalar(1.),btScalar(1.),btScalar(1.))
 		void* mem = btAlignedAlloc(sizeof(btDbvt),16);
 		m_dynamicAabbTree = new(mem) btDbvt();
 		btAssert(mem==m_dynamicAabbTree);
+	} else {
+		m_dynamicAabbTree = NULL;
 	}
 }
 

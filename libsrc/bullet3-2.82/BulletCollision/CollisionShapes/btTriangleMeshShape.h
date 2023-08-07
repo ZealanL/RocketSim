@@ -23,16 +23,17 @@ subject to the following restrictions:
 ///The btTriangleMeshShape is an internal concave triangle mesh interface. Don't use this class directly, use btBvhTriangleMeshShape instead.
 ATTRIBUTE_ALIGNED16(class) btTriangleMeshShape : public btConcaveShape
 {
-protected:
+public:
 	btVector3	m_localAabbMin;
 	btVector3	m_localAabbMax;
 	btStridingMeshInterface* m_meshInterface;
+
+	btTriangleMeshShape() = default;
 
 	///btTriangleMeshShape constructor has been disabled/protected, so that users will not mistakenly use this class.
 	///Don't use btTriangleMeshShape but use btBvhTriangleMeshShape instead!
 	btTriangleMeshShape(btStridingMeshInterface* meshInterface);
 
-public:
 	BT_DECLARE_ALIGNED_ALLOCATOR();
 
 	virtual ~btTriangleMeshShape();

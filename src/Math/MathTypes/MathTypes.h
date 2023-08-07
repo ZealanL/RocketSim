@@ -14,7 +14,7 @@ struct RS_ALIGN_16 Vec {
 	constexpr Vec(float x, float y, float z, float _w = 0) : x(x), y(y), z(z), _w(_w) {}
 
 	Vec(const btVector3& bulletVec) {
-		*(btVector3*)this = bulletVec;
+		memcpy(this, &bulletVec, RS_MIN(sizeof(*this), sizeof(btVector3)));
 	}
 
 	bool IsZero() const {

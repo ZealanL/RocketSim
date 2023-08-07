@@ -87,9 +87,7 @@ class btSerializer;
 ///CollisionWorld is interface and container for the collision detection
 class btCollisionWorld
 {
-
-	
-protected:
+public:
 
 	btAlignedObjectArray<btCollisionObject*>	m_collisionObjects;
 	
@@ -107,10 +105,12 @@ protected:
 
 	void	serializeCollisionObjects(btSerializer* serializer);
 
-public:
+
+
+	btCollisionWorld() = default;
 
 	//this constructor doesn't own the dispatcher and paircache/broadphase
-	btCollisionWorld(btDispatcher* dispatcher,btBroadphaseInterface* broadphasePairCache, btCollisionConfiguration* collisionConfiguration);
+	void setup(btDispatcher* dispatcher,btBroadphaseInterface* broadphasePairCache, btCollisionConfiguration* collisionConfiguration);
 
 	virtual ~btCollisionWorld();
 

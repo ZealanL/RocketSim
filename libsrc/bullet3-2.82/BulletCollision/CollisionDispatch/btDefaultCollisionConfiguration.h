@@ -86,7 +86,7 @@ protected:
 public:
 
 
-	btDefaultCollisionConfiguration(const btDefaultCollisionConstructionInfo& constructionInfo = btDefaultCollisionConstructionInfo());
+	void setup(const btDefaultCollisionConstructionInfo& constructionInfo = btDefaultCollisionConstructionInfo());
 
 	virtual ~btDefaultCollisionConfiguration();
 

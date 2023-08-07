@@ -40,7 +40,7 @@ subject to the following restrictions:
 
 
 
-btDefaultCollisionConfiguration::btDefaultCollisionConfiguration(const btDefaultCollisionConstructionInfo& constructionInfo)
+void btDefaultCollisionConfiguration::setup(const btDefaultCollisionConstructionInfo& constructionInfo)
 //btDefaultCollisionConfiguration::btDefaultCollisionConfiguration(btStackAlloc*	stackAlloc,btPoolAllocator*	persistentManifoldPool,btPoolAllocator*	collisionAlgorithmPool)
 {
 

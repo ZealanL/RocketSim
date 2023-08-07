@@ -199,20 +199,19 @@ struct InplaceSolverIslandCallback : public btSimulationIslandManager::IslandCal
 
 
 
-btDiscreteDynamicsWorld::btDiscreteDynamicsWorld(btDispatcher* dispatcher,btBroadphaseInterface* pairCache,btConstraintSolver* constraintSolver, btCollisionConfiguration* collisionConfiguration)
-:btDynamicsWorld(dispatcher,pairCache,collisionConfiguration),
-m_sortedConstraints	(),
-m_solverIslandCallback ( NULL ),
-m_constraintSolver(constraintSolver),
-m_gravity(0,-10,0),
-m_localTime(0),
-m_synchronizeAllMotionStates(false),
-m_applySpeculativeContactRestitution(false),
-m_profileTimings(0),
-m_fixedTimeStep(0),
-m_latencyMotionStateInterpolation(true)
+void btDiscreteDynamicsWorld::setup(btDispatcher* dispatcher,btBroadphaseInterface* pairCache,btConstraintSolver* constraintSolver, btCollisionConfiguration* collisionConfiguration) {
+	btDynamicsWorld::setup(dispatcher, pairCache, collisionConfiguration);
+	m_sortedConstraints = {};
+	m_solverIslandCallback = NULL;
+	m_constraintSolver = constraintSolver;
+	m_gravity = btVector3(0, -10, 0);
+	m_localTime = 0;
+	m_fixedTimeStep = 0;
+	m_synchronizeAllMotionStates = false;
+	m_applySpeculativeContactRestitution = false;
+	m_profileTimings = 0;
+	m_latencyMotionStateInterpolation = true;
 
-{
 	if (!m_constraintSolver)
 	{
 		void* mem = btAlignedAlloc(sizeof(btSequentialImpulseConstraintSolver),16);

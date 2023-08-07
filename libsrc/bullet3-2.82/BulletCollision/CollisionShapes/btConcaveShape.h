@@ -35,10 +35,9 @@ typedef enum PHY_ScalarType {
 ///It has been implemented by the btStaticPlaneShape, btBvhTriangleMeshShape and btHeightfieldTerrainShape.
 ATTRIBUTE_ALIGNED16(class) btConcaveShape : public btCollisionShape
 {
-protected:
+public:
 	btScalar m_collisionMargin;
 
-public:
 	BT_DECLARE_ALIGNED_ALLOCATOR();
 	
 	btConcaveShape();

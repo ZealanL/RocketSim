@@ -34,10 +34,10 @@ int gNumManifold = 0;
 #endif
 
 
-btCollisionDispatcher::btCollisionDispatcher (btCollisionConfiguration* collisionConfiguration): 
-m_dispatcherFlags(btCollisionDispatcher::CD_USE_RELATIVE_CONTACT_BREAKING_THRESHOLD),
-	m_collisionConfiguration(collisionConfiguration)
-{
+void btCollisionDispatcher::setup (btCollisionConfiguration* collisionConfiguration) {
+	m_dispatcherFlags = btCollisionDispatcher::CD_USE_RELATIVE_CONTACT_BREAKING_THRESHOLD;
+	m_collisionConfiguration = collisionConfiguration;
+
 	int i;
 
 	setNearCallback(defaultNearCallback);

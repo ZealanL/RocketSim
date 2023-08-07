@@ -21,7 +21,6 @@ subject to the following restrictions:
 
 #include "BulletDynamics/Dynamics/btDiscreteDynamicsWorld.h"
 
-#include "BulletDynamics/Dynamics/btSimpleDynamicsWorld.h"
 #include "BulletDynamics/Dynamics/btRigidBody.h"
 
 #include "BulletDynamics/ConstraintSolver/btPoint2PointConstraint.h"

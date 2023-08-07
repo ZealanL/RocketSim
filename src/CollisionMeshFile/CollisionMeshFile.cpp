@@ -65,7 +65,8 @@ btTriangleMesh* CollisionMeshFile::MakeBulletMesh() {
 		result->findOrAddVertex(btVector3(vert.x, vert.y, vert.z), false);
 
 	for (Triangle& tri : tris)
-		result->addTriangleIndices(tri.vertexIndexes[0], tri.vertexIndexes[1], tri.vertexIndexes[2]);
+		for (int i = 0; i < 3; i++)
+			result->addIndex(tri.vertexIndexes[i]);
 
 	return result;
 }
