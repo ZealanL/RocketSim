@@ -42,3 +42,6 @@ out/
 *.filters
 *.user
 CMakeSettings.json
+
+# Anything starting with three underscores
+___*
