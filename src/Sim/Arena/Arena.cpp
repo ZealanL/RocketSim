@@ -130,6 +130,8 @@ void Arena::ResetToRandomKickoff(int seed) {
 	for (Car* car : _cars)
 		((car->team == Team::BLUE) ? blueCars : orangeCars).push_back(car);
 
+	int numCarsAtRespawnPos[CAR_RESPAWN_LOCATION_AMOUNT] = {};
+
 	int kickoffPositionAmount = RS_MAX(blueCars.size(), orangeCars.size());
 	for (int i = 0; i < kickoffPositionAmount; i++) {
 
@@ -138,7 +140,16 @@ void Arena::ResetToRandomKickoff(int seed) {
 		if (i < CAR_SPAWN_LOCATION_AMOUNT) {
 			spawnPos = CAR_SPAWN_LOCATIONS[kickoffOrder[i]];
 		} else {
-			spawnPos = CAR_RESPAWN_LOCATIONS[(i - CAR_SPAWN_LOCATION_AMOUNT) % CAR_RESPAWN_LOCATION_AMOUNT];
+			int respawnPosIdx = (i - (CAR_SPAWN_LOCATION_AMOUNT)) % CAR_RESPAWN_LOCATION_AMOUNT;
+			spawnPos = CAR_RESPAWN_LOCATIONS[respawnPosIdx];
+
+			// Extra offset to add to multiple cars spawning at the same respawn point,
+			//	helps prevent insane numbers of cars from spawning in eachother.
+			// Eventually, they will spawn so far away that they clip out of the arena,
+			//	but that's not my problem.
+			constexpr float CAR_SPAWN_EXTRA_OFFSET_Y = 250;
+			spawnPos.y += CAR_SPAWN_EXTRA_OFFSET_Y * numCarsAtRespawnPos[respawnPosIdx];
+			numCarsAtRespawnPos[respawnPosIdx]++;
 		}
 
 		for (int teamIndex = 0; teamIndex < 2; teamIndex++) {
