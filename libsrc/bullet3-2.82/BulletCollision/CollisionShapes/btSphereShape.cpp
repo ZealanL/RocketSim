@@ -55,7 +55,8 @@ btVector3	btSphereShape::localGetSupportingVertex(const btVector3& vec)const
 void btSphereShape::getAabb(const btTransform& t,btVector3& aabbMin,btVector3& aabbMax) const
 {
 	const btVector3& center = t.getOrigin();
-	btVector3 extent(getMargin(),getMargin(),getMargin());
+	btScalar margin = getMargin() + 0.08f;
+	btVector3 extent(margin, margin, margin);
 	aabbMin = center - extent;
 	aabbMax = center + extent;
 }

@@ -714,7 +714,8 @@ void btSequentialImpulseConstraintSolver::setupContactConstraint(btSolverConstra
 					{
 						positionalError = 0;
 
-						velocityError -= penetration / infoGlobal.m_timeStep;
+						// ROCKETSIM CHANGE: Commented out this line because it ruins ball bounces at low velocities
+						//velocityError -= penetration / infoGlobal.m_timeStep;
 					} else
 					{
 						positionalError = -penetration * erp/infoGlobal.m_timeStep;

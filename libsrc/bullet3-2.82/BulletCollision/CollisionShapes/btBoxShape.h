@@ -37,10 +37,7 @@ BT_DECLARE_ALIGNED_ALLOCATOR();
 
 	btVector3 getHalfExtentsWithMargin() const
 	{
-		btVector3 halfExtents = getHalfExtentsWithoutMargin();
-		btVector3 margin(getMargin(),getMargin(),getMargin());
-		halfExtents += margin;
-		return halfExtents;
+		return m_implicitShapeDimensions;//scaling is included, margin is not
 	}
 	
 	const btVector3& getHalfExtentsWithoutMargin() const

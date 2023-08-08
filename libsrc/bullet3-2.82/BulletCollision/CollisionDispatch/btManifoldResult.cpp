@@ -55,7 +55,14 @@ btScalar	btManifoldResult::calculateCombinedFriction(const btCollisionObject* bo
 
 btScalar	btManifoldResult::calculateCombinedRestitution(const btCollisionObject* body0,const btCollisionObject* body1)
 {
-	return body0->getRestitution() * body1->getRestitution();
+	btScalar a = body0->getRestitution();
+	btScalar b = body1->getRestitution();
+
+	if (body0->isStaticObject() || body1->isStaticObject()) {
+		return (a > b) ? a : b;
+	} else {
+		return a * b;
+	}
 }
 
 
