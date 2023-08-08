@@ -132,7 +132,14 @@ void Arena::ResetToRandomKickoff(int seed) {
 
 	int kickoffPositionAmount = RS_MAX(blueCars.size(), orangeCars.size());
 	for (int i = 0; i < kickoffPositionAmount; i++) {
-		CarSpawnPos spawnPos = CAR_SPAWN_LOCATIONS[kickoffOrder[i]];
+
+		CarSpawnPos spawnPos;
+	
+		if (i < CAR_SPAWN_LOCATION_AMOUNT) {
+			spawnPos = CAR_SPAWN_LOCATIONS[kickoffOrder[i]];
+		} else {
+			spawnPos = CAR_RESPAWN_LOCATIONS[(i - CAR_SPAWN_LOCATION_AMOUNT) % CAR_RESPAWN_LOCATION_AMOUNT];
+		}
 
 		for (int teamIndex = 0; teamIndex < 2; teamIndex++) {
 			bool isBlue = (teamIndex == 0);
