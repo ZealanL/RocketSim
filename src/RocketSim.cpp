@@ -117,7 +117,9 @@ void RocketSim::Init(std::filesystem::path collisionMeshesFolder) {
 					arenaCollisionMeshes.push_back(bvtMesh);
 #endif
 
-					//delete triMesh;
+#ifdef RS_MERGE_ARENA_MESHES
+					delete triMesh;
+#endif
 				}
 			}
 
