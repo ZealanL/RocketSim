@@ -73,7 +73,7 @@ void RocketSim::Init(std::filesystem::path collisionMeshesFolder) {
 			for (uint32_t targetHash : SOCCAR_ARENA_MESH_HASHES)
 				targetHashes.insert(targetHash);
 
-#ifdef MERGE_ARENA_MESHES
+#ifdef RS_MERGE_ARENA_MESHES
 			btTriangleMesh* masterTriMesh = new btTriangleMesh();
 #endif
 
