@@ -73,8 +73,9 @@ void RocketSim::Init(std::filesystem::path collisionMeshesFolder) {
 			for (uint32_t targetHash : SOCCAR_ARENA_MESH_HASHES)
 				targetHashes.insert(targetHash);
 
-
+#ifdef MERGE_ARENA_MESHES
 			btTriangleMesh* masterTriMesh = new btTriangleMesh();
+#endif
 
 			// Load collision meshes
 			auto dirItr = std::filesystem::directory_iterator(soccarMeshesFolder);
@@ -99,6 +100,7 @@ void RocketSim::Init(std::filesystem::path collisionMeshesFolder) {
 
 					btTriangleMesh* triMesh = meshFile.MakeBulletMesh();
 					
+#ifdef RS_MERGE_ARENA_MESHES
 					for (int i = 0; i < triMesh->m_32bitIndices.size(); i += 3) {
 						btVector3 vertices[3];
 						for (int j = 0; j < 3; j++) {
@@ -107,16 +109,25 @@ void RocketSim::Init(std::filesystem::path collisionMeshesFolder) {
 
 						masterTriMesh->addTriangle(vertices[0], vertices[1], vertices[2]);
 					}
+#else
+					auto bvtMesh = new btBvhTriangleMeshShape(triMesh, false);
+					btTriangleInfoMap* infoMap = new btTriangleInfoMap();
+					btGenerateInternalEdgeInfo(bvtMesh, infoMap);
+					bvtMesh->setTriangleInfoMap(infoMap);
+					arenaCollisionMeshes.push_back(bvtMesh);
+#endif
 
-					delete triMesh;
+					//delete triMesh;
 				}
 			}
 
+#ifdef RS_MERGE_ARENA_MESHES
 			btBvhTriangleMeshShape* bvhShape = new btBvhTriangleMeshShape(masterTriMesh, false);
 			btTriangleInfoMap* infoMap = new btTriangleInfoMap();
 			btGenerateInternalEdgeInfo(bvhShape, infoMap);
 			bvhShape->setTriangleInfoMap(infoMap);
 			arenaCollisionMeshes.push_back(bvhShape);
+#endif
 
 			if (arenaCollisionMeshes.empty()) {
 				RS_ERR_CLOSE(MSG_PREFIX <<
