@@ -472,7 +472,7 @@ Arena* Arena::Create(GameMode gameMode, float tickRate) {
 	return new Arena(gameMode, tickRate);
 }
 
-void Arena::Serialize(DataStreamOut& out) const {
+void Arena::Serialize(DataStreamOut& out) {
 	out.WriteMultiple(gameMode, tickTime, tickCount, _lastCarID);
 
 	{ // Serialize cars
