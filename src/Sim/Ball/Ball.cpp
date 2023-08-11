@@ -106,6 +106,6 @@ void Ball::_FinishPhysicsTick(const MutatorConfig& mutatorConfig) {
 	}
 }
 
-float Ball::GetRadiusBullet() {
+float Ball::GetRadiusBullet() const {
 	return _collisionShape.getRadius();
 }

@@ -60,7 +60,7 @@ public:
 	float tickTime; 
 
 	// Returns (1 / tickTime)
-	float GetTickRate() {
+	float GetTickRate() const {
 		return 1 / tickTime;
 	}
 
@@ -115,7 +115,7 @@ public:
 	RSAPI static Arena* Create(GameMode gameMode, float tickRate = 120);
 	
 	// Serialize entire arena state including cars, ball, and boostpads
-	RSAPI void Serialize(DataStreamOut& out);
+	RSAPI void Serialize(DataStreamOut& out) const;
 
 	// Load new arena from serialized data
 	RSAPI static Arena* DeserializeNew(DataStreamIn& in);
