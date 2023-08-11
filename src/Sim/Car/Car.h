@@ -76,7 +76,7 @@ struct CarState {
 	// Controls from last tick, set to this->controls after simulation
 	CarControls lastControls = CarControls();
 
-	void Serialize(DataStreamOut& out);
+	void Serialize(DataStreamOut& out) const;
 	void Deserialize(DataStreamIn& in);
 };
 

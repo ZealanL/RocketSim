@@ -472,7 +472,7 @@ Arena* Arena::Create(GameMode gameMode, float tickRate) {
 	return new Arena(gameMode, tickRate);
 }
 
-void Arena::Serialize(DataStreamOut& out) {
+void Arena::Serialize(DataStreamOut& out) const {
 	out.WriteMultiple(gameMode, tickTime, tickCount, _lastCarID);
 
 	{ // Serialize cars
@@ -708,7 +708,7 @@ void Arena::Step(int ticksToSimulate) {
 	}
 }
 
-bool Arena::IsBallProbablyGoingIn(float maxTime) {
+bool Arena::IsBallProbablyGoingIn(float maxTime) const {
 	if (gameMode == GameMode::SOCCAR) {
 		Vec ballPos = ball->_rigidBody.m_worldTransform.m_origin * UU_TO_BT;
 		Vec ballVel = ball->_rigidBody.m_linearVelocity * UU_TO_BT;

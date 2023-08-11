@@ -115,7 +115,7 @@ public:
 	RSAPI static Arena* Create(GameMode gameMode, float tickRate = 120);
 	
 	// Serialize entire arena state including cars, ball, and boostpads
-	RSAPI void Serialize(DataStreamOut& out);
+	RSAPI void Serialize(DataStreamOut& out) const;
 
 	// Load new arena from serialized data
 	RSAPI static Arena* DeserializeNew(DataStreamIn& in);
@@ -140,7 +140,7 @@ public:
 	// Returns true if the ball is probably going in, does not account for wall or ceiling bounces
 	// NOTE: Purposefully overestimates, just like the real RL's shot prediction
 	// To check which goal it will score in, use the ball's velocity
-	RSAPI bool IsBallProbablyGoingIn(float maxTime = 2.f);
+	RSAPI bool IsBallProbablyGoingIn(float maxTime = 2.f) const;
 
 	// Free all associated memory
 	RSAPI ~Arena();

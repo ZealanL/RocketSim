@@ -293,7 +293,7 @@ void Car::_BulletSetup(btDynamicsWorld* bulletWorld, const MutatorConfig& mutato
 	_internalState.boost = mutatorConfig.carSpawnBoostAmount;
 }
 
-void CarState::Serialize(DataStreamOut& out) {
+void CarState::Serialize(DataStreamOut& out) const {
 	ballHitInfo.Serialize(out);
 
 	out.WriteMultiple(
