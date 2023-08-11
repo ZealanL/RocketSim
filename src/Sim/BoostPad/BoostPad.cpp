@@ -79,7 +79,7 @@ void BoostPad::_PostTickUpdate(float tickTime, const MutatorConfig& mutatorConfi
 	_internalState.prevLockedCarID = lockedCarID;
 }
 
-void BoostPadState::Serialize(DataStreamOut& out) {
+void BoostPadState::Serialize(DataStreamOut& out) const {
 	out.WriteMultiple(
 		BOOSTPAD_SERIALIZATION_FIELDS
 	);

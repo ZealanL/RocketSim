@@ -15,7 +15,7 @@ struct BoostPadState {
 	Car* curLockedCar = NULL;
 	uint32_t prevLockedCarID = NULL;
 
-	void Serialize(DataStreamOut& out);
+	void Serialize(DataStreamOut& out) const;
 	void Deserialize(DataStreamIn& in);
 };
 #define BOOSTPAD_SERIALIZATION_FIELDS \
@@ -31,7 +31,7 @@ public:
 
 	BoostPadState _internalState;
 
-	RSAPI BoostPadState GetState() { return _internalState; }
+	RSAPI BoostPadState GetState() const { return _internalState; }
 	RSAPI void SetState(const BoostPadState& state) { _internalState = state; }
 
 	// For construction by Arena

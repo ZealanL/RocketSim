@@ -51,10 +51,10 @@ public:
 	void _FinishPhysicsTick(const MutatorConfig& mutatorConfig);
 
 	// Returns radius in BulletPhysics units
-	float GetRadiusBullet();
+	float GetRadiusBullet() const;
 
 	// Returns radius in Unreal Engine units (uu)
-	float GetRadius() {
+	float GetRadius() const {
 		return GetRadiusBullet() * BT_TO_UU;
 	}
 

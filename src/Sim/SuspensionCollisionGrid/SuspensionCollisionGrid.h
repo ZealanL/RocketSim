@@ -47,7 +47,7 @@ struct SuspensionCollisionGrid {
 		return cellData[index];
 	}
 
-	Vec GetCellMin(int xIndex, int yIndex, int zIndex) {
+	Vec GetCellMin(int xIndex, int yIndex, int zIndex) const {
 		return Vec(
 			CELL_SIZE_X * (xIndex - (CELL_AMOUNT_X / 2)),
 			CELL_SIZE_Y * (yIndex - (CELL_AMOUNT_Y / 2)),
@@ -55,7 +55,7 @@ struct SuspensionCollisionGrid {
 		);
 	}
 
-	void GetCellIndicesFromPos(Vec pos, int& i, int& j, int& k) {
+	void GetCellIndicesFromPos(Vec pos, int& i, int& j, int& k) const {
 		i = RS_CLAMP(pos.x / CELL_SIZE_X + (CELL_AMOUNT_X / 2), 0, CELL_AMOUNT_X - 1),
 		j = RS_CLAMP(pos.y / CELL_SIZE_Y + (CELL_AMOUNT_Y / 2), 0, CELL_AMOUNT_Y - 1),
 		k = RS_CLAMP(pos.z / CELL_SIZE_Z, 0, CELL_AMOUNT_Z - 1);
@@ -67,7 +67,7 @@ struct SuspensionCollisionGrid {
 		return Get(i, j, k);
 	}
 
-	Vec GetCellSize() {
+	Vec GetCellSize() const {
 		return Vec(CELL_SIZE_X, CELL_SIZE_Y, CELL_SIZE_Z);
 	}
 

@@ -17,6 +17,7 @@ build.ninja
 
 # Build-related
 RocketSim.Dir/
+build/
 x86/
 x64/
 out/

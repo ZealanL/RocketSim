@@ -60,7 +60,7 @@ public:
 	float tickTime; 
 
 	// Returns (1 / tickTime)
-	float GetTickRate() {
+	float GetTickRate() const {
 		return 1 / tickTime;
 	}
 
