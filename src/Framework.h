@@ -58,7 +58,7 @@ typedef uint8_t byte;
 
 #define RS_WARN(s) RS_LOG("WARNING: " << s)
 
-#define RS_ERR_CLOSE(s) { std::string _errorStr = RS_STR("FATAL ERROR: " << s); RS_LOG(_errorStr); throw new std::runtime_error(_errorStr); exit(EXIT_FAILURE); }
+#define RS_ERR_CLOSE(s) { std::string _errorStr = RS_STR("FATAL ERROR: " << s); RS_LOG(_errorStr); throw std::runtime_error(_errorStr); exit(EXIT_FAILURE); }
 
 #if 0 // FOR FUTURE USE: Exports/imports setup
 #ifdef ROCKETSIM_EXPORTS
