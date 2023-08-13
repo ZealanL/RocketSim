@@ -25,6 +25,13 @@ enum class GameMode : byte {
 	// More coming soon!
 };
 
+// Mode of speed/memory optimization for the arena
+// Will affect whether high memory consumption is used to slightly increase speed or not
+enum class ArenaMemWeightMode : byte {
+	HEAVY, // ~11MB per arena
+	LIGHT
+};
+
 typedef std::function<void(class Arena* arena, Team scoringTeam, void* userInfo)> GoalScoreEventFn;
 typedef std::function<void(class Arena* arena, Car* bumper, Car* victim, bool isDemo, void* userInfo)> CarBumpEventFn;
 
@@ -112,7 +119,7 @@ public:
 	RSAPI void SetCarBumpCallback(CarBumpEventFn callbackFn, void* userInfo = NULL);
 
 	// NOTE: Arena should be destroyed after use
-	RSAPI static Arena* Create(GameMode gameMode, float tickRate = 120);
+	RSAPI static Arena* Create(GameMode gameMode, ArenaMemWeightMode memWeightMode = ArenaMemWeightMode::HEAVY, float tickRate = 120);
 	
 	// Serialize entire arena state including cars, ball, and boostpads
 	RSAPI void Serialize(DataStreamOut& out) const;
@@ -173,8 +180,15 @@ public:
 	void _BtCallback_OnCarCarCollision(Car* car1, Car* car2, btManifoldPoint& manifoldPoint);
 	void _BtCallback_OnCarWorldCollision(Car* car, btCollisionObject* worldObject, btManifoldPoint& manifoldPoint);
 
+	ArenaMemWeightMode GetMemWeightMode() {
+		return _memWeightMode;
+	}
+
 private:
 	
 	// Constructor for use by Arena::Create()
-	Arena(GameMode gameMode, float tickRate = 120);
+	Arena(GameMode gameMode, ArenaMemWeightMode memWeightMode, float tickRate = 120);
+
+	// Making this private because horrible memory overflows would happen if you changed it
+	ArenaMemWeightMode _memWeightMode;
 };

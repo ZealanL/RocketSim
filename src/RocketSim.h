@@ -27,6 +27,6 @@ namespace RocketSim {
 	const std::vector<btBvhTriangleMeshShape*>& GetArenaCollisionShapes();
 
 #ifndef RS_NO_SUSPCOLGRID
-	const SuspensionCollisionGrid& GetDefaultSuspColGrid();
+	const SuspensionCollisionGrid& GetDefaultSuspColGrid(bool isLight);
 #endif
 }

@@ -376,7 +376,7 @@ void Arena::_BtCallback_OnCarWorldCollision(Car* car, btCollisionObject* world, 
 	manifoldPoint.m_combinedRestitution = _mutatorConfig.carWorldRestitution;
 }
 
-Arena::Arena(GameMode gameMode, float tickRate) {
+Arena::Arena(GameMode gameMode, ArenaMemWeightMode memWeightMode, float tickRate) {
 
 	// Tickrate must be from 15 to 120tps
 	assert(tickRate >= 15 && tickRate <= 120);
@@ -390,6 +390,13 @@ Arena::Arena(GameMode gameMode, float tickRate) {
 	{ // Initialize world
 
 		btDefaultCollisionConstructionInfo collisionConfigConstructionInfo = {};
+
+		if (memWeightMode == ArenaMemWeightMode::LIGHT) {
+			// These take up a ton of memory normally
+			collisionConfigConstructionInfo.m_defaultMaxPersistentManifoldPoolSize /= 8;
+			collisionConfigConstructionInfo.m_defaultMaxCollisionAlgorithmPoolSize /= 8;
+		}
+
 		_bulletWorldParams.collisionConfig.setup(collisionConfigConstructionInfo);
 
 		_bulletWorldParams.collisionDispatcher.setup(&_bulletWorldParams.collisionConfig);
@@ -412,12 +419,11 @@ Arena::Arena(GameMode gameMode, float tickRate) {
 		solverInfo.m_splitImpulsePenetrationThreshold = 1.0e30;
 		solverInfo.m_erp2 = 0.8f;
 	}
-
 	if (gameMode == GameMode::SOCCAR) {
 		_SetupArenaCollisionShapes();
 
 #ifndef RS_NO_SUSPCOLGRID
-		_suspColGrid = RocketSim::GetDefaultSuspColGrid();
+		_suspColGrid = RocketSim::GetDefaultSuspColGrid(memWeightMode == ArenaMemWeightMode::LIGHT);
 		_suspColGrid.defaultWorldCollisionRB = &_worldCollisionRBs[0];
 #endif
 
@@ -468,12 +474,12 @@ Arena::Arena(GameMode gameMode, float tickRate) {
 	gContactAddedCallback = &Arena::_BulletContactAddedCallback;
 }
 
-Arena* Arena::Create(GameMode gameMode, float tickRate) {
-	return new Arena(gameMode, tickRate);
+Arena* Arena::Create(GameMode gameMode, ArenaMemWeightMode memWeightMode, float tickRate) {
+	return new Arena(gameMode, memWeightMode, tickRate);
 }
 
 void Arena::Serialize(DataStreamOut& out) const {
-	out.WriteMultiple(gameMode, tickTime, tickCount, _lastCarID);
+	out.WriteMultiple(gameMode, tickTime, tickCount, _lastCarID, _memWeightMode);
 
 	{ // Serialize cars
 		out.Write<uint32_t>(_cars.size());
@@ -506,10 +512,11 @@ Arena* Arena::DeserializeNew(DataStreamIn& in) {
 	float tickTime;
 	uint64_t tickCount;
 	uint32_t lastCarID;
+	ArenaMemWeightMode memWeightMode;
 
-	in.ReadMultiple(gameMode, tickTime, tickCount, lastCarID);
+	in.ReadMultiple(gameMode, tickTime, tickCount, lastCarID, memWeightMode);
 
-	Arena* newArena = new Arena(gameMode, 1.f / tickTime);
+	Arena* newArena = new Arena(gameMode, memWeightMode, 1.f / tickTime);
 	newArena->tickCount = tickCount;
 	
 	{ // Deserialize cars
@@ -568,7 +575,7 @@ Arena* Arena::DeserializeNew(DataStreamIn& in) {
 }
 
 Arena* Arena::Clone(bool copyCallbacks) {
-	Arena* newArena = new Arena(this->gameMode, this->GetTickRate());
+	Arena* newArena = new Arena(this->gameMode, this->_memWeightMode, this->GetTickRate());
 	
 	if (copyCallbacks) {
 		newArena->_goalScoreCallback = this->_goalScoreCallback;

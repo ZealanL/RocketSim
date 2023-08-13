@@ -29,9 +29,11 @@ const std::vector<btBvhTriangleMeshShape*>& RocketSim::GetArenaCollisionShapes()
 }
 
 #ifndef RS_NO_SUSPCOLGRID
-static SuspensionCollisionGrid suspColGrid;
-const SuspensionCollisionGrid& RocketSim::GetDefaultSuspColGrid() {
-	return suspColGrid;
+static auto 
+	suspColGrid_light = SuspensionCollisionGrid(true),
+	suspColGrid_heavy = SuspensionCollisionGrid(false);
+const SuspensionCollisionGrid& RocketSim::GetDefaultSuspColGrid(bool isLight) {
+	return isLight ? suspColGrid_light : suspColGrid_heavy;
 }
 #endif
 
@@ -142,10 +144,13 @@ void RocketSim::Init(std::filesystem::path collisionMeshesFolder) {
 
 #ifndef RS_NO_SUSPCOLGRID
 		{ // Set up suspension collision grid
-			RS_LOG("Building collision suspension grid from arena meshes...");
+			RS_LOG("Building collision suspension grids from arena meshes...");
 
-			suspColGrid.Allocate();
-			suspColGrid.SetupWorldCollision(arenaCollisionMeshes);
+			suspColGrid_light.Allocate();
+			suspColGrid_light.SetupWorldCollision(arenaCollisionMeshes);
+
+			suspColGrid_heavy.Allocate();
+			suspColGrid_heavy.SetupWorldCollision(arenaCollisionMeshes);
 		}
 #endif
 

@@ -2,7 +2,7 @@
 
 BallPredTracker::BallPredTracker(Arena* arena, size_t numPredTicks) : numPredTicks(numPredTicks) {
 	// Make ball pred arena
-	this->ballPredArena = Arena::Create(arena->gameMode, arena->GetTickRate());
+	this->ballPredArena = Arena::Create(arena->gameMode, ArenaMemWeightMode::LIGHT, arena->GetTickRate());
 	this->ballPredArena->tickCount = arena->tickCount;
 
 	predData.reserve(numPredTicks);
