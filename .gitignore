@@ -20,6 +20,8 @@ RocketSim.Dir/
 build/
 x86/
 x64/
+Release/
+Debug
 out/
 *.obj
 *.lib
