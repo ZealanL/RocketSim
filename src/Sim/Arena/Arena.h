@@ -29,7 +29,7 @@ enum class GameMode : byte {
 // Will affect whether high memory consumption is used to slightly increase speed or not
 enum class ArenaMemWeightMode : byte {
 	HEAVY, // ~11MB per arena
-	LIGHT
+	LIGHT // ~0.8MB per arena
 };
 
 typedef std::function<void(class Arena* arena, Team scoringTeam, void* userInfo)> GoalScoreEventFn;
