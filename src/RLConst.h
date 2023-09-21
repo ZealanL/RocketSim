@@ -13,6 +13,10 @@ namespace RLConst {
 		ARENA_EXTENT_Y = 5120, // Does not include inner-goal
 		ARENA_HEIGHT = 2048,
 
+		ARENA_EXTENT_X_HOOPS = (8900 / 3.f),
+		ARENA_EXTENT_Y_HOOPS = 3581,
+		ARENA_HEIGHT_HOOPS = 1820,
+
 		CAR_MASS_BT = 180.f,
 		BALL_MASS_BT = CAR_MASS_BT / 6.f, // Ref: https://www.reddit.com/r/RocketLeague/comments/bmje9l/comment/emxkwrl/?context=3
 
@@ -97,8 +101,7 @@ namespace RLConst {
 		BALL_COLLISION_RADIUS_NORMAL = 91.25f, // Soccar, Hoops, etc.
 		BALL_COLLISION_RADIUS_DROPSHOT = 103.6f,
 
-		SOCCAR_GOAL_SCORE_BASE_THRESHOLD_Y = 5121.75f,
-		SOCCAR_BALL_SCORE_THRESHOLD_Y = SOCCAR_GOAL_SCORE_BASE_THRESHOLD_Y + BALL_COLLISION_RADIUS_NORMAL,
+		SOCCAR_GOAL_SCORE_BASE_THRESHOLD_Y = 5124.25f,
 
 		CAR_TORQUE_SCALE = 0.09587,
 
@@ -159,10 +162,11 @@ namespace RLConst {
 			BOOST_AMOUNT_SMALL = 12;
 
 		constexpr int
-			LOCS_AMOUNT_SMALL = 28,
+			LOCS_AMOUNT_SMALL_SOCCAR = 28,
+			LOCS_AMOUNT_SMALL_HOOPS = 14,
 			LOCS_AMOUNT_BIG = 6;
 
-		constexpr Vec LOCS_SMALL[LOCS_AMOUNT_SMALL] = {
+		constexpr Vec LOCS_SMALL_SOCCAR[LOCS_AMOUNT_SMALL_SOCCAR] = {
 			{0.f,		-4240.f,	70.f },
 			{-1792.f,	-4184.f,	70.f },
 			{1792.f,	-4184.f,	70.f },
@@ -193,13 +197,41 @@ namespace RLConst {
 			{0.f,		4240.f,		70.f }
 		};
 
-		constexpr Vec LOCS_BIG[LOCS_AMOUNT_BIG] = {
+		constexpr Vec LOCS_BIG_SOCCAR[LOCS_AMOUNT_BIG] = {
 			{-3584.f,     0.f, 73.f },
 			{ 3584.f,     0.f, 73.f },
 			{-3072.f,  4096.f, 73.f },
 			{ 3072.f,  4096.f, 73.f },
 			{-3072.f, -4096.f, 73.f },
 			{ 3072.f, -4096.f, 73.f }
+		};
+
+		constexpr Vec LOCS_SMALL_HOOPS[LOCS_AMOUNT_SMALL_HOOPS] = {
+			// Psyonix, one of these has a radius that isn't 128, the one at [-1280, 2304, 64].
+			// I'm very confident this is a bug, so I'm not including it in RocketSim, but please fix it.
+			{1536,	-1024, 64 },
+			{-1280,	-2304, 64 },
+			{0,		-2816, 64 },
+			{-1536,	-1024, 64 },
+			{1280,	-2304, 64 },
+			{-512,	  512, 64 },
+			{-1536,  1024, 64 },
+			{1536,	 1024, 64 },
+			{1280,	 2304, 64 },
+			{0,		 2816, 64 },
+			{512,	  512, 64 },
+			{512,	 -512, 64 },
+			{-512,	 -512, 64 },
+			{-1280,	 2304, 64 }
+		};
+
+		constexpr Vec LOCS_BIG_HOOPS[LOCS_AMOUNT_BIG] = {
+			{-2176,		 2944, 72 },
+			{ 2176,		-2944, 72 },
+			{-2176,		-2944, 72 },
+			{-2432,			0, 72 },
+			{ 2432,			0, 72 },
+			{ 2175.99,	 2944, 72 },
 		};
 	}
 

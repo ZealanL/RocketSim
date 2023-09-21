@@ -24,16 +24,21 @@ RocketSimStage RocketSim::GetStage() {
 }
 
 static std::vector<btBvhTriangleMeshShape*> arenaCollisionMeshes;
-const std::vector<btBvhTriangleMeshShape*>& RocketSim::GetArenaCollisionShapes() {
-	return arenaCollisionMeshes;
+static std::vector<btBvhTriangleMeshShape*> arenaCollisionMeshes_hoops;
+const std::vector<btBvhTriangleMeshShape*>& RocketSim::GetArenaCollisionShapes(GameMode gameMode) {
+	return (gameMode == GameMode::HOOPS ? arenaCollisionMeshes_hoops : arenaCollisionMeshes);
 }
 
 #ifndef RS_NO_SUSPCOLGRID
-static auto 
-	suspColGrid_light = SuspensionCollisionGrid(true),
-	suspColGrid_heavy = SuspensionCollisionGrid(false);
-const SuspensionCollisionGrid& RocketSim::GetDefaultSuspColGrid(bool isLight) {
-	return isLight ? suspColGrid_light : suspColGrid_heavy;
+static SuspensionCollisionGrid
+	suspColGrids_soccar[] = { true, false },
+	suspColGrids_hoops[] = { true, false };
+SuspensionCollisionGrid& RocketSim::GetDefaultSuspColGrid(GameMode gameMode, bool isLight) {
+	if (gameMode == GameMode::HOOPS) {
+		return suspColGrids_hoops[isLight];
+	} else {
+		return suspColGrids_soccar[isLight];
+	}
 }
 #endif
 
@@ -55,17 +60,17 @@ void RocketSim::Init(std::filesystem::path collisionMeshesFolder) {
 
 		uint64_t startMS = RS_CUR_MS();
 
-		{ // Load collision meshes
+		for (int i = 0; i < 2; i++) { // Load collision meshes
 
+			GameMode gameMode = (i > 0) ? GameMode::HOOPS : GameMode::SOCCAR;
 			std::filesystem::path basePath = collisionMeshesFolder;
-			std::filesystem::path soccarMeshesFolder = basePath / "soccar";
+			std::filesystem::path soccarMeshesFolder = basePath / GAMEMODE_STRS[(int)gameMode];
 
 			RS_LOG("Loading arena meshes from " << soccarMeshesFolder << "...");
 
 			if (!std::filesystem::exists(soccarMeshesFolder)) {
-				RS_ERR_CLOSE(
-					"Failed to find arena collision mesh files at " << soccarMeshesFolder
-					<< ", the collision meshes folder should be in our current directory " << std::filesystem::current_path() << ".")
+				RS_LOG("No arena meshes for " << GAMEMODE_STRS[(int)gameMode] << ", skipping...");
+				continue;
 			}
 
 			// How many of each collision mesh hash we have loaded
@@ -116,7 +121,8 @@ void RocketSim::Init(std::filesystem::path collisionMeshesFolder) {
 					btTriangleInfoMap* infoMap = new btTriangleInfoMap();
 					btGenerateInternalEdgeInfo(bvtMesh, infoMap);
 					bvtMesh->setTriangleInfoMap(infoMap);
-					arenaCollisionMeshes.push_back(bvtMesh);
+					
+					(gameMode == GameMode::HOOPS ? arenaCollisionMeshes_hoops : arenaCollisionMeshes).push_back(bvtMesh);
 #endif
 
 #ifdef RS_MERGE_ARENA_MESHES
@@ -133,24 +139,28 @@ void RocketSim::Init(std::filesystem::path collisionMeshesFolder) {
 			arenaCollisionMeshes.push_back(bvhShape);
 #endif
 
-			if (arenaCollisionMeshes.empty()) {
-				RS_ERR_CLOSE(MSG_PREFIX <<
-					"Failed to find soccar field asset files at " << basePath
-					<< ", the folder exists but has no collision mesh files.")
-			}
-
-			RS_LOG(MSG_PREFIX << "Finished loading " << arenaCollisionMeshes.size() << " arena collision meshes.");
+			RS_LOG(MSG_PREFIX << "Finished loading arena collision meshes:");
+			RS_LOG(" > Soccar: " << arenaCollisionMeshes.size());
+			RS_LOG(" > Hoops: " << arenaCollisionMeshes_hoops.size());
 		}
 
 #ifndef RS_NO_SUSPCOLGRID
 		{ // Set up suspension collision grid
-			RS_LOG("Building collision suspension grids from arena meshes...");
+			for (int i = 0; i < 2; i++) {
+				GameMode gameMode = i > 0 ? GameMode::HOOPS : GameMode::SOCCAR;
 
-			suspColGrid_light.Allocate();
-			suspColGrid_light.SetupWorldCollision(arenaCollisionMeshes);
+				auto& meshes = (gameMode == GameMode::HOOPS) ? arenaCollisionMeshes_hoops : arenaCollisionMeshes;
 
-			suspColGrid_heavy.Allocate();
-			suspColGrid_heavy.SetupWorldCollision(arenaCollisionMeshes);
+				if (!meshes.empty()) {
+					RS_LOG("Building collision suspension grids from " << GAMEMODE_STRS[(int)gameMode] << " arena meshes...");
+
+					for (int j = 0; j < 2; j++) {
+						auto& grid = GetDefaultSuspColGrid(gameMode, j);
+						grid.Allocate();
+						grid.SetupWorldCollision(meshes);
+					}
+				}
+			}	
 		}
 #endif
 

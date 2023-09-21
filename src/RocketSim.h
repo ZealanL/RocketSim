@@ -24,9 +24,9 @@ namespace RocketSim {
 
 	RocketSimStage GetStage();
 
-	const std::vector<btBvhTriangleMeshShape*>& GetArenaCollisionShapes();
+	const std::vector<btBvhTriangleMeshShape*>& GetArenaCollisionShapes(GameMode gameMode);
 
 #ifndef RS_NO_SUSPCOLGRID
-	const SuspensionCollisionGrid& GetDefaultSuspColGrid(bool isLight);
+	SuspensionCollisionGrid& GetDefaultSuspColGrid(GameMode gameMode, bool isLight);
 #endif
 }

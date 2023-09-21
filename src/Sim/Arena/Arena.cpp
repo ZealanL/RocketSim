@@ -419,11 +419,14 @@ Arena::Arena(GameMode gameMode, ArenaMemWeightMode memWeightMode, float tickRate
 		solverInfo.m_splitImpulsePenetrationThreshold = 1.0e30;
 		solverInfo.m_erp2 = 0.8f;
 	}
-	if (gameMode == GameMode::SOCCAR) {
+
+	bool loadArenaStuff = gameMode == GameMode::SOCCAR || gameMode == GameMode::HOOPS;
+
+	if (loadArenaStuff) {
 		_SetupArenaCollisionShapes();
 
 #ifndef RS_NO_SUSPCOLGRID
-		_suspColGrid = RocketSim::GetDefaultSuspColGrid(memWeightMode == ArenaMemWeightMode::LIGHT);
+		_suspColGrid = RocketSim::GetDefaultSuspColGrid(gameMode, memWeightMode == ArenaMemWeightMode::LIGHT);
 		_suspColGrid.defaultWorldCollisionRB = &_worldCollisionRBs[0];
 #endif
 
@@ -450,15 +453,23 @@ Arena::Arena(GameMode gameMode, ArenaMemWeightMode memWeightMode, float tickRate
 		ball->SetState(BallState());
 	}
 
-	if (gameMode == GameMode::SOCCAR) { // Initialize boost pads
+	if (loadArenaStuff) { // Initialize boost pads
 		using namespace RLConst::BoostPads;
 
-		_boostPads.reserve(LOCS_AMOUNT_BIG + LOCS_AMOUNT_SMALL);
+		bool isHoops = gameMode == GameMode::HOOPS;
 
-		for (int i = 0; i < (LOCS_AMOUNT_BIG + LOCS_AMOUNT_SMALL); i++) {
+		int amountSmall = isHoops ? LOCS_AMOUNT_SMALL_HOOPS : LOCS_AMOUNT_SMALL_SOCCAR;
+		_boostPads.reserve(LOCS_AMOUNT_BIG + amountSmall);
+
+		for (int i = 0; i < (LOCS_AMOUNT_BIG + amountSmall); i++) {
 			bool isBig = i < LOCS_AMOUNT_BIG;
 
-			btVector3 pos = isBig ? LOCS_BIG[i] : LOCS_SMALL[i - LOCS_AMOUNT_BIG];
+			btVector3 pos;
+			if (isHoops) {
+				pos = isBig ? LOCS_BIG_HOOPS[i] : LOCS_SMALL_HOOPS[i - LOCS_AMOUNT_BIG];
+			} else {
+				pos = isBig ? LOCS_BIG_SOCCAR[i] : LOCS_SMALL_SOCCAR[i - LOCS_AMOUNT_BIG];
+			}
 
 			BoostPad* pad = BoostPad::_AllocBoostPad();
 			pad->_Setup(isBig, pos);
@@ -594,7 +605,6 @@ Arena* Arena::Clone(bool copyCallbacks) {
 		newCar->_velocityImpulseCache = car->_velocityImpulseCache;
 	}
 
-	
 	assert(this->_boostPads.size() == newArena->_boostPads.size());
 	for (int i = 0; i < this->_boostPads.size(); i++)
 		newArena->_boostPads[i]->SetState(this->_boostPads[i]->GetState());
@@ -631,7 +641,8 @@ void Arena::Step(int ticksToSimulate) {
 			}
 		}
 
-		if (gameMode == GameMode::SOCCAR) {
+		bool hasArenaStuff = (gameMode != GameMode::THE_VOID);
+		if (hasArenaStuff) {
 #ifndef RS_NO_SUSPCOLGRID
 			{ // Add dynamic bodies to suspension grid
 				for (Car* car : _cars) {
@@ -652,7 +663,7 @@ void Arena::Step(int ticksToSimulate) {
 #ifdef RS_NO_SUSPCOLGRID
 			suspColGridPtr = NULL;
 #else
-			if (gameMode == GameMode::SOCCAR) {
+			if (hasArenaStuff) {
 				suspColGridPtr = &_suspColGrid;
 			} else {
 				suspColGridPtr = NULL;
@@ -661,7 +672,7 @@ void Arena::Step(int ticksToSimulate) {
 			car->_PreTickUpdate(tickTime, _mutatorConfig, suspColGridPtr);
 		}
 
-		if (gameMode == GameMode::SOCCAR) {
+		if (hasArenaStuff) {
 #ifndef RS_NO_SUSPCOLGRID
 			{ // Remove dynamic bodies from suspension grid
 				for (Car* car : _cars) {
@@ -677,7 +688,7 @@ void Arena::Step(int ticksToSimulate) {
 #endif
 		}
 
-		if (gameMode == GameMode::SOCCAR) {
+		if (hasArenaStuff) {
 			for (BoostPad* pad : _boostPads)
 				pad->_PreTickUpdate(tickTime);
 		}
@@ -688,25 +699,29 @@ void Arena::Step(int ticksToSimulate) {
 		for (Car* car : _cars) {
 			car->_PostTickUpdate(tickTime, _mutatorConfig);
 			car->_FinishPhysicsTick(_mutatorConfig);
-			if (gameMode == GameMode::SOCCAR) {
+			if (hasArenaStuff)
 				_boostPadGrid.CheckCollision(car);
-			}
 		}
 
-		if (gameMode == GameMode::SOCCAR) {
+		if (hasArenaStuff)
 			for (BoostPad* pad : _boostPads)
 				pad->_PostTickUpdate(tickTime, _mutatorConfig);
-		}
 
 		ball->_FinishPhysicsTick(_mutatorConfig);
 
-		if (gameMode == GameMode::SOCCAR) {
+		if (hasArenaStuff) {
 			if (_goalScoreCallback.func != NULL) { // Potentially fire goal score callback
-				float ballPosY = ball->_rigidBody.m_worldTransform.m_origin.y() * BT_TO_UU;
-				if (abs(ballPosY) > RLConst::SOCCAR_BALL_SCORE_THRESHOLD_Y) {
-					// Orange goal is at positive Y, so if the ball's Y is positive, it's in orange goal and thus blue scored
-					Team scoringTeam = (ballPosY > 0) ? Team::BLUE : Team::ORANGE;
-					_goalScoreCallback.func(this, scoringTeam, _goalScoreCallback.userInfo);
+
+				if (gameMode == GameMode::SOCCAR) {
+					float ballPosY = ball->_rigidBody.m_worldTransform.m_origin.y() * BT_TO_UU;
+					if (abs(ballPosY) > (RLConst::SOCCAR_GOAL_SCORE_BASE_THRESHOLD_Y + _mutatorConfig.ballRadius)) {
+						// Orange goal is at positive Y, so if the ball's Y is positive, it's in orange goal and thus blue scored
+						Team scoringTeam = (ballPosY > 0) ? Team::BLUE : Team::ORANGE;
+						_goalScoreCallback.func(this, scoringTeam, _goalScoreCallback.userInfo);
+					}
+				} else if (gameMode == GameMode::HOOPS) {
+					// TODO: Add support for hoops
+					// Scoring threshold Z is 270 (ball radius not subtracted)
 				}
 			}
 		}
@@ -753,6 +768,8 @@ bool Arena::IsBallProbablyGoingIn(float maxTime) const {
 		// Ok it's probably gonna score, or at least be very close
 		return true;
 	} else {
+		// TODO: Support for hoops
+		RS_ERR_CLOSE("Arena::IsBallProbablyGoingIn() not supported in non-soccar gamemode");
 		return false;
 	}
 }
@@ -796,16 +813,21 @@ Arena::~Arena() {
 }
 
 void Arena::_SetupArenaCollisionShapes() {
-	// TODO: This is just for soccar arena (for now)
-	assert(gameMode == GameMode::SOCCAR);
+	assert(gameMode != GameMode::THE_VOID);
+	bool isHoops = gameMode == GameMode::HOOPS;
 
-	auto collisionMeshes = RocketSim::GetArenaCollisionShapes();
+	auto collisionMeshes = RocketSim::GetArenaCollisionShapes(gameMode);
+
+	if (collisionMeshes.empty()) {
+		RS_ERR_CLOSE("Failed to setup arena collision meshes, no meshes found for game mode")
+	}
+
 	_worldCollisionBvhShapes = new btBvhTriangleMeshShape[collisionMeshes.size()];
 
-	constexpr size_t PLANE_COUNT = 4;
-	_worldCollisionPlaneShapes = new btStaticPlaneShape[PLANE_COUNT];
+	size_t planeAmount = isHoops ? 6 : 4;
+	_worldCollisionPlaneShapes = new btStaticPlaneShape[planeAmount];
 
-	_worldCollisionRBAmount = collisionMeshes.size() + PLANE_COUNT;
+	_worldCollisionRBAmount = collisionMeshes.size() + planeAmount;
 	_worldCollisionRBs = new btRigidBody[_worldCollisionRBAmount];
 
 	for (size_t i = 0; i < collisionMeshes.size(); i++) {
@@ -818,6 +840,13 @@ void Arena::_SetupArenaCollisionShapes() {
 	{ // Add arena collision planes (floor/walls/ceiling)
 		using namespace RLConst;
 
+		float 
+			extentX = isHoops ? ARENA_EXTENT_X_HOOPS : ARENA_EXTENT_X,
+			extentY = isHoops ? ARENA_EXTENT_Y_HOOPS : ARENA_EXTENT_Y,
+			height  = isHoops ? ARENA_HEIGHT_HOOPS : ARENA_HEIGHT;
+
+		// TODO: This is all very repetitive and silly
+
 		// Floor
 		auto floorShape = btStaticPlaneShape(btVector3(0, 0, 1), 0);
 		_AddStaticCollisionShape(
@@ -825,14 +854,14 @@ void Arena::_SetupArenaCollisionShapes() {
 			0,
 			&floorShape, _worldCollisionPlaneShapes
 		);
-
+		
 		// Ceiling
 		auto ceilingShape = btStaticPlaneShape(btVector3(0, 0, -1), 0);
 		_AddStaticCollisionShape(
 			collisionMeshes.size() + 1,
 			1,
 			&ceilingShape, _worldCollisionPlaneShapes,
-			Vec( 0, 0, ARENA_HEIGHT ) * UU_TO_BT
+			Vec(0, 0, height) * UU_TO_BT
 		);
 
 		// Side walls
@@ -841,14 +870,32 @@ void Arena::_SetupArenaCollisionShapes() {
 			collisionMeshes.size() + 2,
 			2,
 			&leftWallShape, _worldCollisionPlaneShapes,
-			Vec( -ARENA_EXTENT_X, 0, ARENA_HEIGHT / 2 ) * UU_TO_BT
+			Vec(-extentX, 0, height / 2) * UU_TO_BT
 		);
 		auto rightWallShape = btStaticPlaneShape(btVector3(-1, 0, 0), 0);
 		_AddStaticCollisionShape(
 			collisionMeshes.size() + 3,
 			3,
 			&rightWallShape, _worldCollisionPlaneShapes,
-			Vec(ARENA_EXTENT_X, 0, ARENA_HEIGHT / 2) * UU_TO_BT
+			Vec(extentX, 0, height / 2) * UU_TO_BT
 		);
+
+		if (isHoops) {
+			// Y walls
+			auto blueWallShape = btStaticPlaneShape(btVector3(0, 1, 0), 0);
+			_AddStaticCollisionShape(
+				collisionMeshes.size() + 4,
+				4,
+				&blueWallShape, _worldCollisionPlaneShapes,
+				Vec(0, -extentY, height / 2) * UU_TO_BT
+			);
+			auto orangeWallShape = btStaticPlaneShape(btVector3(0, -1, 0), 0);
+			_AddStaticCollisionShape(
+				collisionMeshes.size() + 5,
+				5,
+				&orangeWallShape, _worldCollisionPlaneShapes,
+				Vec(0, extentY, height / 2) * UU_TO_BT
+			);
+		}
 	}
 }
