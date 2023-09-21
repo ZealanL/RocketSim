@@ -57,8 +57,8 @@ std::vector<btBvhTriangleMeshShape*>& RocketSim::GetArenaCollisionShapes(GameMod
 
 #ifndef RS_NO_SUSPCOLGRID
 static SuspensionCollisionGrid
-	suspColGrids_soccar[] = { true, false },
-	suspColGrids_hoops[] = { true, false };
+	suspColGrids_soccar[] = { {GameMode::SOCCAR, true}, {GameMode::SOCCAR, false} },
+	suspColGrids_hoops[] = { {GameMode::HOOPS, true}, {GameMode::HOOPS, false} };
 SuspensionCollisionGrid& RocketSim::GetDefaultSuspColGrid(GameMode gameMode, bool isLight) {
 	if (gameMode == GameMode::HOOPS) {
 		return suspColGrids_hoops[isLight];

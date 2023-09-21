@@ -4,12 +4,13 @@
 class btBvhTriangleMeshShape;
 
 struct SuspensionCollisionGrid {
+	GameMode gameMode;
+	bool lightMem;
+
 	constexpr static float
 		EXTENT_X = RLConst::ARENA_EXTENT_X,
 		EXTENT_Y = RLConst::ARENA_EXTENT_Y * 1.5f, // Extends into goal
 		HEIGHT = RLConst::ARENA_HEIGHT;
-
-	bool lightMem;
 
 	constexpr static int
 		CELL_AMOUNT_X[2] = { 128, 32 },
@@ -30,7 +31,17 @@ struct SuspensionCollisionGrid {
 		int dynamicObjects = 0;
 	};
 
-	SuspensionCollisionGrid(bool lightMem = false) : lightMem(lightMem) {}
+	struct {
+		float extentX_bt, extentY_bt, height_bt;
+	} cache;
+
+	SuspensionCollisionGrid(GameMode gameMode, bool lightMem = false) : gameMode(gameMode), lightMem(lightMem) {
+		using namespace RLConst;
+		bool isHoops = gameMode == GameMode::HOOPS;
+		cache.extentX_bt = (isHoops ? RLConst::ARENA_EXTENT_X_HOOPS : RLConst::ARENA_EXTENT_X) * UU_TO_BT;
+		cache.extentY_bt = (isHoops ? RLConst::ARENA_EXTENT_Y_HOOPS : RLConst::ARENA_EXTENT_Y) * UU_TO_BT;
+		cache.height_bt = (isHoops ? RLConst::ARENA_HEIGHT : RLConst::ARENA_HEIGHT) * UU_TO_BT;
+	}
 
 	std::vector<Cell> cellData;
 

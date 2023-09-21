@@ -71,7 +71,7 @@ void _SetupWorldCollision(SuspensionCollisionGrid& grid, const std::vector<btBvh
 		}
 	}
 
-	SuspensionCollisionGrid clone = SuspensionCollisionGrid(grid.lightMem);
+	SuspensionCollisionGrid clone = SuspensionCollisionGrid(grid.gameMode, grid.lightMem);
 	clone.Allocate();
 
 	// Make cell.worldCollision bleed to all surrounding cells
@@ -136,19 +136,24 @@ btCollisionObject* _CastSuspensionRay(SuspensionCollisionGrid& grid, btVehicleRa
 
 		float distToPlane = FLT_MAX;
 		Vec planeNormal;
-		if (end.z <= 0 || end.z >= RLConst::ARENA_HEIGHT * UU_TO_BT) {
+		if (end.z <= 0 || end.z >= grid.cache.height_bt) {
 			if (dir.z < 0) {
 				static float groundHitZ = 5.96e-8;
 				distToPlane = (groundHitZ - start.z) / dir.z;
 				planeNormal = Vec(0, 0, 1);
 			} else {
-				distToPlane = (RLConst::ARENA_HEIGHT * UU_TO_BT - start.z) / dir.z; // NOTE: Could theoretically be NAN
+				distToPlane = (grid.cache.height_bt - start.z) / dir.z; // NOTE: Could theoretically be NAN
 				planeNormal = Vec(0, 0, -1);
 			}
 		} else {
 			if (RS_SGN(dir.x) == RS_SGN(start.x)) {
-				distToPlane = abs(abs(start.x) - RLConst::ARENA_EXTENT_X * UU_TO_BT) / abs(dir.x);
+				distToPlane = abs(abs(start.x) - grid.cache.extentX_bt) / abs(dir.x);
 				planeNormal = Vec(-RS_SGN(end.x), 0, 0);
+			}
+
+			if (grid.gameMode == GameMode::HOOPS && RS_SGN(dir.y) == RS_SGN(start.y)) {
+				distToPlane = abs(abs(start.y) - grid.cache.extentY_bt) / abs(dir.y);
+				planeNormal = Vec(0, -RS_SGN(end.y), 0);
 			}
 		}
 
