@@ -1,5 +1,12 @@
 #include "MutatorConfig.h"
 
+MutatorConfig::MutatorConfig(GameMode gameMode) {
+	using namespace RLConst;
+	bool isHoops = gameMode == GameMode::HOOPS;
+
+	ballRadius = isHoops ? BALL_COLLISION_RADIUS_HOOPS : BALL_COLLISION_RADIUS_SOCCAR;
+}
+
 void MutatorConfig::Serialize(DataStreamOut& out) const {
 	out.Write<uint16_t>(RS_GET_ARGUMENT_COUNT(MUTATOR_CONFIG_SERIALIZATION_FIELDS));
 	out.WriteMultiple(MUTATOR_CONFIG_SERIALIZATION_FIELDS);

@@ -376,7 +376,7 @@ void Arena::_BtCallback_OnCarWorldCollision(Car* car, btCollisionObject* world, 
 	manifoldPoint.m_combinedRestitution = _mutatorConfig.carWorldRestitution;
 }
 
-Arena::Arena(GameMode gameMode, ArenaMemWeightMode memWeightMode, float tickRate) {
+Arena::Arena(GameMode gameMode, ArenaMemWeightMode memWeightMode, float tickRate) : _mutatorConfig(gameMode) {
 
 	// Tickrate must be from 15 to 120tps
 	assert(tickRate >= 15 && tickRate <= 120);
@@ -385,7 +385,6 @@ Arena::Arena(GameMode gameMode, ArenaMemWeightMode memWeightMode, float tickRate
 
 	this->gameMode = gameMode;
 	this->tickTime = 1 / tickRate;
-	this->_mutatorConfig = MutatorConfig();
 
 	{ // Initialize world
 

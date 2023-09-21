@@ -17,21 +17,6 @@
 #include "../../../libsrc/bullet3-3.24/BulletDynamics/Dynamics/btDiscreteDynamicsWorld.h"
 #include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionDispatch/btDefaultCollisionConfiguration.h"
 
-enum class GameMode : byte {
-	SOCCAR,
-	HOOPS,
-
-	// More coming soon!
-
-	// No goals, boosts, or arena - cars/ball will fall infinitely, ball is frozen until touched
-	THE_VOID, 
-};
-
-constexpr const char* GAMEMODE_STRS[] = {
-	"soccar",
-	"hoops"
-};
-
 // Mode of speed/memory optimization for the arena
 // Will affect whether high memory consumption is used to slightly increase speed or not
 enum class ArenaMemWeightMode : byte {

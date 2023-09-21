@@ -1,5 +1,6 @@
 #pragma once
 #include "../../RLConst.h"
+#include "../GameMode.h"
 
 #include "../../DataStream/DataStreamIn.h"
 #include "../../DataStream/DataStreamOut.h"
@@ -52,7 +53,7 @@ struct MutatorConfig {
 		bumpForceScale = 1;
 
 	float
-		ballRadius = RLConst::BALL_COLLISION_RADIUS_NORMAL;
+		ballRadius;
 
 	bool 
 		unlimitedFlips = false,
@@ -63,7 +64,7 @@ struct MutatorConfig {
 
 	bool enablePhysicsRounding = true;
 
-	MutatorConfig() = default;
+	MutatorConfig(GameMode gameMode);
 
 	RSAPI void Serialize(DataStreamOut& out) const;
 	RSAPI void Deserialize(DataStreamIn& in);
