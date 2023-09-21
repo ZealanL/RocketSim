@@ -109,6 +109,7 @@ void Arena::SetCarBumpCallback(CarBumpEventFn callbackFunc, void* userInfo) {
 
 void Arena::ResetToRandomKickoff(int seed) {
 	using namespace RLConst;
+	bool isHoops = gameMode == GameMode::HOOPS;
 
 	// TODO: Make shuffling of kickoff setup more efficient (?)
 
@@ -125,6 +126,9 @@ void Arena::ResetToRandomKickoff(int seed) {
 		std::default_random_engine randEngine = std::default_random_engine(seed);
 		std::shuffle(kickoffOrder.begin(), kickoffOrder.end(), randEngine);
 	}
+
+	const CarSpawnPos* CAR_SPAWN_LOCATIONS = isHoops ? CAR_SPAWN_LOCATIONS_HOOPS : CAR_SPAWN_LOCATIONS_SOCCAR;
+	const CarSpawnPos* CAR_RESPAWN_LOCATIONS = isHoops ? CAR_RESPAWN_LOCATIONS_HOOPS : CAR_RESPAWN_LOCATIONS_SOCCAR;
 
 	std::vector<Car*> blueCars, orangeCars;
 	for (Car* car : _cars)

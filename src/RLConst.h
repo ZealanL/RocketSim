@@ -233,7 +233,7 @@ namespace RLConst {
 			{-2176,		-2944, 72 },
 			{-2432,			0, 72 },
 			{ 2432,			0, 72 },
-			{ 2175.99,	 2944, 72 },
+			{ 2175.99,	 2944, 72 }
 		};
 	}
 
@@ -249,22 +249,39 @@ namespace RLConst {
 	// https://github.com/RLBot/RLBot/wiki/Useful-Game-Values
 	// For blue team, flip for orange
 	const static CarSpawnPos 
-		CAR_SPAWN_LOCATIONS[CAR_SPAWN_LOCATION_AMOUNT] = {
+		CAR_SPAWN_LOCATIONS_SOCCAR[CAR_SPAWN_LOCATION_AMOUNT] = {
 			{ -2048, -2560, M_PI_4 * 1 },
 			{  2048, -2560, M_PI_4 * 3 },
 			{  -256, -3840, M_PI_4 * 2 },
 			{   256, -3840, M_PI_4 * 2 },
-			{     0, -4608, M_PI_4 * 2 },
+			{     0, -4608, M_PI_4 * 2 }
+	};
+
+	const static CarSpawnPos
+		CAR_SPAWN_LOCATIONS_HOOPS[CAR_SPAWN_LOCATION_AMOUNT] = {
+			{ -1536, -3072, M_PI_4 * 2 },
+			{  1536, -3072, M_PI_4 * 2 },
+			{  -256, -2816, M_PI_4 * 2 },
+			{   256, -2816, M_PI_4 * 2 },
+			{     0, -3200, M_PI_4 * 2 }
 	};
 
 	// https://github.com/RLBot/RLBot/wiki/Useful-Game-Values
 	// For blue team, flip for orange
 	const static CarSpawnPos // For blue team, flip for orange
-		CAR_RESPAWN_LOCATIONS[CAR_RESPAWN_LOCATION_AMOUNT] = {
+		CAR_RESPAWN_LOCATIONS_SOCCAR[CAR_RESPAWN_LOCATION_AMOUNT] = {
 		{ -2304, -4608, M_PI / 2 },
 		{ -2688, -4608, M_PI / 2 },
 		{  2304, -4608, M_PI / 2 },
-		{  2688, -4608, M_PI / 2 },
+		{  2688, -4608, M_PI / 2 }
+	};
+
+	const static CarSpawnPos
+		CAR_RESPAWN_LOCATIONS_HOOPS[CAR_RESPAWN_LOCATION_AMOUNT] = {
+		{ -1920, -3072, M_PI / 2 },
+		{ -1152, -3072, M_PI / 2 },
+		{  1920, -3072, M_PI / 2 },
+		{  1152, -3072, M_PI / 2 }
 	};
 
 	// Input: Forward car speed
