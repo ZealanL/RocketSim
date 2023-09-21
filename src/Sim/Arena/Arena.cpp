@@ -52,8 +52,11 @@ Car* Arena::AddCar(Team team, const CarConfig& config) {
 	
 	_AddCarFromPtr(car);
 
-	car->_BulletSetup(&_bulletWorld, _mutatorConfig);
-	car->Respawn(-1, _mutatorConfig.carSpawnBoostAmount);
+	car->_BulletSetup(gameMode, &_bulletWorld, _mutatorConfig);
+	car->Respawn(gameMode, -1, _mutatorConfig.carSpawnBoostAmount);
+
+	if (gameMode == GameMode::HOOPS)
+		car->_rigidBody.m_doubleIgnoreCollide = true;
 
 	return car;
 }
@@ -625,7 +628,7 @@ Car* Arena::DeserializeNewCar(DataStreamIn& in, Team team) {
 
 	_AddCarFromPtr(car);
 
-	car->_BulletSetup(&_bulletWorld, _mutatorConfig);
+	car->_BulletSetup(gameMode, &_bulletWorld, _mutatorConfig);
 	car->SetState(car->_internalState);
 
 	return car;
@@ -672,7 +675,7 @@ void Arena::Step(int ticksToSimulate) {
 				suspColGridPtr = NULL;
 			}
 #endif
-			car->_PreTickUpdate(tickTime, _mutatorConfig, suspColGridPtr);
+			car->_PreTickUpdate(gameMode, tickTime, _mutatorConfig, suspColGridPtr);
 		}
 
 		if (hasArenaStuff) {
@@ -700,7 +703,7 @@ void Arena::Step(int ticksToSimulate) {
 		_bulletWorld.stepSimulation(tickTime, 0, tickTime);
 
 		for (Car* car : _cars) {
-			car->_PostTickUpdate(tickTime, _mutatorConfig);
+			car->_PostTickUpdate(gameMode, tickTime, _mutatorConfig);
 			car->_FinishPhysicsTick(_mutatorConfig);
 			if (hasArenaStuff)
 				_boostPadGrid.CheckCollision(car);
@@ -848,7 +851,24 @@ void Arena::_SetupArenaCollisionShapes() {
 	_worldCollisionRBs = new btRigidBody[_worldCollisionRBAmount];
 
 	for (size_t i = 0; i < collisionMeshes.size(); i++) {
-		_AddStaticCollisionShape(i, i, collisionMeshes[i], _worldCollisionBvhShapes);
+		auto mesh = collisionMeshes[i];
+
+		bool isHoopsNet = false;
+
+		if (isHoops) { // Detect net mesh and disable car collision
+			const unsigned char* vertexBase;
+			int numVerts, stride;
+			const unsigned char* indexBase;
+			int indexStride, numFaces;
+			mesh->getMeshInterface()->getLockedReadOnlyVertexIndexBase(&vertexBase, numVerts, stride, &indexBase, indexStride, numFaces);
+			
+			constexpr int HOOPS_NET_NUM_VERTS = 505;
+			if (numVerts == HOOPS_NET_NUM_VERTS) {
+				isHoopsNet = true;
+			}
+		}
+
+		_AddStaticCollisionShape(i, i, mesh, _worldCollisionBvhShapes, btVector3(0,0,0), isHoopsNet, isHoopsNet);
 
 		// Don't free the BVH when we deconstruct this arena
 		_worldCollisionBvhShapes[i].m_ownsBvh = false;

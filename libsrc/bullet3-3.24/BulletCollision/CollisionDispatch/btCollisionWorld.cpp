@@ -1204,3 +1204,11 @@ void btCollisionWorld::contactPairTest(btCollisionObject* colObjA, btCollisionOb
 		getDispatcher()->freeCollisionAlgorithm(algorithm);
 	}
 }
+
+bool btCollisionWorld::RayResultCallback::needsCollision(btBroadphaseProxy* proxy0) const {
+	// ROCKETSIM CHANGE: Add check for ray ignore
+	bool collides = (proxy0->m_collisionFilterGroup & m_collisionFilterMask) != 0
+		&& (m_collisionFilterGroup & proxy0->m_collisionFilterMask)
+		&& !((btCollisionObject*)proxy0->m_clientObject)->m_noRayCollisions; // TODO: Is this safe?
+	return collides;
+}

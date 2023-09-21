@@ -38,13 +38,13 @@ void Car::Demolish(float respawnDelay) {
 	_internalState.demoRespawnTimer = respawnDelay;
 }
 
-void Car::Respawn(int seed, float boostAmount) {
+void Car::Respawn(GameMode gameMode, int seed, float boostAmount) {
 	using namespace RLConst;
 
 	CarState newState = CarState();
 
 	int spawnPosIndex = Math::RandInt(0, CAR_RESPAWN_LOCATION_AMOUNT, seed);
-	CarSpawnPos spawnPos = CAR_RESPAWN_LOCATIONS[spawnPosIndex];
+	CarSpawnPos spawnPos = ((gameMode == GameMode::HOOPS) ? CAR_RESPAWN_LOCATIONS_HOOPS : CAR_RESPAWN_LOCATIONS_SOCCAR)[spawnPosIndex];
 
 	newState.pos = Vec(spawnPos.x, spawnPos.y * (team == Team::BLUE ? 1 : -1), CAR_RESPAWN_Z);
 	newState.rotMat = Angle(spawnPos.yawAng + (team == Team::BLUE ? 0 : M_PI), 0.f, 0.f).ToRotMat();
@@ -53,7 +53,7 @@ void Car::Respawn(int seed, float boostAmount) {
 	this->SetState(newState);
 }
 
-void Car::_PreTickUpdate(float tickTime, const MutatorConfig& mutatorConfig, SuspensionCollisionGrid* grid) {
+void Car::_PreTickUpdate(GameMode gameMode, float tickTime, const MutatorConfig& mutatorConfig, SuspensionCollisionGrid* grid) {
 	using namespace RLConst;
 
 #ifndef RS_MAX_SPEED
@@ -67,7 +67,7 @@ void Car::_PreTickUpdate(float tickTime, const MutatorConfig& mutatorConfig, Sus
 		if (_internalState.isDemoed) {
 			_internalState.demoRespawnTimer = RS_MAX(_internalState.demoRespawnTimer - tickTime, 0);
 			if (_internalState.demoRespawnTimer == 0)
-				Respawn(-1, mutatorConfig.carSpawnBoostAmount);
+				Respawn(gameMode, -1, mutatorConfig.carSpawnBoostAmount);
 		}
 
 		if (_internalState.isDemoed) {
@@ -124,7 +124,7 @@ void Car::_PreTickUpdate(float tickTime, const MutatorConfig& mutatorConfig, Sus
 	_UpdateBoost(tickTime, mutatorConfig, forwardSpeed_UU);
 }
 
-void Car::_PostTickUpdate(float tickTime, const MutatorConfig& mutatorConfig) {
+void Car::_PostTickUpdate(GameMode gameMode, float tickTime, const MutatorConfig& mutatorConfig) {
 
 	if (_internalState.isDemoed)
 		return;
@@ -203,7 +203,7 @@ void Car::_FinishPhysicsTick(const MutatorConfig& mutatorConfig) {
 	}
 }
 
-void Car::_BulletSetup(btDynamicsWorld* bulletWorld, const MutatorConfig& mutatorConfig) {
+void Car::_BulletSetup(GameMode gameMode, btDynamicsWorld* bulletWorld, const MutatorConfig& mutatorConfig) {
 	// Set up rigidbody and collision shapes
 	_childHitboxShape = btBoxShape((config.hitboxSize * UU_TO_BT) / 2);
 	_compoundShape = btCompoundShape(false, 1);
@@ -234,6 +234,9 @@ void Car::_BulletSetup(btDynamicsWorld* bulletWorld, const MutatorConfig& mutato
 
 	// Disable gyroscopic force
 	_rigidBody.m_rigidbodyFlags = 0;
+
+	if (gameMode == GameMode::HOOPS)
+		_rigidBody.m_doubleIgnoreCollide = true;
 
 	// Add rigidbody to world
 	bulletWorld->addRigidBody(&_rigidBody);

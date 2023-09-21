@@ -183,6 +183,8 @@ bool btCollisionDispatcher::needsCollision(const btCollisionObject* body0, const
 		needsCollision = false;
 	else if ((!body0->checkCollideWith(body1)) || (!body1->checkCollideWith(body0)))
 		needsCollision = false;
+	else if (body0->m_doubleIgnoreCollide && body1->m_doubleIgnoreCollide) // ROCKETSIM CHANGE: Disable collision between two objects with m_doubleIgnoreCollide
+		needsCollision = false;
 
 	return needsCollision;
 }

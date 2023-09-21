@@ -23,9 +23,10 @@ RocketSimStage RocketSim::GetStage() {
 	return stage;
 }
 
-static std::vector<btBvhTriangleMeshShape*> arenaCollisionMeshes;
-static std::vector<btBvhTriangleMeshShape*> arenaCollisionMeshes_hoops;
-const std::vector<btBvhTriangleMeshShape*>& RocketSim::GetArenaCollisionShapes(GameMode gameMode) {
+std::vector<btBvhTriangleMeshShape*>& RocketSim::GetArenaCollisionShapes(GameMode gameMode) {
+	static std::vector<btBvhTriangleMeshShape*> arenaCollisionMeshes;
+	static std::vector<btBvhTriangleMeshShape*> arenaCollisionMeshes_hoops;
+
 	return (gameMode == GameMode::HOOPS ? arenaCollisionMeshes_hoops : arenaCollisionMeshes);
 }
 
@@ -60,9 +61,10 @@ void RocketSim::Init(std::filesystem::path collisionMeshesFolder) {
 
 		uint64_t startMS = RS_CUR_MS();
 
-		for (int i = 0; i < 2; i++) { // Load collision meshes
-
+		for (int i = 0; i < 2; i++) { // Load collision meshes for soccar and hoops
 			GameMode gameMode = (i > 0) ? GameMode::HOOPS : GameMode::SOCCAR;
+			auto& meshes = GetArenaCollisionShapes(gameMode);
+
 			std::filesystem::path basePath = collisionMeshesFolder;
 			std::filesystem::path soccarMeshesFolder = basePath / GAMEMODE_STRS[(int)gameMode];
 
@@ -79,10 +81,6 @@ void RocketSim::Init(std::filesystem::path collisionMeshesFolder) {
 			std::unordered_set<uint32_t> targetHashes;
 			for (uint32_t targetHash : SOCCAR_ARENA_MESH_HASHES)
 				targetHashes.insert(targetHash);
-
-#ifdef RS_MERGE_ARENA_MESHES
-			btTriangleMesh* masterTriMesh = new btTriangleMesh();
-#endif
 
 			// Load collision meshes
 			auto dirItr = std::filesystem::directory_iterator(soccarMeshesFolder);
@@ -106,50 +104,27 @@ void RocketSim::Init(std::filesystem::path collisionMeshesFolder) {
 					hashCount++;
 
 					btTriangleMesh* triMesh = meshFile.MakeBulletMesh();
-					
-#ifdef RS_MERGE_ARENA_MESHES
-					for (int i = 0; i < triMesh->m_32bitIndices.size(); i += 3) {
-						btVector3 vertices[3];
-						for (int j = 0; j < 3; j++) {
-							vertices[j] = triMesh->m_4componentVertices[triMesh->m_32bitIndices[i + j]];
-						}
 
-						masterTriMesh->addTriangle(vertices[0], vertices[1], vertices[2]);
-					}
-#else
 					auto bvtMesh = new btBvhTriangleMeshShape(triMesh, false);
 					btTriangleInfoMap* infoMap = new btTriangleInfoMap();
 					btGenerateInternalEdgeInfo(bvtMesh, infoMap);
 					bvtMesh->setTriangleInfoMap(infoMap);
-					
-					(gameMode == GameMode::HOOPS ? arenaCollisionMeshes_hoops : arenaCollisionMeshes).push_back(bvtMesh);
-#endif
+					meshes.push_back(bvtMesh);
 
-#ifdef RS_MERGE_ARENA_MESHES
-					delete triMesh;
-#endif
+					RS_LOG("Triangle info map: " << triMesh);
 				}
 			}
-
-#ifdef RS_MERGE_ARENA_MESHES
-			btBvhTriangleMeshShape* bvhShape = new btBvhTriangleMeshShape(masterTriMesh, false);
-			btTriangleInfoMap* infoMap = new btTriangleInfoMap();
-			btGenerateInternalEdgeInfo(bvhShape, infoMap);
-			bvhShape->setTriangleInfoMap(infoMap);
-			arenaCollisionMeshes.push_back(bvhShape);
-#endif
-
-			RS_LOG(MSG_PREFIX << "Finished loading arena collision meshes:");
-			RS_LOG(" > Soccar: " << arenaCollisionMeshes.size());
-			RS_LOG(" > Hoops: " << arenaCollisionMeshes_hoops.size());
 		}
+
+		RS_LOG(MSG_PREFIX << "Finished loading arena collision meshes:");
+		RS_LOG(" > Soccar: " << GetArenaCollisionShapes(GameMode::SOCCAR).size());
+		RS_LOG(" > Hoops: " << GetArenaCollisionShapes(GameMode::HOOPS).size());
 
 #ifndef RS_NO_SUSPCOLGRID
 		{ // Set up suspension collision grid
 			for (int i = 0; i < 2; i++) {
 				GameMode gameMode = i > 0 ? GameMode::HOOPS : GameMode::SOCCAR;
-
-				auto& meshes = (gameMode == GameMode::HOOPS) ? arenaCollisionMeshes_hoops : arenaCollisionMeshes;
+				auto& meshes = GetArenaCollisionShapes(gameMode);
 
 				if (!meshes.empty()) {
 					RS_LOG("Building collision suspension grids from " << GAMEMODE_STRS[(int)gameMode] << " arena meshes...");
@@ -160,7 +135,7 @@ void RocketSim::Init(std::filesystem::path collisionMeshesFolder) {
 						grid.SetupWorldCollision(meshes);
 					}
 				}
-			}	
+			}
 		}
 #endif
 

@@ -146,16 +146,20 @@ public:
 
 	// NOTE: Passed shape pointer will be freed when arena is deconstructed
 	template <class T>
-	void _AddStaticCollisionShape(size_t rbIndex, size_t meshListIndex, T* shape, T* meshList, btVector3 posBT = btVector3(0, 0, 0)) {
-		static_assert(std::is_base_of<btCollisionShape, T>::value);
+	void _AddStaticCollisionShape(
+		size_t rbIndex, size_t meshListIndex, T* shape, T* meshList, btVector3 posBT = btVector3(0, 0, 0), 
+		bool doubleIgnoreCollide = false, bool noRayCollisions = false) {
 
+		static_assert(std::is_base_of<btCollisionShape, T>::value);
 		meshList[meshListIndex] = *shape;
-	
+
 		assert(rbIndex < _worldCollisionRBAmount);
 		btRigidBody& shapeRB = _worldCollisionRBs[rbIndex];
 		shapeRB = btRigidBody(0, NULL, &meshList[meshListIndex]);
 		shapeRB.setWorldTransform(btTransform(btMatrix3x3::getIdentity(), posBT));
 		shapeRB.setUserPointer(this);
+		shapeRB.m_doubleIgnoreCollide = doubleIgnoreCollide;
+		shapeRB.m_noRayCollisions = noRayCollisions;
 		_bulletWorld.addRigidBody(&shapeRB);
 	}
 

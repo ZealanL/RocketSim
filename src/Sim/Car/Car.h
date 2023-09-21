@@ -112,7 +112,7 @@ public:
 	void Demolish(float respawnDelay = RLConst::DEMO_RESPAWN_TIME);
 
 	// Respawn the car, called after we have been demolished and waited for the respawn timer
-	void Respawn(int seed = -1, float boostAmount = RLConst::BOOST_SPAWN_AMOUNT);
+	void Respawn(GameMode gameMode, int seed = -1, float boostAmount = RLConst::BOOST_SPAWN_AMOUNT);
 
 	btVehicleRL _bulletVehicle;
 	btDefaultVehicleRaycaster _bulletVehicleRaycaster;
@@ -139,13 +139,13 @@ public:
 		return _internalState.rotMat.up;
 	}
 
-	void _PreTickUpdate(float tickTime, const MutatorConfig& mutatorConfig, struct SuspensionCollisionGrid* grid);
-	void _PostTickUpdate(float tickTime, const MutatorConfig& mutatorConfig);
+	void _PreTickUpdate(GameMode gameMode, float tickTime, const MutatorConfig& mutatorConfig, struct SuspensionCollisionGrid* grid);
+	void _PostTickUpdate(GameMode gameMode, float tickTime, const MutatorConfig& mutatorConfig);
 
 	Vec _velocityImpulseCache = { 0,0,0 };
 	void _FinishPhysicsTick(const MutatorConfig& mutatorConfig);
 
-	void _BulletSetup(class btDynamicsWorld* bulletWorld, const MutatorConfig& mutatorConfig);
+	void _BulletSetup(GameMode gameMode, class btDynamicsWorld* bulletWorld, const MutatorConfig& mutatorConfig);
 	
 	// For construction by Arena
 	static Car* _AllocateCar() { return new Car(); }

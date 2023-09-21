@@ -104,6 +104,12 @@ public:
 
 	int m_userIndex3;
 
+	// ROCKETSIM CHANGE: Added flag disables collision with objects that also have m_doubleIgnoreCollide
+	bool m_doubleIgnoreCollide = false; 
+
+	// ROCKETSIM CHANGE: Added flag that disables raycast collisions with this object
+	bool m_noRayCollisions = false;
+
 	///time of impact calculation
 	btScalar m_hitFraction;
 
