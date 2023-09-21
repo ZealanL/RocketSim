@@ -719,8 +719,22 @@ void Arena::Step(int ticksToSimulate) {
 						_goalScoreCallback.func(this, scoringTeam, _goalScoreCallback.userInfo);
 					}
 				} else if (gameMode == GameMode::HOOPS) {
-					// TODO: Add support for hoops
-					// Scoring threshold Z is 270 (ball radius not subtracted)
+
+					if (ball->_rigidBody.m_worldTransform.m_origin.z() < RLConst::HOOPS_GOAL_SCORE_THRESHOLD_Z * UU_TO_BT) {
+						constexpr float
+							SCALE_Y = 0.9f,
+							OFFSET_Y = 2770.f,
+							RADIUS_SQ = 716 * 716;
+
+						Vec ballPos = ball->_rigidBody.m_worldTransform.m_origin * BT_TO_UU;
+						float dx = ballPos.x;
+						float dy = abs(ballPos.y) * SCALE_Y - OFFSET_Y;
+						float distSq = dx * dx + dy * dy;
+						if (distSq < RADIUS_SQ) {
+							Team scoringTeam = (ballPos.y > 0) ? Team::BLUE : Team::ORANGE;
+							_goalScoreCallback.func(this, scoringTeam, _goalScoreCallback.userInfo);
+						}
+					}
 				}
 			}
 		}
