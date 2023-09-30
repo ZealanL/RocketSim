@@ -267,7 +267,7 @@ struct Angle {
 	RSAPI RotMat ToRotMat() const;
 
 	RSAPI static Angle FromVec(const Vec& forward);
-	RSAPI Vec GetForwardVector() const;
+	RSAPI Vec GetForwardVec() const;
 
 	// Limits yaw/pitch/roll to [-pi,pi]/[-pi/2,pi/2]/[-pi,pi] while still representing the same rotation
 	RSAPI void NormalizeFix();
