@@ -28,6 +28,7 @@
 #include <bit>
 #include <thread>
 #include <cstring>
+#include <array>
 
 #define _USE_MATH_DEFINES // for M_PI and similar
 #include <cmath>

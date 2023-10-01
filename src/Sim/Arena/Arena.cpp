@@ -116,23 +116,23 @@ void Arena::ResetToRandomKickoff(int seed) {
 
 	// TODO: Make shuffling of kickoff setup more efficient (?)
 
-	static thread_local std::vector<int> kickoffOrder;
-	if (kickoffOrder.empty()) {
+	static thread_local std::array<int, CAR_SPAWN_LOCATION_AMOUNT> KICKOFF_ORDER_TEMPLATE = { -1 };
+	if (KICKOFF_ORDER_TEMPLATE[0] == -1) {
+		// Initialize
 		for (int i = 0; i < CAR_SPAWN_LOCATION_AMOUNT; i++)
-			kickoffOrder.push_back(i);
+			KICKOFF_ORDER_TEMPLATE[i] = i;
 	}
 
-	bool randBool;
+	auto kickoffOrder = KICKOFF_ORDER_TEMPLATE;
 
+	std::default_random_engine* randEngine;
 	if (seed == -1) {
-		std::default_random_engine& randEngine = Math::GetRandEngine();
-		std::shuffle(kickoffOrder.begin(), kickoffOrder.end(), randEngine);
-		randBool = randEngine() % 2;
+		randEngine = &Math::GetRandEngine();
 	} else {
-		std::default_random_engine randEngine = std::default_random_engine(seed);
-		std::shuffle(kickoffOrder.begin(), kickoffOrder.end(), randEngine);
-		randBool = randEngine() % 2;
+		randEngine = new std::default_random_engine(seed);
 	}
+
+	std::shuffle(kickoffOrder.begin(), kickoffOrder.end(), *randEngine);
 
 	const CarSpawnPos* CAR_SPAWN_LOCATIONS = isHoops ? CAR_SPAWN_LOCATIONS_HOOPS : CAR_SPAWN_LOCATIONS_SOCCAR;
 	const CarSpawnPos* CAR_RESPAWN_LOCATIONS = isHoops ? CAR_RESPAWN_LOCATIONS_HOOPS : CAR_RESPAWN_LOCATIONS_SOCCAR;
@@ -188,7 +188,8 @@ void Arena::ResetToRandomKickoff(int seed) {
 
 	BallState ballState = BallState();
 	if (gameMode == GameMode::HEATSEEKER) {
-		Vec scale = Vec(1, randBool ? 1 : -1, 1);
+		int nextRand = (*randEngine)();
+		Vec scale = Vec(1, (nextRand % 2) ? 1 : -1, 1);
 		ballState.pos = Heatseeker::BALL_START_POS * scale;
 		ballState.vel = Heatseeker::BALL_START_VEL * scale;
 	}
@@ -197,6 +198,11 @@ void Arena::ResetToRandomKickoff(int seed) {
 	if (gameMode == GameMode::SOCCAR) {
 		for (BoostPad* boostPad : _boostPads)
 			boostPad->SetState(BoostPadState());
+	}
+
+	if (seed != -1) {
+		// Custom random engine was created for this seed, so we need to free it
+		delete randEngine;
 	}
 }
 
