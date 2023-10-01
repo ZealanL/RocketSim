@@ -20,6 +20,17 @@ struct BallState {
 	// Angular velocity (axis-angle)
 	Vec angVel = { 0, 0, 0 };
 
+	struct HeatseekerInfo {
+		// Which net the ball should seek towards
+		// When 0, no net
+		float yTargetDir = 0;
+
+		float curTargetSpeed = RLConst::Heatseeker::INITIAL_TARGET_SPEED;
+		float timeSinceHit = 0;
+	};
+
+	HeatseekerInfo hsInfo;
+
 	bool Matches(const BallState& other, float marginPos = 0.8, float marginVel = 0.4, float marginAngVel = 0.02) const;
 
 	void Serialize(DataStreamOut& out);
@@ -27,7 +38,8 @@ struct BallState {
 };
 
 #define BALLSTATE_SERIALIZATION_FIELDS \
-pos, vel, angVel
+pos, vel, angVel, \
+hsInfo.yTargetDir, hsInfo.curTargetSpeed, hsInfo.timeSinceHit
 
 class Ball {
 public:
@@ -58,6 +70,10 @@ public:
 		return GetRadiusBullet() * BT_TO_UU;
 	}
 
+	void _PreTickUpdate(GameMode gameMode, float tickTime);
+	void _OnHit(GameMode gameMode, struct Car* car);
+	void _OnWorldCollision(GameMode gameMode, Vec normal);
+		
 	Ball(const Ball& other) = delete;
 	Ball& operator=(const Ball& other) = delete;
 

@@ -141,6 +141,28 @@ namespace RLConst {
 			MAX_SUSPENSION_TRAVEL = 12.f; // TODO: Are we sure this is the same for all cars?
 	}
 
+	namespace Heatseeker {
+		constexpr float
+			INITIAL_TARGET_SPEED = 2900, // TODO: Verify
+			TARGET_SPEED_INCREMENT = 85, // Increase of target speed each touch
+			MIN_SPEEDUP_INTERVAL = 1, // Minimum time between touches to speed up
+			TARGET_Y = 5120, // Y of target point in goal
+			TARGET_Z = 320, // Height of target point in goal
+			HORIZONTAL_BLEND = 1.45f, // Interpolation of horizontal (X+Y) turning
+			VERTICAL_BLEND = 0.78f, // Interpolation of vertical (Z) turning
+			SPEED_BLEND = 0.3f, // Interpolation of acceleration towards target speed
+			MAX_TURN_PITCH = 0.671f,
+			MAX_SPEED = 4600, // Different from BALL_MAX_SPEED
+			WALL_BOUNCE_CHANGE_NORMAL_Y = 0.75f; // Threshold of wall collision normal Y to change goal targets
+
+		// Flip for orange team
+		constexpr Vec
+			BALL_START_POS = Vec(-1000, -2220, 92.75f),
+			BALL_START_VEL = Vec(0, -65, 650);
+
+		// TODO: Heatseeker has special wall-bounce logic that I don't quite understand...
+	}
+
 	// NOTE: Angle order is PYR
 	constexpr Vec
 		CAR_AIR_CONTROL_TORQUE = Vec(130, 95, 400),

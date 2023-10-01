@@ -122,12 +122,16 @@ void Arena::ResetToRandomKickoff(int seed) {
 			kickoffOrder.push_back(i);
 	}
 
+	bool randBool;
+
 	if (seed == -1) {
 		std::default_random_engine& randEngine = Math::GetRandEngine();
 		std::shuffle(kickoffOrder.begin(), kickoffOrder.end(), randEngine);
+		randBool = randEngine() % 2;
 	} else {
 		std::default_random_engine randEngine = std::default_random_engine(seed);
 		std::shuffle(kickoffOrder.begin(), kickoffOrder.end(), randEngine);
+		randBool = randEngine() % 2;
 	}
 
 	const CarSpawnPos* CAR_SPAWN_LOCATIONS = isHoops ? CAR_SPAWN_LOCATIONS_HOOPS : CAR_SPAWN_LOCATIONS_SOCCAR;
@@ -182,7 +186,13 @@ void Arena::ResetToRandomKickoff(int seed) {
 		}
 	}
 
-	ball->SetState(BallState());
+	BallState ballState = BallState();
+	if (gameMode == GameMode::HEATSEEKER) {
+		Vec scale = Vec(1, randBool ? 1 : -1, 1);
+		ballState.pos = Heatseeker::BALL_START_POS * scale;
+		ballState.vel = Heatseeker::BALL_START_VEL * scale;
+	}
+	ball->SetState(ballState);
 
 	if (gameMode == GameMode::SOCCAR) {
 		for (BoostPad* boostPad : _boostPads)
@@ -234,6 +244,10 @@ bool Arena::_BulletContactAddedCallback(
 			arenaInst->
 				_BtCallback_OnCarWorldCollision(car, (btCollisionObject*)bodyB->getUserPointer(), contactPoint);
 		}
+	} else if (userIndexA == BT_USERINFO_TYPE_BALL && userIndexB == -1) {
+		// Ball + World
+		Arena* arenaInst = (Arena*)bodyB->getUserPointer();
+		arenaInst->ball->_OnWorldCollision(arenaInst->gameMode, contactPoint.m_normalWorldOnB);
 	}
 	
 	btAdjustInternalEdgeContacts(
@@ -289,6 +303,8 @@ void Arena::_BtCallback_OnCarBallCollision(Car* car, Ball* ball, btManifoldPoint
 		// Velocity won't be actually added until the end of this tick
 		ball->_velocityImpulseCache += addedVel * UU_TO_BT;
 	}
+
+	ball->_OnHit(gameMode, car);
 }
 
 void Arena::_BtCallback_OnCarCarCollision(Car* car1, Car* car2, btManifoldPoint& manifoldPoint) {
@@ -427,7 +443,7 @@ Arena::Arena(GameMode gameMode, ArenaMemWeightMode memWeightMode, float tickRate
 		solverInfo.m_erp2 = 0.8f;
 	}
 
-	bool loadArenaStuff = gameMode == GameMode::SOCCAR || gameMode == GameMode::HOOPS;
+	bool loadArenaStuff = gameMode != GameMode::THE_VOID;
 
 	if (loadArenaStuff) {
 		_SetupArenaCollisionShapes();
@@ -699,6 +715,9 @@ void Arena::Step(int ticksToSimulate) {
 			for (BoostPad* pad : _boostPads)
 				pad->_PreTickUpdate(tickTime);
 		}
+
+		// Update ball
+		ball->_PreTickUpdate(gameMode, tickTime);
 
 		// Update world
 		_bulletWorld.stepSimulation(tickTime, 0, tickTime);

@@ -1,6 +1,7 @@
 #include "Ball.h"
 
 #include "../../RLConst.h"
+#include "../Car/Car.h"
 
 #include "../../../libsrc/bullet3-3.24/BulletDynamics/Dynamics/btDynamicsWorld.h"
 
@@ -108,4 +109,72 @@ void Ball::_FinishPhysicsTick(const MutatorConfig& mutatorConfig) {
 
 float Ball::GetRadiusBullet() const {
 	return _collisionShape.getRadius();
+}
+
+void Ball::_PreTickUpdate(GameMode gameMode, float tickTime) {
+	if (gameMode == GameMode::HEATSEEKER) {
+		using namespace RLConst;
+
+		auto state = GetState();
+
+		float yTargetDir = _internalState.hsInfo.yTargetDir;
+		if (yTargetDir != 0) {
+			Angle velAngle = Angle::FromVec(state.vel);
+
+			// Determine angle to goal
+			Vec goalTargetPos = Vec(0, Heatseeker::TARGET_Y * yTargetDir, Heatseeker::TARGET_Z);
+			Angle angleToGoal = Angle::FromVec(goalTargetPos - state.pos);
+
+			// Find difference between target angle and current angle
+			Angle deltaAngle = angleToGoal - velAngle;
+			
+			// Determine speed ratio
+			float curSpeed = state.vel.Length();
+			float speedRatio = curSpeed / Heatseeker::MAX_SPEED;
+
+			// Interpolate delta
+			Angle newAngle = velAngle;
+			float baseInterpFactor = speedRatio * tickTime;
+			newAngle.yaw += deltaAngle.yaw * baseInterpFactor * Heatseeker::HORIZONTAL_BLEND;
+			newAngle.pitch += deltaAngle.pitch * baseInterpFactor * Heatseeker::VERTICAL_BLEND;
+			newAngle.NormalizeFix();
+
+			// Limit pitch
+			newAngle.pitch = RS_CLAMP(newAngle.pitch, -Heatseeker::MAX_TURN_PITCH, Heatseeker::MAX_TURN_PITCH);
+
+			// Determine new interpolated speed
+			float newSpeed = curSpeed + ((state.hsInfo.curTargetSpeed - curSpeed) * Heatseeker::SPEED_BLEND);
+
+			// Update velocity
+			Vec newDir = newAngle.GetForwardVec();
+			Vec newVel = newDir * newSpeed;
+			_rigidBody.m_linearVelocity = newVel * UU_TO_BT;
+
+			_internalState.hsInfo.timeSinceHit += tickTime;
+		}
+	}
+}
+
+void Ball::_OnHit(GameMode gameMode, Car* car) {
+	if (gameMode == GameMode::HEATSEEKER) {
+		using namespace RLConst;
+
+		bool increaseSpeed = (_internalState.hsInfo.timeSinceHit > Heatseeker::MIN_SPEEDUP_INTERVAL) || (_internalState.hsInfo.yTargetDir == 0);
+		_internalState.hsInfo.yTargetDir = car->team == Team::BLUE ? 1 : -1;
+		if (increaseSpeed) {
+			_internalState.hsInfo.timeSinceHit = 0;
+			_internalState.hsInfo.curTargetSpeed = RS_MIN(_internalState.hsInfo.curTargetSpeed + Heatseeker::TARGET_SPEED_INCREMENT, Heatseeker::MAX_SPEED);
+		}
+	}
+}
+
+void Ball::_OnWorldCollision(GameMode gameMode, Vec normal) {
+	if (gameMode == GameMode::HEATSEEKER) {
+		if (_internalState.hsInfo.yTargetDir != 0 ) {
+			float relNormalY = normal.y * _internalState.hsInfo.yTargetDir;
+			if (relNormalY <= -RLConst::Heatseeker::WALL_BOUNCE_CHANGE_NORMAL_Y) {
+				_internalState.hsInfo.yTargetDir *= -1;
+			}
+		}
+	}
 }
