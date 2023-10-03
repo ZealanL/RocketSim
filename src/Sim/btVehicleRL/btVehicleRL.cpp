@@ -160,13 +160,10 @@ float btVehicleRL::rayCast(btWheelInfoRL& wheel, SuspensionCollisionGrid* grid) 
 
 		float denominator = wheel.m_raycastInfo.m_contactNormalWS.dot(getUpVector());
 
-		btVector3 chassis_velocity_at_contactPoint;
 		btVector3 relpos = wheel.m_raycastInfo.m_contactPointWS - m_chassisBody->m_worldTransform.m_origin;
+		wheel.m_velAtContactPoint = m_chassisBody->getVelocityInLocalPoint(relpos);
 
-		chassis_velocity_at_contactPoint = m_chassisBody->getVelocityInLocalPoint(relpos);
-		wheel.m_velAtContactPoint = chassis_velocity_at_contactPoint;
-
-		float projVel = wheel.m_raycastInfo.m_contactNormalWS.dot(chassis_velocity_at_contactPoint);
+		float projVel = wheel.m_raycastInfo.m_contactNormalWS.dot(wheel.m_velAtContactPoint);
 
 		if (denominator > 0.1) {
 			float inv = 1 / denominator;
@@ -198,8 +195,8 @@ float btVehicleRL::rayCast(btWheelInfoRL& wheel, SuspensionCollisionGrid* grid) 
 					m_dynamicsWorld->getSolverInfo(),
 					wheelTraceDistDelta
 				);
-				float pushBackScale = (1 / 1.5f);
-				wheel.m_extraPushback = (collisionResult * pushBackScale) / getNumWheels();
+
+				wheel.m_extraPushback = collisionResult / getNumWheels();
 
 				// Restore factors 
 				m_chassisBody->setLinearFactor({ 1,1,1 });
