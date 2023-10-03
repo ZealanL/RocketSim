@@ -24,15 +24,15 @@ struct MutatorConfig {
 
 		carWorldRestitution = RLConst::CARWORLD_COLLISION_RESTITUTION,
 
-		ballMass = RLConst::BALL_MASS_BT,
+		ballMass,
 		ballMaxSpeed = RLConst::BALL_MAX_SPEED,
 		ballDrag = RLConst::BALL_DRAG,
 
 		// Friction between car and world (arena)
-		ballWorldFriction = RLConst::BALL_FRICTION,
+		ballWorldFriction,
 
 		// Restitution between ball and world (arena)
-		ballWorldRestitution = RLConst::BALL_RESTITUTION,
+		ballWorldRestitution,
 
 		jumpAccel = RLConst::JUMP_ACCEL,
 		jumpImmediateForce = RLConst::JUMP_IMMEDIATE_FORCE,

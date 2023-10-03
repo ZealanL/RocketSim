@@ -163,6 +163,17 @@ namespace RLConst {
 		// TODO: Heatseeker has special wall-bounce logic that I don't quite understand...
 	}
 
+	namespace Snowday {
+		constexpr float
+			PUCK_RADIUS = 114.25f, // Real puck radius varies a bit from point to point but it shouldn't matter
+			PUCK_HEIGHT = 62.5f,
+			PUCK_CIRCLE_POINT_AMOUNT = 20, // Number of points on each circle of the cylinder
+			PUCK_MASS_BT = 50,
+			PUCK_GROUND_STICK_FORCE = 70,
+			PUCK_FRICTION = 0.1f,
+			PUCK_RESTITUTION = 0.3f;
+	}
+
 	// NOTE: Angle order is PYR
 	constexpr Vec
 		CAR_AIR_CONTROL_TORQUE = Vec(130, 95, 400),

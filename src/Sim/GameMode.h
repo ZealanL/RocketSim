@@ -5,6 +5,7 @@ enum class GameMode : byte {
 	SOCCAR,
 	HOOPS,
 	HEATSEEKER,
+	SNOWDAY,
 
 	// More coming soon!
 
@@ -16,4 +17,5 @@ constexpr const char* GAMEMODE_STRS[] = {
 	"soccar",
 	"hoops",
 	"heatseeker"
+	"snowday"
 };

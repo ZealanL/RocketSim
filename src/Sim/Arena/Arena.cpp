@@ -10,8 +10,7 @@
 RSAPI void Arena::SetMutatorConfig(const MutatorConfig& mutatorConfig) {
 
 	bool
-		ballRadiusChanged = mutatorConfig.ballRadius != this->_mutatorConfig.ballRadius,
-		ballMassChanged = mutatorConfig.ballMass != this->_mutatorConfig.ballMass,
+		ballChanged = mutatorConfig.ballRadius != this->_mutatorConfig.ballRadius || mutatorConfig.ballMass != this->_mutatorConfig.ballMass,
 		carMassChanged = mutatorConfig.carMass != this->_mutatorConfig.carMass,
 		gravityChanged = mutatorConfig.gravity != this->_mutatorConfig.gravity;
 
@@ -19,14 +18,11 @@ RSAPI void Arena::SetMutatorConfig(const MutatorConfig& mutatorConfig) {
 
 	_bulletWorld.setGravity(mutatorConfig.gravity * UU_TO_BT);
 	
-	if (ballRadiusChanged) {
+	if (ballChanged) {
 		// We'll need to remake the ball
 		_bulletWorld.removeCollisionObject(&ball->_rigidBody);
-		ball->_BulletSetup(&_bulletWorld, mutatorConfig);
-	} else if (ballMassChanged) {
-		btVector3 newBallInertia;
-		ball->_collisionShape.calculateLocalInertia(mutatorConfig.ballMass, newBallInertia);
-		ball->_rigidBody.setMassProps(mutatorConfig.ballMass, newBallInertia);
+		delete ball->_collisionShape;
+		ball->_BulletSetup(gameMode, &_bulletWorld, mutatorConfig);
 	}
 
 	if (carMassChanged) {
@@ -192,13 +188,14 @@ void Arena::ResetToRandomKickoff(int seed) {
 		Vec scale = Vec(1, (nextRand % 2) ? 1 : -1, 1);
 		ballState.pos = Heatseeker::BALL_START_POS * scale;
 		ballState.vel = Heatseeker::BALL_START_VEL * scale;
+	} else if (gameMode == GameMode::SNOWDAY) {
+		// Don't freeze
+		ballState.vel.z = FLT_EPSILON;
 	}
 	ball->SetState(ballState);
 
-	if (gameMode == GameMode::SOCCAR) {
-		for (BoostPad* boostPad : _boostPads)
-			boostPad->SetState(BoostPadState());
-	}
+	for (BoostPad* boostPad : _boostPads)
+		boostPad->SetState(BoostPadState());
 
 	if (seed != -1) {
 		// Custom random engine was created for this seed, so we need to free it
@@ -253,7 +250,7 @@ bool Arena::_BulletContactAddedCallback(
 	} else if (userIndexA == BT_USERINFO_TYPE_BALL && userIndexB == -1) {
 		// Ball + World
 		Arena* arenaInst = (Arena*)bodyB->getUserPointer();
-		arenaInst->ball->_OnWorldCollision(arenaInst->gameMode, contactPoint.m_normalWorldOnB);
+		arenaInst->ball->_OnWorldCollision(arenaInst->gameMode, contactPoint.m_normalWorldOnB, arenaInst->tickTime);
 	}
 	
 	btAdjustInternalEdgeContacts(
@@ -478,7 +475,7 @@ Arena::Arena(GameMode gameMode, ArenaMemWeightMode memWeightMode, float tickRate
 	{ // Initialize ball
 		ball = Ball::_AllocBall();
 
-		ball->_BulletSetup(&_bulletWorld, _mutatorConfig);
+		ball->_BulletSetup(gameMode, &_bulletWorld, _mutatorConfig);
 		ball->SetState(BallState());
 	}
 
