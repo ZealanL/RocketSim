@@ -14,6 +14,8 @@ struct BallState {
 	// Position in world space
 	Vec pos = { 0, 0, RLConst::BALL_REST_Z };
 
+	RotMat rotMat = RotMat::GetIdentity();
+
 	// Linear velocity
 	Vec vel = { 0, 0, 0 };
 	 
@@ -38,7 +40,7 @@ struct BallState {
 };
 
 #define BALLSTATE_SERIALIZATION_FIELDS \
-pos, vel, angVel, \
+pos, rotMat, vel, angVel, \
 hsInfo.yTargetDir, hsInfo.curTargetSpeed, hsInfo.timeSinceHit
 
 class Ball {

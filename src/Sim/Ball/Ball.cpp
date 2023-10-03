@@ -22,6 +22,7 @@ void BallState::Deserialize(DataStreamIn& in) {
 
 BallState Ball::GetState() {
 	_internalState.pos = _rigidBody.getWorldTransform().getOrigin() * BT_TO_UU;
+	_internalState.rotMat = _rigidBody.getWorldTransform().getBasis();
 	_internalState.vel = _rigidBody.getLinearVelocity() * BT_TO_UU;
 	_internalState.angVel = _rigidBody.getAngularVelocity();
 	return _internalState;
@@ -32,8 +33,8 @@ void Ball::SetState(const BallState& state) {
 	_internalState = state;
 
 	btTransform newTransform;
-	newTransform.setIdentity();
 	newTransform.setOrigin(state.pos * UU_TO_BT);
+	newTransform.setBasis(state.rotMat);
 	_rigidBody.setWorldTransform(newTransform);
 	_rigidBody.setLinearVelocity(state.vel * UU_TO_BT);
 	_rigidBody.setAngularVelocity(state.angVel);
