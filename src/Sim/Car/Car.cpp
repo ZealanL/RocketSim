@@ -104,7 +104,7 @@ void Car::_PreTickUpdate(GameMode gameMode, float tickTime, const MutatorConfig&
 
 	if (numWheelsInContact == 0) {
 		_UpdateAirControl(tickTime, mutatorConfig);
-	} else {
+	} else if (numWheelsInContact >= 3) {
 		_internalState.isFlipping = false;
 	}
 
