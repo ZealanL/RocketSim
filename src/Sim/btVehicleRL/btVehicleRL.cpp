@@ -117,8 +117,7 @@ float btVehicleRL::rayCast(btWheelInfoRL& wheel, SuspensionCollisionGrid* grid) 
 	float depth = -1;
 
 	float suspensionTravel = wheel.m_maxSuspensionTravelCm / 100;
-	float magicSubtractionNumber = 0.05f; // TODO: Add to RLConst
-	float realRayLength = wheel.getSuspensionRestLength() + suspensionTravel + wheel.m_wheelsRadius - magicSubtractionNumber;
+	float realRayLength = wheel.getSuspensionRestLength() + suspensionTravel + wheel.m_wheelsRadius - RLConst::BTVehicle::SUSPENSION_SUBTRACTION;
 
 	btVector3 source = wheel.m_raycastInfo.m_hardPointWS;
 	btVector3 target = source + (wheel.m_raycastInfo.m_wheelDirectionWS * realRayLength);
@@ -165,6 +164,7 @@ float btVehicleRL::rayCast(btWheelInfoRL& wheel, SuspensionCollisionGrid* grid) 
 		btVector3 relpos = wheel.m_raycastInfo.m_contactPointWS - m_chassisBody->m_worldTransform.m_origin;
 
 		chassis_velocity_at_contactPoint = m_chassisBody->getVelocityInLocalPoint(relpos);
+		wheel.m_velAtContactPoint = chassis_velocity_at_contactPoint;
 
 		float projVel = wheel.m_raycastInfo.m_contactNormalWS.dot(chassis_velocity_at_contactPoint);
 
@@ -179,29 +179,32 @@ float btVehicleRL::rayCast(btWheelInfoRL& wheel, SuspensionCollisionGrid* grid) 
 		}
 
 		if (object->isStaticObject()) { // Compute m_extraPushback when colliding with static object
+			float rayPushbackThresh = (wheel.m_suspensionRestLength1 + wheel.m_wheelsRadius) - RLConst::BTVehicle::SUSPENSION_SUBTRACTION;
+			if (wheelTraceLenSq < rayPushbackThresh) {
 
-			// Temporarily disable factors
-			// This will prevent resolveSingleCollision from actually applying force to us
-			// TODO: This is sorta hacky, we should just make our own version of resolveSingleCollision or something
-			m_chassisBody->setLinearFactor({ 0,0,0 });
-			m_chassisBody->setAngularFactor({ 0,0,0 });
+				float wheelTraceDistDelta = wheelTraceLenSq - rayPushbackThresh;
 
-			float susRayDeltaDist = wheelTraceLenSq - (realRayLength - wheel.m_wheelsRadius);
-			
-			float collisionResult = resolveSingleCollision(
-				m_chassisBody, 
-				object, 
-				rayResults.m_hitPointInWorld, 
-				rayResults.m_hitNormalInWorld, 
-				m_dynamicsWorld->getSolverInfo(), 
-				susRayDeltaDist
-			);
-			float pushBackScale = (1 / 1.5f);
-			wheel.m_extraPushback = (collisionResult * pushBackScale) / getNumWheels();
+				// Temporarily disable factors
+				// This will prevent resolveSingleCollision from actually applying force to us
+				// TODO: This is sorta hacky, we should just make our own version of resolveSingleCollision or something
+				m_chassisBody->setLinearFactor({ 0,0,0 });
+				m_chassisBody->setAngularFactor({ 0,0,0 });
 
-			// Restore factors 
-			m_chassisBody->setLinearFactor({ 1,1,1 });
-			m_chassisBody->setAngularFactor({ 1,1,1 });
+				float collisionResult = resolveSingleCollision(
+					m_chassisBody,
+					object,
+					rayResults.m_hitPointInWorld,
+					rayResults.m_hitNormalInWorld,
+					m_dynamicsWorld->getSolverInfo(),
+					wheelTraceDistDelta
+				);
+				float pushBackScale = (1 / 1.5f);
+				wheel.m_extraPushback = (collisionResult * pushBackScale) / getNumWheels();
+
+				// Restore factors 
+				m_chassisBody->setLinearFactor({ 1,1,1 });
+				m_chassisBody->setAngularFactor({ 1,1,1 });
+			}
 		}
 
 	} else {
