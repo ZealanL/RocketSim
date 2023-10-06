@@ -500,7 +500,7 @@ void Car::_UpdateBoost(float tickTime, const MutatorConfig& mutatorConfig, float
 		if (_internalState.isOnGround && forwardSpeed_UU > BOOST_ACCEL_GROUND_DECAY_MIN_VEL)
 			forceScale = (1 - BOOST_ACCEL_GROUND_DECAY_AMOUNT);
 
-		_rigidBody.m_linearVelocity += GetForwardDir() * mutatorConfig.boostAccel * forceScale * tickTime;
+		_rigidBody.applyCentralForce(GetForwardDir() * mutatorConfig.boostAccel * forceScale * CAR_MASS_BT);
 	}
 }
 
@@ -528,8 +528,8 @@ void Car::_UpdateJump(float tickTime, const MutatorConfig& mutatorConfig, bool j
 		// Start jumping
 		_internalState.isJumping = true;
 		_internalState.jumpTime = 0;
-		btVector3 jumpStartForce = GetUpDir() * mutatorConfig.jumpImmediateForce * UU_TO_BT;
-		_rigidBody.m_linearVelocity += jumpStartForce;
+		btVector3 jumpStartForce = GetUpDir() * mutatorConfig.jumpImmediateForce * UU_TO_BT * CAR_MASS_BT;
+		_rigidBody.applyCentralImpulse(jumpStartForce);
 	}
 
 	if (_internalState.isJumping) {
@@ -544,7 +544,7 @@ void Car::_UpdateJump(float tickTime, const MutatorConfig& mutatorConfig, bool j
 			totalJumpForce *= JUMP_PRE_MIN_ACCEL_SCALE;
 		}
 
-		_rigidBody.m_linearVelocity += totalJumpForce * UU_TO_BT * tickTime;
+		_rigidBody.applyCentralForce(totalJumpForce * UU_TO_BT * CAR_MASS_BT);
 		_internalState.jumpTime += tickTime;
 	}
 }
@@ -623,7 +623,7 @@ void Car::_UpdateAirControl(float tickTime, const MutatorConfig& mutatorConfig) 
 	}
 
 	if (controls.throttle != 0)
-		_rigidBody.m_linearVelocity += GetForwardDir() * controls.throttle * THROTTLE_AIR_FORCE * tickTime;
+		_rigidBody.applyCentralForce(GetForwardDir() * controls.throttle * THROTTLE_AIR_FORCE * CAR_MASS_BT);
 }
 
 void Car::_UpdateDoubleJumpOrFlip(float tickTime, const MutatorConfig& mutatorConfig, bool jumpPressed, float forwardSpeed_UU) {
@@ -713,14 +713,14 @@ void Car::_UpdateDoubleJumpOrFlip(float tickTime, const MutatorConfig& mutatorCo
 								0.f
 							};
 
-							_rigidBody.m_linearVelocity += finalDeltaVel * UU_TO_BT;
+							_rigidBody.applyCentralImpulse(finalDeltaVel * UU_TO_BT * CAR_MASS_BT);
 						}
 					}
 
 				} else {
 					// Double jump, add upwards velocity
-					btVector3 jumpStartForce = GetUpDir() * JUMP_IMMEDIATE_FORCE * UU_TO_BT;
-					_rigidBody.m_linearVelocity += jumpStartForce;
+					btVector3 jumpStartForce = GetUpDir() * JUMP_IMMEDIATE_FORCE * UU_TO_BT * CAR_MASS_BT;
+					_rigidBody.applyCentralImpulse(jumpStartForce);
 
 					_internalState.hasDoubleJumped = true;
 				}
@@ -755,7 +755,7 @@ void Car::_UpdateAutoFlip(float tickTime, const MutatorConfig& mutatorConfig, bo
 		_internalState.autoFlipTorqueScale = (angles.roll > 0) ? 1 : -1;
 		_internalState.isAutoFlipping = true;
 
-		_rigidBody.m_linearVelocity += -GetUpDir() * CAR_AUTOFLIP_IMPULSE * UU_TO_BT;
+		_rigidBody.applyCentralImpulse(-GetUpDir() * CAR_AUTOFLIP_IMPULSE * UU_TO_BT * CAR_MASS_BT);
 	}
 
 	if (_internalState.isAutoFlipping) {
@@ -802,6 +802,6 @@ void Car::_UpdateAutoRoll(float tickTime, const MutatorConfig& mutatorConfig, in
 	Vec torqueRight = torqueDirRight * rightTorqueFactor;
 	Vec torqueForward = torqueDirForward * forwardTorqueFactor;
 
-	_rigidBody.m_linearVelocity += groundDownDir * RLConst::CAR_AUTOROLL_FORCE * UU_TO_BT * tickTime;
+	_rigidBody.applyCentralForce(groundDownDir * RLConst::CAR_AUTOROLL_FORCE * UU_TO_BT * CAR_MASS_BT);
 	_rigidBody.m_angularVelocity += (torqueForward + torqueRight) * RLConst::CAR_AUTOROLL_TORQUE * tickTime;
 }
