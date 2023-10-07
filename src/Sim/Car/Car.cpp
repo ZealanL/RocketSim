@@ -595,8 +595,13 @@ void Car::_UpdateAirControl(float tickTime, const MutatorConfig& mutatorConfig) 
 		float pitchTorqueScale = 1;
 		if (controls.pitch || controls.yaw || controls.roll) {
 
-			if (_internalState.isFlipping && _internalState.flipTime < FLIP_PITCHLOCK_TIME)
+			if (_internalState.isFlipping) {
 				pitchTorqueScale = 0;
+			} else if (_internalState.hasFlipped) {
+				// Extra pitch lock after flip has finished
+				if (_internalState.flipTime < FLIP_TORQUE_TIME + FLIP_PITCHLOCK_EXTRA_TIME)
+					pitchTorqueScale = 0;
+			}	
 
 			// TODO: Use actual dot product operator functions (?)
 			torque = (controls.pitch * dirPitch_right * pitchTorqueScale * CAR_AIR_CONTROL_TORQUE.x) +
@@ -633,6 +638,7 @@ void Car::_UpdateDoubleJumpOrFlip(float tickTime, const MutatorConfig& mutatorCo
 		_internalState.hasDoubleJumped = false;
 		_internalState.hasFlipped = false;
 		_internalState.airTimeSinceJump = 0;
+		_internalState.flipTime = 0;
 	} else {
 		if (_internalState.hasJumped && !_internalState.isJumping) {
 			_internalState.airTimeSinceJump += tickTime;
@@ -645,13 +651,13 @@ void Car::_UpdateDoubleJumpOrFlip(float tickTime, const MutatorConfig& mutatorCo
 			bool isFlipInput = inputMagnitude >= config.dodgeDeadzone;
 
 			bool canUse;
-			
+
 			if (isFlipInput) {
 				canUse = (!_internalState.hasDoubleJumped && !_internalState.hasFlipped) || mutatorConfig.unlimitedFlips;
 			} else {
 				canUse = (!_internalState.hasDoubleJumped && !_internalState.hasFlipped) || mutatorConfig.unlimitedDoubleJumps;
 			}
-			
+
 			if (_internalState.isAutoFlipping)
 				canUse = false;
 
@@ -729,13 +735,16 @@ void Car::_UpdateDoubleJumpOrFlip(float tickTime, const MutatorConfig& mutatorCo
 	}
 
 	if (_internalState.isFlipping) {
-		// Replicated from https://github.com/samuelpmish/RLUtilities/blob/develop/src/mechanics/dodge.cc
 		_internalState.flipTime += tickTime;
 		if (_internalState.flipTime <= FLIP_TORQUE_TIME) {
 			if (_internalState.flipTime >= FLIP_Z_DAMP_START && (_rigidBody.m_linearVelocity.z() < 0 || _internalState.flipTime < FLIP_Z_DAMP_END)) {
 				_rigidBody.m_linearVelocity.z() *= powf(1 - FLIP_Z_DAMP_120, tickTime / (1 / 120.f));
 			}
 		}
+	} else if (_internalState.hasFlipped) {
+		// Increment flip time even after we are done flipping
+		// We need to count the time after for FLIP_PITCHLOCK_EXTRA_TIME to work
+		_internalState.flipTime += tickTime;
 	}
 }
 

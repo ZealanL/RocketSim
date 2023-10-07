@@ -90,6 +90,7 @@ namespace RLConst {
 		FLIP_TORQUE_TIME = 0.65f,
 		FLIP_TORQUE_MIN_TIME = 0.41f,
 		FLIP_PITCHLOCK_TIME = 1.f,
+		FLIP_PITCHLOCK_EXTRA_TIME = 0.3f,
 		FLIP_INITIAL_VEL_SCALE = 500.f,
 		FLIP_TORQUE_X = 260.f, // Left/Right
 		FLIP_TORQUE_Y = 224.f, // Forward/backward
