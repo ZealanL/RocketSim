@@ -63,7 +63,8 @@ btScalar resolveSingleCollision(
 	const btVector3& contactPositionWorld,
 	const btVector3& contactNormalOnB,
 	const btContactSolverInfo& solverInfo,
-	btScalar distance)
+	btScalar distance,
+	bool applyImpulses)
 {
 	btRigidBody* body2 = btRigidBody::upcast(colObj2);
 
@@ -94,9 +95,11 @@ btScalar resolveSingleCollision(
 	btScalar normalImpulse = penetrationImpulse + velocityImpulse;
 	normalImpulse = 0.f > normalImpulse ? 0.f : normalImpulse;
 
-	body1->applyImpulse(normal * (normalImpulse), rel_pos1);
-	if (body2)
-		body2->applyImpulse(-normal * (normalImpulse), rel_pos2);
+	if (applyImpulses) {
+		body1->applyImpulse(normal * (normalImpulse), rel_pos1);
+		if (body2)
+			body2->applyImpulse(-normal * (normalImpulse), rel_pos2);
+	}
 
 	return normalImpulse;
 }
