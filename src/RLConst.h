@@ -37,6 +37,7 @@ namespace RLConst {
 		BALL_DRAG = 0.03f, // Net-velocity drag multiplier
 		BALL_FRICTION = 0.35f,
 		BALL_RESTITUTION = 0.6f, // Bounce factor
+		BALL_HOOPS_Z_VEL = 1000, // Z impulse applied to hoops ball on kickoff
 
 		CAR_MAX_SPEED = 2300.f,
 		BALL_MAX_SPEED = 6000.f,

@@ -191,6 +191,8 @@ void Arena::ResetToRandomKickoff(int seed) {
 	} else if (gameMode == GameMode::SNOWDAY) {
 		// Don't freeze
 		ballState.vel.z = FLT_EPSILON;
+	} else if (isHoops) {
+		ballState.vel.z = BALL_HOOPS_Z_VEL;
 	}
 	ball->SetState(ballState);
 
