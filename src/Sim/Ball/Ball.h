@@ -11,6 +11,11 @@
 #include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btSphereShape.h"
 
 struct BallState {
+	// Incremented every update, reset when SetState() is called
+// Used for telling if a stateset occured
+// Not serialized
+	uint64_t updateCounter = 0;
+
 	// Position in world space
 	Vec pos = { 0, 0, RLConst::BALL_REST_Z };
 

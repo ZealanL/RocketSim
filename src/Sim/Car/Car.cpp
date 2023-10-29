@@ -31,6 +31,7 @@ void Car::SetState(const CarState& state) {
 	_velocityImpulseCache = { 0, 0, 0 };
 
 	_internalState = state;
+	_internalState.updateCounter = 0;
 }
 
 void Car::Demolish(float respawnDelay) {
@@ -201,6 +202,8 @@ void Car::_FinishPhysicsTick(const MutatorConfig& mutatorConfig) {
 		_rigidBody.m_angularVelocity =
 			Math::RoundVec(_rigidBody.m_angularVelocity, 0.00001);
 	}
+
+	_internalState.updateCounter++;
 }
 
 void Car::_BulletSetup(GameMode gameMode, btDynamicsWorld* bulletWorld, const MutatorConfig& mutatorConfig) {

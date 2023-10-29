@@ -12,6 +12,12 @@
 #include "../../../src/Sim/btVehicleRL/btVehicleRL.h"
 
 struct CarState {
+
+	// Incremented every update, reset when SetState() is called
+	// Used for telling if a stateset occured
+	// Not serialized
+	uint64_t updateCounter = 0;
+
 	// Position in world space (UU)
 	Vec pos = { 0, 0, 17 };
 	
@@ -92,6 +98,8 @@ enum class Team : byte {
 	BLUE = 0,
 	ORANGE = 1
 };
+
+#define RS_TEAM_FROM_Y(y) ((y) < 0 ? Team::BLUE : Team::ORANGE)
 
 class Car {
 public:

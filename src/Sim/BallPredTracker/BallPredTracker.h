@@ -1,6 +1,7 @@
 #pragma once
 #include "../Arena/Arena.h"
 
+// An external tool struct that predicts the ball of a given arena
 struct BallPredTracker {
 	Arena* ballPredArena;
 	std::vector<BallState> predData;

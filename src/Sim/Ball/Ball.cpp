@@ -41,6 +41,7 @@ void Ball::SetState(const BallState& state) {
 	_rigidBody.setAngularVelocity(state.angVel);
 
 	_velocityImpulseCache = { 0,0,0 };
+	_internalState.updateCounter = 0;
 }
 
 btCollisionShape* MakeBallCollisionShape(GameMode gameMode, const MutatorConfig& mutatorConfig, btVector3& localIntertia) {
@@ -137,6 +138,8 @@ void Ball::_FinishPhysicsTick(const MutatorConfig& mutatorConfig) {
 		_rigidBody.m_angularVelocity =
 			Math::RoundVec(_rigidBody.m_angularVelocity, 0.00001);
 	}
+
+	_internalState.updateCounter++;
 }
 
 bool Ball::IsSphere() const {

@@ -740,34 +740,9 @@ void Arena::Step(int ticksToSimulate) {
 
 		ball->_FinishPhysicsTick(_mutatorConfig);
 
-		if (hasArenaStuff) {
-			if (_goalScoreCallback.func != NULL) { // Potentially fire goal score callback
-
-				if (gameMode == GameMode::SOCCAR) {
-					float ballPosY = ball->_rigidBody.m_worldTransform.m_origin.y() * BT_TO_UU;
-					if (abs(ballPosY) > (RLConst::SOCCAR_GOAL_SCORE_BASE_THRESHOLD_Y + _mutatorConfig.ballRadius)) {
-						// Orange goal is at positive Y, so if the ball's Y is positive, it's in orange goal and thus blue scored
-						Team scoringTeam = (ballPosY > 0) ? Team::BLUE : Team::ORANGE;
-						_goalScoreCallback.func(this, scoringTeam, _goalScoreCallback.userInfo);
-					}
-				} else if (gameMode == GameMode::HOOPS) {
-
-					if (ball->_rigidBody.m_worldTransform.m_origin.z() < RLConst::HOOPS_GOAL_SCORE_THRESHOLD_Z * UU_TO_BT) {
-						constexpr float
-							SCALE_Y = 0.9f,
-							OFFSET_Y = 2770.f,
-							RADIUS_SQ = 716 * 716;
-
-						Vec ballPos = ball->_rigidBody.m_worldTransform.m_origin * BT_TO_UU;
-						float dx = ballPos.x;
-						float dy = abs(ballPos.y) * SCALE_Y - OFFSET_Y;
-						float distSq = dx * dx + dy * dy;
-						if (distSq < RADIUS_SQ) {
-							Team scoringTeam = (ballPos.y > 0) ? Team::BLUE : Team::ORANGE;
-							_goalScoreCallback.func(this, scoringTeam, _goalScoreCallback.userInfo);
-						}
-					}
-				}
+		if (_goalScoreCallback.func != NULL) { // Potentially fire goal score callback
+			if (IsBallScored()) {
+				_goalScoreCallback.func(this, RS_TEAM_FROM_Y(ball->_rigidBody.m_worldTransform.m_origin.y()), _goalScoreCallback.userInfo);
 			}
 		}
 
@@ -775,46 +750,74 @@ void Arena::Step(int ticksToSimulate) {
 	}
 }
 
-bool Arena::IsBallProbablyGoingIn(float maxTime) const {
+bool Arena::IsBallProbablyGoingIn(float maxTime, float extraMargin) const {
 	if (gameMode == GameMode::SOCCAR) {
-		Vec ballPos = ball->_rigidBody.m_worldTransform.m_origin * UU_TO_BT;
-		Vec ballVel = ball->_rigidBody.m_linearVelocity * UU_TO_BT;
+		Vec ballPos = ball->_rigidBody.m_worldTransform.m_origin * BT_TO_UU;
+		Vec ballVel = ball->_rigidBody.m_linearVelocity * BT_TO_UU;
 
-		if (ballVel.y < FLT_EPSILON)
+		if (abs(ballVel.y) < FLT_EPSILON)
 			return false;
 
 		float scoreDirSgn = RS_SGN(ballVel.y);
-		float goalScoreY = (RLConst::SOCCAR_GOAL_SCORE_BASE_THRESHOLD_Y + _mutatorConfig.ballRadius) * scoreDirSgn;
-		float distToGoal = abs(ballPos.y - scoreDirSgn);
+		float goalY = RLConst::SOCCAR_GOAL_SCORE_BASE_THRESHOLD_Y * scoreDirSgn;
+		float distToGoal = abs(ballPos.y - goalY);
 
 		float timeToGoal = distToGoal / abs(ballVel.y);
-
+		
 		if (timeToGoal > maxTime)
 			return false;
-		
-		// Roughly account for drag
-		timeToGoal *= 1 + powf(1 - _mutatorConfig.ballDrag, timeToGoal);
 
 		Vec extrapPosWhenScore = ballPos + (ballVel * timeToGoal) + (_mutatorConfig.gravity * timeToGoal * timeToGoal) / 2;
-		
+
 		// From: https://github.com/RLBot/RLBot/wiki/Useful-Game-Values
 		constexpr float
 			APPROX_GOAL_HALF_WIDTH = 892.755f,
 			APPROX_GOAL_HEIGHT = 642.775;
 
-		float SCORE_MARGIN = _mutatorConfig.ballRadius * 0.64f;
+		float scoreMargin = _mutatorConfig.ballRadius * 0.1f + extraMargin;
 
-		if (extrapPosWhenScore.z > APPROX_GOAL_HEIGHT + SCORE_MARGIN)
+		if (extrapPosWhenScore.z > APPROX_GOAL_HEIGHT + scoreMargin)
 			return false; // Too high
 
-		if (abs(extrapPosWhenScore.x) > APPROX_GOAL_HALF_WIDTH + SCORE_MARGIN)
+		if (abs(extrapPosWhenScore.x) > APPROX_GOAL_HALF_WIDTH + scoreMargin)
 			return false; // Too far to the side
 
 		// Ok it's probably gonna score, or at least be very close
 		return true;
 	} else {
-		// TODO: Support for hoops
-		RS_ERR_CLOSE("Arena::IsBallProbablyGoingIn() not supported in non-soccar gamemode");
+		// TODO: Support for hoops (not as easy but reasonable), heatseeker (uhhh), and snowday (oh god)
+		RS_ERR_CLOSE("Arena::IsBallProbablyGoingIn() is only supported for soccar");
+		return false;
+	}
+}
+
+RSAPI bool Arena::IsBallScored() const {
+	switch (gameMode) {
+	case GameMode::SOCCAR:
+	case GameMode::HEATSEEKER:
+	case GameMode::SNOWDAY:
+	{
+		float ballPosY = ball->_rigidBody.m_worldTransform.m_origin.y() * BT_TO_UU;
+		return abs(ballPosY) > (RLConst::SOCCAR_GOAL_SCORE_BASE_THRESHOLD_Y + _mutatorConfig.ballRadius);
+	}
+	case GameMode::HOOPS:
+	{
+		if (ball->_rigidBody.m_worldTransform.m_origin.z() < RLConst::HOOPS_GOAL_SCORE_THRESHOLD_Z * UU_TO_BT) {
+			constexpr float
+				SCALE_Y = 0.9f,
+				OFFSET_Y = 2770.f,
+				RADIUS_SQ = 716 * 716;
+
+			Vec ballPos = ball->_rigidBody.m_worldTransform.m_origin * BT_TO_UU;
+			float dx = ballPos.x;
+			float dy = abs(ballPos.y) * SCALE_Y - OFFSET_Y;
+			float distSq = dx * dx + dy * dy;
+			return distSq < RADIUS_SQ;
+		} else {
+			return false;
+		}
+	}
+	default:
 		return false;
 	}
 }
