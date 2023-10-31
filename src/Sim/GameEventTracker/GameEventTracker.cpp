@@ -49,7 +49,7 @@ void GameEventTracker::Update(Arena* arena) {
 	float tickrate = arena->GetTickRate();
 	uint64_t ballUpdateCount = arena->ball->_internalState.updateCounter;
 
-	if (ballUpdateCount > _lastBallUpdateCount) {
+	if (ballUpdateCount > _lastBallUpdateCount || !autoStateSetDetection) {
 		// Game is continuing
 
 		uint64_t deltaTicks = ballUpdateCount - _lastBallUpdateCount;
