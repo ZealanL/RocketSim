@@ -238,9 +238,6 @@ void Car::_BulletSetup(GameMode gameMode, btDynamicsWorld* bulletWorld, const Mu
 	// Disable gyroscopic force
 	_rigidBody.m_rigidbodyFlags = 0;
 
-	if (gameMode == GameMode::HOOPS)
-		_rigidBody.m_doubleIgnoreCollide = true;
-
 	// Add rigidbody to world
 	bulletWorld->addRigidBody(&_rigidBody);
 

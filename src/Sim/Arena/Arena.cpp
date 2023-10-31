@@ -51,9 +51,6 @@ Car* Arena::AddCar(Team team, const CarConfig& config) {
 	car->_BulletSetup(gameMode, &_bulletWorld, _mutatorConfig);
 	car->Respawn(gameMode, -1, _mutatorConfig.carSpawnBoostAmount);
 
-	if (gameMode == GameMode::HOOPS)
-		car->_rigidBody.m_doubleIgnoreCollide = true;
-
 	return car;
 }
 
@@ -896,7 +893,7 @@ void Arena::_SetupArenaCollisionShapes() {
 			}
 		}
 
-		_AddStaticCollisionShape(i, i, mesh, _worldCollisionBvhShapes, btVector3(0,0,0), isHoopsNet, isHoopsNet);
+		_AddStaticCollisionShape(i, i, mesh, _worldCollisionBvhShapes, btVector3(0,0,0), isHoopsNet);
 
 		// Don't free the BVH when we deconstruct this arena
 		_worldCollisionBvhShapes[i].m_ownsBvh = false;
