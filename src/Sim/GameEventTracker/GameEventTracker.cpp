@@ -81,8 +81,9 @@ void GameEventTracker::Update(Arena* arena) {
 
 					float speedSq = (arena->ball->_rigidBody.m_linearVelocity * BT_TO_UU).length2();
 					if (speedSq >= config.shotMinSpeed * config.shotMinSpeed) {
-						if (arena->IsBallProbablyGoingIn(config.shotMinScoreTime, config.predScoreExtraMargin)) {
-							Team shooterTeam = RS_TEAM_FROM_Y(-arena->ball->_rigidBody.m_linearVelocity.y());
+						Team goalTeam;
+						if (arena->IsBallProbablyGoingIn(config.shotMinScoreTime, config.predScoreExtraMargin, &goalTeam)) {
+							Team shooterTeam = RS_OPPOSITE_TEAM(goalTeam);
 
 							uint64_t shotMinTouchDelayTicks = config.shotTouchMinDelay * tickrate;
 
@@ -101,7 +102,7 @@ void GameEventTracker::Update(Arena* arena) {
 
 									// This is officially now a shot!
 									_ballShot = true;
-									_ballShotGoalTeam = RS_TEAM_FROM_Y(arena->ball->_rigidBody.m_linearVelocity.y());
+									_ballShotGoalTeam = goalTeam;
 									_shotCooldown = config.shotEventCooldown;
 									_shotCallback.func(arena, shooter, passer, _shotCallback.userInfo);
 								}

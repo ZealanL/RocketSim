@@ -141,7 +141,7 @@ public:
 	// NOTE: Purposefully overestimates, just like the real RL's shot prediction
 	// To check which goal it will score in, use the ball's velocity
 	// Margin can be manually adjusted with extraMargin (negative to prevent overestimating)
-	RSAPI bool IsBallProbablyGoingIn(float maxTime = 2.f, float extraMargin = 0) const;
+	RSAPI bool IsBallProbablyGoingIn(float maxTime = 2.f, float extraMargin = 0, Team* goalTeamOut = NULL) const;
 
 	// Returns true if the ball is in the net
 	// Works for all gamemodes (and does nothing in THE_VOID)

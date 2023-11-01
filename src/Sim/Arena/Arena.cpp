@@ -747,11 +747,24 @@ void Arena::Step(int ticksToSimulate) {
 	}
 }
 
-bool Arena::IsBallProbablyGoingIn(float maxTime, float extraMargin) const {
-	if (gameMode == GameMode::SOCCAR) {
-		Vec ballPos = ball->_rigidBody.m_worldTransform.m_origin * BT_TO_UU;
-		Vec ballVel = ball->_rigidBody.m_linearVelocity * BT_TO_UU;
+// Returns negative: within
+// Note that the returned margin is squared
+float BallWithinHoopsGoalXYMarginSq(float x, float y) {
+	constexpr float
+		SCALE_Y = 0.9f,
+		OFFSET_Y = 2770.f,
+		RADIUS_SQ = 716 * 716;
 
+	float dy = abs(y) * SCALE_Y - OFFSET_Y;
+	float distSq = x * x + dy * dy;
+	return distSq - RADIUS_SQ;
+}
+
+bool Arena::IsBallProbablyGoingIn(float maxTime, float extraMargin, Team* goalTeamOut) const {
+	Vec ballPos = ball->_rigidBody.m_worldTransform.m_origin * BT_TO_UU;
+	Vec ballVel = ball->_rigidBody.m_linearVelocity * BT_TO_UU;
+
+	if (gameMode == GameMode::SOCCAR || gameMode == GameMode::SNOWDAY) {
 		if (abs(ballVel.y) < FLT_EPSILON)
 			return false;
 
@@ -779,11 +792,92 @@ bool Arena::IsBallProbablyGoingIn(float maxTime, float extraMargin) const {
 		if (abs(extrapPosWhenScore.x) > APPROX_GOAL_HALF_WIDTH + scoreMargin)
 			return false; // Too far to the side
 
+		if (goalTeamOut)
+			*goalTeamOut = RS_TEAM_FROM_Y(scoreDirSgn);
+
 		// Ok it's probably gonna score, or at least be very close
 		return true;
+	} else if (gameMode == GameMode::HOOPS) {
+
+		constexpr float
+			APPROX_RIM_HEIGHT = 365;
+		
+		float minHeight = APPROX_RIM_HEIGHT + _mutatorConfig.ballRadius * 1.2f;
+
+		if (ballVel.z < -FLT_EPSILON && ballPos.z < minHeight) {
+			if (BallWithinHoopsGoalXYMarginSq(ballPos.x, ballPos.y) < 0) {
+				if (goalTeamOut)
+					*goalTeamOut = RS_TEAM_FROM_Y(ballPos.y);
+				return true; // Already in the net
+			}
+		}
+
+		float margin = _mutatorConfig.ballRadius * 1.0f;
+		float marginSq = margin * margin;
+
+		float upQuadIntercept;
+		float downQuadIntercept;
+
+		// Calculate time to score using quadratic intercept
+		{
+			float g = _mutatorConfig.gravity.z;
+			if (g > -FLT_EPSILON)
+				return false; 
+
+			float v = ballVel.z;
+			float h = ballPos.z - minHeight;
+
+			float sqrtInput = v * v - 2 * g * h;
+			if (sqrtInput > 0) {
+				float sqrtOutput = sqrtf(sqrtInput);
+				upQuadIntercept = (-v + sqrtOutput) / g;
+				downQuadIntercept = (-v - sqrtOutput) / g;
+			} else {
+				// Never reaches the rim height
+				if (BallWithinHoopsGoalXYMarginSq(ballPos.x, ballPos.y) < -marginSq) {
+					// If started within the hoop, it will stay within the hoop and is therefore scoring
+					return true;
+				} else {
+					// Otherwise, it can never get into the hoop and is therefore never scoring
+					return false;
+				}
+			}
+		}
+		
+		if (upQuadIntercept >= 0) {
+			// Ball has to go up before it can fall into the hoop
+			// Make sure it cant hit the rim on the way up
+
+			Vec extrapPosUp = ballPos + (ballVel * upQuadIntercept);
+			float upMarginSq = BallWithinHoopsGoalXYMarginSq(extrapPosUp.x, extrapPosUp.y);
+
+			float minClearanceMargin = 60 + _mutatorConfig.ballRadius;
+
+			if (upMarginSq > -marginSq && upMarginSq < (minClearanceMargin * minClearanceMargin))
+				return false; // Will probably hit rim
+		}
+
+		Vec extrapPosDown = ballPos + (ballVel * downQuadIntercept);
+		extrapPosDown.y = abs(extrapPosDown.y);
+
+		{ // Very approximate prediction of backboard bounce
+			float wallBounceY = RLConst::ARENA_EXTENT_Y_HOOPS - _mutatorConfig.ballRadius;
+			if (extrapPosDown.y > wallBounceY) {
+				float margin = extrapPosDown.y - wallBounceY;
+				extrapPosDown.y -= margin * (1 + _mutatorConfig.ballWorldRestitution);
+			}
+		}
+		
+		if (BallWithinHoopsGoalXYMarginSq(extrapPosDown.x, extrapPosDown.y) < -marginSq) {
+			if (goalTeamOut)
+				*goalTeamOut = RS_TEAM_FROM_Y(extrapPosDown.y);
+			return true;
+		} else {
+			return false;
+		}
+
 	} else {
-		// TODO: Support for hoops (not as easy but reasonable), heatseeker (uhhh), and snowday (oh god)
-		RS_ERR_CLOSE("Arena::IsBallProbablyGoingIn() is only supported for soccar");
+		RS_ERR_CLOSE("Arena::IsBallProbablyGoingIn() is not supported for: " << GAMEMODE_STRS[(int)gameMode]);
 		return false;
 	}
 }
@@ -806,10 +900,7 @@ RSAPI bool Arena::IsBallScored() const {
 				RADIUS_SQ = 716 * 716;
 
 			Vec ballPos = ball->_rigidBody.m_worldTransform.m_origin * BT_TO_UU;
-			float dx = ballPos.x;
-			float dy = abs(ballPos.y) * SCALE_Y - OFFSET_Y;
-			float distSq = dx * dx + dy * dy;
-			return distSq < RADIUS_SQ;
+			return BallWithinHoopsGoalXYMarginSq(ballPos.x, ballPos.y) < 0;
 		} else {
 			return false;
 		}
