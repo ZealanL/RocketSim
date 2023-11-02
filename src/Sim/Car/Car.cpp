@@ -103,9 +103,9 @@ void Car::_PreTickUpdate(GameMode gameMode, float tickTime, const MutatorConfig&
 	float forwardSpeed_UU = _bulletVehicle.getForwardSpeed() * BT_TO_UU;
 	_UpdateWheels(tickTime, mutatorConfig, numWheelsInContact, forwardSpeed_UU);
 
-	if (numWheelsInContact == 0) {
-		_UpdateAirControl(tickTime, mutatorConfig);
-	} else if (numWheelsInContact >= 3) {
+	if (numWheelsInContact < 3) {
+		_UpdateAirControlAndFlip(tickTime, mutatorConfig, numWheelsInContact == 0);
+	} else {
 		_internalState.isFlipping = false;
 	}
 
@@ -549,7 +549,7 @@ void Car::_UpdateJump(float tickTime, const MutatorConfig& mutatorConfig, bool j
 	}
 }
 
-void Car::_UpdateAirControl(float tickTime, const MutatorConfig& mutatorConfig) {
+void Car::_UpdateAirControlAndFlip(float tickTime, const MutatorConfig& mutatorConfig, bool updateAirControl) {
 	using namespace RLConst;
 
 	btVector3
@@ -588,6 +588,7 @@ void Car::_UpdateAirControl(float tickTime, const MutatorConfig& mutatorConfig) 
 	}
 
 	doAirControl &= !_internalState.isAutoFlipping;
+	doAirControl &= updateAirControl;
 	if (doAirControl) {
 
 		float pitchTorqueScale = 1;
