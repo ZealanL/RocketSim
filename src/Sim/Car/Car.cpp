@@ -104,7 +104,7 @@ void Car::_PreTickUpdate(GameMode gameMode, float tickTime, const MutatorConfig&
 	_UpdateWheels(tickTime, mutatorConfig, numWheelsInContact, forwardSpeed_UU);
 
 	if (numWheelsInContact < 3) {
-		_UpdateAirControlAndFlip(tickTime, mutatorConfig, numWheelsInContact == 0);
+		_UpdateAirTorque(tickTime, mutatorConfig, numWheelsInContact == 0);
 	} else {
 		_internalState.isFlipping = false;
 	}
@@ -549,7 +549,7 @@ void Car::_UpdateJump(float tickTime, const MutatorConfig& mutatorConfig, bool j
 	}
 }
 
-void Car::_UpdateAirControlAndFlip(float tickTime, const MutatorConfig& mutatorConfig, bool updateAirControl) {
+void Car::_UpdateAirTorque(float tickTime, const MutatorConfig& mutatorConfig, bool updateAirControl) {
 	using namespace RLConst;
 
 	btVector3
