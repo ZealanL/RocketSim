@@ -266,7 +266,8 @@ struct Angle {
 	RSAPI static Angle FromRotMat(RotMat mat);
 	RSAPI RotMat ToRotMat() const;
 
-	RSAPI Vec GetForwardVector() const;
+	RSAPI static Angle FromVec(const Vec& forward);
+	RSAPI Vec GetForwardVec() const;
 
 	// Limits yaw/pitch/roll to [-pi,pi]/[-pi/2,pi/2]/[-pi,pi] while still representing the same rotation
 	RSAPI void NormalizeFix();
@@ -279,6 +280,12 @@ struct Angle {
 		Angle delta = Angle(other.yaw - yaw, other.pitch - pitch, other.roll - roll);
 		delta.NormalizeFix();
 		return delta;
+	}
+
+	Angle operator+(const Angle& other) const {
+		Angle combined = Angle(other.yaw + yaw, other.pitch + pitch, other.roll + roll);
+		combined.NormalizeFix();
+		return combined;
 	}
 
 	Angle operator-(const Angle& other) const {

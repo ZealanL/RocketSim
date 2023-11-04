@@ -1,3 +1,4 @@
+#pragma once
 #include "Sim/Car/Car.h"
 #include "Sim/Ball/Ball.h"
 #include "Sim/Arena/Arena.h"
@@ -18,15 +19,14 @@ enum class RocketSimStage : byte {
 };
 
 namespace RocketSim {
-
 	void Init(std::filesystem::path collisionMeshesFolder);
 	void AssertInitialized(const char* errorMsgPrefix);
 
 	RocketSimStage GetStage();
 
-	const vector<btBvhTriangleMeshShape*>& GetArenaCollisionShapes();
+	std::vector<btBvhTriangleMeshShape*>& GetArenaCollisionShapes(GameMode gameMode);
 
 #ifndef RS_NO_SUSPCOLGRID
-	const SuspensionCollisionGrid& GetDefaultSuspColGrid();
+	SuspensionCollisionGrid& GetDefaultSuspColGrid(GameMode gameMode, bool isLight);
 #endif
 }

@@ -17,8 +17,11 @@ build.ninja
 
 # Build-related
 RocketSim.Dir/
+build/
 x86/
 x64/
+Release/
+Debug
 out/
 *.obj
 *.lib
@@ -26,6 +29,14 @@ out/
 *.pdb
 *.ilk
 *.tmp
+*.pyd
+*.whl
+
+# Arena collision mesh files
+*.cmf
+
+# Raw binary files
+*.bin
 
 # Visual Studio (not using anything VS-related)
 .vs/
@@ -33,4 +44,7 @@ out/
 *.sln
 *.filters
 *.user
+CMakeSettings.json
 
+# Anything starting with three underscores
+___*

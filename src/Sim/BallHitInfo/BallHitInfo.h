@@ -19,7 +19,7 @@ struct BallHitInfo {
 	// This is needed since the extra ball-car hit impulse cannot be applied on two consecutive ticks
 	uint64_t tickCountWhenExtraImpulseApplied = ~0ULL;
 
-	void Serialize(DataStreamOut& out);
+	void Serialize(DataStreamOut& out) const;
 	void Deserialize(DataStreamIn& in);
 };
 

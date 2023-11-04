@@ -1,5 +1,30 @@
 #include "MutatorConfig.h"
 
+MutatorConfig::MutatorConfig(GameMode gameMode) {
+	using namespace RLConst;
+
+	switch (gameMode) {
+	case GameMode::HOOPS:
+		ballRadius = BALL_COLLISION_RADIUS_HOOPS;
+		break;
+	case GameMode::SNOWDAY:
+		ballRadius = Snowday::PUCK_RADIUS;
+		break;
+	default:
+		ballRadius = BALL_COLLISION_RADIUS_SOCCAR;
+	}
+
+	if (gameMode == GameMode::SNOWDAY) {
+		ballWorldFriction = Snowday::PUCK_FRICTION;
+		ballWorldRestitution = Snowday::PUCK_RESTITUTION;
+		ballMass = Snowday::PUCK_MASS_BT;
+	} else {
+		ballWorldFriction = BALL_FRICTION;
+		ballWorldRestitution = BALL_RESTITUTION;
+		ballMass = BALL_MASS_BT;
+	}
+}
+
 void MutatorConfig::Serialize(DataStreamOut& out) const {
 	out.Write<uint16_t>(RS_GET_ARGUMENT_COUNT(MUTATOR_CONFIG_SERIALIZATION_FIELDS));
 	out.WriteMultiple(MUTATOR_CONFIG_SERIALIZATION_FIELDS);

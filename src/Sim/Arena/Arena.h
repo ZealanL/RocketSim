@@ -3,6 +3,7 @@
 #include "../Car/Car.h"
 #include "../Ball/Ball.h"
 #include "../BoostPad/BoostPad.h"
+#include "../CollisionMasks.h"
 
 #include "../../CollisionMeshFile/CollisionMeshFile.h"
 #include "../BoostPad/BoostPadGrid/BoostPadGrid.h"
@@ -17,12 +18,11 @@
 #include "../../../libsrc/bullet3-3.24/BulletDynamics/Dynamics/btDiscreteDynamicsWorld.h"
 #include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionDispatch/btDefaultCollisionConfiguration.h"
 
-enum class GameMode : byte {
-	SOCCAR,
-
-	// No goals, boosts, or arena - cars/ball will fall infinitely, ball is frozen until touched
-	THE_VOID, 
-	// More coming soon!
+// Mode of speed/memory optimization for the arena
+// Will affect whether high memory consumption is used to slightly increase speed or not
+enum class ArenaMemWeightMode : byte {
+	HEAVY, // ~11MB per arena
+	LIGHT // ~0.8MB per arena
 };
 
 typedef std::function<void(class Arena* arena, Team scoringTeam, void* userInfo)> GoalScoreEventFn;
@@ -36,12 +36,17 @@ public:
 	GameMode gameMode;
 
 	uint32_t _lastCarID = 0;
-	unordered_set<Car*> _cars;
-	unordered_map<uint32_t, Car*> _carIDMap;
+	std::unordered_set<Car*> _cars;
+	bool ownsCars = true; // If true, deleting this arena instance deletes all cars
+
+	std::unordered_map<uint32_t, Car*> _carIDMap;
 	
 	Ball* ball;
-
-	vector<BoostPad*> _boostPads;
+	bool ownsBall = true; // If true, deleting this arena instance deletes the ball
+	
+	std::vector<BoostPad*> _boostPads;
+	bool ownsBoostPads = true; // If true, deleing this arena instance deletes all boost pads
+	
 	BoostPadGrid _boostPadGrid;
 
 	SuspensionCollisionGrid _suspColGrid;
@@ -55,15 +60,15 @@ public:
 	float tickTime; 
 
 	// Returns (1 / tickTime)
-	float GetTickRate() {
+	float GetTickRate() const {
 		return 1 / tickTime;
 	}
 
 	// Total ticks this arena instance has been simulated for, never resets
 	uint64_t tickCount = 0;
 
-	const unordered_set<Car*>& GetCars() { return _cars; }
-	const vector<BoostPad*>& GetBoostPads() { return _boostPads; }
+	const std::unordered_set<Car*>& GetCars() { return _cars; }
+	const std::vector<BoostPad*>& GetBoostPads() { return _boostPads; }
 
 	// Returns true if added, false if car was already added
 	bool _AddCarFromPtr(Car* car);
@@ -107,13 +112,13 @@ public:
 	RSAPI void SetCarBumpCallback(CarBumpEventFn callbackFn, void* userInfo = NULL);
 
 	// NOTE: Arena should be destroyed after use
-	RSAPI static Arena* Create(GameMode gameMode, float tickRate = 120);
+	RSAPI static Arena* Create(GameMode gameMode, ArenaMemWeightMode memWeightMode = ArenaMemWeightMode::HEAVY, float tickRate = 120);
 	
-	// Serialize cars, ball, and boostpads to a file
-	RSAPI void WriteToFile(std::filesystem::path path);
+	// Serialize entire arena state including cars, ball, and boostpads
+	RSAPI void Serialize(DataStreamOut& out) const;
 
-	// Create a new arena from a file written by Arena.WriteToFile()
-	RSAPI static Arena* LoadFromFile(std::filesystem::path path);
+	// Load new arena from serialized data
+	RSAPI static Arena* DeserializeNew(DataStreamIn& in);
 
 	Arena(const Arena& other) = delete; // No copy constructor, use Arena::Clone() instead
 	Arena& operator =(const Arena& other) = delete; // No copy operator, use Arena::Clone() instead
@@ -123,8 +128,6 @@ public:
 
 	// Get a deep copy of the arena
 	RSAPI Arena* Clone(bool copyCallbacks);
-
-	RSAPI static void SerializeCar(DataStreamOut& out, Car* car);
 
 	// NOTE: Car ID will not be restored
 	RSAPI Car* DeserializeNewCar(DataStreamIn& in, Team team);
@@ -137,24 +140,35 @@ public:
 	// Returns true if the ball is probably going in, does not account for wall or ceiling bounces
 	// NOTE: Purposefully overestimates, just like the real RL's shot prediction
 	// To check which goal it will score in, use the ball's velocity
-	RSAPI bool IsBallProbablyGoingIn(float maxTime = 2.f);
+	// Margin can be manually adjusted with extraMargin (negative to prevent overestimating)
+	RSAPI bool IsBallProbablyGoingIn(float maxTime = 2.f, float extraMargin = 0, Team* goalTeamOut = NULL) const;
+
+	// Returns true if the ball is in the net
+	// Works for all gamemodes (and does nothing in THE_VOID)
+	RSAPI bool IsBallScored() const;
 
 	// Free all associated memory
 	RSAPI ~Arena();
 
 	// NOTE: Passed shape pointer will be freed when arena is deconstructed
 	template <class T>
-	void _AddStaticCollisionShape(size_t rbIndex, size_t meshListIndex, T* shape, T* meshList, btVector3 posBT = btVector3(0, 0, 0)) {
-		static_assert(std::is_base_of<btCollisionShape, T>::value);
+	void _AddStaticCollisionShape(
+		size_t rbIndex, size_t meshListIndex, T* shape, T* meshList, btVector3 posBT = btVector3(0, 0, 0), 
+		bool isHoopsNet = false) {
 
+		static_assert(std::is_base_of<btCollisionShape, T>::value);
 		meshList[meshListIndex] = *shape;
-	
+
 		assert(rbIndex < _worldCollisionRBAmount);
 		btRigidBody& shapeRB = _worldCollisionRBs[rbIndex];
 		shapeRB = btRigidBody(0, NULL, &meshList[meshListIndex]);
 		shapeRB.setWorldTransform(btTransform(btMatrix3x3::getIdentity(), posBT));
 		shapeRB.setUserPointer(this);
-		_bulletWorld.addRigidBody(&shapeRB);
+		if (isHoopsNet) {
+			_bulletWorld.addRigidBody(&shapeRB, CollisionMasks::HOOPS_NET, CollisionMasks::HOOPS_NET);
+		} else {
+			_bulletWorld.addRigidBody(&shapeRB);
+		}
 	}
 
 	void _SetupArenaCollisionShapes();
@@ -170,8 +184,15 @@ public:
 	void _BtCallback_OnCarCarCollision(Car* car1, Car* car2, btManifoldPoint& manifoldPoint);
 	void _BtCallback_OnCarWorldCollision(Car* car, btCollisionObject* worldObject, btManifoldPoint& manifoldPoint);
 
+	ArenaMemWeightMode GetMemWeightMode() {
+		return _memWeightMode;
+	}
+
 private:
 	
 	// Constructor for use by Arena::Create()
-	Arena(GameMode gameMode, float tickRate = 120);
+	Arena(GameMode gameMode, ArenaMemWeightMode memWeightMode, float tickRate = 120);
+
+	// Making this private because horrible memory overflows would happen if you changed it
+	ArenaMemWeightMode _memWeightMode;
 };

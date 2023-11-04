@@ -2,6 +2,26 @@
 
 **A C++ library for simulating Rocket League games at maximum efficiency**
 
+RocketSim is a complete simulation of Rocket League's gameplay logic and physics that is completely standalone.
+RocketSim supports the game modes: Soccar, Hoops, Heatseeker, and Snowday.
+
+# Speed
+RocketSim is designed to run extremely fast, even when complex collisions and suspension calculations are happening every tick.
+On an average PC running a single thread of RocketSim with two cars, RocketSim can simulate around 10 minutes of game time every second.
+This means that with 12 threads running RocketSim, you can simulate around 5 days of game time every minute!
+
+# Accuracy
+RocketSim is not a perfectly accurate replication of Rocket League, but is close enough for most applications.
+Perceivable differences between the simulation and the real game usually take at least a second to accumulate from an initial state.
+This means RocketSim is accurate enough to:
+- *Train machine learning bots*
+- *Simulate different shots on the ball at different angles to find the best input combination*
+- *Simulate air control to find the optimal orientation input*
+
+However, RocketSim is NOT accurate enough to:
+- *Simulate entire games from inputs alone*
+- *Accurately determine the outcome of powerful pinches*
+
 ## Installation
 - Clone this repo and build it
 - Use https://github.com/ZealanL/RLArenaCollisionDumper to dump all of Rocket League's arena collision meshes
@@ -9,25 +29,6 @@
 
 ## Documentation
 Documentation is available at: https://zealanl.github.io/RocketSimDocs/
-
-## Progress
-**Coming Soon:**
-- More collision optimizations
-- Proper documentation
-- Improved collision accuracy
-
-**Done:**
-- Car suspension
-- Car driving
-- Car jumps and flips
-- Arena collision
-- Proper ball bounces
-- Car-ball collision with proper forces (will be refined more in the near future)
-- Boost usage and boost pads
-- Bumps and demos
-- Auto-flip when upside-down
-- Serialization of cars/ball/boost pads/arena
-- Boost pad/suspension ray optimization using lookup grid
 
 ## Bindings
 If you don't want to work in C++, here are some (unofficial) bindings written in other languages:
@@ -37,7 +38,7 @@ If you don't want to work in C++, here are some (unofficial) bindings written in
 
 Official Python bindings are currently in the works.
 
-## Performance
+## Performance Details
 RocketSim already heavily outperforms the speed of Rocket League's physics tick step without optimization.
 
 Version performance comparison:

@@ -20,6 +20,7 @@ subject to the following restrictions:
 #include "../CollisionShapes/btStaticPlaneShape.h"
 #include "../CollisionShapes/btTriangleMeshShape.h"
 #include "../CollisionShapes/btCompoundShape.h"
+#include "btConvexHullShape.h"
 
 /*
   Make sure this dummy function never changes so that it
@@ -47,6 +48,8 @@ void btCollisionShape::getAabb(const btTransform& t, btVector3& aabbMin, btVecto
 		return ((btTriangleMeshShape*)this)->getAabb(t, aabbMin, aabbMax);
 	case COMPOUND_SHAPE_PROXYTYPE:
 		return ((btCompoundShape*)this)->getAabb(t, aabbMin, aabbMax);
+	case CONVEX_HULL_SHAPE_PROXYTYPE:
+		return ((btConvexHullShape*)this)->getAabb(t, aabbMin, aabbMax);
 	default:
 		btAssert(false);
 	}
@@ -66,6 +69,8 @@ btScalar btCollisionShape::getMargin() const {
 		return ((btTriangleMeshShape*)this)->getMargin();
 	case COMPOUND_SHAPE_PROXYTYPE:
 		return ((btCompoundShape*)this)->getMargin();
+	case CONVEX_HULL_SHAPE_PROXYTYPE:
+		return ((btConvexHullShape*)this)->getMargin();
 	default:
 		btAssert(false);
 	}
@@ -92,14 +97,21 @@ void btCollisionShape::setMargin(btScalar margin) {
 
 void btCollisionShape::getBoundingSphere(btVector3& center, btScalar& radius) const
 {
-	btTransform tr;
-	tr.setIdentity();
-	btVector3 aabbMin, aabbMax;
+	switch (m_shapeType) {
+	case SPHERE_SHAPE_PROXYTYPE:
+		center = btVector3(0, 0, 0);
+		radius = ((btSphereShape*)this)->getRadius() + 0.08;
+		break;
+	default:
+		btTransform tr;
+		tr.setIdentity();
+		btVector3 aabbMin, aabbMax;
 
-	getAabb(tr, aabbMin, aabbMax);
+		getAabb(tr, aabbMin, aabbMax);
 
-	radius = (aabbMax - aabbMin).length() * btScalar(0.5);
-	center = (aabbMin + aabbMax) * btScalar(0.5);
+		radius = (aabbMax - aabbMin).length() * btScalar(0.5);
+		center = (aabbMin + aabbMax) * btScalar(0.5);
+	}
 }
 
 btScalar btCollisionShape::getContactBreakingThreshold(btScalar defaultContactThreshold) const

@@ -10,8 +10,7 @@
 RSAPI void Arena::SetMutatorConfig(const MutatorConfig& mutatorConfig) {
 
 	bool
-		ballRadiusChanged = mutatorConfig.ballRadius != this->_mutatorConfig.ballRadius,
-		ballMassChanged = mutatorConfig.ballMass != this->_mutatorConfig.ballMass,
+		ballChanged = mutatorConfig.ballRadius != this->_mutatorConfig.ballRadius || mutatorConfig.ballMass != this->_mutatorConfig.ballMass,
 		carMassChanged = mutatorConfig.carMass != this->_mutatorConfig.carMass,
 		gravityChanged = mutatorConfig.gravity != this->_mutatorConfig.gravity;
 
@@ -19,14 +18,11 @@ RSAPI void Arena::SetMutatorConfig(const MutatorConfig& mutatorConfig) {
 
 	_bulletWorld.setGravity(mutatorConfig.gravity * UU_TO_BT);
 	
-	if (ballRadiusChanged) {
+	if (ballChanged) {
 		// We'll need to remake the ball
 		_bulletWorld.removeCollisionObject(&ball->_rigidBody);
-		ball->_BulletSetup(&_bulletWorld, mutatorConfig);
-	} else if (ballMassChanged) {
-		btVector3 newBallInertia;
-		ball->_collisionShape.calculateLocalInertia(mutatorConfig.ballMass, newBallInertia);
-		ball->_rigidBody.setMassProps(mutatorConfig.ballMass, newBallInertia);
+		delete ball->_collisionShape;
+		ball->_BulletSetup(gameMode, &_bulletWorld, mutatorConfig);
 	}
 
 	if (carMassChanged) {
@@ -52,8 +48,8 @@ Car* Arena::AddCar(Team team, const CarConfig& config) {
 	
 	_AddCarFromPtr(car);
 
-	car->_BulletSetup(&_bulletWorld, _mutatorConfig);
-	car->Respawn(-1, _mutatorConfig.carSpawnBoostAmount);
+	car->_BulletSetup(gameMode, &_bulletWorld, _mutatorConfig);
+	car->Respawn(gameMode, -1, _mutatorConfig.carSpawnBoostAmount);
 
 	return car;
 }
@@ -82,7 +78,8 @@ bool Arena::RemoveCar(uint32_t id) {
 		_carIDMap.erase(itr);
 		_cars.erase(car);
 		_bulletWorld.removeCollisionObject(&car->_rigidBody);
-		Car::_DestroyCar(car);
+		if (ownsCars)
+			delete car;
 		return true;
 	} else {
 		return false;
@@ -108,34 +105,60 @@ void Arena::SetCarBumpCallback(CarBumpEventFn callbackFunc, void* userInfo) {
 
 void Arena::ResetToRandomKickoff(int seed) {
 	using namespace RLConst;
+	bool isHoops = gameMode == GameMode::HOOPS;
 
 	// TODO: Make shuffling of kickoff setup more efficient (?)
 
-	static thread_local vector<int> kickoffOrder;
-	if (kickoffOrder.empty()) {
+	static thread_local std::array<int, CAR_SPAWN_LOCATION_AMOUNT> KICKOFF_ORDER_TEMPLATE = { -1 };
+	if (KICKOFF_ORDER_TEMPLATE[0] == -1) {
+		// Initialize
 		for (int i = 0; i < CAR_SPAWN_LOCATION_AMOUNT; i++)
-			kickoffOrder.push_back(i);
+			KICKOFF_ORDER_TEMPLATE[i] = i;
 	}
 
+	auto kickoffOrder = KICKOFF_ORDER_TEMPLATE;
+
+	std::default_random_engine* randEngine;
 	if (seed == -1) {
-		std::default_random_engine& randEngine = Math::GetRandEngine();
-		std::shuffle(kickoffOrder.begin(), kickoffOrder.end(), randEngine);
+		randEngine = &Math::GetRandEngine();
 	} else {
-		std::default_random_engine randEngine = std::default_random_engine(seed);
-		std::shuffle(kickoffOrder.begin(), kickoffOrder.end(), randEngine);
+		randEngine = new std::default_random_engine(seed);
 	}
 
-	vector<Car*> blueCars, orangeCars;
+	std::shuffle(kickoffOrder.begin(), kickoffOrder.end(), *randEngine);
+
+	const CarSpawnPos* CAR_SPAWN_LOCATIONS = isHoops ? CAR_SPAWN_LOCATIONS_HOOPS : CAR_SPAWN_LOCATIONS_SOCCAR;
+	const CarSpawnPos* CAR_RESPAWN_LOCATIONS = isHoops ? CAR_RESPAWN_LOCATIONS_HOOPS : CAR_RESPAWN_LOCATIONS_SOCCAR;
+
+	std::vector<Car*> blueCars, orangeCars;
 	for (Car* car : _cars)
 		((car->team == Team::BLUE) ? blueCars : orangeCars).push_back(car);
 
+	int numCarsAtRespawnPos[CAR_RESPAWN_LOCATION_AMOUNT] = {};
+
 	int kickoffPositionAmount = RS_MAX(blueCars.size(), orangeCars.size());
 	for (int i = 0; i < kickoffPositionAmount; i++) {
-		CarSpawnPos spawnPos = CAR_SPAWN_LOCATIONS[kickoffOrder[i]];
+
+		CarSpawnPos spawnPos;
+	
+		if (i < CAR_SPAWN_LOCATION_AMOUNT) {
+			spawnPos = CAR_SPAWN_LOCATIONS[kickoffOrder[i]];
+		} else {
+			int respawnPosIdx = (i - (CAR_SPAWN_LOCATION_AMOUNT)) % CAR_RESPAWN_LOCATION_AMOUNT;
+			spawnPos = CAR_RESPAWN_LOCATIONS[respawnPosIdx];
+
+			// Extra offset to add to multiple cars spawning at the same respawn point,
+			//	helps prevent insane numbers of cars from spawning in eachother.
+			// Eventually, they will spawn so far away that they clip out of the arena,
+			//	but that's not my problem.
+			constexpr float CAR_SPAWN_EXTRA_OFFSET_Y = 250;
+			spawnPos.y += CAR_SPAWN_EXTRA_OFFSET_Y * numCarsAtRespawnPos[respawnPosIdx];
+			numCarsAtRespawnPos[respawnPosIdx]++;
+		}
 
 		for (int teamIndex = 0; teamIndex < 2; teamIndex++) {
 			bool isBlue = (teamIndex == 0);
-			vector<Car*> teamCars = isBlue ? blueCars : orangeCars;
+			std::vector<Car*> teamCars = isBlue ? blueCars : orangeCars;
 
 			if (i < teamCars.size()) {
 				CarState spawnState;
@@ -156,11 +179,26 @@ void Arena::ResetToRandomKickoff(int seed) {
 		}
 	}
 
-	ball->SetState(BallState());
+	BallState ballState = BallState();
+	if (gameMode == GameMode::HEATSEEKER) {
+		int nextRand = (*randEngine)();
+		Vec scale = Vec(1, (nextRand % 2) ? 1 : -1, 1);
+		ballState.pos = Heatseeker::BALL_START_POS * scale;
+		ballState.vel = Heatseeker::BALL_START_VEL * scale;
+	} else if (gameMode == GameMode::SNOWDAY) {
+		// Don't freeze
+		ballState.vel.z = FLT_EPSILON;
+	} else if (isHoops) {
+		ballState.vel.z = BALL_HOOPS_Z_VEL;
+	}
+	ball->SetState(ballState);
 
-	if (gameMode == GameMode::SOCCAR) {
-		for (BoostPad* boostPad : _boostPads)
-			boostPad->SetState(BoostPadState());
+	for (BoostPad* boostPad : _boostPads)
+		boostPad->SetState(BoostPadState());
+
+	if (seed != -1) {
+		// Custom random engine was created for this seed, so we need to free it
+		delete randEngine;
 	}
 }
 
@@ -208,6 +246,10 @@ bool Arena::_BulletContactAddedCallback(
 			arenaInst->
 				_BtCallback_OnCarWorldCollision(car, (btCollisionObject*)bodyB->getUserPointer(), contactPoint);
 		}
+	} else if (userIndexA == BT_USERINFO_TYPE_BALL && userIndexB == -1) {
+		// Ball + World
+		Arena* arenaInst = (Arena*)bodyB->getUserPointer();
+		arenaInst->ball->_OnWorldCollision(arenaInst->gameMode, contactPoint.m_normalWorldOnB, arenaInst->tickTime);
 	}
 	
 	btAdjustInternalEdgeContacts(
@@ -253,7 +295,8 @@ void Arena::_BtCallback_OnCarBallCollision(Car* car, Ball* ball, btManifoldPoint
 	float relSpeed = RS_MIN(relVel.length(), BALL_CAR_EXTRA_IMPULSE_MAXDELTAVEL_UU);
 
 	if (relSpeed > 0) {
-		btVector3 hitDir = (relPos * btVector3(1, 1, BALL_CAR_EXTRA_IMPULSE_Z_SCALE)).safeNormalized();
+		float zScale = (gameMode == GameMode::HOOPS && car->_internalState.isOnGround) ? BALL_CAR_EXTRA_IMPULSE_Z_SCALE_HOOPS_GROUND : BALL_CAR_EXTRA_IMPULSE_Z_SCALE;
+		btVector3 hitDir = (relPos * btVector3(1, 1, zScale)).safeNormalized();
 		btVector3 forwardDirAdjustment = carForward * hitDir.dot(carForward) * (1 - BALL_CAR_EXTRA_IMPULSE_FORWARD_SCALE);
 		hitDir = (hitDir - forwardDirAdjustment).safeNormalized();
 		btVector3 addedVel = (hitDir * relSpeed) * BALL_CAR_EXTRA_IMPULSE_FACTOR_CURVE.GetOutput(relSpeed) * _mutatorConfig.ballHitExtraForceScale;
@@ -262,6 +305,8 @@ void Arena::_BtCallback_OnCarBallCollision(Car* car, Ball* ball, btManifoldPoint
 		// Velocity won't be actually added until the end of this tick
 		ball->_velocityImpulseCache += addedVel * UU_TO_BT;
 	}
+
+	ball->_OnHit(gameMode, car);
 }
 
 void Arena::_BtCallback_OnCarCarCollision(Car* car1, Car* car2, btManifoldPoint& manifoldPoint) {
@@ -357,7 +402,7 @@ void Arena::_BtCallback_OnCarWorldCollision(Car* car, btCollisionObject* world, 
 	manifoldPoint.m_combinedRestitution = _mutatorConfig.carWorldRestitution;
 }
 
-Arena::Arena(GameMode gameMode, float tickRate) {
+Arena::Arena(GameMode gameMode, ArenaMemWeightMode memWeightMode, float tickRate) : _mutatorConfig(gameMode), _suspColGrid(gameMode) {
 
 	// Tickrate must be from 15 to 120tps
 	assert(tickRate >= 15 && tickRate <= 120);
@@ -366,11 +411,20 @@ Arena::Arena(GameMode gameMode, float tickRate) {
 
 	this->gameMode = gameMode;
 	this->tickTime = 1 / tickRate;
-	this->_mutatorConfig = MutatorConfig();
 
 	{ // Initialize world
 
 		btDefaultCollisionConstructionInfo collisionConfigConstructionInfo = {};
+
+		// These take up a ton of memory normally
+		if (memWeightMode == ArenaMemWeightMode::LIGHT) {
+			collisionConfigConstructionInfo.m_defaultMaxPersistentManifoldPoolSize /= 16;
+			collisionConfigConstructionInfo.m_defaultMaxCollisionAlgorithmPoolSize /= 32;
+		} else {
+			collisionConfigConstructionInfo.m_defaultMaxPersistentManifoldPoolSize /= 8;
+			collisionConfigConstructionInfo.m_defaultMaxCollisionAlgorithmPoolSize /= 16;
+		}
+
 		_bulletWorldParams.collisionConfig.setup(collisionConfigConstructionInfo);
 
 		_bulletWorldParams.collisionDispatcher.setup(&_bulletWorldParams.collisionConfig);
@@ -394,11 +448,13 @@ Arena::Arena(GameMode gameMode, float tickRate) {
 		solverInfo.m_erp2 = 0.8f;
 	}
 
-	if (gameMode == GameMode::SOCCAR) {
+	bool loadArenaStuff = gameMode != GameMode::THE_VOID;
+
+	if (loadArenaStuff) {
 		_SetupArenaCollisionShapes();
 
 #ifndef RS_NO_SUSPCOLGRID
-		_suspColGrid = RocketSim::GetDefaultSuspColGrid();
+		_suspColGrid = RocketSim::GetDefaultSuspColGrid(gameMode, memWeightMode == ArenaMemWeightMode::LIGHT);
 		_suspColGrid.defaultWorldCollisionRB = &_worldCollisionRBs[0];
 #endif
 
@@ -421,19 +477,27 @@ Arena::Arena(GameMode gameMode, float tickRate) {
 	{ // Initialize ball
 		ball = Ball::_AllocBall();
 
-		ball->_BulletSetup(&_bulletWorld, _mutatorConfig);
+		ball->_BulletSetup(gameMode, &_bulletWorld, _mutatorConfig);
 		ball->SetState(BallState());
 	}
 
-	if (gameMode == GameMode::SOCCAR) { // Initialize boost pads
+	if (loadArenaStuff) { // Initialize boost pads
 		using namespace RLConst::BoostPads;
 
-		_boostPads.reserve(LOCS_AMOUNT_BIG + LOCS_AMOUNT_SMALL);
+		bool isHoops = gameMode == GameMode::HOOPS;
 
-		for (int i = 0; i < (LOCS_AMOUNT_BIG + LOCS_AMOUNT_SMALL); i++) {
+		int amountSmall = isHoops ? LOCS_AMOUNT_SMALL_HOOPS : LOCS_AMOUNT_SMALL_SOCCAR;
+		_boostPads.reserve(LOCS_AMOUNT_BIG + amountSmall);
+
+		for (int i = 0; i < (LOCS_AMOUNT_BIG + amountSmall); i++) {
 			bool isBig = i < LOCS_AMOUNT_BIG;
 
-			btVector3 pos = isBig ? LOCS_BIG[i] : LOCS_SMALL[i - LOCS_AMOUNT_BIG];
+			btVector3 pos;
+			if (isHoops) {
+				pos = isBig ? LOCS_BIG_HOOPS[i] : LOCS_SMALL_HOOPS[i - LOCS_AMOUNT_BIG];
+			} else {
+				pos = isBig ? LOCS_BIG_SOCCAR[i] : LOCS_SMALL_SOCCAR[i - LOCS_AMOUNT_BIG];
+			}
 
 			BoostPad* pad = BoostPad::_AllocBoostPad();
 			pad->_Setup(isBig, pos);
@@ -449,21 +513,19 @@ Arena::Arena(GameMode gameMode, float tickRate) {
 	gContactAddedCallback = &Arena::_BulletContactAddedCallback;
 }
 
-Arena* Arena::Create(GameMode gameMode, float tickRate) {
-	return new Arena(gameMode, tickRate);
+Arena* Arena::Create(GameMode gameMode, ArenaMemWeightMode memWeightMode, float tickRate) {
+	return new Arena(gameMode, memWeightMode, tickRate);
 }
 
-void Arena::WriteToFile(std::filesystem::path path) {
-	DataStreamOut out = {};
-
-	out.WriteMultiple(gameMode, tickTime, tickCount, _lastCarID);
+void Arena::Serialize(DataStreamOut& out) const {
+	out.WriteMultiple(gameMode, tickTime, tickCount, _lastCarID, _memWeightMode);
 
 	{ // Serialize cars
 		out.Write<uint32_t>(_cars.size());
 		for (auto car : _cars) {
-			out.WriteMultiple(car->team, car->id);
-
-			SerializeCar(out, car);
+			out.Write(car->team);
+			out.Write(car->id);
+			car->Serialize(out);
 		}
 	}
 
@@ -480,23 +542,20 @@ void Arena::WriteToFile(std::filesystem::path path) {
 	{ // Serialize mutators
 		_mutatorConfig.Serialize(out);
 	}
-
-	out.WriteToFile(path, true);
 }
 
-Arena* Arena::LoadFromFile(std::filesystem::path path) {
-	constexpr char ERROR_PREFIX[] = "Arena::LoadFromFile(): ";
-
-	DataStreamIn in = DataStreamIn(path, true);
+Arena* Arena::DeserializeNew(DataStreamIn& in) {
+	constexpr char ERROR_PREFIX[] = "Arena::Deserialize(): ";
 
 	GameMode gameMode;
 	float tickTime;
 	uint64_t tickCount;
 	uint32_t lastCarID;
+	ArenaMemWeightMode memWeightMode;
 
-	in.ReadMultiple(gameMode, tickTime, tickCount, lastCarID);
+	in.ReadMultiple(gameMode, tickTime, tickCount, lastCarID, memWeightMode);
 
-	Arena* newArena = new Arena(gameMode, 1.f / tickTime);
+	Arena* newArena = new Arena(gameMode, memWeightMode, 1.f / tickTime);
 	newArena->tickCount = tickCount;
 	
 	{ // Deserialize cars
@@ -504,11 +563,12 @@ Arena* Arena::LoadFromFile(std::filesystem::path path) {
 		for (int i = 0; i < carAmount; i++) {
 			Team team;
 			uint32_t id;
-			in.ReadMultiple(team, id);
+			in.Read(team);
+			in.Read(id);
 
 #ifndef RS_MAX_SPEED
 			if (newArena->_carIDMap.count(id))
-				RS_ERR_CLOSE(ERROR_PREFIX << "Failed to load from " << path << ", got repeated car ID of " << id << ".");
+				RS_ERR_CLOSE(ERROR_PREFIX << "Failed to load, got repeated car ID of " << id << ".");
 #endif
 
 			Car* newCar = newArena->DeserializeNewCar(in, team);
@@ -528,8 +588,8 @@ Arena* Arena::LoadFromFile(std::filesystem::path path) {
 
 #ifndef RS_MAX_SPEED
 		if (boostPadAmount != newArena->_boostPads.size())
-			RS_ERR_CLOSE(ERROR_PREFIX << "Failed to load from " << path <<
-				", different boost pad amount written in file (" << boostPadAmount << "/" << newArena->_boostPads.size() << ")");
+			RS_ERR_CLOSE(ERROR_PREFIX << "Failed to load, " <<
+				"different boost pad amount written in file (" << boostPadAmount << "/" << newArena->_boostPads.size() << ")");
 #endif
 
 		for (auto pad : newArena->_boostPads) {
@@ -554,7 +614,7 @@ Arena* Arena::LoadFromFile(std::filesystem::path path) {
 }
 
 Arena* Arena::Clone(bool copyCallbacks) {
-	Arena* newArena = new Arena(this->gameMode, this->GetTickRate());
+	Arena* newArena = new Arena(this->gameMode, this->_memWeightMode, this->GetTickRate());
 	
 	if (copyCallbacks) {
 		newArena->_goalScoreCallback = this->_goalScoreCallback;
@@ -573,7 +633,6 @@ Arena* Arena::Clone(bool copyCallbacks) {
 		newCar->_velocityImpulseCache = car->_velocityImpulseCache;
 	}
 
-	
 	assert(this->_boostPads.size() == newArena->_boostPads.size());
 	for (int i = 0; i < this->_boostPads.size(); i++)
 		newArena->_boostPads[i]->SetState(this->_boostPads[i]->GetState());
@@ -584,13 +643,6 @@ Arena* Arena::Clone(bool copyCallbacks) {
 	return newArena;
 }
 
-void Arena::SerializeCar(DataStreamOut& out, Car* car) {
-	car->_Serialize(out);
-
-	CarState state = car->GetState();
-	state.Serialize(out);
-}
-
 Car* Arena::DeserializeNewCar(DataStreamIn& in, Team team) {
 	Car* car = Car::_AllocateCar();
 	car->_Deserialize(in);
@@ -598,11 +650,8 @@ Car* Arena::DeserializeNewCar(DataStreamIn& in, Team team) {
 
 	_AddCarFromPtr(car);
 
-	car->_BulletSetup(&_bulletWorld, _mutatorConfig);
-
-	CarState state = CarState();
-	state.Deserialize(in);
-	car->SetState(state);
+	car->_BulletSetup(gameMode, &_bulletWorld, _mutatorConfig);
+	car->SetState(car->_internalState);
 
 	return car;
 }
@@ -620,7 +669,8 @@ void Arena::Step(int ticksToSimulate) {
 			}
 		}
 
-		if (gameMode == GameMode::SOCCAR) {
+		bool hasArenaStuff = (gameMode != GameMode::THE_VOID);
+		if (hasArenaStuff) {
 #ifndef RS_NO_SUSPCOLGRID
 			{ // Add dynamic bodies to suspension grid
 				for (Car* car : _cars) {
@@ -641,16 +691,16 @@ void Arena::Step(int ticksToSimulate) {
 #ifdef RS_NO_SUSPCOLGRID
 			suspColGridPtr = NULL;
 #else
-			if (gameMode == GameMode::SOCCAR) {
+			if (hasArenaStuff) {
 				suspColGridPtr = &_suspColGrid;
 			} else {
 				suspColGridPtr = NULL;
 			}
 #endif
-			car->_PreTickUpdate(tickTime, _mutatorConfig, suspColGridPtr);
+			car->_PreTickUpdate(gameMode, tickTime, _mutatorConfig, suspColGridPtr);
 		}
 
-		if (gameMode == GameMode::SOCCAR) {
+		if (hasArenaStuff) {
 #ifndef RS_NO_SUSPCOLGRID
 			{ // Remove dynamic bodies from suspension grid
 				for (Car* car : _cars) {
@@ -666,37 +716,33 @@ void Arena::Step(int ticksToSimulate) {
 #endif
 		}
 
-		if (gameMode == GameMode::SOCCAR) {
+		if (hasArenaStuff) {
 			for (BoostPad* pad : _boostPads)
 				pad->_PreTickUpdate(tickTime);
 		}
+
+		// Update ball
+		ball->_PreTickUpdate(gameMode, tickTime);
 
 		// Update world
 		_bulletWorld.stepSimulation(tickTime, 0, tickTime);
 
 		for (Car* car : _cars) {
-			car->_PostTickUpdate(tickTime, _mutatorConfig);
+			car->_PostTickUpdate(gameMode, tickTime, _mutatorConfig);
 			car->_FinishPhysicsTick(_mutatorConfig);
-			if (gameMode == GameMode::SOCCAR) {
+			if (hasArenaStuff)
 				_boostPadGrid.CheckCollision(car);
-			}
 		}
 
-		if (gameMode == GameMode::SOCCAR) {
+		if (hasArenaStuff)
 			for (BoostPad* pad : _boostPads)
 				pad->_PostTickUpdate(tickTime, _mutatorConfig);
-		}
 
 		ball->_FinishPhysicsTick(_mutatorConfig);
 
-		if (gameMode == GameMode::SOCCAR) {
-			if (_goalScoreCallback.func != NULL) { // Potentially fire goal score callback
-				float ballPosY = ball->_rigidBody.m_worldTransform.m_origin.y() * BT_TO_UU;
-				if (abs(ballPosY) > RLConst::SOCCAR_BALL_SCORE_THRESHOLD_Y) {
-					// Orange goal is at positive Y, so if the ball's Y is positive, it's in orange goal and thus blue scored
-					Team scoringTeam = (ballPosY > 0) ? Team::BLUE : Team::ORANGE;
-					_goalScoreCallback.func(this, scoringTeam, _goalScoreCallback.userInfo);
-				}
+		if (_goalScoreCallback.func != NULL) { // Potentially fire goal score callback
+			if (IsBallScored()) {
+				_goalScoreCallback.func(this, RS_TEAM_FROM_Y(-ball->_rigidBody.m_worldTransform.m_origin.y()), _goalScoreCallback.userInfo);
 			}
 		}
 
@@ -704,49 +750,174 @@ void Arena::Step(int ticksToSimulate) {
 	}
 }
 
-bool Arena::IsBallProbablyGoingIn(float maxTime) {
-	if (gameMode == GameMode::SOCCAR) {
-		Vec ballPos = ball->_rigidBody.m_worldTransform.m_origin * UU_TO_BT;
-		Vec ballVel = ball->_rigidBody.m_linearVelocity * UU_TO_BT;
+// Returns negative: within
+// Note that the returned margin is squared
+float BallWithinHoopsGoalXYMarginSq(float x, float y) {
+	constexpr float
+		SCALE_Y = 0.9f,
+		OFFSET_Y = 2770.f,
+		RADIUS_SQ = 716 * 716;
 
-		if (ballVel.y < FLT_EPSILON)
+	float dy = abs(y) * SCALE_Y - OFFSET_Y;
+	float distSq = x * x + dy * dy;
+	return distSq - RADIUS_SQ;
+}
+
+bool Arena::IsBallProbablyGoingIn(float maxTime, float extraMargin, Team* goalTeamOut) const {
+	Vec ballPos = ball->_rigidBody.m_worldTransform.m_origin * BT_TO_UU;
+	Vec ballVel = ball->_rigidBody.m_linearVelocity * BT_TO_UU;
+
+	if (gameMode == GameMode::SOCCAR || gameMode == GameMode::SNOWDAY) {
+		if (abs(ballVel.y) < FLT_EPSILON)
 			return false;
 
 		float scoreDirSgn = RS_SGN(ballVel.y);
-		float goalScoreY = (RLConst::SOCCAR_GOAL_SCORE_BASE_THRESHOLD_Y + _mutatorConfig.ballRadius) * scoreDirSgn;
-		float distToGoal = abs(ballPos.y - scoreDirSgn);
+		float goalY = RLConst::SOCCAR_GOAL_SCORE_BASE_THRESHOLD_Y * scoreDirSgn;
+		float distToGoal = abs(ballPos.y - goalY);
 
 		float timeToGoal = distToGoal / abs(ballVel.y);
-
+		
 		if (timeToGoal > maxTime)
 			return false;
-		
-		// Roughly account for drag
-		timeToGoal *= 1 + powf(1 - _mutatorConfig.ballDrag, timeToGoal);
 
 		Vec extrapPosWhenScore = ballPos + (ballVel * timeToGoal) + (_mutatorConfig.gravity * timeToGoal * timeToGoal) / 2;
-		
+
 		// From: https://github.com/RLBot/RLBot/wiki/Useful-Game-Values
 		constexpr float
 			APPROX_GOAL_HALF_WIDTH = 892.755f,
 			APPROX_GOAL_HEIGHT = 642.775;
 
-		float SCORE_MARGIN = _mutatorConfig.ballRadius * 0.64f;
+		float scoreMargin = _mutatorConfig.ballRadius * 0.1f + extraMargin;
 
-		if (extrapPosWhenScore.z > APPROX_GOAL_HEIGHT + SCORE_MARGIN)
+		if (extrapPosWhenScore.z > APPROX_GOAL_HEIGHT + scoreMargin)
 			return false; // Too high
 
-		if (abs(extrapPosWhenScore.x) > APPROX_GOAL_HALF_WIDTH + SCORE_MARGIN)
+		if (abs(extrapPosWhenScore.x) > APPROX_GOAL_HALF_WIDTH + scoreMargin)
 			return false; // Too far to the side
+
+		if (goalTeamOut)
+			*goalTeamOut = RS_TEAM_FROM_Y(scoreDirSgn);
 
 		// Ok it's probably gonna score, or at least be very close
 		return true;
+	} else if (gameMode == GameMode::HOOPS) {
+
+		constexpr float
+			APPROX_RIM_HEIGHT = 365;
+		
+		float minHeight = APPROX_RIM_HEIGHT + _mutatorConfig.ballRadius * 1.2f;
+
+		if (ballVel.z < -FLT_EPSILON && ballPos.z < minHeight) {
+			if (BallWithinHoopsGoalXYMarginSq(ballPos.x, ballPos.y) < 0) {
+				if (goalTeamOut)
+					*goalTeamOut = RS_TEAM_FROM_Y(ballPos.y);
+				return true; // Already in the net
+			}
+		}
+
+		float margin = _mutatorConfig.ballRadius * 1.0f;
+		float marginSq = margin * margin;
+
+		float upQuadIntercept;
+		float downQuadIntercept;
+
+		// Calculate time to score using quadratic intercept
+		{
+			float g = _mutatorConfig.gravity.z;
+			if (g > -FLT_EPSILON)
+				return false; 
+
+			float v = ballVel.z;
+			float h = ballPos.z - minHeight;
+
+			float sqrtInput = v * v - 2 * g * h;
+			if (sqrtInput > 0) {
+				float sqrtOutput = sqrtf(sqrtInput);
+				upQuadIntercept = (-v + sqrtOutput) / g;
+				downQuadIntercept = (-v - sqrtOutput) / g;
+			} else {
+				// Never reaches the rim height
+				if (BallWithinHoopsGoalXYMarginSq(ballPos.x, ballPos.y) < -marginSq) {
+					// If started within the hoop, it will stay within the hoop and is therefore scoring
+					return true;
+				} else {
+					// Otherwise, it can never get into the hoop and is therefore never scoring
+					return false;
+				}
+			}
+		}
+		
+		if (upQuadIntercept >= 0) {
+			// Ball has to go up before it can fall into the hoop
+			// Make sure it cant hit the rim on the way up
+
+			Vec extrapPosUp = ballPos + (ballVel * upQuadIntercept);
+			float upMarginSq = BallWithinHoopsGoalXYMarginSq(extrapPosUp.x, extrapPosUp.y);
+
+			float minClearanceMargin = 60 + _mutatorConfig.ballRadius;
+
+			if (upMarginSq > -marginSq && upMarginSq < (minClearanceMargin * minClearanceMargin))
+				return false; // Will probably hit rim
+		}
+
+		Vec extrapPosDown = ballPos + (ballVel * downQuadIntercept);
+		extrapPosDown.y = abs(extrapPosDown.y);
+
+		{ // Very approximate prediction of backboard bounce
+			float wallBounceY = RLConst::ARENA_EXTENT_Y_HOOPS - _mutatorConfig.ballRadius;
+			if (extrapPosDown.y > wallBounceY) {
+				float margin = extrapPosDown.y - wallBounceY;
+				extrapPosDown.y -= margin * (1 + _mutatorConfig.ballWorldRestitution);
+			}
+		}
+		
+		if (BallWithinHoopsGoalXYMarginSq(extrapPosDown.x, extrapPosDown.y) < -marginSq) {
+			if (goalTeamOut)
+				*goalTeamOut = RS_TEAM_FROM_Y(extrapPosDown.y);
+			return true;
+		} else {
+			return false;
+		}
+
 	} else {
+		RS_ERR_CLOSE("Arena::IsBallProbablyGoingIn() is not supported for: " << GAMEMODE_STRS[(int)gameMode]);
+		return false;
+	}
+}
+
+RSAPI bool Arena::IsBallScored() const {
+	switch (gameMode) {
+	case GameMode::SOCCAR:
+	case GameMode::HEATSEEKER:
+	case GameMode::SNOWDAY:
+	{
+		float ballPosY = ball->_rigidBody.m_worldTransform.m_origin.y() * BT_TO_UU;
+		return abs(ballPosY) > (RLConst::SOCCAR_GOAL_SCORE_BASE_THRESHOLD_Y + _mutatorConfig.ballRadius);
+	}
+	case GameMode::HOOPS:
+	{
+		if (ball->_rigidBody.m_worldTransform.m_origin.z() < RLConst::HOOPS_GOAL_SCORE_THRESHOLD_Z * UU_TO_BT) {
+			constexpr float
+				SCALE_Y = 0.9f,
+				OFFSET_Y = 2770.f,
+				RADIUS_SQ = 716 * 716;
+
+			Vec ballPos = ball->_rigidBody.m_worldTransform.m_origin * BT_TO_UU;
+			return BallWithinHoopsGoalXYMarginSq(ballPos.x, ballPos.y) < 0;
+		} else {
+			return false;
+		}
+	}
+	default:
 		return false;
 	}
 }
 
 Arena::~Arena() {
+
+	// Remove all from bullet world constraints
+	while (_bulletWorld.getNumConstraints() > 0)
+		_bulletWorld.removeConstraint(0);
 
 	// Manually remove all collision objects
 	// Otherwise we run into issues regarding deconstruction order
@@ -754,16 +925,22 @@ Arena::~Arena() {
 		_bulletWorld.removeCollisionObject(_bulletWorld.getCollisionObjectArray()[0]);
 
 	// Remove all cars
-	for (Car* car : _cars)
-		Car::_DestroyCar(car);
+	if (ownsCars) {
+		for (Car* car : _cars)
+			delete car;
+	}
 
 	// Remove the ball
-	Ball::_DestroyBall(ball);
+	if (ownsBall) {
+		Ball::_DestroyBall(ball);
+	}
 
 	if (gameMode == GameMode::SOCCAR) {
-		// Remove all boost pads
-		for (BoostPad* boostPad : _boostPads)
-			delete boostPad;
+		if (ownsBoostPads) {
+			// Remove all boost pads
+			for (BoostPad* boostPad : _boostPads)
+				delete boostPad;
+		}
 
 		delete[] _worldCollisionRBs;
 		delete[] _worldCollisionPlaneShapes;
@@ -775,20 +952,42 @@ Arena::~Arena() {
 }
 
 void Arena::_SetupArenaCollisionShapes() {
-	// TODO: This is just for soccar arena (for now)
-	assert(gameMode == GameMode::SOCCAR);
+	assert(gameMode != GameMode::THE_VOID);
+	bool isHoops = gameMode == GameMode::HOOPS;
 
-	auto collisionMeshes = RocketSim::GetArenaCollisionShapes();
+	auto collisionMeshes = RocketSim::GetArenaCollisionShapes(gameMode);
+
+	if (collisionMeshes.empty()) {
+		RS_ERR_CLOSE("Failed to setup arena collision meshes, no meshes found for game mode")
+	}
+
 	_worldCollisionBvhShapes = new btBvhTriangleMeshShape[collisionMeshes.size()];
 
-	constexpr size_t PLANE_COUNT = 4;
-	_worldCollisionPlaneShapes = new btStaticPlaneShape[PLANE_COUNT];
+	size_t planeAmount = isHoops ? 6 : 4;
+	_worldCollisionPlaneShapes = new btStaticPlaneShape[planeAmount];
 
-	_worldCollisionRBAmount = collisionMeshes.size() + PLANE_COUNT;
+	_worldCollisionRBAmount = collisionMeshes.size() + planeAmount;
 	_worldCollisionRBs = new btRigidBody[_worldCollisionRBAmount];
 
 	for (size_t i = 0; i < collisionMeshes.size(); i++) {
-		_AddStaticCollisionShape(i, i, collisionMeshes[i], _worldCollisionBvhShapes);
+		auto mesh = collisionMeshes[i];
+
+		bool isHoopsNet = false;
+
+		if (isHoops) { // Detect net mesh and disable car collision
+			const unsigned char* vertexBase;
+			int numVerts, stride;
+			const unsigned char* indexBase;
+			int indexStride, numFaces;
+			mesh->getMeshInterface()->getLockedReadOnlyVertexIndexBase(&vertexBase, numVerts, stride, &indexBase, indexStride, numFaces);
+			
+			constexpr int HOOPS_NET_NUM_VERTS = 505;
+			if (numVerts == HOOPS_NET_NUM_VERTS) {
+				isHoopsNet = true;
+			}
+		}
+
+		_AddStaticCollisionShape(i, i, mesh, _worldCollisionBvhShapes, btVector3(0,0,0), isHoopsNet);
 
 		// Don't free the BVH when we deconstruct this arena
 		_worldCollisionBvhShapes[i].m_ownsBvh = false;
@@ -797,6 +996,13 @@ void Arena::_SetupArenaCollisionShapes() {
 	{ // Add arena collision planes (floor/walls/ceiling)
 		using namespace RLConst;
 
+		float 
+			extentX = isHoops ? ARENA_EXTENT_X_HOOPS : ARENA_EXTENT_X,
+			extentY = isHoops ? ARENA_EXTENT_Y_HOOPS : ARENA_EXTENT_Y,
+			height  = isHoops ? ARENA_HEIGHT_HOOPS : ARENA_HEIGHT;
+
+		// TODO: This is all very repetitive and silly
+
 		// Floor
 		auto floorShape = btStaticPlaneShape(btVector3(0, 0, 1), 0);
 		_AddStaticCollisionShape(
@@ -804,14 +1010,14 @@ void Arena::_SetupArenaCollisionShapes() {
 			0,
 			&floorShape, _worldCollisionPlaneShapes
 		);
-
+		
 		// Ceiling
 		auto ceilingShape = btStaticPlaneShape(btVector3(0, 0, -1), 0);
 		_AddStaticCollisionShape(
 			collisionMeshes.size() + 1,
 			1,
 			&ceilingShape, _worldCollisionPlaneShapes,
-			Vec( 0, 0, ARENA_HEIGHT ) * UU_TO_BT
+			Vec(0, 0, height) * UU_TO_BT
 		);
 
 		// Side walls
@@ -820,14 +1026,32 @@ void Arena::_SetupArenaCollisionShapes() {
 			collisionMeshes.size() + 2,
 			2,
 			&leftWallShape, _worldCollisionPlaneShapes,
-			Vec( -ARENA_EXTENT_X, 0, ARENA_HEIGHT / 2 ) * UU_TO_BT
+			Vec(-extentX, 0, height / 2) * UU_TO_BT
 		);
 		auto rightWallShape = btStaticPlaneShape(btVector3(-1, 0, 0), 0);
 		_AddStaticCollisionShape(
 			collisionMeshes.size() + 3,
 			3,
 			&rightWallShape, _worldCollisionPlaneShapes,
-			Vec(ARENA_EXTENT_X, 0, ARENA_HEIGHT / 2) * UU_TO_BT
+			Vec(extentX, 0, height / 2) * UU_TO_BT
 		);
+
+		if (isHoops) {
+			// Y walls
+			auto blueWallShape = btStaticPlaneShape(btVector3(0, 1, 0), 0);
+			_AddStaticCollisionShape(
+				collisionMeshes.size() + 4,
+				4,
+				&blueWallShape, _worldCollisionPlaneShapes,
+				Vec(0, -extentY, height / 2) * UU_TO_BT
+			);
+			auto orangeWallShape = btStaticPlaneShape(btVector3(0, -1, 0), 0);
+			_AddStaticCollisionShape(
+				collisionMeshes.size() + 5,
+				5,
+				&orangeWallShape, _worldCollisionPlaneShapes,
+				Vec(0, extentY, height / 2) * UU_TO_BT
+			);
+		}
 	}
 }

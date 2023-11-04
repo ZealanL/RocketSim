@@ -200,12 +200,8 @@ public:
 		{
 		}
 
-		virtual bool needsCollision(btBroadphaseProxy* proxy0) const
-		{
-			bool collides = (proxy0->m_collisionFilterGroup & m_collisionFilterMask) != 0;
-			collides = collides && (m_collisionFilterGroup & proxy0->m_collisionFilterMask);
-			return collides;
-		}
+		// ROCKETSIM CHANGE: Implementation moved to .cpp
+		virtual bool needsCollision(btBroadphaseProxy* proxy0) const;
 
 		virtual btScalar addSingleResult(LocalRayResult& rayResult, bool normalInWorldSpace) = 0;
 	};

@@ -1,6 +1,6 @@
 #include "BallHitInfo.h"
 
-void BallHitInfo::Serialize(DataStreamOut& out) {
+void BallHitInfo::Serialize(DataStreamOut& out) const {
 	out.Write<bool>(isValid);
 
 	if (isValid)

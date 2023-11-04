@@ -75,12 +75,36 @@ RotMat Angle::ToRotMat() const {
 	return mat;
 }
 
-Vec Angle::GetForwardVector() const {
+RSAPI Angle Angle::FromVec(const Vec& forward) {
+	float yaw, pitch;
+
+	if (abs(forward.y) > FLT_EPSILON || abs(forward.x) > FLT_EPSILON) {
+		yaw = atan2f(forward.y, forward.x);
+
+		float dist2D = sqrtf(forward.x * forward.x + forward.y * forward.y);
+		pitch = -atan2f(-forward.z, dist2D);
+	} else {
+		yaw = 0;
+		if (forward.z > FLT_EPSILON) {
+			pitch = M_PI / 2;
+		} else if (forward.z < -FLT_EPSILON) {
+			pitch = -M_PI / 2;
+		} else {
+			pitch = 0;
+		}
+	}
+
+	return Angle(yaw, pitch, 0);
+}
+
+Vec Angle::GetForwardVec() const {
 	float
-		cy = cosf(yaw),
 		cp = cosf(-pitch),
+		cy = cosf(yaw),
+		sy = sinf(yaw),
 		sp = sinf(-pitch);
-	return Vec(cy * cp, cy * sp, -sp);
+
+	return Vec(cp * cy, cp * sy, -sp);
 }
 
 void Angle::NormalizeFix() {

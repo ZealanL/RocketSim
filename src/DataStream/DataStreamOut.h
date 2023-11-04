@@ -5,7 +5,7 @@
 
 // Basic struct for writing raw data to a file
 struct DataStreamOut {
-	vector<byte> data;
+	std::vector<byte> data;
 	size_t pos = 0;
 
 	DataStreamOut() = default;
@@ -31,6 +31,7 @@ struct DataStreamOut {
 	}
 
 	void WriteMultipleFromList(std::vector<SerializeObject> objs) {
+		Write<uint32_t>(objs.size());
 		for (const SerializeObject& obj : objs)
 			WriteBytes(obj.ptr, obj.size);
 	}
@@ -38,10 +39,6 @@ struct DataStreamOut {
 	template<typename... Args>
 	void WriteMultiple(Args... args) {
 		WriteMultipleFromList({ args... });
-	}
-
-	void WriteVersionCheck() {
-		Write<uint32_t>(RS_VERSION_ID);
 	}
 
 	void WriteToFile(std::filesystem::path filePath, bool writeVersionCheck) {

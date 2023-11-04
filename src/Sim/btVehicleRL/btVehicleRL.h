@@ -8,6 +8,8 @@ struct btWheelInfoRL : public btWheelInfo {
 	bool m_isInContactWithWorld = false;
 	float m_steerAngle = 0;
 
+	btVector3 m_velAtContactPoint;
+
 	// lat = sideways, long = forward
 	float m_latFriction = 0, m_longFriction = 0;
 	btVector3 m_impulse;
