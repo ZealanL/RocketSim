@@ -41,7 +41,6 @@ void BallPredTracker::UpdatePred(Arena* arena) {
 				return;
 			} else {
 				// Doesn't match
-				int x = 0; // TODO: TEMP
 			}
 		}
 	}
