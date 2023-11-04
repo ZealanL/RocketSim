@@ -13,9 +13,9 @@ struct SuspensionCollisionGrid {
 		HEIGHT = RLConst::ARENA_HEIGHT;
 
 	constexpr static int
-		CELL_AMOUNT_X[2] = { 128, 32 },
-		CELL_AMOUNT_Y[2] = { 224, 56 },
-		CELL_AMOUNT_Z[2] = { 32, 16 },
+		CELL_AMOUNT_X[2] = { 32, 24 },
+		CELL_AMOUNT_Y[2] = { 56, 48 },
+		CELL_AMOUNT_Z[2] = { 8, 4 },
 		CELL_AMOUNT_TOTAL[2] = { (CELL_AMOUNT_X[0] * CELL_AMOUNT_Y[0] * CELL_AMOUNT_Z[0]), (CELL_AMOUNT_X[1] * CELL_AMOUNT_Y[1] * CELL_AMOUNT_Z[1]) };
 
 	constexpr static float
@@ -24,7 +24,7 @@ struct SuspensionCollisionGrid {
 		CELL_SIZE_Z[2] = { HEIGHT / CELL_AMOUNT_Z[0] , HEIGHT / CELL_AMOUNT_Z[1] };
 
 	// Make sure cell sizes arent't too small, a ray shouldn't be able to travel through multiple cells
-	static_assert(RS_MIN(CELL_SIZE_X[0], RS_MIN(CELL_SIZE_Y[0], CELL_SIZE_Z[0])) > 60, "Building collision suspension grid from arena meshes...");
+	static_assert(RS_MIN(CELL_SIZE_X[0], RS_MIN(CELL_SIZE_Y[0], CELL_SIZE_Z[0])) > 60, "SuspensionCollisionGrid cells are too small");
 
 	struct Cell {
 		bool worldCollision = false;
