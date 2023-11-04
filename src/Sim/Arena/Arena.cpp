@@ -416,10 +416,13 @@ Arena::Arena(GameMode gameMode, ArenaMemWeightMode memWeightMode, float tickRate
 
 		btDefaultCollisionConstructionInfo collisionConfigConstructionInfo = {};
 
+		// These take up a ton of memory normally
 		if (memWeightMode == ArenaMemWeightMode::LIGHT) {
-			// These take up a ton of memory normally
+			collisionConfigConstructionInfo.m_defaultMaxPersistentManifoldPoolSize /= 16;
+			collisionConfigConstructionInfo.m_defaultMaxCollisionAlgorithmPoolSize /= 32;
+		} else {
 			collisionConfigConstructionInfo.m_defaultMaxPersistentManifoldPoolSize /= 8;
-			collisionConfigConstructionInfo.m_defaultMaxCollisionAlgorithmPoolSize /= 8;
+			collisionConfigConstructionInfo.m_defaultMaxCollisionAlgorithmPoolSize /= 16;
 		}
 
 		_bulletWorldParams.collisionConfig.setup(collisionConfigConstructionInfo);
