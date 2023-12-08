@@ -50,7 +50,7 @@ btSequentialImpulseConstraintSolver
 {
 	
 
-protected:
+public:
 	btAlignedObjectArray<btSolverBody> m_tmpSolverBodyPool;
 	btConstraintArray m_tmpSolverContactConstraintPool;
 	btConstraintArray m_tmpSolverNonContactConstraintPool;
