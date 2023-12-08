@@ -152,7 +152,7 @@ public:
 
 	// NOTE: Passed shape pointer will be freed when arena is deconstructed
 	template <class T>
-	void _AddStaticCollisionShape(
+	btRigidBody* _AddStaticCollisionShape(
 		size_t rbIndex, size_t meshListIndex, T* shape, T* meshList, btVector3 posBT = btVector3(0, 0, 0), 
 		bool isHoopsNet = false) {
 
@@ -169,6 +169,7 @@ public:
 		} else {
 			_bulletWorld.addRigidBody(&shapeRB);
 		}
+		return &shapeRB;
 	}
 
 	void _SetupArenaCollisionShapes();
