@@ -129,17 +129,6 @@ void Ball::_FinishPhysicsTick(const MutatorConfig& mutatorConfig) {
 		_rigidBody.m_angularVelocity = angVel;
 	}
 
-	if (mutatorConfig.enablePhysicsRounding) {
-		_rigidBody.m_worldTransform.m_origin =
-			Math::RoundVec(_rigidBody.m_worldTransform.m_origin, 0.01 * UU_TO_BT);
-
-		_rigidBody.m_linearVelocity =
-			Math::RoundVec(_rigidBody.m_linearVelocity, 0.01 * UU_TO_BT);
-
-		_rigidBody.m_angularVelocity =
-			Math::RoundVec(_rigidBody.m_angularVelocity, 0.00001);
-	}
-
 	_internalState.updateCounter++;
 }
 
