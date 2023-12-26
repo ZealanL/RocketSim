@@ -63,7 +63,8 @@ public:
 		  m_contactCFM(0.f),
 		  m_contactERP(0.f),
 		  m_frictionCFM(0.f),
-		  m_lifeTime(0)
+		  m_lifeTime(0),
+		  m_isSpecial(false)
 	{
 	}
 
@@ -96,7 +97,8 @@ public:
 										 m_frictionCFM(0.f),
 										 m_lifeTime(0),
             m_lateralFrictionDir1(0,0,0),
-            m_lateralFrictionDir2(0,0,0)
+            m_lateralFrictionDir2(0,0,0),
+			m_isSpecial(false)
 	{
 	}
 
@@ -146,6 +148,9 @@ public:
 
 	btVector3 m_lateralFrictionDir1;
 	btVector3 m_lateralFrictionDir2;
+
+	// ROCKETSIM CHANGE: Add flag for marking manifold point as needing special resolution
+	bool m_isSpecial;
 
 	btScalar getDistance() const
 	{

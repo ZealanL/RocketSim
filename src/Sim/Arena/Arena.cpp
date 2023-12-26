@@ -250,6 +250,9 @@ bool Arena::_BulletContactAddedCallback(
 		// Ball + World
 		Arena* arenaInst = (Arena*)bodyB->getUserPointer();
 		arenaInst->ball->_OnWorldCollision(arenaInst->gameMode, contactPoint.m_normalWorldOnB, arenaInst->tickTime);
+		
+		// Set as special
+		contactPoint.m_isSpecial = true;
 	}
 	
 	btAdjustInternalEdgeContacts(

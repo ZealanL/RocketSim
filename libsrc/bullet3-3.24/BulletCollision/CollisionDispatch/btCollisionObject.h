@@ -123,6 +123,17 @@ public:
 
 	btVector3 m_customDebugColorRGB;
 
+	// ROCKETSIM CHANGE: Add custom info for special collision resolution
+	struct btSpecialResolveInfo {
+		int m_numSpecialCollisions;
+		btVector3 m_totalNormal;
+		float m_totalDist;
+		float m_restitution, m_friction;
+
+		btSpecialResolveInfo() = default;
+	};
+	btSpecialResolveInfo m_specialResolveInfo = {};
+
 public:
 	BT_DECLARE_ALIGNED_ALLOCATOR();
 
