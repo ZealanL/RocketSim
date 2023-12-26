@@ -125,7 +125,7 @@ void RocketSim::Init(std::filesystem::path collisionMeshesFolder) {
 
 					btTriangleMesh* triMesh = meshFile.MakeBulletMesh();
 
-					auto bvtMesh = new btBvhTriangleMeshShape(triMesh, false);
+					auto bvtMesh = new btBvhTriangleMeshShape(triMesh, true);
 					btTriangleInfoMap* infoMap = new btTriangleInfoMap();
 					btGenerateInternalEdgeInfo(bvtMesh, infoMap);
 					bvtMesh->setTriangleInfoMap(infoMap);
