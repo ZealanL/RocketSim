@@ -252,7 +252,8 @@ bool Arena::_BulletContactAddedCallback(
 		arenaInst->ball->_OnWorldCollision(arenaInst->gameMode, contactPoint.m_normalWorldOnB, arenaInst->tickTime);
 		
 		// Set as special
-		contactPoint.m_isSpecial = true;
+		if (arenaInst->gameMode != GameMode::SNOWDAY)
+			contactPoint.m_isSpecial = true;
 	}
 	
 	btAdjustInternalEdgeContacts(
