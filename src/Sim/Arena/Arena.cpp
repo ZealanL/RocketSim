@@ -299,7 +299,11 @@ void Arena::_BtCallback_OnCarBallCollision(Car* car, Ball* ball, btManifoldPoint
 	float relSpeed = RS_MIN(relVel.length(), BALL_CAR_EXTRA_IMPULSE_MAXDELTAVEL_UU);
 
 	if (relSpeed > 0) {
-		float zScale = (gameMode == GameMode::HOOPS && car->_internalState.isOnGround) ? BALL_CAR_EXTRA_IMPULSE_Z_SCALE_HOOPS_GROUND : BALL_CAR_EXTRA_IMPULSE_Z_SCALE;
+		bool extraZScale = 
+			gameMode == GameMode::HOOPS && 
+			carState.isOnGround &&
+			carState.rotMat.up.z > BALL_CAR_EXTRA_IMPULSE_Z_SCALE_HOOPS_NORMAL_Z_THRESH;
+		float zScale = extraZScale ? BALL_CAR_EXTRA_IMPULSE_Z_SCALE_HOOPS_GROUND : BALL_CAR_EXTRA_IMPULSE_Z_SCALE;
 		btVector3 hitDir = (relPos * btVector3(1, 1, zScale)).safeNormalized();
 		btVector3 forwardDirAdjustment = carForward * hitDir.dot(carForward) * (1 - BALL_CAR_EXTRA_IMPULSE_FORWARD_SCALE);
 		hitDir = (hitDir - forwardDirAdjustment).safeNormalized();
