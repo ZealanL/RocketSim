@@ -69,24 +69,21 @@ void Car::_PreTickUpdate(GameMode gameMode, float tickTime, const MutatorConfig&
 			_internalState.demoRespawnTimer = RS_MAX(_internalState.demoRespawnTimer - tickTime, 0);
 			if (_internalState.demoRespawnTimer == 0)
 				Respawn(gameMode, -1, mutatorConfig.carSpawnBoostAmount);
-		}
 
-		if (_internalState.isDemoed) {
 			// Disable rigidbody simulation
 			_rigidBody.m_activationState1 = DISABLE_SIMULATION;
 			_rigidBody.m_collisionFlags |= btCollisionObject::CF_NO_CONTACT_RESPONSE;
 
-			// Put car far away from anything going on in the arena
-			_rigidBody.m_worldTransform.m_origin = btVector3(0, 0, -1000);
-
 			// Don't bother updating anything
-			return;
 		} else {
 			// Prevent the car's RB from becoming inactive
 			_rigidBody.m_activationState1 = ACTIVE_TAG;
 			_rigidBody.m_collisionFlags &= ~btCollisionObject::CF_NO_CONTACT_RESPONSE;
 		}
 	}
+
+	if (_internalState.isDemoed)
+		return; // No other updates need to occur
 
 	// Do first part of the btVehicleRL update (update wheel transforms, do traces, calculate friction impulses) 
 	_bulletVehicle.updateVehicleFirst(tickTime, grid);
