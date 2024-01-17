@@ -6,14 +6,15 @@
 
 // Update our internal state from bullet and return it
 CarState Car::GetState() {
-	_internalState.pos = _rigidBody.m_worldTransform.m_origin * BT_TO_UU;
+	if (!_internalState.isDemoed) {
+		_internalState.pos = _rigidBody.m_worldTransform.m_origin * BT_TO_UU;
 
-	// NOTE: rotMat already updated at the start of Car::_PostTickUpdate()
+		// NOTE: rotMat already updated at the start of Car::_PostTickUpdate()
 
-	_internalState.vel = _rigidBody.m_linearVelocity * BT_TO_UU;
+		_internalState.vel = _rigidBody.m_linearVelocity * BT_TO_UU;
 
-	_internalState.angVel = _rigidBody.m_angularVelocity;
-
+		_internalState.angVel = _rigidBody.m_angularVelocity;
+    }
 	return _internalState;
 }
 
