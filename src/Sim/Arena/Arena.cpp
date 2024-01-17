@@ -682,6 +682,9 @@ void Arena::Step(int ticksToSimulate) {
 #ifndef RS_NO_SUSPCOLGRID
 			{ // Add dynamic bodies to suspension grid
 				for (Car* car : _cars) {
+					if (car->_internalState.isDemoed)
+						continue;
+
 					btVector3 min, max;
 					car->_rigidBody.getAabb(min, max);
 					_suspColGrid.UpdateDynamicCollisions(min, max, false);
