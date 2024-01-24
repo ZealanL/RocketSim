@@ -17,10 +17,11 @@ This means RocketSim is accurate enough to:
 - *Train machine learning bots*
 - *Simulate different shots on the ball at different angles to find the best input combination*
 - *Simulate air control to find the optimal orientation input*
+- *Simulate ground and floor pinches*
 
 However, RocketSim is NOT accurate enough to:
 - *Simulate entire games from inputs alone*
-- *Accurately determine the outcome of powerful pinches*
+- *Perfectly simulate long sequences of jumps and landings*
 
 ## Installation
 - Clone this repo and build it
