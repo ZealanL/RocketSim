@@ -2,6 +2,8 @@
 
 #include "../Math.h"
 
+RS_NS_START
+
 #define VEC_OP_VEC(op) \
 Vec Vec::operator op(const Vec& other) const { return Vec(x op other.x, y op other.y, z op other.z, _w op other._w); } \
 Vec& Vec::operator op##=(const Vec& other) { return *this = *this op other; }
@@ -112,3 +114,5 @@ void Angle::NormalizeFix() {
 	pitch = Math::WrapNormalizeFloat(pitch, M_PI / 2);
 	roll = Math::WrapNormalizeFloat(roll, M_PI);
 }
+
+RS_NS_END

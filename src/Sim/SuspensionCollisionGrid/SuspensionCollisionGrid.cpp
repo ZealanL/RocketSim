@@ -3,6 +3,8 @@
 #include "../../../libsrc/bullet3-3.24/BulletCollision/NarrowPhaseCollision/btRaycastCallback.h"
 #include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btBvhTriangleMeshShape.h"
 
+RS_NS_START
+
 // Quick virtual btTriangleCallback child class to simply check if any triangles are processed
 struct BoolHitTriangleCallback : public btTriangleCallback {
 
@@ -199,3 +201,5 @@ void SuspensionCollisionGrid::UpdateDynamicCollisions(Vec minBT, Vec maxBT, bool
 		return _UpdateDynamicCollisions<false>(*this, minBT, maxBT, remove);
 	}
 }
+
+RS_NS_END

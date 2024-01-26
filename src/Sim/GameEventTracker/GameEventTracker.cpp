@@ -1,5 +1,7 @@
 #include "GameEventTracker.h"
 
+RS_NS_START
+
 bool GetShooterPasser(Arena* arena, Team team, Car*& shooterOut, bool findPasser, Car*& passerOut, uint64_t maxShooterTicks, uint64_t maxPasserTicks) {
 	shooterOut = passerOut = NULL;
 	// TODO: Instead of looping over cars to find who hit it last, use persistent info
@@ -159,3 +161,5 @@ void GameEventTracker::ResetPersistentInfo() {
 
 	// _ballShotGoalTeam doesn't need to be reset
 }
+
+RS_NS_END

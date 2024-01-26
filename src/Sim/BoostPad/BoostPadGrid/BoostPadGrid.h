@@ -4,6 +4,8 @@
 
 #include "../BoostPad.h"
 
+RS_NS_START
+
 struct BoostPadGrid {
 	constexpr static float
 		EXTENT_X = 4096.f,
@@ -24,3 +26,5 @@ struct BoostPadGrid {
 	void CheckCollision(Car* car);
 	void Add(BoostPad* pad);
 };
+
+RS_NS_END

@@ -73,6 +73,9 @@ typedef uint8_t byte;
 
 #define RS_ALIGN_16 alignas(16)
 
+#define RS_NS_START namespace RocketSim {
+#define RS_NS_END }
+
 template<typename ...Args>
 size_t __RS_GET_ARGUMENT_COUNT(Args ...) {
 	return sizeof...(Args);

@@ -2,6 +2,8 @@
 #include "BaseInc.h"
 #include "Math/Math.h"
 
+RS_NS_START
+
 // Constant/default values from the game
 
 namespace RLConst {
@@ -422,3 +424,5 @@ namespace RLConst {
 		}
 	};
 }
+
+RS_NS_END

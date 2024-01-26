@@ -4,6 +4,8 @@
 
 #include "../../../libsrc/bullet3-3.24/BulletDynamics/Dynamics/btRigidBody.h"
 
+RS_NS_START
+
 BoostPad* BoostPad::_AllocBoostPad() {
 	return new BoostPad();
 }
@@ -90,3 +92,5 @@ void BoostPadState::Deserialize(DataStreamIn& in) {
 		BOOSTPAD_SERIALIZATION_FIELDS
 	);
 }
+
+RS_NS_END

@@ -1,6 +1,8 @@
 #pragma once
 #include "../../BaseInc.h"
 
+RS_NS_START
+
 // RocketSim 3D vector struct
 struct RS_ALIGN_16 Vec {
 	float x, y, z;
@@ -40,9 +42,9 @@ struct RS_ALIGN_16 Vec {
 
 	Vec Cross(const Vec& other) const {
 		return Vec(
-			 (y * other.z) - (z * other.y),
-			 (z * other.x) - (x * other.z),
-			 (x * other.y) - (y * other.x)
+			(y * other.z) - (z * other.y),
+			(z * other.x) - (x * other.z),
+			(x * other.y) - (y * other.x)
 		);
 	}
 
@@ -232,7 +234,7 @@ struct RS_ALIGN_16 RotMat {
 		RotMat result;
 
 		for (size_t i = 0; i < 3; i++)
-			for (size_t j = 0; j < 3; j++) 
+			for (size_t j = 0; j < 3; j++)
 				for (size_t k = 0; k < 3; k++)
 					result[i][j] += (*this)[i][j] * other[k][j];
 
@@ -297,3 +299,5 @@ struct Angle {
 		return stream;
 	}
 };
+
+RS_NS_END

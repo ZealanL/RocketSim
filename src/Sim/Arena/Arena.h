@@ -18,6 +18,8 @@
 #include "../../../libsrc/bullet3-3.24/BulletDynamics/Dynamics/btDiscreteDynamicsWorld.h"
 #include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionDispatch/btDefaultCollisionConfiguration.h"
 
+RS_NS_START
+
 // Mode of speed/memory optimization for the arena
 // Will affect whether high memory consumption is used to slightly increase speed or not
 enum class ArenaMemWeightMode : byte {
@@ -197,3 +199,5 @@ private:
 	// Making this private because horrible memory overflows would happen if you changed it
 	ArenaMemWeightMode _memWeightMode;
 };
+
+RS_NS_END

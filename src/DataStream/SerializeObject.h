@@ -1,6 +1,8 @@
 #pragma once
 #include "../Framework.h"
 
+RS_NS_START
+
 struct SerializeObject {
 	void* ptr;
 	size_t size = -1;
@@ -18,3 +20,5 @@ struct SerializeObject {
 		size = other.size;
 	}
 };
+
+RS_NS_END

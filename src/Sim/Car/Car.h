@@ -11,6 +11,8 @@
 #include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btCompoundShape.h"
 #include "../../../src/Sim/btVehicleRL/btVehicleRL.h"
 
+RS_NS_START
+
 struct CarState {
 
 	// Incremented every update, reset when SetState() is called
@@ -178,3 +180,5 @@ private:
 
 	Car() {}
 };
+
+RS_NS_END

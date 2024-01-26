@@ -1,5 +1,7 @@
 #include "BallPredTracker.h"
 
+RS_NS_START
+
 BallPredTracker::BallPredTracker(Arena* arena, size_t numPredTicks) : numPredTicks(numPredTicks) {
 	// Make ball pred arena
 	this->ballPredArena = Arena::Create(arena->gameMode, ArenaMemWeightMode::LIGHT, arena->GetTickRate());
@@ -61,3 +63,5 @@ void BallPredTracker::ForceUpdateAllPred(Arena* arena) {
 BallState BallPredTracker::GetBallStateForTime(float predTime) const {
 	return BallState();
 }
+
+RS_NS_END

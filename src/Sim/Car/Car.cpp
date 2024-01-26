@@ -4,6 +4,8 @@
 
 #include "../../../libsrc/bullet3-3.24/BulletDynamics/Dynamics/btDynamicsWorld.h"
 
+RS_NS_START
+
 // Update our internal state from bullet and return it
 CarState Car::GetState() {
 	_internalState.pos = _rigidBody.m_worldTransform.m_origin * BT_TO_UU;
@@ -805,3 +807,5 @@ void Car::_UpdateAutoRoll(float tickTime, const MutatorConfig& mutatorConfig, in
 	_rigidBody.applyCentralForce(groundDownDir * RLConst::CAR_AUTOROLL_FORCE * UU_TO_BT * CAR_MASS_BT);
 	_rigidBody.applyTorque(_rigidBody.m_invInertiaTensorWorld.inverse() * (torqueForward + torqueRight) * RLConst::CAR_AUTOROLL_TORQUE);
 }
+
+RS_NS_END

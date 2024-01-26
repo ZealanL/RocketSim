@@ -1,6 +1,8 @@
 #pragma once
 #include "../Framework.h"
 
+RS_NS_START
+
 enum class GameMode : byte {
 	SOCCAR,
 	HOOPS,
@@ -19,3 +21,5 @@ constexpr const char* GAMEMODE_STRS[] = {
 	"heatseeker",
 	"snowday"
 };
+
+RS_NS_END

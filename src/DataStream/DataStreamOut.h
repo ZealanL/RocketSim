@@ -3,6 +3,8 @@
 
 #include "SerializeObject.h"
 
+RS_NS_START
+
 // Basic struct for writing raw data to a file
 struct DataStreamOut {
 	std::vector<byte> data;
@@ -66,3 +68,5 @@ template <>
 inline void DataStreamOut::Write(const RotMat& val) {
 	WriteMultiple(val.forward, val.right, val.up);
 }
+
+RS_NS_END

@@ -1,6 +1,8 @@
 #pragma once
 #include "../Arena/Arena.h"
 
+RS_NS_START
+
 typedef std::function<void(class Arena* arena, Car* shooter, Car* passer, void* userInfo)> ShotEventFn;
 typedef std::function<void(class Arena* arena, Car* scorer, Car* passer, void* userInfo)> GoalEventFn;
 typedef std::function<void(class Arena* arena, Car* saver, void* userInfo)> SaveEventFn;
@@ -96,3 +98,5 @@ struct GameEventTracker {
 	// Call this whenever you set the arena to a new state if you want to be extra safe
 	RSAPI void ResetPersistentInfo();
 };
+
+RS_NS_END

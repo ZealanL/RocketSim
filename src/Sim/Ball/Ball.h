@@ -10,10 +10,14 @@
 #include "../../../libsrc/bullet3-3.24/BulletDynamics/Dynamics/btRigidBody.h"
 #include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btSphereShape.h"
 
+class btDynamicsWorld;
+
+RS_NS_START
+
 struct BallState {
 	// Incremented every update, reset when SetState() is called
-// Used for telling if a stateset occured
-// Not serialized
+	// Used for telling if a stateset occured
+	// Not serialized
 	uint64_t updateCounter = 0;
 
 	// Position in world space
@@ -64,7 +68,7 @@ public:
 	// For removal by Arena
 	static void _DestroyBall(Ball* ball) { delete ball; }
 
-	void _BulletSetup(GameMode gameMode, class btDynamicsWorld* bulletWorld, const MutatorConfig& mutatorConfig);
+	void _BulletSetup(GameMode gameMode, btDynamicsWorld* bulletWorld, const MutatorConfig& mutatorConfig);
 
 	bool groundStickApplied = false;
 	Vec _velocityImpulseCache = { 0,0,0 };
@@ -94,3 +98,5 @@ public:
 private:
 	Ball() {}
 };
+
+RS_NS_END

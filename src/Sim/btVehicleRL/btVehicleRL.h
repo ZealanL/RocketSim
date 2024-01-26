@@ -3,6 +3,8 @@
 
 #include "../../../libsrc/bullet3-3.24/BulletDynamics/Vehicle/btDefaultVehicleRaycaster.h"
 
+RS_NS_START
+
 // This is a modified version of btWheelInfo to more accurately follow Rocket League
 struct btWheelInfoRL : public btWheelInfo {
 	bool m_isInContactWithWorld = false;
@@ -207,3 +209,5 @@ public:
 	btVector3 getUpwardsDirFromWheelContacts();
 	float getForwardSpeed();
 };
+
+RS_NS_END

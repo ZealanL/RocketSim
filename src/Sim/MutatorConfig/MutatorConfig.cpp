@@ -1,5 +1,7 @@
 #include "MutatorConfig.h"
 
+RS_NS_START
+
 MutatorConfig::MutatorConfig(GameMode gameMode) {
 	using namespace RLConst;
 
@@ -39,3 +41,5 @@ void MutatorConfig::Deserialize(DataStreamIn& in) {
 
 	in.ReadMultiple(MUTATOR_CONFIG_SERIALIZATION_FIELDS);
 }
+
+RS_NS_END

@@ -3,6 +3,8 @@
 
 class btBvhTriangleMeshShape;
 
+RS_NS_START
+
 struct SuspensionCollisionGrid {
 	GameMode gameMode;
 	bool lightMem;
@@ -96,3 +98,5 @@ struct SuspensionCollisionGrid {
 
 	btRigidBody* defaultWorldCollisionRB = NULL;
 };
+
+RS_NS_END

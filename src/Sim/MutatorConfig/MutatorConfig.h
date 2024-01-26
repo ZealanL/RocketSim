@@ -5,6 +5,8 @@
 #include "../../DataStream/DataStreamIn.h"
 #include "../../DataStream/DataStreamOut.h"
 
+RS_NS_START
+
 enum class DemoMode : byte {
 	NORMAL,
 	ON_CONTACT,
@@ -75,3 +77,5 @@ jumpImmediateForce, boostAccel, boostUsedPerSecond, respawnDelay, \
 carSpawnBoostAmount, bumpCooldownTime, boostPadCooldown_Big, boostPadCooldown_Small, \
 ballHitExtraForceScale, bumpForceScale, ballRadius, unlimitedFlips, unlimitedDoubleJumps, \
 demoMode, enableTeamDemos
+
+RS_NS_END

@@ -1,13 +1,10 @@
 #include "RocketSim.h"
 
-#ifdef RS_PYBIND
-// Make sure it gets compiled
-#include "../python/src/PYB.h"
-#endif
-
 #include "../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btBvhTriangleMeshShape.h"
 #include "../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btTriangleMesh.h"
 #include "../libsrc/bullet3-3.24/BulletCollision/CollisionDispatch/btInternalEdgeUtility.h"
+
+using namespace RocketSim;
 
 struct MeshHashSet {
 	std::unordered_map<uint32_t, int> hashes;
@@ -48,18 +45,18 @@ RocketSimStage RocketSim::GetStage() {
 	return stage;
 }
 
-std::vector<btBvhTriangleMeshShape*>& RocketSim::GetArenaCollisionShapes(GameMode gameMode) {
+std::vector<btBvhTriangleMeshShape*>& RocketSim::GetArenaCollisionShapes(RocketSim::GameMode gameMode) {
 	static std::vector<btBvhTriangleMeshShape*> arenaCollisionMeshes;
 	static std::vector<btBvhTriangleMeshShape*> arenaCollisionMeshes_hoops;
 
-	return (gameMode == GameMode::HOOPS ? arenaCollisionMeshes_hoops : arenaCollisionMeshes);
+	return (gameMode == RocketSim::GameMode::HOOPS ? arenaCollisionMeshes_hoops : arenaCollisionMeshes);
 }
 
 #ifndef RS_NO_SUSPCOLGRID
 static SuspensionCollisionGrid
 	suspColGrids_soccar[] = { {GameMode::SOCCAR, true}, {GameMode::SOCCAR, false} },
 	suspColGrids_hoops[] = { {GameMode::HOOPS, true}, {GameMode::HOOPS, false} };
-SuspensionCollisionGrid& RocketSim::GetDefaultSuspColGrid(GameMode gameMode, bool isLight) {
+	SuspensionCollisionGrid& RocketSim::GetDefaultSuspColGrid(GameMode gameMode, bool isLight) {
 	if (gameMode == GameMode::HOOPS) {
 		return suspColGrids_hoops[isLight];
 	} else {

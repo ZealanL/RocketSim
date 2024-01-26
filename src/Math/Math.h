@@ -1,6 +1,8 @@
 #pragma once
 #include "../BaseInc.h"
 
+RS_NS_START
+
 struct LinearPieceCurve {
 	std::map<float, float> valueMappings;
 
@@ -20,3 +22,5 @@ namespace Math {
 
 	RSAPI float WrapNormalizeFloat(float val, float minmax);
 }
+
+RS_NS_END

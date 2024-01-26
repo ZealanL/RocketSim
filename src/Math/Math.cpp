@@ -1,5 +1,7 @@
 #include "Math.h"
 
+RS_NS_START
+
 float LinearPieceCurve::GetOutput(float input, float defaultOutput) const {
 	float output = input;
 
@@ -69,3 +71,5 @@ float Math::WrapNormalizeFloat(float val, float minmax) {
 		result += minmax * 2;
 	return result;
 }
+
+RS_NS_END
