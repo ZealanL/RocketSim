@@ -558,7 +558,12 @@ void Car::_UpdateAirTorque(float tickTime, const MutatorConfig& mutatorConfig, b
 			float pitchScale = 1;
 			if (relDodgeTorque.y() != 0 && controls.pitch != 0) {
 				if (RS_SGN(relDodgeTorque.y()) == RS_SGN(controls.pitch)) {
-					pitchScale = 0;
+
+#ifndef RS_MAX_SPEED
+					pitchScale = 1 - RS_MIN(abs(controls.pitch), 1); // Sanity clamp
+#else
+					pitchScale = 1 - abs(controls.pitch); // No sanity check
+#endif
 					doAirControl = true;
 				}
 			}
