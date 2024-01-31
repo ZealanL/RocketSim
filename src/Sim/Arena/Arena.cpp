@@ -538,7 +538,7 @@ void Arena::Serialize(DataStreamOut& out) const {
 		}
 	}
 
-	if (gameMode == GameMode::SOCCAR) { // Serialize boost pads
+	if (_boostPads.size() > 0) { // Serialize boost pads
 		out.Write<uint32_t>(_boostPads.size());
 		for (auto pad : _boostPads)
 			pad->GetState().Serialize(out);
@@ -592,7 +592,7 @@ Arena* Arena::DeserializeNew(DataStreamIn& in) {
 	}
 
 	// Deserialize boost pads
-	if (gameMode == GameMode::SOCCAR) {
+	if (newArena->_boostPads.size() > 0) {
 		uint32_t boostPadAmount = in.Read<uint32_t>();
 
 #ifndef RS_MAX_SPEED
@@ -947,7 +947,7 @@ Arena::~Arena() {
 		Ball::_DestroyBall(ball);
 	}
 
-	if (gameMode == GameMode::SOCCAR) {
+	if (_boostPads.size() > 0) {
 		if (ownsBoostPads) {
 			// Remove all boost pads
 			for (BoostPad* boostPad : _boostPads)
