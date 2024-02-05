@@ -1208,5 +1208,7 @@ void btCollisionWorld::contactPairTest(btCollisionObject* colObjA, btCollisionOb
 bool btCollisionWorld::RayResultCallback::needsCollision(btBroadphaseProxy* proxy0) const {
 	bool collides = (proxy0->m_collisionFilterGroup & m_collisionFilterMask) != 0
 		&& (m_collisionFilterGroup & proxy0->m_collisionFilterMask);
+	if (proxy0->m_clientObject == m_ignoreObj)
+		return false;
 	return collides;
 }

@@ -132,9 +132,9 @@ float btVehicleRL::rayCast(btWheelInfoRL& wheel, SuspensionCollisionGrid* grid) 
 
 	btCollisionObject* object;
 	if (grid) {
-		object = grid->CastSuspensionRay(m_vehicleRaycaster, source, target, rayResults);
+		object = grid->CastSuspensionRay(m_vehicleRaycaster, source, target, m_chassisBody, rayResults);
 	} else {
-		object = (btCollisionObject*)m_vehicleRaycaster->castRay(source, target, rayResults);
+		object = (btCollisionObject*)m_vehicleRaycaster->castRay(source, target, m_chassisBody, rayResults);
 	}
 
 	if (object) {

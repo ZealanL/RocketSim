@@ -93,7 +93,7 @@ struct SuspensionCollisionGrid {
 
 	void SetupWorldCollision(const std::vector<btBvhTriangleMeshShape*>& triMeshShapes);
 
-	btCollisionObject* CastSuspensionRay(btVehicleRaycaster* raycaster, Vec start, Vec end, btVehicleRaycaster::btVehicleRaycasterResult& result);
+	btCollisionObject* CastSuspensionRay(btVehicleRaycaster* raycaster, Vec start, Vec end, const btCollisionObject* ignoreObj, btVehicleRaycaster::btVehicleRaycasterResult& result);
 	void UpdateDynamicCollisions(Vec minBT, Vec maxBT, bool remove);
 
 	btRigidBody* defaultWorldCollisionRB = NULL;

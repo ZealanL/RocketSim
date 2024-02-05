@@ -122,11 +122,14 @@ void SuspensionCollisionGrid::SetupWorldCollision(const std::vector<btBvhTriangl
 }
 
 template <bool LIGHT>
-btCollisionObject* _CastSuspensionRay(SuspensionCollisionGrid& grid, btVehicleRaycaster* raycaster, Vec start, Vec end, btVehicleRaycaster::btVehicleRaycasterResult& result) {
+btCollisionObject* _CastSuspensionRay(
+	SuspensionCollisionGrid& grid, btVehicleRaycaster* raycaster, 
+	Vec start, Vec end, const btCollisionObject* ignoreObj, btVehicleRaycaster::btVehicleRaycasterResult& result
+) {
 	SuspensionCollisionGrid::Cell& cell = grid.GetCellFromPos<LIGHT>(start * BT_TO_UU);
 
 	if (cell.worldCollision || cell.dynamicObjects > 1) {
-		return (btCollisionObject*)raycaster->castRay(start, end, result);
+		return (btCollisionObject*)raycaster->castRay(start, end, ignoreObj, result);
 	} else {
 		Vec delta = end - start;
 		float dist = delta.Length();
@@ -170,11 +173,11 @@ btCollisionObject* _CastSuspensionRay(SuspensionCollisionGrid& grid, btVehicleRa
 	}
 }
 
-btCollisionObject* SuspensionCollisionGrid::CastSuspensionRay(btVehicleRaycaster* raycaster, Vec start, Vec end, btVehicleRaycaster::btVehicleRaycasterResult& result) {
+btCollisionObject* SuspensionCollisionGrid::CastSuspensionRay(btVehicleRaycaster* raycaster, Vec start, Vec end, const btCollisionObject* ignoreObj, btVehicleRaycaster::btVehicleRaycasterResult& result) {
 	if (lightMem) {
-		return _CastSuspensionRay<true>(*this, raycaster, start, end, result);
+		return _CastSuspensionRay<true>(*this, raycaster, start, end, ignoreObj, result);
 	} else {
-		return _CastSuspensionRay<false>(*this, raycaster, start, end, result);
+		return _CastSuspensionRay<false>(*this, raycaster, start, end, ignoreObj, result);
 	}
 }
 

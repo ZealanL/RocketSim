@@ -29,11 +29,11 @@ btRigidBody& btActionInterface::getFixedBody()
 	return s_fixed;
 }
 
-void* btDefaultVehicleRaycaster::castRay(const btVector3& from, const btVector3& to, btVehicleRaycasterResult& result)
+void* btDefaultVehicleRaycaster::castRay(const btVector3& from, const btVector3& to, const btCollisionObject* ignoreObj, btVehicleRaycasterResult& result)
 {
 	//	RayResultCallback& resultCallback;
 
-	btCollisionWorld::ClosestRayResultCallback rayCallback(from, to);
+	btCollisionWorld::ClosestRayResultCallback rayCallback(from, to, ignoreObj);
 
 	m_dynamicsWorld->rayTest(from, to, rayCallback);
 
