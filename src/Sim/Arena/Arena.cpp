@@ -714,17 +714,7 @@ void Arena::Step(int ticksToSimulate) {
 
 		if (hasArenaStuff) {
 #ifndef RS_NO_SUSPCOLGRID
-			{ // Remove dynamic bodies from suspension grid
-				for (Car* car : _cars) {
-					btVector3 min, max;
-					car->_rigidBody.getAabb(min, max);
-					_suspColGrid.UpdateDynamicCollisions(min, max, true);
-				}
-
-				btVector3 min, max;
-				ball->_rigidBody.getAabb(min, max);
-				_suspColGrid.UpdateDynamicCollisions(min, max, true);
-			}	
+			_suspColGrid.ClearDynamicCollisions();
 #endif
 		}
 
