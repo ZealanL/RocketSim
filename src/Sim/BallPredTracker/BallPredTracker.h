@@ -9,6 +9,8 @@ struct BallPredTracker {
 	std::vector<BallState> predData;
 	size_t numPredTicks;
 
+	// arena: The arena you want to predict the ball for (BallPredTracker will make a copy of it without the cars)
+	// You do not need to make another arena for BallPredTracker, it does that itself
 	BallPredTracker(Arena* arena, size_t numPredTicks);
 	~BallPredTracker();
 
