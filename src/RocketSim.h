@@ -19,6 +19,9 @@ namespace RocketSim {
 		INITIALIZED
 	};
 
+	extern std::filesystem::path _collisionMeshesFolder;
+	extern std::mutex _beginInitMutex;
+
 	void Init(std::filesystem::path collisionMeshesFolder);
 	void AssertInitialized(const char* errorMsgPrefix);
 

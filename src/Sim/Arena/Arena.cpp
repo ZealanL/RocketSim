@@ -93,7 +93,7 @@ Car* Arena::GetCar(uint32_t id) {
 
 void Arena::SetGoalScoreCallback(GoalScoreEventFn callbackFunc, void* userInfo) {
 	if (gameMode == GameMode::THE_VOID)
-		RS_ERR_CLOSE("Cannot set a goal score callback when on THE_VOID gamemode!");
+		RS_ERR_CLOSE("Cannot set a goal score callback when on THE_VOID gamemode");
 
 	_goalScoreCallback.func = callbackFunc;
 	_goalScoreCallback.userInfo = userInfo;
@@ -577,7 +577,7 @@ Arena* Arena::DeserializeNew(DataStreamIn& in) {
 
 #ifndef RS_MAX_SPEED
 			if (newArena->_carIDMap.count(id))
-				RS_ERR_CLOSE(ERROR_PREFIX << "Failed to load, got repeated car ID of " << id << ".");
+				RS_ERR_CLOSE(ERROR_PREFIX << "Failed to load, got repeated car ID of " << id);
 #endif
 
 			Car* newCar = newArena->DeserializeNewCar(in, team);
@@ -882,7 +882,7 @@ bool Arena::IsBallProbablyGoingIn(float maxTime, float extraMargin, Team* goalTe
 		}
 
 	} else {
-		RS_ERR_CLOSE("Arena::IsBallProbablyGoingIn() is not supported for: " << GAMEMODE_STRS[(int)gameMode]);
+		RS_ERR_CLOSE("Arena::IsBallProbablyGoingIn() is not supported for gamemode " << GAMEMODE_STRS[(int)gameMode]);
 		return false;
 	}
 }
@@ -960,7 +960,10 @@ void Arena::_SetupArenaCollisionShapes() {
 	auto collisionMeshes = RocketSim::GetArenaCollisionShapes(gameMode);
 
 	if (collisionMeshes.empty()) {
-		RS_ERR_CLOSE("Failed to setup arena collision meshes, no meshes found for game mode")
+		RS_ERR_CLOSE(
+			"No arena meshes found for gamemode " << GAMEMODE_STRS[(int)gameMode] << ", " <<
+			"the mesh files should be in " << RocketSim::_collisionMeshesFolder
+		)
 	}
 
 	_worldCollisionBvhShapes = new btBvhTriangleMeshShape[collisionMeshes.size()];

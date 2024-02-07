@@ -6,6 +6,9 @@
 
 using namespace RocketSim;
 
+std::filesystem::path RocketSim::_collisionMeshesFolder = {};
+std::mutex RocketSim::_beginInitMutex = {};
+
 struct MeshHashSet {
 	std::unordered_map<uint32_t, int> hashes;
 	void AddAll(std::initializer_list<uint32_t> hashesToAdd) {
@@ -38,7 +41,6 @@ struct MeshHashSet {
 		return hashes[hash];
 	}
 };
-static std::mutex beginInitMutex;
 
 static RocketSimStage stage = RocketSimStage::UNINITIALIZED;
 RocketSimStage RocketSim::GetStage() {
@@ -69,16 +71,17 @@ void RocketSim::Init(std::filesystem::path collisionMeshesFolder) {
 
 	constexpr char MSG_PREFIX[] = "RocketSim::Init(): ";
 
-	beginInitMutex.lock();
+	_beginInitMutex.lock();
 	{
 		if (stage != RocketSimStage::UNINITIALIZED) {
 			RS_WARN("RocketSim::Init() called again after already initialized, ignoring...");
-			beginInitMutex.unlock();
+			_beginInitMutex.unlock();
 			return;
 		}
 
 		RS_LOG("Initializing RocketSim version " RS_VERSION ", created by ZealanL...");
 
+		_collisionMeshesFolder = collisionMeshesFolder;
 		stage = RocketSimStage::INITIALIZING;
 
 		uint64_t startMS = RS_CUR_MS();
@@ -159,11 +162,11 @@ void RocketSim::Init(std::filesystem::path collisionMeshesFolder) {
 
 		stage = RocketSimStage::INITIALIZED;
 	}
-	beginInitMutex.unlock();
+	_beginInitMutex.unlock();
 }
 
 void RocketSim::AssertInitialized(const char* errorMsgPrefix) {
 	if (stage != RocketSimStage::INITIALIZED) {
-		RS_ERR_CLOSE(errorMsgPrefix << "RocketSim has not been initialized, call RocketSim::Init() first.")
+		RS_ERR_CLOSE(errorMsgPrefix << "RocketSim has not been initialized, call RocketSim::Init() first")
 	}
 }
