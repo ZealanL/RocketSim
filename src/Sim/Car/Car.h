@@ -33,7 +33,7 @@ struct CarState {
 
 	bool isOnGround = true;
 	bool hasJumped = false, hasDoubleJumped = false, hasFlipped = false;
-	Vec lastRelDodgeTorque = { 0, 0, 0 };
+	Vec flipRelTorque = { 0, 0, 0 };
 
 	// Active during the duration of a jump or flip
 	float jumpTime = 0, flipTime = 0;
@@ -90,7 +90,7 @@ struct CarState {
 
 #define CARSTATE_SERIALIZATION_FIELDS \
 pos, rotMat, vel, angVel, isOnGround, hasJumped, hasDoubleJumped, hasFlipped, \
-lastRelDodgeTorque, jumpTime, isFlipping, flipTime, isJumping, airTimeSinceJump, \
+flipRelTorque, jumpTime, isFlipping, flipTime, isJumping, airTimeSinceJump, \
 boost, timeSpentBoosting, supersonicTime, handbrakeVal, isAutoFlipping, \
 autoFlipTimer, autoFlipTorqueScale, isDemoed, demoRespawnTimer, lastControls, \
 worldContact.hasContact, worldContact.contactNormal, \
