@@ -71,7 +71,7 @@ const static Vec BACK_WHEELS_OFFSET[6] = {
 
 // Using a macro here for convenience
 #define MAKE_CAR_CONFIG(name, index)                                                          \
-	const CarConfig RocketSim::CAR_CONFIG_##name = {                                          \
+	const CarConfig CAR_CONFIG_##name = {                                          \
 		HITBOX_SIZES[index],                                                                  \
 		HITBOX_OFFSETS[index],                                                                \
 		{ FRONT_WHEEL_RADS[index], FRONT_WHEEL_SUS_REST[index], FRONT_WHEELS_OFFSET[index] }, \
