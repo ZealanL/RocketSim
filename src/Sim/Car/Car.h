@@ -32,6 +32,11 @@ struct CarState {
 	Vec angVel = { 0, 0, 0 };
 
 	bool isOnGround = true;
+
+	// Whether each of the 4 wheels have contact
+	// First two are front
+	bool wheelsWithContact[4] = {}; 
+
 	bool hasJumped = false, hasDoubleJumped = false, hasFlipped = false;
 	Vec flipRelTorque = { 0, 0, 0 };
 
