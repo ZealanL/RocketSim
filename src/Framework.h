@@ -34,6 +34,11 @@
 #include <cmath>
 #include <math.h>
 
+#ifdef _MSC_VER
+// Disable annoying truncation warnings on MSVC
+#pragma warning(disable: 4305 4244 4267)
+#endif
+
 typedef uint8_t byte;
 
 // Current millisecond time

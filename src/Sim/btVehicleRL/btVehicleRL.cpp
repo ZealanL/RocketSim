@@ -270,8 +270,6 @@ void btVehicleRL::setBrake(float brake, int wheelIndex) {
 }
 
 void btVehicleRL::updateSuspension(float deltaTime) {
-	float chassisMass = 1 / m_chassisBody->getInvMass();
-
 	for (int i = 0; i < getNumWheels(); i++) {
 		btWheelInfoRL& wheel_info = m_wheelInfo[i];
 

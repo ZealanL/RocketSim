@@ -81,9 +81,9 @@ struct SuspensionCollisionGrid {
 
 	template <bool LIGHT>
 	void GetCellIndicesFromPos(Vec pos, int& i, int& j, int& k) const {
-		i = RS_CLAMP(pos.x / CELL_SIZE_X[LIGHT] + (CELL_AMOUNT_X[LIGHT] / 2), 0, CELL_AMOUNT_X[LIGHT] - 1),
-		j = RS_CLAMP(pos.y / CELL_SIZE_Y[LIGHT] + (CELL_AMOUNT_Y[LIGHT] / 2), 0, CELL_AMOUNT_Y[LIGHT] - 1),
-		k = RS_CLAMP(pos.z / CELL_SIZE_Z[LIGHT], 0, CELL_AMOUNT_Z[LIGHT] - 1);
+		i = (int)RS_CLAMP(pos.x / CELL_SIZE_X[LIGHT] + (CELL_AMOUNT_X[LIGHT] / 2), 0, CELL_AMOUNT_X[LIGHT] - 1),
+		j = (int)RS_CLAMP(pos.y / CELL_SIZE_Y[LIGHT] + (CELL_AMOUNT_Y[LIGHT] / 2), 0, CELL_AMOUNT_Y[LIGHT] - 1),
+		k = (int)RS_CLAMP(pos.z / CELL_SIZE_Z[LIGHT], 0, CELL_AMOUNT_Z[LIGHT] - 1);
 	}
 
 	template <bool LIGHT>

@@ -85,7 +85,7 @@ public:
 	}
 
 	void _PreTickUpdate(GameMode gameMode, float tickTime);
-	void _OnHit(GameMode gameMode, struct Car* car);
+	void _OnHit(GameMode gameMode, class Car* car);
 	void _OnWorldCollision(GameMode gameMode, Vec normal, float tickTime);
 		
 	Ball(const Ball& other) = delete;

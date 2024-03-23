@@ -348,7 +348,7 @@ void Car::_UpdateWheels(float tickTime, const MutatorConfig& mutatorConfig, int 
 
 		float engineThrottle = realThrottle;
 
-		if (controls.handbrake > 0) {
+		if (controls.handbrake) {
 			// Real throttle is unchanged from the input throttle when powersliding
 		} else {
 			float absThrottle = abs(realThrottle);

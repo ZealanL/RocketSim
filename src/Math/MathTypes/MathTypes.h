@@ -233,9 +233,9 @@ struct RS_ALIGN_16 RotMat {
 	RotMat Dot(const RotMat& other) const {
 		RotMat result;
 
-		for (size_t i = 0; i < 3; i++)
-			for (size_t j = 0; j < 3; j++)
-				for (size_t k = 0; k < 3; k++)
+		for (int i = 0; i < 3; i++)
+			for (int j = 0; j < 3; j++)
+				for (int k = 0; k < 3; k++)
 					result[i][j] += (*this)[i][j] * other[k][j];
 
 		return result;
