@@ -60,6 +60,7 @@ const btTransform& btVehicleRL::getWheelTransformWS(int wheelIndex) const {
 	return wheel.m_worldTransform;
 }
 
+// See: I20 or I21
 void btVehicleRL::updateWheelTransform(int wheelIndex) {
 	btWheelInfoRL& wheel = m_wheelInfo[wheelIndex];
 	updateWheelTransformsWS(wheel);
@@ -103,6 +104,7 @@ void btVehicleRL::resetSuspension() {
 	}
 }
 
+// See: I20 or I21
 void btVehicleRL::updateWheelTransformsWS(btWheelInfoRL& wheel) {
 	wheel.m_raycastInfo.m_isInContact = false;
 	wheel.m_isInContactWithWorld = false;
@@ -121,15 +123,16 @@ float btVehicleRL::rayCast(btWheelInfoRL& wheel, SuspensionCollisionGrid* grid) 
 	float suspensionTravel = wheel.m_maxSuspensionTravelCm / 100;
 	float realRayLength = wheel.getSuspensionRestLength() + suspensionTravel + wheel.m_wheelsRadius - RLConst::BTVehicle::SUSPENSION_SUBTRACTION;
 
+	// See: I21
 	btVector3 source = wheel.m_raycastInfo.m_hardPointWS;
 	btVector3 target = source + (wheel.m_raycastInfo.m_wheelDirectionWS * realRayLength);
 	wheel.m_raycastInfo.m_contactPointWS = target;
 	wheel.m_raycastInfo.m_groundObject = NULL;
 
+	// See: I22
 	btVehicleRaycaster::btVehicleRaycasterResult rayResults;
-
+	
 	btAssert(m_vehicleRaycaster);
-
 	btCollisionObject* object;
 	if (grid) {
 		object = grid->CastSuspensionRay(m_vehicleRaycaster, source, target, m_chassisBody, rayResults);
@@ -137,6 +140,7 @@ float btVehicleRL::rayCast(btWheelInfoRL& wheel, SuspensionCollisionGrid* grid) 
 		object = (btCollisionObject*)m_vehicleRaycaster->castRay(source, target, m_chassisBody, rayResults);
 	}
 
+	// See: I23
 	if (object) {
 		wheel.m_raycastInfo.m_contactPointWS = rayResults.m_hitPointInWorld;
 		float fraction = rayResults.m_distFraction;
@@ -269,7 +273,9 @@ void btVehicleRL::setBrake(float brake, int wheelIndex) {
 	getWheelInfo(wheelIndex).m_brake = brake;
 }
 
+// See: I24
 void btVehicleRL::updateSuspension(float deltaTime) {
+	
 	for (int i = 0; i < getNumWheels(); i++) {
 		btWheelInfoRL& wheel_info = m_wheelInfo[i];
 
@@ -293,7 +299,6 @@ void btVehicleRL::updateSuspension(float deltaTime) {
 	}
 
 	for (int i = 0; i < getNumWheels(); i++) {
-		//apply suspension force
 		btWheelInfoRL& wheel = m_wheelInfo[i];
 		if (wheel.m_wheelsSuspensionForce != 0) {
 			btVector3 contactPointOffset = wheel.m_raycastInfo.m_contactPointWS - getRigidBody()->getCenterOfMassPosition();
@@ -304,6 +309,7 @@ void btVehicleRL::updateSuspension(float deltaTime) {
 	}
 }
 
+// See: I25
 void btVehicleRL::calcFrictionImpulses(float timeStep) {
 
 	float frictionScale = m_chassisBody->getMass() / 3;
@@ -380,6 +386,7 @@ void btVehicleRL::calcFrictionImpulses(float timeStep) {
 	}
 }
 
+// See: I25
 void btVehicleRL::applyFrictionImpulses(float timeStep) {
 	// Apply impulses
 	btVector3 upDir = m_chassisBody->getWorldTransform().getBasis().getColumn(m_indexUpAxis);
