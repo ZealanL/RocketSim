@@ -1,5 +1,5 @@
 #pragma once
-#include "../../BaseInc.h"
+#include "../PhysState/PhysState.h"
 
 #include "../../RLConst.h"
 #include "../../DataStream/DataStreamIn.h"
@@ -14,22 +14,11 @@ class btDynamicsWorld;
 
 RS_NS_START
 
-struct BallState {
+struct BallState : public PhysState {
 	// Incremented every update, reset when SetState() is called
 	// Used for telling if a stateset occured
 	// Not serialized
 	uint64_t updateCounter = 0;
-
-	// Position in world space
-	Vec pos = { 0, 0, RLConst::BALL_REST_Z };
-
-	RotMat rotMat = RotMat::GetIdentity();
-
-	// Linear velocity
-	Vec vel = { 0, 0, 0 };
-	 
-	// Angular velocity (axis-angle)
-	Vec angVel = { 0, 0, 0 };
 
 	struct HeatseekerInfo {
 		// Which net the ball should seek towards
@@ -41,6 +30,10 @@ struct BallState {
 	};
 
 	HeatseekerInfo hsInfo;
+
+	BallState() : PhysState() {
+		pos.z = RLConst::BALL_REST_Z;
+	}
 
 	bool Matches(const BallState& other, float marginPos = 0.8, float marginVel = 0.4, float marginAngVel = 0.02) const;
 

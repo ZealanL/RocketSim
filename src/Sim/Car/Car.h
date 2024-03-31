@@ -1,4 +1,5 @@
 #pragma once
+#include "../PhysState/PhysState.h"
 #include "CarConfig/CarConfig.h"
 #include "../btVehicleRL/btVehicleRL.h"
 #include "../CarControls.h"
@@ -13,23 +14,12 @@
 
 RS_NS_START
 
-struct CarState {
+struct CarState : public PhysState {
 
 	// Incremented every update, reset when SetState() is called
 	// Used for telling if a stateset occured
 	// Not serialized
 	uint64_t updateCounter = 0;
-
-	// Position in world space (UU)
-	Vec pos = { 0, 0, 17 };
-	
-	RotMat rotMat = RotMat::GetIdentity();
-
-	// Linear velocity
-	Vec vel = { 0, 0, 0 };
-
-	// Angular velocity (rad/s)
-	Vec angVel = { 0, 0, 0 };
 
 	bool isOnGround = true;
 
@@ -88,6 +78,10 @@ struct CarState {
 
 	// Controls from last tick, set to this->controls after simulation
 	CarControls lastControls = CarControls();
+
+	CarState() : PhysState() {
+		pos.z = RLConst::CAR_SPAWN_REST_Z;
+	}
 
 	void Serialize(DataStreamOut& out) const;
 	void Deserialize(DataStreamIn& in);
