@@ -15,6 +15,10 @@ struct PhysState {
 
 	// Angular velocity (rad/s)
 	Vec angVel = {};
+
+	// Gets a copy of this state rotated 180 degrees around Z axis
+	// This is achieved by multiplying all vectors by (-1, -1, 1)
+	PhysState GetInvertedY() const;
 };
 
 RS_NS_END
