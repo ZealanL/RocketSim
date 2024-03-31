@@ -288,6 +288,12 @@ void Car::_BulletSetup(GameMode gameMode, btDynamicsWorld* bulletWorld, const Mu
 	_internalState.boost = mutatorConfig.carSpawnBoostAmount;
 }
 
+bool CarState::HasFlipOrJump() const {
+	return 
+		isOnGround || 
+		(!hasFlipped && !hasDoubleJumped && airTimeSinceJump < RLConst::DOUBLEJUMP_MAX_DELAY);
+}
+
 void CarState::Serialize(DataStreamOut& out) const {
 	ballHitInfo.Serialize(out);
 

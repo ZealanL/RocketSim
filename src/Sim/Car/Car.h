@@ -83,6 +83,9 @@ struct CarState : public PhysState {
 		pos.z = RLConst::CAR_SPAWN_REST_Z;
 	}
 
+	// Returns true if the car is currently able to jump, double-jump, or start a flip
+	bool HasFlipOrJump() const;
+
 	void Serialize(DataStreamOut& out) const;
 	void Deserialize(DataStreamIn& in);
 };
