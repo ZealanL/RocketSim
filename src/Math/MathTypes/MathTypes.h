@@ -23,6 +23,11 @@ struct RS_ALIGN_16 Vec {
 		return (x == 0 && y == 0 && z == 0 && _w == 0);
 	}
 
+	// Makes a copy with zeroed z
+	Vec To2D() const {
+		return Vec(x, y, 0);
+	}
+
 	float LengthSq() const {
 		return (x * x + y * y + z * z + _w * _w);
 	}
@@ -31,6 +36,19 @@ struct RS_ALIGN_16 Vec {
 		float lengthSq = LengthSq();
 		if (lengthSq > 0) {
 			return sqrtf(lengthSq);
+		} else {
+			return 0;
+		}
+	}
+
+	float LengthSq2D() const {
+		return (x * x + y * y);
+	}
+
+	float Length2D() const {
+		float lengthSq2D = LengthSq2D();
+		if (lengthSq2D > 0) {
+			return sqrtf(lengthSq2D);
 		} else {
 			return 0;
 		}
