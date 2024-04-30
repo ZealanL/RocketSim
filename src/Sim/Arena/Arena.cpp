@@ -212,6 +212,9 @@ bool Arena::_BulletContactAddedCallback(
 		bodyA = objA->m_collisionObject,
 		bodyB = objB->m_collisionObject;
 
+	if (!objA->m_collisionObject->hasContactResponse() || !objB->m_collisionObject->hasContactResponse())
+		return true;
+
 	bool shouldSwap = false;
 	if ((bodyA->getUserIndex() != -1) && (bodyB->getUserIndex() != -1)) {
 		// If both bodies have a user index, the lower user index should be A
