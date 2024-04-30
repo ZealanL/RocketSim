@@ -47,11 +47,11 @@ RocketSimStage RocketSim::GetStage() {
 	return stage;
 }
 
-std::vector<btBvhTriangleMeshShape*>& RocketSim::GetArenaCollisionShapes(RocketSim::GameMode gameMode) {
+std::vector<btBvhTriangleMeshShape*>& RocketSim::GetArenaCollisionShapes(GameMode gameMode) {
 	static std::vector<btBvhTriangleMeshShape*> arenaCollisionMeshes;
 	static std::vector<btBvhTriangleMeshShape*> arenaCollisionMeshes_hoops;
 
-	return (gameMode == RocketSim::GameMode::HOOPS ? arenaCollisionMeshes_hoops : arenaCollisionMeshes);
+	return (gameMode == GameMode::HOOPS ? arenaCollisionMeshes_hoops : arenaCollisionMeshes);
 }
 
 #ifndef RS_NO_SUSPCOLGRID
