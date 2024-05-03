@@ -294,6 +294,14 @@ bool CarState::HasFlipOrJump() const {
 		(!hasFlipped && !hasDoubleJumped && airTimeSinceJump < RLConst::DOUBLEJUMP_MAX_DELAY);
 }
 
+bool CarState::HasFlipReset() const {
+	return !isOnGround && HasFlipOrJump() && !hasJumped;
+}
+
+bool CarState::GotFlipReset() const {
+	return !isOnGround && !hasJumped;
+}
+
 void CarState::Serialize(DataStreamOut& out) const {
 	ballHitInfo.Serialize(out);
 
@@ -640,9 +648,12 @@ void Car::_UpdateDoubleJumpOrFlip(float tickTime, const MutatorConfig& mutatorCo
 	if (_internalState.isOnGround) {
 		_internalState.hasDoubleJumped = false;
 		_internalState.hasFlipped = false;
+		_internalState.airTime = 0;
 		_internalState.airTimeSinceJump = 0;
 		_internalState.flipTime = 0;
 	} else {
+		_internalState.airTime += tickTime;
+
 		if (_internalState.hasJumped && !_internalState.isJumping) {
 			_internalState.airTimeSinceJump += tickTime;
 		} else {

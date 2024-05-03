@@ -27,19 +27,35 @@ struct CarState : public PhysState {
 	// First two are front
 	bool wheelsWithContact[4] = {}; 
 
-	bool hasJumped = false, hasDoubleJumped = false, hasFlipped = false;
+	// Whether we jumped to get into the air
+	// Can be false while airborne, if we left the ground with a flip reset
+	bool hasJumped = false;
+
+	// True if we have double jumped and are still in the air
+	// NOTE: Flips DO NOT COUNT as double jumps! This is not RLBot.
+	bool hasDoubleJumped = false;
+
+	// True if we are in the air, and (have flipped or are currently flipping)
+	bool hasFlipped = false;
+
+	// Relative torque direction of the flip
+	// Forward flip will have positive Y
 	Vec flipRelTorque = { 0, 0, 0 };
 
-	// Active during the duration of a jump or flip
-	float jumpTime = 0, flipTime = 0;
+	float jumpTime = 0; // When currently jumping, the time since we started jumping, else 0
+	float flipTime = 0; // When currently flipping, the time since we started flipping, else 0
 
-	// True during a flip (not a jump, and not after a flip)
+	// True during a flip (not an auto-flip, and not after a flip)
 	bool isFlipping = false;
 
-	// True during a jump (not double jumps or a flip)
+	// True during a jump
 	bool isJumping = false;
 
+	// Total time spent in the air
+	float airTime = 0;
+
 	// Time spent in the air once !isJumping
+	// If we never jumped, it is 0
 	float airTimeSinceJump = 0;
 
 	// Goes from 0 to 100
@@ -83,8 +99,15 @@ struct CarState : public PhysState {
 		pos.z = RLConst::CAR_SPAWN_REST_Z;
 	}
 
-	// Returns true if the car is currently able to jump, double-jump, or start a flip
+	// Returns true if the car is currently able to jump, double-jump, or flip
 	bool HasFlipOrJump() const;
+
+	// Returns true if we currently have a flip, and got it from a flip reset (instead of a jump)
+	bool HasFlipReset() const;
+
+	// Returns true if we are in the air, and became airborne from a flip reset
+	// This returns true regardless of whether or not we still have the flip
+	bool GotFlipReset() const;
 
 	void Serialize(DataStreamOut& out) const;
 	void Deserialize(DataStreamIn& in);
