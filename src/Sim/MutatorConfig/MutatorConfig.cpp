@@ -25,6 +25,12 @@ MutatorConfig::MutatorConfig(GameMode gameMode) {
 		ballWorldRestitution = BALL_RESTITUTION;
 		ballMass = BALL_MASS_BT;
 	}
+
+	if (gameMode == GameMode::HEATSEEKER) {
+		// Infinite boost
+		carSpawnBoostAmount = 100;
+		boostUsedPerSecond = 0;
+	}
 }
 
 void MutatorConfig::Serialize(DataStreamOut& out) const {
