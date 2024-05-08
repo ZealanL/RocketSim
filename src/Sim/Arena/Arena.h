@@ -53,6 +53,11 @@ public:
 
 	SuspensionCollisionGrid _suspColGrid;
 
+	// Automatically skips the collision update when no collisions are possible
+	// In 99% of cases, you want this on
+	// If you notice ANY difference in simulation with this variable on vs off, that's a bug, please contact me (ZealanL)
+	bool _autoSkipCollision = true;
+
 	MutatorConfig _mutatorConfig;
 
 	const MutatorConfig& GetMutatorConfig() { return _mutatorConfig; }

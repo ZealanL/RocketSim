@@ -35,7 +35,7 @@ struct InplaceSolverIslandCallback;
 ATTRIBUTE_ALIGNED16(class)
 btDiscreteDynamicsWorld : public btDynamicsWorld
 {
-protected:
+public:
 	btAlignedObjectArray<btTypedConstraint*> m_sortedConstraints;
 	InplaceSolverIslandCallback* m_solverIslandCallback;
 
@@ -53,6 +53,8 @@ protected:
 	btScalar m_localTime;
 	btScalar m_fixedTimeStep;
 	//for variable timesteps
+
+	bool m_doCollision = true;
 
 	bool m_ownsIslandManager;
 	bool m_ownsConstraintSolver;

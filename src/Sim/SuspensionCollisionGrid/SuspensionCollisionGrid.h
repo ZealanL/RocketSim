@@ -42,6 +42,7 @@ struct SuspensionCollisionGrid {
 
 	struct {
 		float extentX_bt, extentY_bt, height_bt;
+		Vec min_bt, max_bt;
 	} cache;
 
 	SuspensionCollisionGrid(GameMode gameMode, bool lightMem = false) : gameMode(gameMode), lightMem(lightMem) {
@@ -50,6 +51,8 @@ struct SuspensionCollisionGrid {
 		cache.extentX_bt = (isHoops ? RLConst::ARENA_EXTENT_X_HOOPS : RLConst::ARENA_EXTENT_X) * UU_TO_BT;
 		cache.extentY_bt = (isHoops ? RLConst::ARENA_EXTENT_Y_HOOPS : RLConst::ARENA_EXTENT_Y) * UU_TO_BT;
 		cache.height_bt = (isHoops ? RLConst::ARENA_HEIGHT : RLConst::ARENA_HEIGHT) * UU_TO_BT;
+		cache.min_bt = Vec(-cache.extentX_bt, -cache.extentY_bt, 0);
+		cache.max_bt = Vec(cache.extentX_bt, cache.extentY_bt, cache.height_bt);
 	}
 
 	std::vector<Cell> cellData;
@@ -104,6 +107,7 @@ struct SuspensionCollisionGrid {
 	
 	void UpdateDynamicCollisions(Vec minBT, Vec maxBT, bool remove);
     void ClearDynamicCollisions();
+    bool CheckWorldCollision(Vec minBT, Vec maxBT, bool includePlanes);
 
 	btRigidBody* defaultWorldCollisionRB = NULL;
 };

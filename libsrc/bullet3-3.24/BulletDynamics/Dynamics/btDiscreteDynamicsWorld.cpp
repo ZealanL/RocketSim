@@ -408,11 +408,13 @@ void btDiscreteDynamicsWorld::internalSingleStepSimulation(btScalar timeStep)
 	dispatchInfo.m_timeStep = timeStep;
 	dispatchInfo.m_stepCount = 0;
 
-	createPredictiveContacts(timeStep);
+	if (m_doCollision) {
+		createPredictiveContacts(timeStep);
 
-	///perform collision detection
-	performDiscreteCollisionDetection();
-
+		///perform collision detection
+		performDiscreteCollisionDetection();
+	}
+	
 	calculateSimulationIslands();
 
 	getSolverInfo().m_timeStep = timeStep;

@@ -184,6 +184,7 @@ btCollisionObject* SuspensionCollisionGrid::CastSuspensionRay(btVehicleRaycaster
 
 template <bool LIGHT>
 void _UpdateDynamicCollisions(SuspensionCollisionGrid& grid, Vec minBT, Vec maxBT, bool remove) {
+	// TODO: Old but may be useful for future operations
 	int deltaVal = remove ? -1 : 1;
 
 	int i1, j1, k1;
@@ -204,6 +205,7 @@ void _UpdateDynamicCollisions(SuspensionCollisionGrid& grid, Vec minBT, Vec maxB
 		}
 	);
 }
+
 
 void SuspensionCollisionGrid::UpdateDynamicCollisions(Vec minBT, Vec maxBT, bool remove) {
 	if (lightMem) {
@@ -230,6 +232,36 @@ void SuspensionCollisionGrid::ClearDynamicCollisions() {
 		return _ClearDynamicCollisions<true>(*this);
 	} else {
 		return _ClearDynamicCollisions<false>(*this);
+	}
+}
+
+template <bool LIGHT>
+bool _CheckWorldCollision(SuspensionCollisionGrid& grid, Vec minBT, Vec maxBT, bool includePlanes) {
+
+	if (includePlanes)
+		if (!(grid.cache.min_bt < minBT) || !(grid.cache.max_bt > maxBT))
+			return true;
+
+	int i1, j1, k1;
+	grid.GetCellIndicesFromPos<LIGHT>(minBT * BT_TO_UU - grid.GetCellSize<LIGHT>(), i1, j1, k1);
+
+	int i2, j2, k2;
+	grid.GetCellIndicesFromPos<LIGHT>((maxBT * BT_TO_UU + grid.GetCellSize<LIGHT>()), i2, j2, k2);
+
+	for (int i = i1; i <= i2; i++)
+		for (int j = j1; j <= j2; j++)
+			for (int k = k1; k <= k2; k++)
+				if (grid.Get<LIGHT>(i, j, k).worldCollision)
+					return true;
+
+	return false;
+}
+
+bool SuspensionCollisionGrid::CheckWorldCollision(Vec minBT, Vec maxBT, bool includePlanes) {
+	if (lightMem) {
+		return _CheckWorldCollision<true>(*this, minBT, maxBT, includePlanes);
+	} else {
+		return _CheckWorldCollision<false>(*this, minBT, maxBT, includePlanes);
 	}
 }
 

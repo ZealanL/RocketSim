@@ -254,7 +254,7 @@ bool Arena::_BulletContactAddedCallback(
 		// Ball + World
 		Arena* arenaInst = (Arena*)bodyB->getUserPointer();
 		arenaInst->ball->_OnWorldCollision(arenaInst->gameMode, contactPoint.m_normalWorldOnB, arenaInst->tickTime);
-		
+
 		// Set as special
 		if (arenaInst->gameMode != GameMode::SNOWDAY)
 			contactPoint.m_isSpecial = true;
@@ -681,8 +681,9 @@ void Arena::Step(int ticksToSimulate) {
 			}
 		}
 
+		bool ballOnly = _cars.empty();
 		bool hasArenaStuff = (gameMode != GameMode::THE_VOID);
-		bool shouldUpdateSuspColGrid = hasArenaStuff && !_cars.empty();
+		bool shouldUpdateSuspColGrid = hasArenaStuff && !ballOnly;
 		if (shouldUpdateSuspColGrid) {
 #ifndef RS_NO_SUSPCOLGRID
 			{ // Add dynamic bodies to suspension grid
@@ -730,7 +731,19 @@ void Arena::Step(int ticksToSimulate) {
 		// Update ball
 		ball->_PreTickUpdate(gameMode, tickTime);
 
-		// Update world
+		bool collisionNeeded = true;
+
+		if (_autoSkipCollision) {
+			if (ballOnly || true) {
+				// We can only collide with the world
+				btVector3 min, max;
+				ball->_rigidBody.getAabb(min, max);
+				collisionNeeded = _suspColGrid.CheckWorldCollision(min, max, true);
+			}
+		}
+
+		// Update bullet world
+		_bulletWorld.m_doCollision = collisionNeeded;
 		_bulletWorld.stepSimulation(tickTime, 0, tickTime);
 
 		for (Car* car : _cars) {
