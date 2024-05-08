@@ -682,7 +682,8 @@ void Arena::Step(int ticksToSimulate) {
 		}
 
 		bool hasArenaStuff = (gameMode != GameMode::THE_VOID);
-		if (hasArenaStuff) {
+		bool shouldUpdateSuspColGrid = hasArenaStuff && !_cars.empty();
+		if (shouldUpdateSuspColGrid) {
 #ifndef RS_NO_SUSPCOLGRID
 			{ // Add dynamic bodies to suspension grid
 				for (Car* car : _cars) {
@@ -706,7 +707,7 @@ void Arena::Step(int ticksToSimulate) {
 #ifdef RS_NO_SUSPCOLGRID
 			suspColGridPtr = NULL;
 #else
-			if (hasArenaStuff) {
+			if (shouldUpdateSuspColGrid) {
 				suspColGridPtr = &_suspColGrid;
 			} else {
 				suspColGridPtr = NULL;
@@ -715,7 +716,7 @@ void Arena::Step(int ticksToSimulate) {
 			car->_PreTickUpdate(gameMode, tickTime, _mutatorConfig, suspColGridPtr);
 		}
 
-		if (hasArenaStuff) {
+		if (shouldUpdateSuspColGrid) {
 #ifndef RS_NO_SUSPCOLGRID
 			_suspColGrid.ClearDynamicCollisions();
 #endif
