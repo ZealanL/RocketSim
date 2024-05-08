@@ -57,6 +57,10 @@ struct MutatorConfig {
 	float
 		ballRadius;
 
+	// Ball rotation updates are skipped to improve performance
+	// Disabled in snowday
+	bool noBallRot = true; 
+
 	bool 
 		unlimitedFlips = false,
 		unlimitedDoubleJumps = false;

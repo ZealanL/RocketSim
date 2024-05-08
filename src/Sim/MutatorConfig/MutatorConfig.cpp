@@ -31,6 +31,10 @@ MutatorConfig::MutatorConfig(GameMode gameMode) {
 		carSpawnBoostAmount = 100;
 		boostUsedPerSecond = 0;
 	}
+
+	if (gameMode == GameMode::SNOWDAY) {
+		noBallRot = false;
+	}
 }
 
 void MutatorConfig::Serialize(DataStreamOut& out) const {

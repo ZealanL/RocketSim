@@ -103,6 +103,9 @@ void Ball::_BulletSetup(GameMode gameMode, btDynamicsWorld* bulletWorld, const M
 
 	_rigidBody.m_rigidbodyFlags = 0;
 
+	if (mutatorConfig.noBallRot)
+		_rigidBody.m_noRot = true;
+
 	bulletWorld->addRigidBody(&_rigidBody, btBroadphaseProxy::DefaultFilter | CollisionMasks::HOOPS_NET, btBroadphaseProxy::AllFilter);
 }
 

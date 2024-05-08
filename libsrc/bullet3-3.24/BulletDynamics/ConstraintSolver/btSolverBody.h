@@ -23,6 +23,8 @@ class btRigidBody;
 #include "../../LinearMath/btAlignedAllocator.h"
 #include "../../LinearMath/btTransformUtil.h"
 
+#include "../Dynamics/btRigidBody.h"
+
 ///Until we get other contributions, only use SIMD on Windows, when using Visual Studio 2008 or later, and not double precision
 #ifdef BT_USE_SSE
 #define USE_SIMD 1
@@ -272,8 +274,11 @@ btSolverBody
 			btTransform newTransform;
 			if (m_pushVelocity[0] != 0.f || m_pushVelocity[1] != 0 || m_pushVelocity[2] != 0 || m_turnVelocity[0] != 0.f || m_turnVelocity[1] != 0 || m_turnVelocity[2] != 0)
 			{
-				//	btQuaternion orn = m_worldTransform.getRotation();
-				btTransformUtil::integrateTransform(m_worldTransform, m_pushVelocity, m_turnVelocity * splitImpulseTurnErp, timeStep, newTransform);
+				if (m_originalBody->m_noRot) {
+					btTransformUtil::integrateTransformNoRot(m_worldTransform, m_pushVelocity, m_turnVelocity * splitImpulseTurnErp, timeStep, newTransform);
+				} else {
+					btTransformUtil::integrateTransform(m_worldTransform, m_pushVelocity, m_turnVelocity * splitImpulseTurnErp, timeStep, newTransform);
+				}
 				m_worldTransform = newTransform;
 			}
 			//m_worldTransform.setRotation(orn);
