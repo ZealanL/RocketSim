@@ -6,7 +6,10 @@
 struct btRSBroadphaseProxy : public btBroadphaseProxy
 {
 	bool isStatic;
+
 	int cellIdx;
+	int iIdx, jIdx, kIdx;
+
 	int shapeType;
 	int m_nextFree;
 
@@ -16,9 +19,11 @@ struct btRSBroadphaseProxy : public btBroadphaseProxy
 
 	btRSBroadphaseProxy(
 		const btVector3& minpt, const btVector3& maxpt, int shapeType, void* userPtr, int collisionFilterGroup, int collisionFilterMask, 
-		bool isStatic, int cellIdx)
+		bool isStatic, int cellIdx, int i, int j, int k)
 		: btBroadphaseProxy(minpt, maxpt, userPtr, collisionFilterGroup, collisionFilterMask), 
-		isStatic(isStatic), cellIdx(cellIdx), shapeType(shapeType) {
+		isStatic(isStatic), 
+		cellIdx(cellIdx), iIdx(i), jIdx(j), kIdx(k),
+		shapeType(shapeType) {
 	}
 
 	SIMD_FORCE_INLINE void SetNextFree(int next) { m_nextFree = next; }

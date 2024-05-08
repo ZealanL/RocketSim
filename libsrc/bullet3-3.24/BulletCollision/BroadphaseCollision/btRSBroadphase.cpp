@@ -115,6 +115,26 @@ void _UpdateCellsStatic(btRSBroadphase* _this, btRSBroadphaseProxy* proxy) {
 	}
 }
 
+template <bool ADD>
+void _UpdateCellsDynamic(btRSBroadphase* _this, btRSBroadphaseProxy* proxy, int ci, int cj, int ck) {
+
+	int mni = btMax(0, ci - 1), mnj = btMax(0, cj - 1), mnk = btMax(0, ck - 1);
+	int mxi = btMin(_this->cellsX - 1, ci + 1), mxj = btMin(_this->cellsY - 1, cj + 1), mxk = btMin(_this->cellsZ - 1, ck + 1);
+
+	for (int ci = mni; ci <= mxi; ci++) {
+		for (int cj = mnj; cj <= mxj; cj++) {
+			for (int ck = mnk; ck <= mxk; ck++) {
+				auto& cell = _this->GetCell(ci, cj, ck);
+				if (ADD) {
+					cell.dynHandles.push_back(proxy);
+				} else {
+					cell.RemoveDyn(proxy);
+				}
+			}
+		}
+	}
+}
+
 btBroadphaseProxy* btRSBroadphase::createProxy(const btVector3& aabbMin, const btVector3& aabbMax, int shapeType, void* userPtr, int collisionFilterGroup, int collisionFilterMask, btCollisionDispatcher* /*dispatcher*/) {
 	if (m_numHandles >= m_maxHandles) {
 		btAssert(0);
@@ -127,9 +147,13 @@ btBroadphaseProxy* btRSBroadphase::createProxy(const btVector3& aabbMin, const b
 
 	int newHandleIndex = allocHandle();
 	int cellIdx = GetCellIdx(aabbMin);
+	int iIdx, jIdx, kIdx;
+	GetCellIndices(aabbMin, iIdx, jIdx, kIdx);
+
 	btRSBroadphaseProxy* proxy = new (&m_pHandles[newHandleIndex]) btRSBroadphaseProxy(
 		aabbMin, aabbMax, shapeType, userPtr, collisionFilterGroup, collisionFilterMask, 
-		isStatic, cellIdx
+		isStatic, 
+		cellIdx, iIdx, jIdx, kIdx
 	);
 
 	if (isStatic) {
@@ -139,8 +163,7 @@ btBroadphaseProxy* btRSBroadphase::createProxy(const btVector3& aabbMin, const b
 		if (aabbMin.distance2(aabbMax) > cellSizeSq)
 			THROW_ERR("Object AABB size exceeds maximum cell size (" + std::to_string(aabbMin.distance(aabbMax)) + " > " + std::to_string(cellSize) + ")");
 
-		int cellIdx = GetCellIdx(aabbMin);
-		cells[cellIdx].dynHandles.push_back(proxy);
+		_UpdateCellsDynamic<true>(this, proxy, iIdx, jIdx, kIdx);
 		numDynProxies++;
 	}
 
@@ -223,16 +246,17 @@ void btRSBroadphase::setAabb(btBroadphaseProxy* proxy, const btVector3& aabbMin,
 				sbp->cellIdx = newIndex;
 
 				if (oldIndex != newIndex) {
-					Cell& oldCell = cells[oldIndex];
-					for (int i = 0; i < oldCell.dynHandles.size(); i++) {
-						if (oldCell.dynHandles[i] == sbp) {
-							oldCell.dynHandles.erase(oldCell.dynHandles.begin() + i);
-							break;
-						}
-					}
 
-					Cell& newCell = cells[newIndex];
-					newCell.dynHandles.push_back(sbp);
+					_UpdateCellsDynamic<false>(this, sbp, sbp->iIdx, sbp->jIdx, sbp->kIdx);
+
+					// TODO: Can determine newIndex from these
+					int iNew, jNew, kNew;
+					GetCellIndices(aabbMin, iNew, jNew, kNew);
+					sbp->iIdx = iNew;
+					sbp->jIdx = jNew;
+					sbp->kIdx = kNew;
+
+					_UpdateCellsDynamic<true>(this, sbp, iNew, jNew, kNew);
 				}
 			}
 		}
@@ -248,25 +272,8 @@ void btRSBroadphase::rayTest(const btVector3& rayFrom, const btVector3& rayTo, b
 	Cell& cell = cells[GetCellIdx(rayFrom)];
 	for (auto& otherProxy : cell.staticHandles)
 		rayCallback.process(otherProxy);
-
-	if (numDynProxies > 1) {
-		int ci, cj, ck;
-		GetCellIndices(rayFrom, ci, cj, ck);
-
-		int mni = btMax(0, ci - 1), mnj = btMax(0, cj - 1), mnk = btMax(0, ck - 1);
-		int mxi = btMin(cellsX - 1, ci + 1), mxj = btMin(cellsY - 1, cj + 1), mxk = btMin(cellsZ - 1, ck + 1);
-
-		for (int ci = mni; ci <= mxi; ci++) {
-			for (int cj = mnj; cj <= mxj; cj++) {
-				for (int ck = mnk; ck <= mxk; ck++) {
-
-					Cell& otherCell = GetCell(ci, cj, ck);
-					for (auto& otherProxy : otherCell.dynHandles)
-						rayCallback.process(otherProxy);
-				}
-			}
-		}
-	}
+	for (auto& otherProxy : cell.dynHandles)
+		rayCallback.process(otherProxy);
 }
 
 void btRSBroadphase::aabbTest(const btVector3& aabbMin, const btVector3& aabbMax, btBroadphaseAabbCallback& callback) {
@@ -332,39 +339,21 @@ void btRSBroadphase::calculateOverlappingPairs(btCollisionDispatcher* dispatcher
 			}
 
 			if (numDynProxies > 1) {
-				// TODO: Store these indices in proxy
-				int ci, cj, ck;
-				GetCellIndices(proxy->m_aabbMin, ci, cj, ck);
+				for (auto& otherProxy : cell.dynHandles) {
+					if (otherProxy == proxy)
+						continue;
 
-				int mni = btMax(0, ci - 1), mnj = btMax(0, cj - 1), mnk = btMax(0, ck - 1);
-				int mxi = btMin(cellsX - 1, ci + 1), mxj = btMin(cellsY - 1, cj + 1), mxk = btMin(cellsZ - 1, ck + 1);
+					totalDynPairs++;
 
-				for (int ci = mni; ci <= mxi; ci++) {
-					for (int cj = mnj; cj <= mxj; cj++) {
-						for (int ck = mnk; ck <= mxk; ck++) {
-
-							Cell& otherCell = GetCell(ci, cj, ck);
-							if (otherCell.dynHandles.size() < 2)
-								continue;
-
-							for (auto& otherProxy : otherCell.dynHandles) {
-								if (otherProxy == proxy)
-									continue;
-
-								totalDynPairs++;
-
-								if (aabbOverlap(proxy, otherProxy)) {
-									if (!m_pairCache->findPair(proxy, otherProxy)) {
-										totalRealPairs++;
-										m_pairCache->addOverlappingPair(proxy, otherProxy);
-									}
-								} else {
-									if (shouldRemove) {
-										if (m_pairCache->findPair(proxy, otherProxy)) {
-											m_pairCache->removeOverlappingPair(proxy, otherProxy, dispatcher);
-										}
-									}
-								}
+					if (aabbOverlap(proxy, otherProxy)) {
+						if (!m_pairCache->findPair(proxy, otherProxy)) {
+							m_pairCache->addOverlappingPair(proxy, otherProxy);
+							totalRealPairs++;
+						}
+					} else {
+						if (shouldRemove) {
+							if (m_pairCache->findPair(proxy, otherProxy)) {
+								m_pairCache->removeOverlappingPair(proxy, otherProxy, dispatcher);
 							}
 						}
 					}
