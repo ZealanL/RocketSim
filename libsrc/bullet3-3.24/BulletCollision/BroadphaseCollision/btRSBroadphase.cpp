@@ -26,6 +26,8 @@ subject to the following restrictions:
 #include <string>
 #include <stdexcept>
 #include <iostream>
+#include <mutex>
+
 #define THROW_ERR(msg) { std::string fullMsg = std::string() + "btRSBroadphase fatal error: " msg; std::cout << msg << std::endl; throw std::runtime_error(fullMsg); }
 
 void btRSBroadphase::validate() {
@@ -266,17 +268,38 @@ void btRSBroadphase::setAabb(btBroadphaseProxy* proxy, const btVector3& aabbMin,
 void btRSBroadphase::rayTest(const btVector3& rayFrom, const btVector3& rayTo, btBroadphaseRayCallback& rayCallback, const btVector3& aabbMin, const btVector3& aabbMax) {
 	float rayLenSq = rayFrom.distance2(rayTo);
 
-	if (rayLenSq > cellSizeSq)
-		THROW_ERR("Ray length may not exceed cellsize (" + std::to_string(sqrtf(rayLenSq)) + " > " + std::to_string(cellSize) + ")");
-	
-	Cell& cell = cells[GetCellIdx(rayFrom)];
-	for (auto& otherProxy : cell.staticHandles)
-		rayCallback.process(otherProxy);
-	for (auto& otherProxy : cell.dynHandles)
-		rayCallback.process(otherProxy);
+	if (rayLenSq < cellSizeSq) {
+
+		Cell& cell = cells[GetCellIdx(rayFrom)];
+		for (auto& otherProxy : cell.staticHandles)
+			rayCallback.process(otherProxy);
+		for (auto& otherProxy : cell.dynHandles)
+			rayCallback.process(otherProxy);
+	} else {
+		static std::once_flag onceFlag;
+		std::call_once(onceFlag, 
+			[this]() {
+				std::cout <<
+					"[!] btRSBroadphase WARNING:" <<
+					"\nRay casts in RocketSim that are longer than " << this->cellSize << "uu are very expensive and not properly optimized." <<
+					"\nIf you have a project that requires these long rays, tell ZealanL to implement proper DDA for the custom voxel broadphase." <<
+					std::endl;
+			}
+		);
+
+		for (int i = 0; i <= m_LastHandleIndex; i++) {
+			btRSBroadphaseProxy* proxy = &m_pHandles[i];
+			if (!proxy->m_clientObject) {
+				continue;
+			}
+			rayCallback.process(proxy);
+		}
+	}
 }
 
 void btRSBroadphase::aabbTest(const btVector3& aabbMin, const btVector3& aabbMax, btBroadphaseAabbCallback& callback) {
+	// TODO: Optimize
+
 	for (int i = 0; i <= m_LastHandleIndex; i++) {
 		btRSBroadphaseProxy* proxy = &m_pHandles[i];
 		if (!proxy->m_clientObject) {
@@ -339,21 +362,23 @@ void btRSBroadphase::calculateOverlappingPairs(btCollisionDispatcher* dispatcher
 			}
 
 			if (numDynProxies > 1) {
-				for (auto& otherProxy : cell.dynHandles) {
-					if (otherProxy == proxy)
-						continue;
+				if (cell.dynHandles.size() > 1) { // We are dynamic, so there will always be 1
+					for (auto& otherProxy : cell.dynHandles) {
+						if (otherProxy == proxy)
+							continue;
 
-					totalDynPairs++;
+						totalDynPairs++;
 
-					if (aabbOverlap(proxy, otherProxy)) {
-						if (!m_pairCache->findPair(proxy, otherProxy)) {
-							m_pairCache->addOverlappingPair(proxy, otherProxy);
-							totalRealPairs++;
-						}
-					} else {
-						if (shouldRemove) {
-							if (m_pairCache->findPair(proxy, otherProxy)) {
-								m_pairCache->removeOverlappingPair(proxy, otherProxy, dispatcher);
+						if (aabbOverlap(proxy, otherProxy)) {
+							if (!m_pairCache->findPair(proxy, otherProxy)) {
+								m_pairCache->addOverlappingPair(proxy, otherProxy);
+								totalRealPairs++;
+							}
+						} else {
+							if (shouldRemove) {
+								if (m_pairCache->findPair(proxy, otherProxy)) {
+									m_pairCache->removeOverlappingPair(proxy, otherProxy, dispatcher);
+								}
 							}
 						}
 					}
