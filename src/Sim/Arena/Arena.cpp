@@ -1,6 +1,10 @@
 #include "Arena.h"
 #include "../../RocketSim.h"
 
+#include "../../../libsrc/bullet3-3.24/BulletCollision/BroadphaseCollision/btAxisSweep3.h"
+#include "../../../libsrc/bullet3-3.24/BulletCollision/BroadphaseCollision/btDbvtBroadphase.h"
+#include "../../../libsrc/bullet3-3.24/BulletCollision/BroadphaseCollision/btSimpleBroadphase.h"
+#include "../../../libsrc/bullet3-3.24/BulletCollision/BroadphaseCollision/btRSBroadphase.h"
 #include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionDispatch/btDefaultCollisionConfiguration.h"
 #include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionDispatch/btInternalEdgeUtility.h"
 #include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btBoxShape.h"
@@ -443,11 +447,26 @@ Arena::Arena(GameMode gameMode, ArenaMemWeightMode memWeightMode, float tickRate
 		_bulletWorldParams.constraintSolver = btSequentialImpulseConstraintSolver();
 
 		_bulletWorldParams.overlappingPairCache = new (btAlignedAlloc(sizeof(btHashedOverlappingPairCache), 16)) btHashedOverlappingPairCache();
-		_bulletWorldParams.broadphase = btDbvtBroadphase(_bulletWorldParams.overlappingPairCache);
+		
+		// TODO: Move to... somewhere! Maybe make ArenaConfig or something.
+		constexpr int
+			MAX_X = 4500,
+			MAX_Y = 6000,
+			MAX_Z = 2500,
+
+			CELL_SIZE = 350,
+			MAX_OBJ_COUNT = 1024;
+
+		_bulletWorldParams.broadphase = new btRSBroadphase(
+			btVector3(-MAX_X, -MAX_Y, 0) * UU_TO_BT,
+			btVector3(MAX_X, MAX_Y, MAX_Z) * UU_TO_BT,
+			CELL_SIZE * UU_TO_BT,
+			_bulletWorldParams.overlappingPairCache, 
+			MAX_OBJ_COUNT);
 
 		_bulletWorld.setup(
 			&_bulletWorldParams.collisionDispatcher,
-			&_bulletWorldParams.broadphase,
+			_bulletWorldParams.broadphase,
 			&_bulletWorldParams.constraintSolver,
 			&_bulletWorldParams.collisionConfig
 		);
@@ -955,6 +974,8 @@ Arena::~Arena() {
 
 	_bulletWorldParams.overlappingPairCache->~btHashedOverlappingPairCache();
 	btAlignedFree(_bulletWorldParams.overlappingPairCache);
+
+	delete _bulletWorldParams.broadphase;
 }
 
 void Arena::_SetupArenaCollisionShapes() {

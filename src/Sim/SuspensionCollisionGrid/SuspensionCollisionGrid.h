@@ -65,12 +65,6 @@ struct SuspensionCollisionGrid {
 	}
 
 	template <bool LIGHT>
-	Cell Get(int i, int j, int k) const {
-		int index = (i * CELL_AMOUNT_Y[LIGHT] * CELL_AMOUNT_Z[LIGHT]) + (j * CELL_AMOUNT_Z[LIGHT]) + k;
-		return cellData[index];
-	}
-
-	template <bool LIGHT>
 	Vec GetCellMin(int xIndex, int yIndex, int zIndex) const {
 		return Vec(
 			CELL_SIZE_X[LIGHT] * (xIndex - (CELL_AMOUNT_X[LIGHT] / 2)),

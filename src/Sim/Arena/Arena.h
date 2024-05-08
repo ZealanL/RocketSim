@@ -92,7 +92,7 @@ public:
 		btDefaultCollisionConfiguration collisionConfig;
 		btCollisionDispatcher collisionDispatcher;
 		btHashedOverlappingPairCache* overlappingPairCache;
-		btDbvtBroadphase broadphase;
+		btBroadphaseInterface* broadphase;
 		btSequentialImpulseConstraintSolver constraintSolver;
 	} _bulletWorldParams;
 
