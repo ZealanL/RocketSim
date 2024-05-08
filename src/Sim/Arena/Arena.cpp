@@ -700,8 +700,10 @@ void Arena::Step(int ticksToSimulate) {
 			}
 		}
 
+		bool ballOnly = _cars.empty();
+
 		bool hasArenaStuff = (gameMode != GameMode::THE_VOID);
-		bool shouldUpdateSuspColGrid = hasArenaStuff && !_cars.empty();
+		bool shouldUpdateSuspColGrid = hasArenaStuff && !ballOnly;
 		if (shouldUpdateSuspColGrid) {
 #ifndef RS_NO_SUSPCOLGRID
 			{ // Add dynamic bodies to suspension grid
@@ -741,7 +743,7 @@ void Arena::Step(int ticksToSimulate) {
 #endif
 		}
 
-		if (hasArenaStuff) {
+		if (hasArenaStuff && !ballOnly) {
 			for (BoostPad* pad : _boostPads)
 				pad->_PreTickUpdate(tickTime);
 		}
@@ -759,7 +761,7 @@ void Arena::Step(int ticksToSimulate) {
 				_boostPadGrid.CheckCollision(car);
 		}
 
-		if (hasArenaStuff)
+		if (hasArenaStuff && !ballOnly)
 			for (BoostPad* pad : _boostPads)
 				pad->_PostTickUpdate(tickTime, _mutatorConfig);
 
