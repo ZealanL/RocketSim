@@ -457,12 +457,16 @@ Arena::Arena(GameMode gameMode, ArenaMemWeightMode memWeightMode, float tickRate
 			CELL_SIZE = 350,
 			MAX_OBJ_COUNT = 1024;
 
-		_bulletWorldParams.broadphase = new btRSBroadphase(
-			btVector3(-MAX_X, -MAX_Y, 0) * UU_TO_BT,
-			btVector3(MAX_X, MAX_Y, MAX_Z) * UU_TO_BT,
-			CELL_SIZE * UU_TO_BT,
-			_bulletWorldParams.overlappingPairCache, 
-			MAX_OBJ_COUNT);
+		if (_mutatorConfig.useCustomBroadphase) {
+			_bulletWorldParams.broadphase = new btRSBroadphase(
+				btVector3(-MAX_X, -MAX_Y, 0) * UU_TO_BT,
+				btVector3(MAX_X, MAX_Y, MAX_Z) * UU_TO_BT,
+				CELL_SIZE * UU_TO_BT,
+				_bulletWorldParams.overlappingPairCache,
+				MAX_OBJ_COUNT);
+		} else {
+			_bulletWorldParams.broadphase = new btDbvtBroadphase(_bulletWorldParams.overlappingPairCache);
+		}
 
 		_bulletWorld.setup(
 			&_bulletWorldParams.collisionDispatcher,

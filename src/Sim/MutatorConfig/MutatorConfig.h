@@ -57,16 +57,21 @@ struct MutatorConfig {
 	float
 		ballRadius;
 
-	// Ball rotation updates are skipped to improve performance
-	// Disabled in snowday
-	bool noBallRot = true; 
-
-	bool 
+	bool
 		unlimitedFlips = false,
 		unlimitedDoubleJumps = false;
 
 	DemoMode demoMode = DemoMode::NORMAL;
 	bool enableTeamDemos = false;
+
+	// Ball rotation updates are skipped to improve performance
+	// Disabled in snowday
+	bool noBallRot = true; 
+
+	// Use a custom broadphase designed for RocketSim
+	// Improves performance, but becomes inefficient on giant maps
+	// Turn this off if you want to use a giant map
+	bool useCustomBroadphase = true;
 
 	MutatorConfig(GameMode gameMode);
 
