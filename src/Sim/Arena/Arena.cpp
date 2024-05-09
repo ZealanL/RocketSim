@@ -433,13 +433,12 @@ Arena::Arena(GameMode gameMode, const ArenaConfig& config, float tickRate) : _mu
 		btDefaultCollisionConstructionInfo collisionConfigConstructionInfo = {};
 
 		// These take up a ton of memory normally
-		// TODO: Heavy is slow
 		if (_config.memWeightMode == ArenaMemWeightMode::LIGHT) {
+			collisionConfigConstructionInfo.m_defaultMaxPersistentManifoldPoolSize /= 32;
+			collisionConfigConstructionInfo.m_defaultMaxCollisionAlgorithmPoolSize /= 64;
+		} else {
 			collisionConfigConstructionInfo.m_defaultMaxPersistentManifoldPoolSize /= 16;
 			collisionConfigConstructionInfo.m_defaultMaxCollisionAlgorithmPoolSize /= 32;
-		} else {
-			collisionConfigConstructionInfo.m_defaultMaxPersistentManifoldPoolSize /= 8;
-			collisionConfigConstructionInfo.m_defaultMaxCollisionAlgorithmPoolSize /= 16;
 		}
 
 		_bulletWorldParams.collisionConfig.setup(collisionConfigConstructionInfo);
@@ -450,10 +449,16 @@ Arena::Arena(GameMode gameMode, const ArenaConfig& config, float tickRate) : _mu
 		_bulletWorldParams.overlappingPairCache = new (btAlignedAlloc(sizeof(btHashedOverlappingPairCache), 16)) btHashedOverlappingPairCache();
 
 		if (_config.useCustomBroadphase) {
+			float cellSizeMultiplier = 1;
+			if (_config.memWeightMode == ArenaMemWeightMode::LIGHT) {
+				// Increase cell size
+				cellSizeMultiplier = 2.0f;
+			}
+
 			_bulletWorldParams.broadphase = new btRSBroadphase(
 				_config.minPos * UU_TO_BT,
 				_config.maxPos * UU_TO_BT,
-				_config.maxAABBLen * UU_TO_BT,
+				_config.maxAABBLen * UU_TO_BT * cellSizeMultiplier,
 				_bulletWorldParams.overlappingPairCache,
 				_config.maxObjects);
 		} else {
