@@ -28,10 +28,6 @@ protected:
 	btVector3 m_localAabbMax;
 	btStridingMeshInterface* m_meshInterface;
 
-	bool m_aabbCached = false;
-	btVector3 m_aabbMinCache, m_aabbMaxCache;
-	btTransform m_aabbCacheTrans;
-
 	///btTriangleMeshShape constructor has been disabled/protected, so that users will not mistakenly use this class.
 	///Don't use btTriangleMeshShape but use btBvhTriangleMeshShape instead!
 	btTriangleMeshShape(btStridingMeshInterface * meshInterface);

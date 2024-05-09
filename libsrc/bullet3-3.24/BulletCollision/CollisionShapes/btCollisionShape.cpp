@@ -4,8 +4,8 @@ Copyright (c) 2003-2009 Erwin Coumans  http://bulletphysics.org
 
 This software is provided 'as-is', without any express or implied warranty.
 In no event will the authors be held liable for any damages arising from the use of this software.
-Permission is granted to anyone to use this software for any purpose, 
-including commercial applications, and to alter it and redistribute it freely, 
+Permission is granted to anyone to use this software for any purpose,
+including commercial applications, and to alter it and redistribute it freely,
 subject to the following restrictions:
 
 1. The origin of this software must not be misrepresented; you must not claim that you wrote the original software. If you use this software in a product, an acknowledgment in the product documentation would be appreciated but is not required.
@@ -35,23 +35,43 @@ extern "C"
 }
 
 void btCollisionShape::getAabb(const btTransform& t, btVector3& aabbMin, btVector3& aabbMax) const {
-	switch (m_shapeType) {
-	case BOX_SHAPE_PROXYTYPE:
-		return ((btBoxShape*)this)->getAabb(t, aabbMin, aabbMax);
-	case TRIANGLE_SHAPE_PROXYTYPE:
-		return ((btTriangleShape*)this)->getAabb(t, aabbMin, aabbMax);
-	case SPHERE_SHAPE_PROXYTYPE:
-		return ((btSphereShape*)this)->getAabb(t, aabbMin, aabbMax);
-	case STATIC_PLANE_PROXYTYPE:
-		return ((btStaticPlaneShape*)this)->getAabb(t, aabbMin, aabbMax);
-	case TRIANGLE_MESH_SHAPE_PROXYTYPE:
-		return ((btTriangleMeshShape*)this)->getAabb(t, aabbMin, aabbMax);
-	case COMPOUND_SHAPE_PROXYTYPE:
-		return ((btCompoundShape*)this)->getAabb(t, aabbMin, aabbMax);
-	case CONVEX_HULL_SHAPE_PROXYTYPE:
-		return ((btConvexHullShape*)this)->getAabb(t, aabbMin, aabbMax);
-	default:
-		btAssert(false);
+
+	if ((m_aabbCacheTrans != t) || !m_aabbCached) {
+		switch (m_shapeType) {
+		case BOX_SHAPE_PROXYTYPE:
+			((btBoxShape*)this)->getAabb(t, aabbMin, aabbMax);
+			break;
+		case TRIANGLE_SHAPE_PROXYTYPE:
+			((btTriangleShape*)this)->getAabb(t, aabbMin, aabbMax);
+			break;
+		case SPHERE_SHAPE_PROXYTYPE:
+			((btSphereShape*)this)->getAabb(t, aabbMin, aabbMax);
+			break;
+		case STATIC_PLANE_PROXYTYPE:
+			((btStaticPlaneShape*)this)->getAabb(t, aabbMin, aabbMax);
+			break;
+		case TRIANGLE_MESH_SHAPE_PROXYTYPE:
+			((btTriangleMeshShape*)this)->getAabb(t, aabbMin, aabbMax);
+			break;
+		case COMPOUND_SHAPE_PROXYTYPE:
+			((btCompoundShape*)this)->getAabb(t, aabbMin, aabbMax);
+			break;
+		case CONVEX_HULL_SHAPE_PROXYTYPE:
+			((btConvexHullShape*)this)->getAabb(t, aabbMin, aabbMax);
+			break;
+		default:
+			btAssert(false);
+		}
+
+		// TODO: Dumb const bypass hack
+		auto _this = (btCollisionShape*)this;
+		_this->m_aabbCached = true;
+		_this->m_aabbMinCache = aabbMin;
+		_this->m_aabbMaxCache = aabbMax;
+		_this->m_aabbCacheTrans = t;
+	} else {
+		aabbMin = m_aabbMinCache;
+		aabbMax = m_aabbMaxCache;
 	}
 }
 
@@ -95,8 +115,7 @@ void btCollisionShape::setMargin(btScalar margin) {
 	}
 }
 
-void btCollisionShape::getBoundingSphere(btVector3& center, btScalar& radius) const
-{
+void btCollisionShape::getBoundingSphere(btVector3& center, btScalar& radius) const {
 	switch (m_shapeType) {
 	case SPHERE_SHAPE_PROXYTYPE:
 		center = btVector3(0, 0, 0);
@@ -114,13 +133,11 @@ void btCollisionShape::getBoundingSphere(btVector3& center, btScalar& radius) co
 	}
 }
 
-btScalar btCollisionShape::getContactBreakingThreshold(btScalar defaultContactThreshold) const
-{
+btScalar btCollisionShape::getContactBreakingThreshold(btScalar defaultContactThreshold) const {
 	return getAngularMotionDisc() * defaultContactThreshold;
 }
 
-btScalar btCollisionShape::getAngularMotionDisc() const
-{
+btScalar btCollisionShape::getAngularMotionDisc() const {
 	///@todo cache this value, to improve performance
 	btVector3 center;
 	btScalar disc;
@@ -129,8 +146,7 @@ btScalar btCollisionShape::getAngularMotionDisc() const
 	return disc;
 }
 
-void btCollisionShape::calculateTemporalAabb(const btTransform& curTrans, const btVector3& linvel, const btVector3& angvel, btScalar timeStep, btVector3& temporalAabbMin, btVector3& temporalAabbMax) const
-{
+void btCollisionShape::calculateTemporalAabb(const btTransform& curTrans, const btVector3& linvel, const btVector3& angvel, btScalar timeStep, btVector3& temporalAabbMin, btVector3& temporalAabbMax) const {
 	//start with static aabb
 	getAabb(curTrans, temporalAabbMin, temporalAabbMax);
 

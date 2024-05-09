@@ -25,16 +25,22 @@ subject to the following restrictions:
 ATTRIBUTE_ALIGNED16(class)
 btCollisionShape
 {
-protected:
+public:
+
 	int m_shapeType;
 	void* m_userPointer;
 	int m_userIndex;
 	int m_userIndex2;
 
-public:
+	bool m_aabbCached;
+	btVector3 m_aabbMinCache, m_aabbMaxCache;
+	btTransform m_aabbCacheTrans;
+
 	BT_DECLARE_ALIGNED_ALLOCATOR();
 
-	btCollisionShape() : m_shapeType(INVALID_SHAPE_PROXYTYPE), m_userPointer(0), m_userIndex(-1), m_userIndex2(-1)
+	btCollisionShape() : 
+		m_shapeType(INVALID_SHAPE_PROXYTYPE), m_userPointer(0), m_userIndex(-1), m_userIndex2(-1),
+		m_aabbCached(false)
 	{
 	}
 
