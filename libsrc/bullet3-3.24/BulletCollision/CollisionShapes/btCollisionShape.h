@@ -32,15 +32,14 @@ public:
 	int m_userIndex;
 	int m_userIndex2;
 
-	bool m_aabbCached;
+	bool m_aabbCached = false;
 	btVector3 m_aabbMinCache, m_aabbMaxCache;
 	btTransform m_aabbCacheTrans;
 
 	BT_DECLARE_ALIGNED_ALLOCATOR();
 
 	btCollisionShape() : 
-		m_shapeType(INVALID_SHAPE_PROXYTYPE), m_userPointer(0), m_userIndex(-1), m_userIndex2(-1),
-		m_aabbCached(false)
+		m_shapeType(INVALID_SHAPE_PROXYTYPE), m_userPointer(0), m_userIndex(-1), m_userIndex2(-1)
 	{
 	}
 

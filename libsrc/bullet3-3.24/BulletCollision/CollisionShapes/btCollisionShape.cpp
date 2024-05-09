@@ -36,7 +36,19 @@ extern "C"
 
 void btCollisionShape::getAabb(const btTransform& t, btVector3& aabbMin, btVector3& aabbMax) const {
 
-	if ((m_aabbCacheTrans != t) || !m_aabbCached) {
+	// If we're a sphere, its faster to just re-calculate
+	if (m_shapeType == SPHERE_SHAPE_PROXYTYPE)
+		return ((btSphereShape*)this)->getAabb(t, aabbMin, aabbMax);
+
+	constexpr auto fnFastCompareTransforms = [](const btTransform& a, const btTransform& b) -> bool {
+		return
+			(a.m_origin == b.m_origin) &&
+			(a.m_basis[0] == b.m_basis[0]) &&
+			(a.m_basis[1] == b.m_basis[1]);
+			// Don't need to compare the last row of the basis
+	};
+
+	if (!fnFastCompareTransforms(t, m_aabbCacheTrans) || !m_aabbCached) {
 		switch (m_shapeType) {
 		case BOX_SHAPE_PROXYTYPE:
 			((btBoxShape*)this)->getAabb(t, aabbMin, aabbMax);
