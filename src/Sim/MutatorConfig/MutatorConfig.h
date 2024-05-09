@@ -13,7 +13,7 @@ enum class DemoMode : byte {
 	DISABLED
 };
 
-struct MutatorConfig {
+RSAPI struct MutatorConfig {
 
 	Vec gravity = Vec(0, 0, RLConst::GRAVITY_Z);
 
@@ -64,19 +64,10 @@ struct MutatorConfig {
 	DemoMode demoMode = DemoMode::NORMAL;
 	bool enableTeamDemos = false;
 
-	// Ball rotation updates are skipped to improve performance
-	// Disabled in snowday
-	bool noBallRot = true; 
-
-	// Use a custom broadphase designed for RocketSim
-	// Improves performance, but becomes inefficient on giant maps
-	// Turn this off if you want to use a giant map
-	bool useCustomBroadphase = true;
-
 	MutatorConfig(GameMode gameMode);
 
-	RSAPI void Serialize(DataStreamOut& out) const;
-	RSAPI void Deserialize(DataStreamIn& in);
+	void Serialize(DataStreamOut& out) const;
+	void Deserialize(DataStreamIn& in);
 };
 
 #define MUTATOR_CONFIG_SERIALIZATION_FIELDS \

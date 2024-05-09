@@ -27,7 +27,7 @@ RSAPI void Arena::SetMutatorConfig(const MutatorConfig& mutatorConfig) {
 		// We'll need to remake the ball
 		_bulletWorld.removeCollisionObject(&ball->_rigidBody);
 		delete ball->_collisionShape;
-		ball->_BulletSetup(gameMode, &_bulletWorld, mutatorConfig);
+		ball->_BulletSetup(gameMode, &_bulletWorld, mutatorConfig, _config.noBallRot);
 	}
 
 	if (carMassChanged) {
@@ -418,7 +418,7 @@ void Arena::_BtCallback_OnCarWorldCollision(Car* car, btCollisionObject* world, 
 	manifoldPoint.m_combinedRestitution = _mutatorConfig.carWorldRestitution;
 }
 
-Arena::Arena(GameMode gameMode, ArenaMemWeightMode memWeightMode, float tickRate) : _mutatorConfig(gameMode), _suspColGrid(gameMode) {
+Arena::Arena(GameMode gameMode, const ArenaConfig& config, float tickRate) : _mutatorConfig(gameMode), _config(config), _suspColGrid(gameMode) {
 
 	// Tickrate must be from 15 to 120tps
 	assert(tickRate >= 15 && tickRate <= 120);
@@ -433,7 +433,8 @@ Arena::Arena(GameMode gameMode, ArenaMemWeightMode memWeightMode, float tickRate
 		btDefaultCollisionConstructionInfo collisionConfigConstructionInfo = {};
 
 		// These take up a ton of memory normally
-		if (memWeightMode == ArenaMemWeightMode::LIGHT) {
+		// TODO: Heavy is slow
+		if (_config.memWeightMode == ArenaMemWeightMode::LIGHT) {
 			collisionConfigConstructionInfo.m_defaultMaxPersistentManifoldPoolSize /= 16;
 			collisionConfigConstructionInfo.m_defaultMaxCollisionAlgorithmPoolSize /= 32;
 		} else {
@@ -447,23 +448,14 @@ Arena::Arena(GameMode gameMode, ArenaMemWeightMode memWeightMode, float tickRate
 		_bulletWorldParams.constraintSolver = btSequentialImpulseConstraintSolver();
 
 		_bulletWorldParams.overlappingPairCache = new (btAlignedAlloc(sizeof(btHashedOverlappingPairCache), 16)) btHashedOverlappingPairCache();
-		
-		// TODO: Move to... somewhere! Maybe make ArenaConfig or something.
-		constexpr int
-			MAX_X = 4500,
-			MAX_Y = 6000,
-			MAX_Z = 2500,
 
-			CELL_SIZE = 350,
-			MAX_OBJ_COUNT = 1024;
-
-		if (_mutatorConfig.useCustomBroadphase) {
+		if (_config.useCustomBroadphase) {
 			_bulletWorldParams.broadphase = new btRSBroadphase(
-				btVector3(-MAX_X, -MAX_Y, 0) * UU_TO_BT,
-				btVector3(MAX_X, MAX_Y, MAX_Z) * UU_TO_BT,
-				CELL_SIZE * UU_TO_BT,
+				_config.minPos * UU_TO_BT,
+				_config.maxPos * UU_TO_BT,
+				_config.maxAABBLen * UU_TO_BT,
 				_bulletWorldParams.overlappingPairCache,
-				MAX_OBJ_COUNT);
+				_config.maxObjects);
 		} else {
 			_bulletWorldParams.broadphase = new btDbvtBroadphase(_bulletWorldParams.overlappingPairCache);
 		}
@@ -512,7 +504,7 @@ Arena::Arena(GameMode gameMode, ArenaMemWeightMode memWeightMode, float tickRate
 	{ // Initialize ball
 		ball = Ball::_AllocBall();
 
-		ball->_BulletSetup(gameMode, &_bulletWorld, _mutatorConfig);
+		ball->_BulletSetup(gameMode, &_bulletWorld, _mutatorConfig, _config.noBallRot);
 		ball->SetState(BallState());
 	}
 
@@ -548,12 +540,14 @@ Arena::Arena(GameMode gameMode, ArenaMemWeightMode memWeightMode, float tickRate
 	gContactAddedCallback = &Arena::_BulletContactAddedCallback;
 }
 
-Arena* Arena::Create(GameMode gameMode, ArenaMemWeightMode memWeightMode, float tickRate) {
-	return new Arena(gameMode, memWeightMode, tickRate);
+Arena* Arena::Create(GameMode gameMode, const ArenaConfig& arenaConfig, float tickRate) {
+	return new Arena(gameMode, arenaConfig, tickRate);
 }
 
 void Arena::Serialize(DataStreamOut& out) const {
-	out.WriteMultiple(gameMode, tickTime, tickCount, _lastCarID, _memWeightMode);
+	out.WriteMultiple(gameMode, tickTime, tickCount, _lastCarID);
+
+	_config.Serialize(out);
 
 	{ // Serialize cars
 		out.Write<uint32_t>(_cars.size());
@@ -588,9 +582,12 @@ Arena* Arena::DeserializeNew(DataStreamIn& in) {
 	uint32_t lastCarID;
 	ArenaMemWeightMode memWeightMode;
 
-	in.ReadMultiple(gameMode, tickTime, tickCount, lastCarID, memWeightMode);
+	in.ReadMultiple(gameMode, tickTime, tickCount, lastCarID);
 
-	Arena* newArena = new Arena(gameMode, memWeightMode, 1.f / tickTime);
+	ArenaConfig newConfig = {};
+	newConfig.Deserialize(in);
+
+	Arena* newArena = new Arena(gameMode, newConfig, 1.f / tickTime);
 	newArena->tickCount = tickCount;
 	
 	{ // Deserialize cars
@@ -649,7 +646,7 @@ Arena* Arena::DeserializeNew(DataStreamIn& in) {
 }
 
 Arena* Arena::Clone(bool copyCallbacks) {
-	Arena* newArena = new Arena(this->gameMode, this->_memWeightMode, this->GetTickRate());
+	Arena* newArena = new Arena(this->gameMode, this->_config, this->GetTickRate());
 	
 	if (copyCallbacks) {
 		newArena->_goalScoreCallback = this->_goalScoreCallback;
