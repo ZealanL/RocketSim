@@ -52,12 +52,10 @@ void btTriangleMeshShape::getAabb(const btTransform& trans, btVector3& aabbMin, 
 		btVector3 center = trans(localCenter);
 
 		btVector3 extent = localHalfExtents.dot3(abs_b[0], abs_b[1], abs_b[2]);
-		aabbMin = center - extent;
-		aabbMax = center + extent;
-
 		btVector3
 			newMin = center - extent,
-			newMax = center - extent;
+			newMax = center + extent;
+
 		m_aabbMinCache = newMin;
 		m_aabbMaxCache = newMax;
 		m_aabbCacheTrans = trans;
