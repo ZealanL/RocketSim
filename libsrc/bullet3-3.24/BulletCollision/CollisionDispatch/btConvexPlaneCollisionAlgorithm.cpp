@@ -104,22 +104,22 @@ void btConvexPlaneCollisionAlgorithm::processCollision(const btCollisionObjectWr
 	bool hasCollision = false;
 	const btVector3& planeNormal = planeShape->getPlaneNormal();
 	const btScalar& planeConstant = planeShape->getPlaneConstant();
+
 	btTransform planeInConvex;
-	planeInConvex = convexObjWrap->getWorldTransform().inverse() * planeObjWrap->getWorldTransform();
 	btTransform convexInPlaneTrans;
+	planeInConvex = convexObjWrap->getWorldTransform().inverse() * planeObjWrap->getWorldTransform();
 	convexInPlaneTrans = planeObjWrap->getWorldTransform().inverse() * convexObjWrap->getWorldTransform();
 
 	btVector3 vtx = convexShape->localGetSupportingVertex(planeInConvex.getBasis() * -planeNormal);
 	btVector3 vtxInPlane = convexInPlaneTrans(vtx);
 	btScalar distance = (planeNormal.dot(vtxInPlane) - planeConstant);
-
-	btVector3 vtxInPlaneProjected = vtxInPlane - distance * planeNormal;
-	btVector3 vtxInPlaneWorld = planeObjWrap->getWorldTransform() * vtxInPlaneProjected;
-
 	hasCollision = distance < m_manifoldPtr->getContactBreakingThreshold()+ resultOut->m_closestPointDistanceThreshold;
 	resultOut->setPersistentManifold(m_manifoldPtr);
 	if (hasCollision)
 	{
+		btVector3 vtxInPlaneProjected = vtxInPlane - distance * planeNormal;
+		btVector3 vtxInPlaneWorld = planeObjWrap->getWorldTransform() * vtxInPlaneProjected;
+
 		/// report a contact. internally this will be kept persistent, and contact reduction is done
 		btVector3 normalOnSurfaceB = planeObjWrap->getWorldTransform().getBasis() * planeNormal;
 		btVector3 pOnB = vtxInPlaneWorld;
