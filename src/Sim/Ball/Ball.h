@@ -1,5 +1,5 @@
 #pragma once
-#include "../../BaseInc.h"
+#include "../PhysState/PhysState.h"
 
 #include "../../RLConst.h"
 #include "../../DataStream/DataStreamIn.h"
@@ -10,22 +10,15 @@
 #include "../../../libsrc/bullet3-3.24/BulletDynamics/Dynamics/btRigidBody.h"
 #include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btSphereShape.h"
 
-struct BallState {
+class btDynamicsWorld;
+
+RS_NS_START
+
+struct BallState : public PhysState {
 	// Incremented every update, reset when SetState() is called
-// Used for telling if a stateset occured
-// Not serialized
+	// Used for telling if a stateset occured
+	// Not serialized
 	uint64_t updateCounter = 0;
-
-	// Position in world space
-	Vec pos = { 0, 0, RLConst::BALL_REST_Z };
-
-	RotMat rotMat = RotMat::GetIdentity();
-
-	// Linear velocity
-	Vec vel = { 0, 0, 0 };
-	 
-	// Angular velocity (axis-angle)
-	Vec angVel = { 0, 0, 0 };
 
 	struct HeatseekerInfo {
 		// Which net the ball should seek towards
@@ -37,6 +30,10 @@ struct BallState {
 	};
 
 	HeatseekerInfo hsInfo;
+
+	BallState() : PhysState() {
+		pos.z = RLConst::BALL_REST_Z;
+	}
 
 	bool Matches(const BallState& other, float marginPos = 0.8, float marginVel = 0.4, float marginAngVel = 0.02) const;
 
@@ -64,7 +61,7 @@ public:
 	// For removal by Arena
 	static void _DestroyBall(Ball* ball) { delete ball; }
 
-	void _BulletSetup(GameMode gameMode, class btDynamicsWorld* bulletWorld, const MutatorConfig& mutatorConfig);
+	void _BulletSetup(GameMode gameMode, btDynamicsWorld* bulletWorld, const MutatorConfig& mutatorConfig, bool noRot);
 
 	bool groundStickApplied = false;
 	Vec _velocityImpulseCache = { 0,0,0 };
@@ -81,7 +78,7 @@ public:
 	}
 
 	void _PreTickUpdate(GameMode gameMode, float tickTime);
-	void _OnHit(GameMode gameMode, struct Car* car);
+	void _OnHit(GameMode gameMode, class Car* car);
 	void _OnWorldCollision(GameMode gameMode, Vec normal, float tickTime);
 		
 	Ball(const Ball& other) = delete;
@@ -94,3 +91,5 @@ public:
 private:
 	Ball() {}
 };
+
+RS_NS_END

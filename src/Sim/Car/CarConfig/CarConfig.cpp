@@ -1,5 +1,7 @@
 #include "CarConfig.h"
 
+RS_NS_START
+
 // Default car-type config definitions
 
 // For those confused about the hitbox numbers,
@@ -16,12 +18,12 @@
 //    the ones everyone else uses/shares do not.
 
 const static Vec HITBOX_SIZES[6] = { 
-	{ 120.507f,	86.6994f,	38.6591f	},
-	{ 130.427f,	85.7799f,	33.8f		},
-	{ 131.32f,	87.1704f,	31.8944f	},
-	{ 133.992f,	83.021f,	32.8f		},
-	{ 129.519f,	84.6879f,	36.6591f	},
-	{ 123.22f,	79.2103f,	44.1591f	}
+	{ 120.507f,	86.6994f,	38.6591f	}, // OCTANE
+	{ 130.427f,	85.7799f,	33.8f		}, // DOMINUS
+	{ 131.32f,	87.1704f,	31.8944f	}, // PLANK
+	{ 133.992f,	83.021f,	32.8f		}, // BREAKOUT
+	{ 129.519f,	84.6879f,	36.6591f	}, // HYBRID
+	{ 123.22f,	79.2103f,	44.1591f	}  // MERC
 };
 
 const static Vec HITBOX_OFFSETS[6] = { 
@@ -69,7 +71,7 @@ const static Vec BACK_WHEELS_OFFSET[6] = {
 
 // Using a macro here for convenience
 #define MAKE_CAR_CONFIG(name, index)                                                          \
-	const CarConfig CAR_CONFIG_##name = {                                                     \
+	const CarConfig CAR_CONFIG_##name = {                                          \
 		HITBOX_SIZES[index],                                                                  \
 		HITBOX_OFFSETS[index],                                                                \
 		{ FRONT_WHEEL_RADS[index], FRONT_WHEEL_SUS_REST[index], FRONT_WHEELS_OFFSET[index] }, \
@@ -82,3 +84,5 @@ MAKE_CAR_CONFIG(PLANK, 2);
 MAKE_CAR_CONFIG(BREAKOUT, 3);
 MAKE_CAR_CONFIG(HYBRID, 4);
 MAKE_CAR_CONFIG(MERC, 5);
+
+RS_NS_END

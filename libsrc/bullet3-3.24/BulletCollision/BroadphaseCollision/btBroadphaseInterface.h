@@ -49,6 +49,7 @@ protected:
 class btBroadphaseInterface
 {
 public:
+
 	virtual ~btBroadphaseInterface() {}
 
 	virtual btBroadphaseProxy* createProxy(const btVector3& aabbMin, const btVector3& aabbMax, int shapeType, void* userPtr, int collisionFilterGroup, int collisionFilterMask, btCollisionDispatcher* dispatcher) = 0;

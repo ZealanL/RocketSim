@@ -1,5 +1,7 @@
 #include "BoostPadGrid.h"
 
+RS_NS_START
+
 void BoostPadGrid::CheckCollision(Car* car) {
 	if (car->_internalState.isDemoed || car->_internalState.boost >= 100)
 		return;
@@ -37,3 +39,5 @@ void BoostPadGrid::Add(BoostPad* pad) {
 		ptrInArray = pad;
 	}
 }
+
+RS_NS_END

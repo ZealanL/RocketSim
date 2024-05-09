@@ -20,6 +20,8 @@ subject to the following restrictions:
 #include "../../LinearMath/btAabbUtil2.h"
 #include "../CollisionShapes/btCollisionMargin.h"
 
+#include <cstring>
+
 btTriangleMeshShape::btTriangleMeshShape(btStridingMeshInterface* meshInterface)
 	: btConcaveShape(), m_meshInterface(meshInterface)
 {
@@ -38,7 +40,7 @@ btTriangleMeshShape::~btTriangleMeshShape()
 {
 }
 
-void btTriangleMeshShape::getAabb(const btTransform& trans, btVector3& aabbMin, btVector3& aabbMax) const
+void btTriangleMeshShape::getAabb(const btTransform& trans, btVector3& aabbMin, btVector3& aabbMax)
 {
 	btVector3 localHalfExtents = btScalar(0.5) * (m_localAabbMax - m_localAabbMin);
 	localHalfExtents += btVector3(getMargin(), getMargin(), getMargin());

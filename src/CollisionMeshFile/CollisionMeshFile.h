@@ -7,6 +7,8 @@
 
 class btTriangleMesh;
 
+RS_NS_START
+
 // Collision mesh file structure based off of the one in https://github.com/ZealanL/RLArenaCollisionDumper
 struct CollisionMeshFile {
 
@@ -32,3 +34,5 @@ struct CollisionMeshFile {
 	btTriangleMesh* MakeBulletMesh();
 	void UpdateHash();
 };
+
+RS_NS_END

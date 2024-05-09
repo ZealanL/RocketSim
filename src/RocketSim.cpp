@@ -1,13 +1,13 @@
 #include "RocketSim.h"
 
-#ifdef RS_PYBIND
-// Make sure it gets compiled
-#include "../python/src/PYB.h"
-#endif
-
 #include "../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btBvhTriangleMeshShape.h"
 #include "../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btTriangleMesh.h"
 #include "../libsrc/bullet3-3.24/BulletCollision/CollisionDispatch/btInternalEdgeUtility.h"
+
+using namespace RocketSim;
+
+std::filesystem::path RocketSim::_collisionMeshesFolder = {};
+std::mutex RocketSim::_beginInitMutex = {};
 
 struct MeshHashSet {
 	std::unordered_map<uint32_t, int> hashes;
@@ -41,7 +41,6 @@ struct MeshHashSet {
 		return hashes[hash];
 	}
 };
-static std::mutex beginInitMutex;
 
 static RocketSimStage stage = RocketSimStage::UNINITIALIZED;
 RocketSimStage RocketSim::GetStage() {
@@ -59,7 +58,7 @@ std::vector<btBvhTriangleMeshShape*>& RocketSim::GetArenaCollisionShapes(GameMod
 static SuspensionCollisionGrid
 	suspColGrids_soccar[] = { {GameMode::SOCCAR, true}, {GameMode::SOCCAR, false} },
 	suspColGrids_hoops[] = { {GameMode::HOOPS, true}, {GameMode::HOOPS, false} };
-SuspensionCollisionGrid& RocketSim::GetDefaultSuspColGrid(GameMode gameMode, bool isLight) {
+	SuspensionCollisionGrid& RocketSim::GetDefaultSuspColGrid(GameMode gameMode, bool isLight) {
 	if (gameMode == GameMode::HOOPS) {
 		return suspColGrids_hoops[isLight];
 	} else {
@@ -72,16 +71,17 @@ void RocketSim::Init(std::filesystem::path collisionMeshesFolder) {
 
 	constexpr char MSG_PREFIX[] = "RocketSim::Init(): ";
 
-	beginInitMutex.lock();
+	_beginInitMutex.lock();
 	{
 		if (stage != RocketSimStage::UNINITIALIZED) {
 			RS_WARN("RocketSim::Init() called again after already initialized, ignoring...");
-			beginInitMutex.unlock();
+			_beginInitMutex.unlock();
 			return;
 		}
 
 		RS_LOG("Initializing RocketSim version " RS_VERSION ", created by ZealanL...");
 
+		_collisionMeshesFolder = collisionMeshesFolder;
 		stage = RocketSimStage::INITIALIZING;
 
 		uint64_t startMS = RS_CUR_MS();
@@ -125,7 +125,7 @@ void RocketSim::Init(std::filesystem::path collisionMeshesFolder) {
 
 					btTriangleMesh* triMesh = meshFile.MakeBulletMesh();
 
-					auto bvtMesh = new btBvhTriangleMeshShape(triMesh, false);
+					auto bvtMesh = new btBvhTriangleMeshShape(triMesh, true);
 					btTriangleInfoMap* infoMap = new btTriangleInfoMap();
 					btGenerateInternalEdgeInfo(bvtMesh, infoMap);
 					bvtMesh->setTriangleInfoMap(infoMap);
@@ -162,11 +162,11 @@ void RocketSim::Init(std::filesystem::path collisionMeshesFolder) {
 
 		stage = RocketSimStage::INITIALIZED;
 	}
-	beginInitMutex.unlock();
+	_beginInitMutex.unlock();
 }
 
 void RocketSim::AssertInitialized(const char* errorMsgPrefix) {
 	if (stage != RocketSimStage::INITIALIZED) {
-		RS_ERR_CLOSE(errorMsgPrefix << "RocketSim has not been initialized, call RocketSim::Init() first.")
+		RS_ERR_CLOSE(errorMsgPrefix << "RocketSim has not been initialized, call RocketSim::Init() first")
 	}
 }

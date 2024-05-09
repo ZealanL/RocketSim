@@ -98,7 +98,12 @@ void btRigidBody::setupRigidBody(const btRigidBody::btRigidBodyConstructionInfo&
 
 void btRigidBody::predictIntegratedTransform(btScalar timeStep, btTransform& predictedTransform)
 {
-	btTransformUtil::integrateTransform(m_worldTransform, m_linearVelocity, m_angularVelocity, timeStep, predictedTransform);
+
+	if (m_noRot) {
+		btTransformUtil::integrateTransformNoRot(m_worldTransform, m_linearVelocity, m_angularVelocity, timeStep, predictedTransform);
+	} else {
+		btTransformUtil::integrateTransform(m_worldTransform, m_linearVelocity, m_angularVelocity, timeStep, predictedTransform);
+	}
 }
 
 void btRigidBody::saveKinematicState(btScalar timeStep)

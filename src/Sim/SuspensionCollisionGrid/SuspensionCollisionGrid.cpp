@@ -3,6 +3,8 @@
 #include "../../../libsrc/bullet3-3.24/BulletCollision/NarrowPhaseCollision/btRaycastCallback.h"
 #include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btBvhTriangleMeshShape.h"
 
+RS_NS_START
+
 // Quick virtual btTriangleCallback child class to simply check if any triangles are processed
 struct BoolHitTriangleCallback : public btTriangleCallback {
 
@@ -120,11 +122,15 @@ void SuspensionCollisionGrid::SetupWorldCollision(const std::vector<btBvhTriangl
 }
 
 template <bool LIGHT>
-btCollisionObject* _CastSuspensionRay(SuspensionCollisionGrid& grid, btVehicleRaycaster* raycaster, Vec start, Vec end, btVehicleRaycaster::btVehicleRaycasterResult& result) {
+btCollisionObject* _CastSuspensionRay(
+	SuspensionCollisionGrid& grid, btVehicleRaycaster* raycaster, 
+	Vec start, Vec end, const btCollisionObject* ignoreObj, btVehicleRaycaster::btVehicleRaycasterResult& result
+) {
 	SuspensionCollisionGrid::Cell& cell = grid.GetCellFromPos<LIGHT>(start * BT_TO_UU);
 
-	if (cell.worldCollision || cell.dynamicObjects > 1) {
-		return (btCollisionObject*)raycaster->castRay(start, end, result);
+	if (cell.worldCollision || cell.dynamicCollision) {
+		// TODO: Do world-only or dynamic-only raycasts
+		return (btCollisionObject*)raycaster->castRay(start, end, ignoreObj, result);
 	} else {
 		Vec delta = end - start;
 		float dist = delta.Length();
@@ -168,11 +174,11 @@ btCollisionObject* _CastSuspensionRay(SuspensionCollisionGrid& grid, btVehicleRa
 	}
 }
 
-btCollisionObject* SuspensionCollisionGrid::CastSuspensionRay(btVehicleRaycaster* raycaster, Vec start, Vec end, btVehicleRaycaster::btVehicleRaycasterResult& result) {
+btCollisionObject* SuspensionCollisionGrid::CastSuspensionRay(btVehicleRaycaster* raycaster, Vec start, Vec end, const btCollisionObject* ignoreObj, btVehicleRaycaster::btVehicleRaycasterResult& result) {
 	if (lightMem) {
-		return _CastSuspensionRay<true>(*this, raycaster, start, end, result);
+		return _CastSuspensionRay<true>(*this, raycaster, start, end, ignoreObj, result);
 	} else {
-		return _CastSuspensionRay<false>(*this, raycaster, start, end, result);
+		return _CastSuspensionRay<false>(*this, raycaster, start, end, ignoreObj, result);
 	}
 }
 
@@ -189,7 +195,14 @@ void _UpdateDynamicCollisions(SuspensionCollisionGrid& grid, Vec minBT, Vec maxB
 	for (int i = i1; i <= i2; i++)
 		for (int j = j1; j <= j2; j++)
 			for (int k = k1; k <= k2; k++)
-				grid.Get<LIGHT>(i, j, k).dynamicObjects += deltaVal;
+				grid.Get<LIGHT>(i, j, k).dynamicCollision = true;
+
+	grid.dynamicCellRanges.push_back(
+		{
+			i1, j1, k1,
+			i2, j2, k2
+		}
+	);
 }
 
 void SuspensionCollisionGrid::UpdateDynamicCollisions(Vec minBT, Vec maxBT, bool remove) {
@@ -199,3 +212,25 @@ void SuspensionCollisionGrid::UpdateDynamicCollisions(Vec minBT, Vec maxBT, bool
 		return _UpdateDynamicCollisions<false>(*this, minBT, maxBT, remove);
 	}
 }
+
+template <bool LIGHT>
+void _ClearDynamicCollisions(SuspensionCollisionGrid& grid) {
+	for (auto& range : grid.dynamicCellRanges) {
+		for (int i = range.minX; i <= range.maxX; i++)
+			for (int j = range.minY; j <= range.maxY; j++)
+				for (int k = range.minZ; k <= range.maxZ; k++)
+					grid.Get<LIGHT>(i, j, k).dynamicCollision = false;
+	}
+
+	grid.dynamicCellRanges.clear();
+}
+
+void SuspensionCollisionGrid::ClearDynamicCollisions() {
+	if (lightMem) {
+		return _ClearDynamicCollisions<true>(*this);
+	} else {
+		return _ClearDynamicCollisions<false>(*this);
+	}
+}
+
+RS_NS_END

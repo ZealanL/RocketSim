@@ -1,6 +1,8 @@
 #pragma once
 #include "../../../BaseInc.h"
 
+RS_NS_START
+
 struct WheelPairConfig {
 	// Radius of both wheels
 	float wheelRadius;
@@ -39,3 +41,5 @@ WHEEL_PAIR_CONFIG_SERIALIZATION_FIELDS(name.backWheels) \
 // NOTE: CAR_CONFIG_PLANK is the batmobile preset
 RSAPI const extern CarConfig
 	CAR_CONFIG_OCTANE, CAR_CONFIG_DOMINUS, CAR_CONFIG_PLANK, CAR_CONFIG_BREAKOUT, CAR_CONFIG_HYBRID, CAR_CONFIG_MERC;
+
+RS_NS_END

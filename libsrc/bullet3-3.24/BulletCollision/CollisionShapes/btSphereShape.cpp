@@ -42,9 +42,12 @@ btVector3 btSphereShape::localGetSupportingVertex(const btVector3& vec) const
 	btVector3 vecnorm = vec;
 	if (vecnorm.length2() < (SIMD_EPSILON * SIMD_EPSILON))
 	{
-		vecnorm.setValue(btScalar(-1.), btScalar(-1.), btScalar(-1.));
+		static thread_local btVector3 invalidVecNorm = btVector3(-1, -1, -1).normalized();
+		vecnorm = invalidVecNorm;
+	} else {
+		vecnorm.normalize();
 	}
-	vecnorm.normalize();
+
 	supVertex += getMargin() * vecnorm;
 	return supVertex;
 }

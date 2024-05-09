@@ -49,7 +49,7 @@ public:
 
 	void recalcLocalAabb();
 
-	void getAabb(const btTransform& t, btVector3& aabbMin, btVector3& aabbMax) const;
+	void getAabb(const btTransform& t, btVector3& aabbMin, btVector3& aabbMax);
 
 	void processAllTriangles(btTriangleCallback * callback, const btVector3& aabbMin, const btVector3& aabbMax) const;
 

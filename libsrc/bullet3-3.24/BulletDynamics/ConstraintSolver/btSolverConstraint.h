@@ -62,6 +62,10 @@ btSolverConstraint
 	int m_solverBodyIdA;
 	int m_solverBodyIdB;
 
+public:
+	// ROCKETSIM CHANGE: Add matching property for btManifoldPoint.m_isSpecial
+	bool m_isSpecial;
+
 	enum btSolverConstraintType
 	{
 		BT_SOLVER_CONTACT_1D = 0,

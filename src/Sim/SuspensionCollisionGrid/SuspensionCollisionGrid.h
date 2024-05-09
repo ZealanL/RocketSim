@@ -3,6 +3,8 @@
 
 class btBvhTriangleMeshShape;
 
+RS_NS_START
+
 struct SuspensionCollisionGrid {
 	GameMode gameMode;
 	bool lightMem;
@@ -27,9 +29,16 @@ struct SuspensionCollisionGrid {
 	static_assert(RS_MIN(CELL_SIZE_X[0], RS_MIN(CELL_SIZE_Y[0], CELL_SIZE_Z[0])) > 60, "SuspensionCollisionGrid cells are too small");
 
 	struct Cell {
-		bool worldCollision = false;
-		int dynamicObjects = 0;
+		bool 
+			worldCollision = false, 
+			dynamicCollision = false;
 	};
+
+	struct CellRange {
+		int minX, minY, minZ;
+		int maxX, maxY, maxZ;
+	};
+	std::vector<CellRange> dynamicCellRanges;
 
 	struct {
 		float extentX_bt, extentY_bt, height_bt;
@@ -56,12 +65,6 @@ struct SuspensionCollisionGrid {
 	}
 
 	template <bool LIGHT>
-	Cell Get(int i, int j, int k) const {
-		int index = (i * CELL_AMOUNT_Y[LIGHT] * CELL_AMOUNT_Z[LIGHT]) + (j * CELL_AMOUNT_Z[LIGHT]) + k;
-		return cellData[index];
-	}
-
-	template <bool LIGHT>
 	Vec GetCellMin(int xIndex, int yIndex, int zIndex) const {
 		return Vec(
 			CELL_SIZE_X[LIGHT] * (xIndex - (CELL_AMOUNT_X[LIGHT] / 2)),
@@ -72,9 +75,9 @@ struct SuspensionCollisionGrid {
 
 	template <bool LIGHT>
 	void GetCellIndicesFromPos(Vec pos, int& i, int& j, int& k) const {
-		i = RS_CLAMP(pos.x / CELL_SIZE_X[LIGHT] + (CELL_AMOUNT_X[LIGHT] / 2), 0, CELL_AMOUNT_X[LIGHT] - 1),
-		j = RS_CLAMP(pos.y / CELL_SIZE_Y[LIGHT] + (CELL_AMOUNT_Y[LIGHT] / 2), 0, CELL_AMOUNT_Y[LIGHT] - 1),
-		k = RS_CLAMP(pos.z / CELL_SIZE_Z[LIGHT], 0, CELL_AMOUNT_Z[LIGHT] - 1);
+		i = (int)RS_CLAMP(pos.x / CELL_SIZE_X[LIGHT] + (CELL_AMOUNT_X[LIGHT] / 2), 0, CELL_AMOUNT_X[LIGHT] - 1),
+		j = (int)RS_CLAMP(pos.y / CELL_SIZE_Y[LIGHT] + (CELL_AMOUNT_Y[LIGHT] / 2), 0, CELL_AMOUNT_Y[LIGHT] - 1),
+		k = (int)RS_CLAMP(pos.z / CELL_SIZE_Z[LIGHT], 0, CELL_AMOUNT_Z[LIGHT] - 1);
 	}
 
 	template <bool LIGHT>
@@ -91,8 +94,12 @@ struct SuspensionCollisionGrid {
 
 	void SetupWorldCollision(const std::vector<btBvhTriangleMeshShape*>& triMeshShapes);
 
-	btCollisionObject* CastSuspensionRay(btVehicleRaycaster* raycaster, Vec start, Vec end, btVehicleRaycaster::btVehicleRaycasterResult& result);
+	btCollisionObject* CastSuspensionRay(btVehicleRaycaster* raycaster, Vec start, Vec end, const btCollisionObject* ignoreObj, btVehicleRaycaster::btVehicleRaycasterResult& result);
+	
 	void UpdateDynamicCollisions(Vec minBT, Vec maxBT, bool remove);
+    void ClearDynamicCollisions();
 
 	btRigidBody* defaultWorldCollisionRB = NULL;
 };
+
+RS_NS_END

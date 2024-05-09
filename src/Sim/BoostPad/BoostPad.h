@@ -8,6 +8,8 @@
 
 #include "../MutatorConfig/MutatorConfig.h"
 
+RS_NS_START
+
 struct BoostPadState {
 	bool isActive = true;
 	float cooldown = 0;
@@ -45,3 +47,5 @@ public:
 private:
 	BoostPad() {}
 };
+
+RS_NS_END

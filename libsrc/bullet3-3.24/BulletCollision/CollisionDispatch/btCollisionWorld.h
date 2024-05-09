@@ -177,6 +177,7 @@ public:
 	{
 		btScalar m_closestHitFraction;
 		const btCollisionObject* m_collisionObject;
+		const btCollisionObject* m_ignoreObj;
 		int m_collisionFilterGroup;
 		int m_collisionFilterMask;
 		//@BP Mod - Custom flags, currently used to enable backface culling on tri-meshes, see btRaycastCallback.h. Apply any of the EFlags defined there on m_flags here to invoke.
@@ -195,6 +196,7 @@ public:
 			  m_collisionObject(0),
 			  m_collisionFilterGroup(btBroadphaseProxy::DefaultFilter),
 			  m_collisionFilterMask(btBroadphaseProxy::AllFilter),
+			  m_ignoreObj(0),
 			  //@BP Mod
 			  m_flags(0)
 		{
@@ -208,10 +210,11 @@ public:
 
 	struct ClosestRayResultCallback : public RayResultCallback
 	{
-		ClosestRayResultCallback(const btVector3& rayFromWorld, const btVector3& rayToWorld)
+		ClosestRayResultCallback(const btVector3& rayFromWorld, const btVector3& rayToWorld, const btCollisionObject* ignoreObj)
 			: m_rayFromWorld(rayFromWorld),
 			  m_rayToWorld(rayToWorld)
 		{
+			this->m_ignoreObj = ignoreObj;
 		}
 
 		btVector3 m_rayFromWorld;  //used to calculate hitPointWorld from hitFraction

@@ -29,6 +29,11 @@ SIMD_FORCE_INLINE btVector3 btAabbSupport(const btVector3& halfExtents, const bt
 class btTransformUtil
 {
 public:
+	static void integrateTransformNoRot(const btTransform& curTrans, const btVector3& linvel, const btVector3& angvel, btScalar timeStep, btTransform& predictedTransform) {
+		predictedTransform.setOrigin(curTrans.getOrigin() + linvel * timeStep);
+		predictedTransform.setBasis(curTrans.getBasis());
+	}
+
 	static void integrateTransform(const btTransform& curTrans, const btVector3& linvel, const btVector3& angvel, btScalar timeStep, btTransform& predictedTransform)
 	{
 		predictedTransform.setOrigin(curTrans.getOrigin() + linvel * timeStep);

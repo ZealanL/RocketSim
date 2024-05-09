@@ -5,13 +5,15 @@
 #include "../../DataStream/DataStreamIn.h"
 #include "../../DataStream/DataStreamOut.h"
 
+RS_NS_START
+
 enum class DemoMode : byte {
 	NORMAL,
 	ON_CONTACT,
 	DISABLED
 };
 
-struct MutatorConfig {
+RSAPI struct MutatorConfig {
 
 	Vec gravity = Vec(0, 0, RLConst::GRAVITY_Z);
 
@@ -55,19 +57,17 @@ struct MutatorConfig {
 	float
 		ballRadius;
 
-	bool 
+	bool
 		unlimitedFlips = false,
 		unlimitedDoubleJumps = false;
 
 	DemoMode demoMode = DemoMode::NORMAL;
 	bool enableTeamDemos = false;
 
-	bool enablePhysicsRounding = true;
-
 	MutatorConfig(GameMode gameMode);
 
-	RSAPI void Serialize(DataStreamOut& out) const;
-	RSAPI void Deserialize(DataStreamIn& in);
+	void Serialize(DataStreamOut& out) const;
+	void Deserialize(DataStreamIn& in);
 };
 
 #define MUTATOR_CONFIG_SERIALIZATION_FIELDS \
@@ -76,4 +76,6 @@ ballMaxSpeed, ballDrag, ballWorldFriction, ballWorldRestitution, jumpAccel, \
 jumpImmediateForce, boostAccel, boostUsedPerSecond, respawnDelay, \
 carSpawnBoostAmount, bumpCooldownTime, boostPadCooldown_Big, boostPadCooldown_Small, \
 ballHitExtraForceScale, bumpForceScale, ballRadius, unlimitedFlips, unlimitedDoubleJumps, \
-demoMode, enableTeamDemos, enablePhysicsRounding
+demoMode, enableTeamDemos
+
+RS_NS_END

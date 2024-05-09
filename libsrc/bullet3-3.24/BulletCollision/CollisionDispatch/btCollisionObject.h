@@ -90,6 +90,9 @@ public:
 	btScalar m_contactDamping;
 	btScalar m_contactStiffness;
 
+	// Rotation updates will be skipped
+	int m_noRot = false;
+
 	///m_internalType is reserved to distinguish Bullet's btCollisionObject, btRigidBody, btSoftBody, btGhostObject etc.
 	///do not assign your own m_internalType unless you write a new dynamics object class.
 	int m_internalType;
@@ -122,6 +125,17 @@ public:
 	int m_updateRevision;
 
 	btVector3 m_customDebugColorRGB;
+
+	// ROCKETSIM CHANGE: Add custom info for special collision resolution
+	struct btSpecialResolveInfo {
+		int m_numSpecialCollisions;
+		btVector3 m_totalNormal;
+		float m_totalDist;
+		float m_restitution, m_friction;
+
+		btSpecialResolveInfo() = default;
+	};
+	btSpecialResolveInfo m_specialResolveInfo = {};
 
 public:
 	BT_DECLARE_ALIGNED_ALLOCATOR();

@@ -1,6 +1,6 @@
 #pragma once
 
-#define RS_VERSION "2.0.0"
+#define RS_VERSION "2.1.0"
 
 #include <stdint.h>
 #include <iostream>
@@ -34,6 +34,11 @@
 #include <cmath>
 #include <math.h>
 
+#ifdef _MSC_VER
+// Disable annoying truncation warnings on MSVC
+#pragma warning(disable: 4305 4244 4267)
+#endif
+
 typedef uint8_t byte;
 
 // Current millisecond time
@@ -57,9 +62,14 @@ typedef uint8_t byte;
 // Returns sign of number (1 if positive, -1 if negative, and 0 if 0)
 #define RS_SGN(val) ((val > 0) - (val < 0))
 
-#define RS_WARN(s) RS_LOG("WARNING: " << s)
+#define RS_WARN(s) RS_LOG("ROCKETSIM WARNING: " << s)
 
-#define RS_ERR_CLOSE(s) { std::string _errorStr = RS_STR("FATAL ERROR: " << s); RS_LOG(_errorStr); throw std::runtime_error(_errorStr); exit(EXIT_FAILURE); }
+#define RS_ERR_CLOSE(s) { \
+	std::string _errorStr = RS_STR("ROCKETSIM FATAL ERROR: " << s); \
+	RS_LOG(_errorStr); \
+	throw std::runtime_error(_errorStr); \
+	exit(EXIT_FAILURE); \
+}
 
 #if 0 // FOR FUTURE USE: Exports/imports setup
 #ifdef ROCKETSIM_EXPORTS
@@ -72,6 +82,14 @@ typedef uint8_t byte;
 #endif
 
 #define RS_ALIGN_16 alignas(16)
+
+#ifndef RS_NO_NAMESPACE
+#define RS_NS_START namespace RocketSim {
+#define RS_NS_END }
+#else
+#define RS_NS_START
+#define RS_NS_END
+#endif
 
 template<typename ...Args>
 size_t __RS_GET_ARGUMENT_COUNT(Args ...) {
@@ -88,3 +106,6 @@ constexpr uint32_t __RS_GET_VERSION_ID() {
 #define RS_VERSION_ID (__RS_GET_VERSION_ID())
 
 #define RS_IS_BIG_ENDIAN (std::endian::native == std::endian::big)
+
+// TODO: Remove more permanently
+#define RS_NO_SUSPCOLGRID

@@ -1,4 +1,5 @@
 #pragma once
+#include "../PhysState/PhysState.h"
 #include "CarConfig/CarConfig.h"
 #include "../btVehicleRL/btVehicleRL.h"
 #include "../CarControls.h"
@@ -11,38 +12,50 @@
 #include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btCompoundShape.h"
 #include "../../../src/Sim/btVehicleRL/btVehicleRL.h"
 
-struct CarState {
+RS_NS_START
+
+struct CarState : public PhysState {
 
 	// Incremented every update, reset when SetState() is called
 	// Used for telling if a stateset occured
 	// Not serialized
 	uint64_t updateCounter = 0;
 
-	// Position in world space (UU)
-	Vec pos = { 0, 0, 17 };
-	
-	RotMat rotMat = RotMat::GetIdentity();
-
-	// Linear velocity
-	Vec vel = { 0, 0, 0 };
-
-	// Angular velocity (rad/s)
-	Vec angVel = { 0, 0, 0 };
-
 	bool isOnGround = true;
-	bool hasJumped = false, hasDoubleJumped = false, hasFlipped = false;
-	Vec lastRelDodgeTorque = { 0, 0, 0 };
 
-	// Active during the duration of a jump or flip
-	float jumpTime = 0, flipTime = 0;
+	// Whether each of the 4 wheels have contact
+	// First two are front
+	bool wheelsWithContact[4] = {}; 
 
-	// True during a flip (not a jump, and not after a flip)
+	// Whether we jumped to get into the air
+	// Can be false while airborne, if we left the ground with a flip reset
+	bool hasJumped = false;
+
+	// True if we have double jumped and are still in the air
+	// NOTE: Flips DO NOT COUNT as double jumps! This is not RLBot.
+	bool hasDoubleJumped = false;
+
+	// True if we are in the air, and (have flipped or are currently flipping)
+	bool hasFlipped = false;
+
+	// Relative torque direction of the flip
+	// Forward flip will have positive Y
+	Vec flipRelTorque = { 0, 0, 0 };
+
+	float jumpTime = 0; // When currently jumping, the time since we started jumping, else 0
+	float flipTime = 0; // When currently flipping, the time since we started flipping, else 0
+
+	// True during a flip (not an auto-flip, and not after a flip)
 	bool isFlipping = false;
 
-	// True during a jump (not double jumps or a flip)
+	// True during a jump
 	bool isJumping = false;
 
+	// Total time spent in the air
+	float airTime = 0;
+
 	// Time spent in the air once !isJumping
+	// If we never jumped, it is 0
 	float airTimeSinceJump = 0;
 
 	// Goes from 0 to 100
@@ -82,13 +95,27 @@ struct CarState {
 	// Controls from last tick, set to this->controls after simulation
 	CarControls lastControls = CarControls();
 
+	CarState() : PhysState() {
+		pos.z = RLConst::CAR_SPAWN_REST_Z;
+	}
+
+	// Returns true if the car is currently able to jump, double-jump, or flip
+	bool HasFlipOrJump() const;
+
+	// Returns true if we currently have a flip, and got it from a flip reset (instead of a jump)
+	bool HasFlipReset() const;
+
+	// Returns true if we are in the air, and became airborne from a flip reset
+	// This returns true regardless of whether or not we still have the flip
+	bool GotFlipReset() const;
+
 	void Serialize(DataStreamOut& out) const;
 	void Deserialize(DataStreamIn& in);
 };
 
 #define CARSTATE_SERIALIZATION_FIELDS \
 pos, rotMat, vel, angVel, isOnGround, hasJumped, hasDoubleJumped, hasFlipped, \
-lastRelDodgeTorque, jumpTime, isFlipping, flipTime, isJumping, airTimeSinceJump, \
+flipRelTorque, jumpTime, isFlipping, flipTime, isJumping, airTimeSinceJump, \
 boost, timeSpentBoosting, supersonicTime, handbrakeVal, isAutoFlipping, \
 autoFlipTimer, autoFlipTorqueScale, isDemoed, demoRespawnTimer, lastControls, \
 worldContact.hasContact, worldContact.contactNormal, \
@@ -178,3 +205,5 @@ private:
 
 	Car() {}
 };
+
+RS_NS_END

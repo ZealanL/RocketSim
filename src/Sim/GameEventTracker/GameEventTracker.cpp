@@ -1,5 +1,7 @@
 #include "GameEventTracker.h"
 
+RS_NS_START
+
 bool GetShooterPasser(Arena* arena, Team team, Car*& shooterOut, bool findPasser, Car*& passerOut, uint64_t maxShooterTicks, uint64_t maxPasserTicks) {
 	shooterOut = passerOut = NULL;
 	// TODO: Instead of looping over cars to find who hit it last, use persistent info
@@ -58,7 +60,7 @@ void GameEventTracker::Update(Arena* arena) {
 		float deltaTime = deltaTicks * arena->tickTime;
 
 		// Goal event
-		if (scored && _goalCallback.func && !_ballScoredLast) {
+		if (scored && !_ballScoredLast) {
 			Car* shooter;
 			Car* passer;
 			if (GetShooterPasser(
@@ -69,7 +71,8 @@ void GameEventTracker::Update(Arena* arena) {
 				config.passMaxTouchTime * tickrate
 			)) {
 
-				_goalCallback.func(arena, shooter, passer, _goalCallback.userInfo);
+				if (_goalCallback.func)
+					_goalCallback.func(arena, shooter, passer, _goalCallback.userInfo);
 			}
 		} else {
 			if (!_ballShot) { // Ball is not currently shot
@@ -104,7 +107,8 @@ void GameEventTracker::Update(Arena* arena) {
 									_ballShot = true;
 									_ballShotGoalTeam = goalTeam;
 									_shotCooldown = config.shotEventCooldown;
-									_shotCallback.func(arena, shooter, passer, _shotCallback.userInfo);
+									if (_shotCallback.func)
+										_shotCallback.func(arena, shooter, passer, _shotCallback.userInfo);
 								}
 							}
 						}
@@ -130,7 +134,8 @@ void GameEventTracker::Update(Arena* arena) {
 
 						// A car from the team the ball has just hit the ball
 						// Since it's no longer scoring, this was a save
-						_saveCallback.func(arena, saver, _saveCallback.userInfo);
+						if (_saveCallback.func)
+							_saveCallback.func(arena, saver, _saveCallback.userInfo);
 					} else {
 						// It just stopped going in (probably missed)
 					}
@@ -159,3 +164,5 @@ void GameEventTracker::ResetPersistentInfo() {
 
 	// _ballShotGoalTeam doesn't need to be reset
 }
+
+RS_NS_END

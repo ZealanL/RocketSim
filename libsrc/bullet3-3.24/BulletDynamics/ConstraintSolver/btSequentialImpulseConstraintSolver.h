@@ -50,7 +50,7 @@ btSequentialImpulseConstraintSolver
 {
 	
 
-protected:
+public:
 	btAlignedObjectArray<btSolverBody> m_tmpSolverBodyPool;
 	btConstraintArray m_tmpSolverContactConstraintPool;
 	btConstraintArray m_tmpSolverNonContactConstraintPool;
@@ -110,6 +110,13 @@ protected:
 	void convertContacts(btPersistentManifold * *manifoldPtr, int numManifolds, const btContactSolverInfo& infoGlobal);
 
 	void convertContact(btPersistentManifold * manifold, const btContactSolverInfo& infoGlobal);
+
+	// ROCKETSIM CHANGE: Inner section of convertContact is made into its own function so it can be reused in a custom convertContact implementation
+	void convertContactInner(const btContactSolverInfo & infoGlobal, btManifoldPoint & cp, btSolverConstraint & solverConstraint,
+		btCollisionObject * colObj0, btCollisionObject * colObj1, btSolverBody * solverBodyA, btSolverBody * solverBodyB, int solverBodyIdA, int solverBodyIdB,
+		const btVector3 & rel_pos1, const btVector3 & rel_pos2, int frictionIndex, btScalar relaxation, btScalar rollingFriction);
+
+	void convertContactSpecial(btCollisionObject& obj, const btContactSolverInfo& infoGlobal);
 
 	void convertJoints(btTypedConstraint * *constraints, int numConstraints, const btContactSolverInfo& infoGlobal);
 	void convertJoint(btSolverConstraint * currentConstraintRow, btTypedConstraint * constraint, const btTypedConstraint::btConstraintInfo1& info1, int solverBodyIdA, int solverBodyIdB, const btContactSolverInfo& infoGlobal);

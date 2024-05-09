@@ -4,6 +4,8 @@
 #include "../../DataStream/DataStreamIn.h"
 #include "../../DataStream/DataStreamOut.h"
 
+RS_NS_START
+
 struct BallHitInfo {
 	// If false, all other fields within this struct should not be trusted
 	bool isValid = false;
@@ -26,3 +28,5 @@ struct BallHitInfo {
 // NOTE: Does not include isValid
 #define BALLHITINFO_SERIALIZATION_FIELDS \
 relativePosOnBall, ballPos, extraHitVel, tickCountWhenHit, tickCountWhenExtraImpulseApplied
+
+RS_NS_END

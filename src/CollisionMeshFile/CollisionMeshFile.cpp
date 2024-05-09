@@ -6,6 +6,8 @@
 #include "../../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btBvhTriangleMeshShape.h"
 #include "../../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btTriangleMesh.h"
 
+RS_NS_START
+
 void CollisionMeshFile::ReadFromFile(std::string filePath) {
 	constexpr char ERROR_PREFIX_STR[] = " > CollisionMeshFile::ReadFromFile(): ";
 
@@ -95,3 +97,5 @@ void CollisionMeshFile::UpdateHash() {
 
 	this->hash = hash;
 }
+
+RS_NS_END
