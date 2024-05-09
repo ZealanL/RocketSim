@@ -4,8 +4,8 @@ Copyright (c) 2003-2009 Erwin Coumans  http://bulletphysics.org
 
 This software is provided 'as-is', without any express or implied warranty.
 In no event will the authors be held liable for any damages arising from the use of this software.
-Permission is granted to anyone to use this software for any purpose, 
-including commercial applications, and to alter it and redistribute it freely, 
+Permission is granted to anyone to use this software for any purpose,
+including commercial applications, and to alter it and redistribute it freely,
 subject to the following restrictions:
 
 1. The origin of this software must not be misrepresented; you must not claim that you wrote the original software. If you use this software in a product, an acknowledgment in the product documentation would be appreciated but is not required.
@@ -18,18 +18,26 @@ subject to the following restrictions:
 #include "../../LinearMath/btTransformUtil.h"
 
 btStaticPlaneShape::btStaticPlaneShape(const btVector3& planeNormal, btScalar planeConstant)
-	: btConcaveShape(), m_planeNormal(planeNormal.normalized()), m_planeConstant(planeConstant)
-{
+	: btConcaveShape(), m_planeNormal(planeNormal.normalized()), m_planeConstant(planeConstant) {
 	m_shapeType = STATIC_PLANE_PROXYTYPE;
 	//	btAssert( btFuzzyZero(m_planeNormal.length() - btScalar(1.)) );
+
+	int numAxis = 0;
+	for (int i = 0; i < 3; i++)
+		if (!btFuzzyZero(m_planeNormal[i]))
+			numAxis++;
+
+	if (numAxis == 1) {
+		m_isSingleAxis = true;
+		m_singleAxisIdx = m_planeNormal.closestAxis();
+		m_singleAxisBackwards = m_planeNormal[m_singleAxisIdx] < 0;
+	}
 }
 
-btStaticPlaneShape::~btStaticPlaneShape()
-{
+btStaticPlaneShape::~btStaticPlaneShape() {
 }
 
-void btStaticPlaneShape::getAabb(const btTransform& t, btVector3& aabbMin, btVector3& aabbMax) const
-{
+void btStaticPlaneShape::getAabb(const btTransform& t, btVector3& aabbMin, btVector3& aabbMax) const {
 	(void)t;
 	/*
 	btVector3 infvec (btScalar(BT_LARGE_FLOAT),btScalar(BT_LARGE_FLOAT),btScalar(BT_LARGE_FLOAT));
@@ -38,15 +46,19 @@ void btStaticPlaneShape::getAabb(const btTransform& t, btVector3& aabbMin, btVec
 	aabbMin = center + infvec*m_planeNormal;
 	aabbMax = aabbMin;
 	aabbMin.setMin(center - infvec*m_planeNormal);
-	aabbMax.setMax(center - infvec*m_planeNormal); 
+	aabbMax.setMax(center - infvec*m_planeNormal);
 	*/
 
 	aabbMin.setValue(btScalar(-BT_LARGE_FLOAT), btScalar(-BT_LARGE_FLOAT), btScalar(-BT_LARGE_FLOAT));
 	aabbMax.setValue(btScalar(BT_LARGE_FLOAT), btScalar(BT_LARGE_FLOAT), btScalar(BT_LARGE_FLOAT));
+
+	if (m_isSingleAxis) {
+		aabbMin[m_singleAxisIdx] = t.getOrigin()[m_singleAxisIdx] + (m_planeConstant - 1);
+		aabbMax[m_singleAxisIdx] = t.getOrigin()[m_singleAxisIdx] + (m_planeConstant + 1);
+	}
 }
 
-void btStaticPlaneShape::processAllTriangles(btTriangleCallback* callback, const btVector3& aabbMin, const btVector3& aabbMax) const
-{
+void btStaticPlaneShape::processAllTriangles(btTriangleCallback* callback, const btVector3& aabbMin, const btVector3& aabbMax) const {
 	btVector3 halfExtents = (aabbMax - aabbMin) * btScalar(0.5);
 	btScalar radius = halfExtents.length();
 	btVector3 center = (aabbMax + aabbMin) * btScalar(0.5);
@@ -74,8 +86,7 @@ void btStaticPlaneShape::processAllTriangles(btTriangleCallback* callback, const
 	callback->processTriangle(triangle, 0, 1);
 }
 
-void btStaticPlaneShape::calculateLocalInertia(btScalar mass, btVector3& inertia) const
-{
+void btStaticPlaneShape::calculateLocalInertia(btScalar mass, btVector3& inertia) const {
 	(void)mass;
 
 	//moving concave objects not supported

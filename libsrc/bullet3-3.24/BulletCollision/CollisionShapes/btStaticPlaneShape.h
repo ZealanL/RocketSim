@@ -22,12 +22,17 @@ subject to the following restrictions:
 ATTRIBUTE_ALIGNED16(class)
 btStaticPlaneShape : public btConcaveShape
 {
-protected:
+public:
 	btVector3 m_localAabbMin;
 	btVector3 m_localAabbMax;
 
 	btVector3 m_planeNormal;
 	btScalar m_planeConstant;
+	
+	// Plane only exists along a single axis
+	bool m_isSingleAxis;
+	int m_singleAxisIdx;
+	bool m_singleAxisBackwards;
 
 public:
 	BT_DECLARE_ALIGNED_ALLOCATOR();
