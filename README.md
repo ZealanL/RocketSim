@@ -7,11 +7,11 @@ RocketSim supports the game modes: Soccar, Hoops, Heatseeker, and Snowday.
 
 # Speed
 RocketSim is designed to run extremely fast, even when complex collisions and suspension calculations are happening every tick.
-On an average PC running a single thread of RocketSim with two cars, RocketSim can simulate around 10 minutes of game time every second.
-This means that with 12 threads running RocketSim, you can simulate around 5 days of game time every minute!
+On an average PC running a single thread of RocketSim with two cars, RocketSim can simulate around 20 minutes of game time every second.
+This means that with 12 threads running RocketSim, you can simulate around 10 days of game time every minute!
 
 # Accuracy
-RocketSim is not a perfectly accurate replication of Rocket League, but is close enough for most applications.
+RocketSim is not a perfectly accurate replication of Rocket League, but is close enough for most applications (such as training ML bots).
 Perceivable differences between the simulation and the real game usually take at least a second to accumulate from an initial state.
 This means RocketSim is accurate enough to:
 - *Train machine learning bots*
@@ -20,7 +20,7 @@ This means RocketSim is accurate enough to:
 - *Simulate ground and floor pinches*
 
 However, RocketSim is NOT accurate enough to:
-- *Simulate entire games from inputs alone*
+- *Accurately re-create entire games from inputs alone*
 - *Perfectly simulate long sequences of jumps and landings*
 
 ## Installation
@@ -57,11 +57,9 @@ Single-thread performance (calculated using average CPU cycles per tick on the R
 v1.0.0 = 30,334tps
 v1.1.0 = 48,191tps
 v1.2.0 = 50,763tps
+v2.0.0 = ~50,000tps
+v2.1.0 = 114,481tps
 ```
-
-## Simulation Accuracy
-RocketSim is not perfectly accurate, but it's close enough that it shouldn't matter (for ML bots or humans).
-Bots that work well in RocketSim will work well in the actual game and visa-versa.
 
 ## Issues & PRs
 Feel free to make issues and pull requests if you encounter any issues!
