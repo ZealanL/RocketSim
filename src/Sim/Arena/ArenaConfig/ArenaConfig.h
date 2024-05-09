@@ -8,8 +8,9 @@ RS_NS_START
 // Mode of speed/memory optimization for the arena
 // Will affect whether high memory consumption is used to slightly increase speed or not
 enum class ArenaMemWeightMode : byte {
-	HEAVY, // ~611KB per arena with 4 cars
-	LIGHT  // ~397KB per arena with 4 cars
+	HEAVY, // ~1,263KB per arena with 4 cars
+	LIGHT  // ~383KB per arena with 4 cars
+	// Measurements last updated 2024/5/9
 };
 
 struct ArenaConfig {
