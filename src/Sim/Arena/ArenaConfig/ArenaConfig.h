@@ -15,7 +15,7 @@ enum class ArenaMemWeightMode : byte {
 
 struct ArenaConfig {
 
-	ArenaMemWeightMode memWeightMode = ArenaMemWeightMode::LIGHT;
+	ArenaMemWeightMode memWeightMode = ArenaMemWeightMode::HEAVY;
 
 	// Mininimum and maximum positions all physics objects
 	Vec minPos = Vec(-4500, -6000, 0),
