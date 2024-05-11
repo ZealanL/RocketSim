@@ -49,9 +49,10 @@ typedef btAlignedObjectArray<class btCollisionObject*> btCollisionObjectArray;
 ATTRIBUTE_ALIGNED16(class)
 btCollisionObject
 {
-public:
+protected:
 	btTransform m_worldTransform;
 
+public:
 	///m_interpolationWorldTransform is used for CCD and interpolation
 	///it can be either previous or future (predicted) transform
 	btTransform m_interpolationWorldTransform;

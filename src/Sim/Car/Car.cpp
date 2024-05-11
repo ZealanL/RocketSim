@@ -8,7 +8,7 @@ RS_NS_START
 
 // Update our internal state from bullet and return it
 CarState Car::GetState() {
-	_internalState.pos = _rigidBody.m_worldTransform.m_origin * BT_TO_UU;
+	_internalState.pos = _rigidBody.getWorldTransform().m_origin * BT_TO_UU;
 
 	// NOTE: rotMat already updated at the start of Car::_PostTickUpdate()
 
@@ -25,7 +25,7 @@ void Car::SetState(const CarState& state) {
 	rbTransform.setOrigin(state.pos * UU_TO_BT);
 	rbTransform.setBasis(state.rotMat);
 
-	_rigidBody.m_worldTransform = rbTransform;
+	_rigidBody.getWorldTransform() = rbTransform;
 
 	_rigidBody.m_linearVelocity = state.vel * UU_TO_BT;
 	_rigidBody.m_angularVelocity = state.angVel;
@@ -91,7 +91,7 @@ void Car::_PreTickUpdate(GameMode gameMode, float tickTime, const MutatorConfig&
 	_bulletVehicle.updateVehicleFirst(tickTime, grid);
 
 
-	btMatrix3x3 basis = _rigidBody.m_worldTransform.m_basis;
+	btMatrix3x3 basis = _rigidBody.getWorldTransform().m_basis;
 
 	bool jumpPressed = controls.jump && !_internalState.lastControls.jump;
 
@@ -129,7 +129,7 @@ void Car::_PostTickUpdate(GameMode gameMode, float tickTime, const MutatorConfig
 	if (_internalState.isDemoed)
 		return;
 
-	_internalState.rotMat = _rigidBody.m_worldTransform.m_basis;
+	_internalState.rotMat = _rigidBody.getWorldTransform().m_basis;
 
 	// Update wheelsWithContact
 	int numWheelsInContact = 0;
@@ -427,7 +427,7 @@ void Car::_UpdateWheels(float tickTime, const MutatorConfig& mutatorConfig, int 
 
 				float frictionCurveInput = 0;
 
-				btVector3 wheelDelta = wheel.m_raycastInfo.m_hardPointWS - _rigidBody.m_worldTransform.m_origin;
+				btVector3 wheelDelta = wheel.m_raycastInfo.m_hardPointWS - _rigidBody.getWorldTransform().m_origin;
 
 				auto crossVec = (angularVel.cross(wheelDelta) + vel) * BT_TO_UU;
 
@@ -589,7 +589,7 @@ void Car::_UpdateAirTorque(float tickTime, const MutatorConfig& mutatorConfig, b
 			relDodgeTorque.y() *= pitchScale;
 
 			btVector3 dodgeTorque = relDodgeTorque * btVector3(FLIP_TORQUE_X, FLIP_TORQUE_Y, 0);
-			_rigidBody.applyTorque(_rigidBody.m_invInertiaTensorWorld.inverse() * _rigidBody.m_worldTransform.m_basis * dodgeTorque);
+			_rigidBody.applyTorque(_rigidBody.m_invInertiaTensorWorld.inverse() * _rigidBody.getWorldTransform().m_basis * dodgeTorque);
 		} else {
 			// Stall, allow air control
 			doAirControl = true;

@@ -6,7 +6,7 @@ void BoostPadGrid::CheckCollision(Car* car) {
 	if (car->_internalState.isDemoed || car->_internalState.boost >= 100)
 		return;
 
-	Vec carPos = car->_rigidBody.m_worldTransform.m_origin * BT_TO_UU;
+	Vec carPos = car->_rigidBody.getWorldTransform().m_origin * BT_TO_UU;
 
 	if (carPos.z > EXTENT_Z)
 		return;

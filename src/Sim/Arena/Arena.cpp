@@ -775,7 +775,7 @@ void Arena::Step(int ticksToSimulate) {
 
 		if (_goalScoreCallback.func != NULL) { // Potentially fire goal score callback
 			if (IsBallScored()) {
-				_goalScoreCallback.func(this, RS_TEAM_FROM_Y(-ball->_rigidBody.m_worldTransform.m_origin.y()), _goalScoreCallback.userInfo);
+				_goalScoreCallback.func(this, RS_TEAM_FROM_Y(-ball->_rigidBody.getWorldTransform().m_origin.y()), _goalScoreCallback.userInfo);
 			}
 		}
 
@@ -797,7 +797,7 @@ float BallWithinHoopsGoalXYMarginSq(float x, float y) {
 }
 
 bool Arena::IsBallProbablyGoingIn(float maxTime, float extraMargin, Team* goalTeamOut) const {
-	Vec ballPos = ball->_rigidBody.m_worldTransform.m_origin * BT_TO_UU;
+	Vec ballPos = ball->_rigidBody.getWorldTransform().m_origin * BT_TO_UU;
 	Vec ballVel = ball->_rigidBody.m_linearVelocity * BT_TO_UU;
 
 	if (gameMode == GameMode::SOCCAR || gameMode == GameMode::SNOWDAY) {
@@ -924,18 +924,18 @@ RSAPI bool Arena::IsBallScored() const {
 	case GameMode::HEATSEEKER:
 	case GameMode::SNOWDAY:
 	{
-		float ballPosY = ball->_rigidBody.m_worldTransform.m_origin.y() * BT_TO_UU;
+		float ballPosY = ball->_rigidBody.getWorldTransform().m_origin.y() * BT_TO_UU;
 		return abs(ballPosY) > (RLConst::SOCCAR_GOAL_SCORE_BASE_THRESHOLD_Y + _mutatorConfig.ballRadius);
 	}
 	case GameMode::HOOPS:
 	{
-		if (ball->_rigidBody.m_worldTransform.m_origin.z() < RLConst::HOOPS_GOAL_SCORE_THRESHOLD_Z * UU_TO_BT) {
+		if (ball->_rigidBody.getWorldTransform().m_origin.z() < RLConst::HOOPS_GOAL_SCORE_THRESHOLD_Z * UU_TO_BT) {
 			constexpr float
 				SCALE_Y = 0.9f,
 				OFFSET_Y = 2770.f,
 				RADIUS_SQ = 716 * 716;
 
-			Vec ballPos = ball->_rigidBody.m_worldTransform.m_origin * BT_TO_UU;
+			Vec ballPos = ball->_rigidBody.getWorldTransform().m_origin * BT_TO_UU;
 			return BallWithinHoopsGoalXYMarginSq(ballPos.x, ballPos.y) < 0;
 		} else {
 			return false;
