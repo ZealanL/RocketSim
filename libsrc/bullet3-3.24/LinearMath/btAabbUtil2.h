@@ -58,14 +58,14 @@ SIMD_FORCE_INLINE bool TestTriangleAgainstAabb2(const btVector3* vertices,
 	const btVector3& p2 = vertices[1];
 	const btVector3& p3 = vertices[2];
 
-	if (btMin(btMin(p1[0], p2[0]), p3[0]) > aabbMax[0]) return false;
-	if (btMax(btMax(p1[0], p2[0]), p3[0]) < aabbMin[0]) return false;
+	// First check Z, then X, then Y
+	constexpr int INDEX_ORDER[] = { 2, 0, 1 };
 
-	if (btMin(btMin(p1[2], p2[2]), p3[2]) > aabbMax[2]) return false;
-	if (btMax(btMax(p1[2], p2[2]), p3[2]) < aabbMin[2]) return false;
-
-	if (btMin(btMin(p1[1], p2[1]), p3[1]) > aabbMax[1]) return false;
-	if (btMax(btMax(p1[1], p2[1]), p3[1]) < aabbMin[1]) return false;
+	for (int i : INDEX_ORDER) {
+		if (btMin(btMin(p1[i], p2[i]), p3[i]) > aabbMax[i]) return false;
+		if (btMax(btMax(p1[i], p2[i]), p3[i]) < aabbMin[i]) return false;
+	}
+	
 	return true;
 }
 
