@@ -49,7 +49,7 @@ typedef btAlignedObjectArray<class btCollisionObject*> btCollisionObjectArray;
 ATTRIBUTE_ALIGNED16(class)
 btCollisionObject
 {
-protected:
+private:
 	btTransform m_worldTransform;
 
 public:
@@ -401,11 +401,7 @@ public:
 		return m_worldTransform;
 	}
 
-	void setWorldTransform(const btTransform& worldTrans)
-	{
-		m_updateRevision++;
-		m_worldTransform = worldTrans;
-	}
+	void setWorldTransform(const btTransform& worldTrans);
 
 	SIMD_FORCE_INLINE btBroadphaseProxy* getBroadphaseHandle()
 	{

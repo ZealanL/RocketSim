@@ -16,6 +16,8 @@ subject to the following restrictions:
 #include "btCollisionObject.h"
 #include "../BroadphaseCollision/btBroadphaseProxy.h"
 
+#include "../CollisionShapes/btCollisionShape.h"
+
 btCollisionObject::btCollisionObject()
 	: m_interpolationLinearVelocity(0.f, 0.f, 0.f),
 	  m_interpolationAngularVelocity(0.f, 0.f, 0.f),
@@ -75,4 +77,11 @@ void btCollisionObject::activate(bool forceActivation) const
 		setActivationState(ACTIVE_TAG);
 		m_deactivationTime = btScalar(0.);
 	}
+}
+
+void btCollisionObject::setWorldTransform(const btTransform& worldTrans) {
+	m_updateRevision++;
+	m_worldTransform = worldTrans;
+	if (m_collisionShape)
+		m_collisionShape->m_aabbCached = false;
 }
