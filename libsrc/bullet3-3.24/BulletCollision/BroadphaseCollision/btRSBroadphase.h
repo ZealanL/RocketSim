@@ -95,6 +95,10 @@ public:
 		btClamp(k, 0, cellsZ - 1);
 	}
 
+	btVector3 GetCellMinPos(int i, int j, int k) const {
+		return minPos + btVector3(i, j, k) * cellSize;
+	}
+
 	int GetCellIdx(const btVector3& pos) const {
 		int i, j, k;
 		GetCellIndices(pos, i, j, k);

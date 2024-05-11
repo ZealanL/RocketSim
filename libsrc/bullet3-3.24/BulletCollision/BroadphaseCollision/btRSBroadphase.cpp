@@ -22,6 +22,8 @@ subject to the following restrictions:
 #include "../../LinearMath/btMatrix3x3.h"
 #include "../../LinearMath/btAabbUtil2.h"
 
+#include "../CollisionShapes/btBvhTriangleMeshShape.h"
+
 #include <new>
 #include <string>
 #include <stdexcept>
@@ -103,10 +105,48 @@ void _UpdateCellsStatic(btRSBroadphase* _this, btRSBroadphaseProxy* proxy) {
 	_this->GetCellIndices(proxy->m_aabbMin, iMin, jMin, kMin);
 	_this->GetCellIndices(aabbMax, iMax, jMax, kMax);
 
+	btCollisionObject* colObj = (btCollisionObject*)proxy->m_clientObject;
+
+	// We should check if each cell actually collides with the object
+	bool isTriMesh = colObj && colObj->m_collisionShape->getShapeType() == TRIANGLE_MESH_SHAPE_PROXYTYPE;
+
+	// For checking if an AABB has any containing triangles
+	struct BoolHitTriangleCallback : public btTriangleCallback {
+
+		bool hit = false;
+
+		BoolHitTriangleCallback() {}
+		virtual void processTriangle(btVector3* triangle, int partId, int triangleIndex) {
+			hit = true;
+		}
+	};
+	BoolHitTriangleCallback callbackInst = {};
+
+	int numSkipped = 0;
 	for (int i = iMin; i <= iMax; i++) {
 		for (int j = jMin; j <= jMax; j++) {
 			for (int k = kMin; k <= kMax; k++) {
 				auto& cell = _this->GetCell(i, j, k);
+
+				if (isTriMesh) {
+					auto triMeshShape = (btTriangleMeshShape*)colObj->m_collisionShape;
+					btVector3 cellMin = _this->GetCellMinPos(i, j, k);
+					btVector3 cellMax = cellMin + btVector3(_this->cellSize, _this->cellSize, _this->cellSize);
+
+					callbackInst.hit = false;
+					triMeshShape->processAllTriangles(&callbackInst, cellMin, cellMax);
+
+					if (!callbackInst.hit) {
+						numSkipped++;
+
+						if (ADD) {
+							continue; // No tris in this AABB, ignore
+						} else {
+							// Remove it anyway
+						}
+					}
+				}
+
 				if (ADD) {
 					cell.staticHandles.push_back(proxy);
 				} else {
