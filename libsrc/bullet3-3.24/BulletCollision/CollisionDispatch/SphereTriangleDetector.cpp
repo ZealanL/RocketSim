@@ -84,6 +84,50 @@ btScalar SegmentSqrDistance(const btVector3& from, const btVector3& to, const bt
 	return diff.dot(diff);
 }
 
+// From https://github.com/RenderKit/embree/blob/master/tutorials/common/math/closest_point.h (thanks VirxEC)
+btVector3 closestPointTriangle(btVector3 const& p, btVector3 const& a, btVector3 const& b, btVector3 const& c) {
+	const btVector3 ab = b - a;
+	const btVector3 ac = c - a;
+	const btVector3 ap = p - a;
+
+	const float d1 = ab.dot(ap);
+	const float d2 = ac.dot(ap);
+	if (d1 <= 0.f && d2 <= 0.f) return a; //#1
+
+	const btVector3 bp = p - b;
+	const float d3 = ab.dot(bp);
+	const float d4 = ac.dot(bp);
+	if (d3 >= 0.f && d4 <= d3) return b; //#2
+
+	const btVector3 cp = p - c;
+	const float d5 = ab.dot(cp);
+	const float d6 = ac.dot(cp);
+	if (d6 >= 0.f && d5 <= d6) return c; //#3
+
+	const float vc = d1 * d4 - d3 * d2;
+	if (vc <= 0.f && d1 >= 0.f && d3 <= 0.f) {
+		const float v = d1 / (d1 - d3);
+		return a + v * ab; //#4
+	}
+
+	const float vb = d5 * d2 - d1 * d6;
+	if (vb <= 0.f && d2 >= 0.f && d6 <= 0.f) {
+		const float v = d2 / (d2 - d6);
+		return a + v * ac; //#5
+	}
+
+	const float va = d3 * d6 - d5 * d4;
+	if (va <= 0.f && (d4 - d3) >= 0.f && (d5 - d6) >= 0.f) {
+		const float v = (d4 - d3) / ((d4 - d3) + (d5 - d6));
+		return b + v * (c - b); //#6
+	}
+
+	const float denom = 1.f / (va + vb + vc);
+	const float v = vb * denom;
+	const float w = vc * denom;
+	return a + v * ab + w * ac; //#0
+}
+
 bool SphereTriangleDetector::facecontains(const btVector3& p, const btVector3* vertices, btVector3& normal)
 {
 	btVector3 lp(p);
@@ -136,8 +180,10 @@ bool SphereTriangleDetector::collide(const btVector3& sphereCenter, btVector3& p
 				// Could be inside one of the contact capsules
 				btScalar contactCapsuleRadiusSqr = radiusWithThreshold * radiusWithThreshold;
 				btScalar minDistSqr = contactCapsuleRadiusSqr;
+
+#if 0 // Bullet's method
 				btVector3 nearestOnEdge;
-				for (int i = 0; i < m_triangle->getNumEdges(); i++)
+				for (int i = 0; i < 3; i++)
 				{
 					btVector3 pa;
 					btVector3 pb;
@@ -153,8 +199,19 @@ bool SphereTriangleDetector::collide(const btVector3& sphereCenter, btVector3& p
 						contactPoint = nearestOnEdge;
 					}
 				}
+#else // Faster method (thanks VirxEC)
+				// https://github.com/VirxEC/rl_ball_sym/blob/99b50b381cd529e567c9a33ab10464b89484227a/src/simulation/geometry.rs
+				btVector3 nearestOnEdge = closestPointTriangle(sphereCenter, vertices[0], vertices[1], vertices[2]);
+				btScalar distanceSqr = nearestOnEdge.distance2(sphereCenter);
+				if (distanceSqr < minDistSqr) {
+					minDistSqr = distanceSqr;
+					hasContact = true;
+					contactPoint = nearestOnEdge;
+				}
+#endif
 			}
 		}
+
 	}
 
 	if (hasContact)
@@ -187,6 +244,8 @@ bool SphereTriangleDetector::collide(const btVector3& sphereCenter, btVector3& p
 
 bool SphereTriangleDetector::pointInTriangle(const btVector3 vertices[], const btVector3& normal, btVector3* p)
 {
+	
+#if 0 // Bullet's method
 	const btVector3* p1 = &vertices[0];
 	const btVector3* p2 = &vertices[1];
 	const btVector3* p3 = &vertices[2];
@@ -211,4 +270,27 @@ bool SphereTriangleDetector::pointInTriangle(const btVector3 vertices[], const b
 		(r1 <= 0 && r2 <= 0 && r3 <= 0))
 		return true;
 	return false;
+#else // A faster method from https://gamedev.stackexchange.com/questions/28781/easy-way-to-project-point-onto-triangle-or-plane/152476#152476 (thanks VirxEC)
+
+	const btVector3&
+		p0 = vertices[0],
+		p1 = vertices[1],
+		p2 = vertices[2];
+
+	btVector3 u = p1 - p0;
+	btVector3 v = p2 - p0;
+	btVector3 n = u.cross(v);
+	float nLenSq = n.dot(n);
+
+	btVector3 w = *p - p0;
+
+	float gamma = u.cross(w).dot(n) / nLenSq;
+
+	float beta = w.cross(v).dot(n) / nLenSq;
+	float alpha = 1 - gamma - beta;
+
+	return ((0 <= alpha) && (alpha <= 1) &&
+		(0 <= beta) && (beta <= 1) &&
+		(0 <= gamma) && (gamma <= 1));
+#endif
 }
