@@ -39,15 +39,6 @@ btStaticPlaneShape::~btStaticPlaneShape() {
 
 void btStaticPlaneShape::getAabb(const btTransform& t, btVector3& aabbMin, btVector3& aabbMax) const {
 	(void)t;
-	/*
-	btVector3 infvec (btScalar(BT_LARGE_FLOAT),btScalar(BT_LARGE_FLOAT),btScalar(BT_LARGE_FLOAT));
-
-	btVector3 center = m_planeNormal*m_planeConstant;
-	aabbMin = center + infvec*m_planeNormal;
-	aabbMax = aabbMin;
-	aabbMin.setMin(center - infvec*m_planeNormal);
-	aabbMax.setMax(center - infvec*m_planeNormal);
-	*/
 
 	aabbMin.setValue(btScalar(-BT_LARGE_FLOAT), btScalar(-BT_LARGE_FLOAT), btScalar(-BT_LARGE_FLOAT));
 	aabbMax.setValue(btScalar(BT_LARGE_FLOAT), btScalar(BT_LARGE_FLOAT), btScalar(BT_LARGE_FLOAT));
@@ -57,6 +48,8 @@ void btStaticPlaneShape::getAabb(const btTransform& t, btVector3& aabbMin, btVec
 	if (m_isSingleAxis) {
 		aabbMin[m_singleAxisIdx] = t.getOrigin()[m_singleAxisIdx] + (m_planeConstant - PLANE_CONSTANT_OFFSET);
 		aabbMax[m_singleAxisIdx] = t.getOrigin()[m_singleAxisIdx] + (m_planeConstant + PLANE_CONSTANT_OFFSET);
+
+		(m_singleAxisBackwards ? aabbMax : aabbMin)[m_singleAxisIdx] = (m_singleAxisBackwards ? BT_LARGE_FLOAT : -BT_LARGE_FLOAT);
 	}
 }
 
