@@ -61,7 +61,11 @@ void BallPredTracker::ForceUpdateAllPred(Arena* arena) {
 }
 
 BallState BallPredTracker::GetBallStateForTime(float predTime) const {
-	return BallState();
+	if (predData.empty())
+		RS_ERR_CLOSE("BallPredTracker::GetBallStateForTime(): Predicted ball data is empty, update prediction before calling");
+
+	int index = RS_CLAMP(predTime / ballPredArena->tickTime, 0, predData.size() - 1);
+	return predData[index];
 }
 
 RS_NS_END
