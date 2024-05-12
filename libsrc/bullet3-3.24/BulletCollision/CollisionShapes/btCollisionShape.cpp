@@ -75,12 +75,10 @@ void btCollisionShape::getAabb(const btTransform& t, btVector3& aabbMin, btVecto
 			btAssert(false);
 		}
 
-		// TODO: Dumb const bypass hack
-		auto _this = (btCollisionShape*)this;
-		_this->m_aabbCached = true;
-		_this->m_aabbMinCache = aabbMin;
-		_this->m_aabbMaxCache = aabbMax;
-		_this->m_aabbCacheTrans = t;
+		m_aabbCached = true;
+		m_aabbMinCache = aabbMin;
+		m_aabbMaxCache = aabbMax;
+		m_aabbCacheTrans = t;
 	} else {
 		aabbMin = m_aabbMinCache;
 		aabbMax = m_aabbMaxCache;
