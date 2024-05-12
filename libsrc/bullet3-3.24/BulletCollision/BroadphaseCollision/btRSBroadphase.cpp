@@ -312,9 +312,11 @@ void btRSBroadphase::rayTest(const btVector3& rayFrom, const btVector3& rayTo, b
 
 		Cell& cell = cells[GetCellIdx(rayFrom)];
 		for (auto& otherProxy : cell.staticHandles)
-			rayCallback.process(otherProxy);
+			if (otherProxy->m_clientObject)
+				rayCallback.process(otherProxy);
 		for (auto& otherProxy : cell.dynHandles)
-			rayCallback.process(otherProxy);
+			if (otherProxy->m_clientObject)
+				rayCallback.process(otherProxy);
 	} else {
 		static std::once_flag onceFlag;
 		std::call_once(onceFlag, 
@@ -342,9 +344,9 @@ void btRSBroadphase::aabbTest(const btVector3& aabbMin, const btVector3& aabbMax
 
 	for (int i = 0; i <= m_LastHandleIndex; i++) {
 		btRSBroadphaseProxy* proxy = &m_pHandles[i];
-		if (!proxy->m_clientObject) {
+		if (!proxy->m_clientObject)
 			continue;
-		}
+		
 		if (TestAabbAgainstAabb2(aabbMin, aabbMax, proxy->m_aabbMin, proxy->m_aabbMax)) {
 			callback.process(proxy);
 		}
@@ -352,9 +354,7 @@ void btRSBroadphase::aabbTest(const btVector3& aabbMin, const btVector3& aabbMax
 }
 
 bool btRSBroadphase::aabbOverlap(btRSBroadphaseProxy* proxy0, btRSBroadphaseProxy* proxy1) {
-	return proxy0->m_aabbMin[0] <= proxy1->m_aabbMax[0] && proxy1->m_aabbMin[0] <= proxy0->m_aabbMax[0] &&
-		proxy0->m_aabbMin[1] <= proxy1->m_aabbMax[1] && proxy1->m_aabbMin[1] <= proxy0->m_aabbMax[1] &&
-		proxy0->m_aabbMin[2] <= proxy1->m_aabbMax[2] && proxy1->m_aabbMin[2] <= proxy0->m_aabbMax[2];
+	return TestAabbAgainstAabb2(proxy0->m_aabbMin, proxy0->m_aabbMax, proxy1->m_aabbMin, proxy1->m_aabbMax);
 }
 
 //then remove non-overlapping ones
@@ -367,6 +367,7 @@ public:
 };
 
 void btRSBroadphase::calculateOverlappingPairs(btCollisionDispatcher* dispatcher) {
+
 	bool shouldRemove = !m_pairCache->hasDeferredRemoval();
 	if (m_numHandles >= 0) {
 		int new_largest_index = -1;
@@ -385,6 +386,9 @@ void btRSBroadphase::calculateOverlappingPairs(btCollisionDispatcher* dispatcher
 			Cell& cell = cells[proxy->cellIdx];
 			
 			for (auto& otherProxy : cell.staticHandles) {
+				if (!otherProxy->m_clientObject)
+					continue;
+
 				totalStaticPairs++;
 
 				if (aabbOverlap(proxy, otherProxy)) {
@@ -405,6 +409,9 @@ void btRSBroadphase::calculateOverlappingPairs(btCollisionDispatcher* dispatcher
 				if (cell.dynHandles.size() > 1) { // We are dynamic, so there will always be 1
 					for (auto& otherProxy : cell.dynHandles) {
 						if (otherProxy == proxy)
+							continue;
+
+						if (!otherProxy->m_clientObject)
 							continue;
 
 						totalDynPairs++;
@@ -440,5 +447,5 @@ bool btRSBroadphase::testAabbOverlap(btBroadphaseProxy* proxy0, btBroadphaseProx
 }
 
 void btRSBroadphase::resetPool(btCollisionDispatcher* dispatcher) {
-	//not yet
+	// TODO: ?
 }
