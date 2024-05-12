@@ -36,9 +36,6 @@ void btSphereShape::batchedUnitVectorGetSupportingVertexWithoutMargin(const btVe
 
 btVector3 btSphereShape::localGetSupportingVertex(const btVector3& vec) const
 {
-	btVector3 supVertex;
-	supVertex = localGetSupportingVertexWithoutMargin(vec);
-
 	btVector3 vecnorm = vec;
 	if (vecnorm.length2() < (SIMD_EPSILON * SIMD_EPSILON))
 	{
@@ -48,8 +45,7 @@ btVector3 btSphereShape::localGetSupportingVertex(const btVector3& vec) const
 		vecnorm.normalize();
 	}
 
-	supVertex += getMargin() * vecnorm;
-	return supVertex;
+	return getMargin() * vecnorm;
 }
 
 //broken due to scaling
