@@ -279,14 +279,14 @@ void btRSBroadphase::setAabb(btBroadphaseProxy* proxy, const btVector3& aabbMin,
 			_UpdateCellsStatic<true>(this, sbp);
 		} else {
 
+			int oldIndex = sbp->cellIdx;
+			sbp->m_aabbMin = aabbMin;
+			sbp->m_aabbMax = aabbMax;
+			
+			int newIndex = GetCellIdx(aabbMin);
+			sbp->cellIdx = newIndex;
+
 			if (numDynProxies > 1) {
-				int oldIndex = sbp->cellIdx;
-				sbp->m_aabbMin = aabbMin;
-				sbp->m_aabbMax = aabbMax;
-
-				int newIndex = GetCellIdx(aabbMin);
-				sbp->cellIdx = newIndex;
-
 				if (oldIndex != newIndex) {
 
 					_UpdateCellsDynamic<false>(this, sbp, sbp->iIdx, sbp->jIdx, sbp->kIdx);
