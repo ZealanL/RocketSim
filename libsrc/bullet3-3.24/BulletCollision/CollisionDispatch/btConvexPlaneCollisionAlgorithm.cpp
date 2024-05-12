@@ -21,7 +21,7 @@ subject to the following restrictions:
 #include "../CollisionShapes/btStaticPlaneShape.h"
 #include "../CollisionDispatch/btCollisionObjectWrapper.h"
 
-//#include <stdio.h>
+#include "../../LinearMath/btAabbUtil2.h"
 
 btConvexPlaneCollisionAlgorithm::btConvexPlaneCollisionAlgorithm(btPersistentManifold* mf, const btCollisionAlgorithmConstructionInfo& ci, const btCollisionObjectWrapper* col0Wrap, const btCollisionObjectWrapper* col1Wrap, bool isSwapped, int numPerturbationIterations, int minimumPointsPerturbationThreshold)
 	: btCollisionAlgorithm(ci),
@@ -101,29 +101,46 @@ void btConvexPlaneCollisionAlgorithm::processCollision(const btCollisionObjectWr
 	btConvexShape* convexShape = (btConvexShape*)convexObjWrap->getCollisionShape();
 	btStaticPlaneShape* planeShape = (btStaticPlaneShape*)planeObjWrap->getCollisionShape();
 
-	bool hasCollision = false;
 	const btVector3& planeNormal = planeShape->getPlaneNormal();
 	const btScalar& planeConstant = planeShape->getPlaneConstant();
 
-	btTransform planeInConvex;
-	btTransform convexInPlaneTrans;
-	planeInConvex = convexObjWrap->getWorldTransform().inverse() * planeObjWrap->getWorldTransform();
-	convexInPlaneTrans = planeObjWrap->getWorldTransform().inverse() * convexObjWrap->getWorldTransform();
+	bool checkCollision = true;
 
-	btVector3 vtx = convexShape->localGetSupportingVertex(planeInConvex.getBasis() * -planeNormal);
-	btVector3 vtxInPlane = convexInPlaneTrans(vtx);
-	btScalar distance = (planeNormal.dot(vtxInPlane) - planeConstant);
-	hasCollision = distance < m_manifoldPtr->getContactBreakingThreshold()+ resultOut->m_closestPointDistanceThreshold;
-	resultOut->setPersistentManifold(m_manifoldPtr);
-	if (hasCollision)
-	{
-		btVector3 vtxInPlaneProjected = vtxInPlane - distance * planeNormal;
-		btVector3 vtxInPlaneWorld = planeObjWrap->getWorldTransform() * vtxInPlaneProjected;
+	if (checkCollision) {
+		bool hasCollision = false;
 
-		/// report a contact. internally this will be kept persistent, and contact reduction is done
-		btVector3 normalOnSurfaceB = planeObjWrap->getWorldTransform().getBasis() * planeNormal;
-		btVector3 pOnB = vtxInPlaneWorld;
-		resultOut->addContactPoint(normalOnSurfaceB, pOnB, distance);
+		bool isSphere = convexShape->getShapeType() == SPHERE_SHAPE_PROXYTYPE;
+
+		btTransform planeInConvex;
+		btTransform convexInPlaneTrans;
+		btVector3 vtx; 
+		planeInConvex = convexObjWrap->getWorldTransform().inverse() * planeObjWrap->getWorldTransform();
+		convexInPlaneTrans = planeObjWrap->getWorldTransform().inverse() * convexObjWrap->getWorldTransform();
+
+		if (isSphere && planeShape->m_isSingleAxis) {
+			vtx = convexShape->getMargin() * -planeNormal;
+		} else {
+			vtx = convexShape->localGetSupportingVertex(planeInConvex.getBasis() * -planeNormal);
+		}
+		
+		btVector3 vtxInPlane = convexInPlaneTrans(vtx);
+		btScalar distance = (planeNormal.dot(vtxInPlane) - planeConstant);
+		hasCollision = distance < m_manifoldPtr->getContactBreakingThreshold() + resultOut->m_closestPointDistanceThreshold;
+		resultOut->setPersistentManifold(m_manifoldPtr);
+		if (hasCollision) {
+			btVector3 vtxInPlaneProjected = vtxInPlane - distance * planeNormal;
+			btVector3 vtxInPlaneWorld = planeObjWrap->getWorldTransform() * vtxInPlaneProjected;
+
+			/// report a contact. internally this will be kept persistent, and contact reduction is done
+			btVector3 normalOnSurfaceB = planeObjWrap->getWorldTransform().getBasis() * planeNormal;
+			btVector3 pOnB = vtxInPlaneWorld;
+			resultOut->addContactPoint(normalOnSurfaceB, pOnB, distance);
+
+		}
+
+		//std::cout << distance - (m_manifoldPtr->getContactBreakingThreshold() + resultOut->m_closestPointDistanceThreshold) << std::endl;
+	} else {
+		resultOut->setPersistentManifold(m_manifoldPtr);
 	}
 
 	//the perturbation algorithm doesn't work well with implicit surfaces such as spheres, cylinder and cones:
