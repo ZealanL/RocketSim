@@ -5,6 +5,7 @@
 #include "../../../libsrc/bullet3-3.24/BulletCollision/BroadphaseCollision/btDbvtBroadphase.h"
 #include "../../../libsrc/bullet3-3.24/BulletCollision/BroadphaseCollision/btSimpleBroadphase.h"
 #include "../../../libsrc/bullet3-3.24/BulletCollision/BroadphaseCollision/btRSBroadphase.h"
+#include "../../../libsrc/bullet3-3.24/BulletCollision/BroadphaseCollision/btOverlappingPairCache.h"
 #include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionDispatch/btDefaultCollisionConfiguration.h"
 #include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionDispatch/btInternalEdgeUtility.h"
 #include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btBoxShape.h"
@@ -446,7 +447,7 @@ Arena::Arena(GameMode gameMode, const ArenaConfig& config, float tickRate) : _mu
 		_bulletWorldParams.collisionDispatcher.setup(&_bulletWorldParams.collisionConfig);
 		_bulletWorldParams.constraintSolver = btSequentialImpulseConstraintSolver();
 
-		_bulletWorldParams.overlappingPairCache = new (btAlignedAlloc(sizeof(btHashedOverlappingPairCache), 16)) btHashedOverlappingPairCache();
+		_bulletWorldParams.overlappingPairCache = new btHashedOverlappingPairCache();
 
 		if (_config.useCustomBroadphase) {
 			float cellSizeMultiplier = 1;
@@ -980,9 +981,7 @@ Arena::~Arena() {
 		delete[] _worldCollisionBvhShapes;
 	}
 
-	_bulletWorldParams.overlappingPairCache->~btHashedOverlappingPairCache();
-	btAlignedFree(_bulletWorldParams.overlappingPairCache);
-
+	delete _bulletWorldParams.overlappingPairCache;
 	delete _bulletWorldParams.broadphase;
 }
 

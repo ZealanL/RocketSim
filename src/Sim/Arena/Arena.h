@@ -85,7 +85,7 @@ public:
 	struct {
 		btDefaultCollisionConfiguration collisionConfig;
 		btCollisionDispatcher collisionDispatcher;
-		btHashedOverlappingPairCache* overlappingPairCache;
+		btOverlappingPairCache* overlappingPairCache;
 		btBroadphaseInterface* broadphase;
 		btSequentialImpulseConstraintSolver constraintSolver;
 	} _bulletWorldParams;
