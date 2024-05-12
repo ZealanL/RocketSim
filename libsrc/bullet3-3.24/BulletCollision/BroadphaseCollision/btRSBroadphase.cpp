@@ -282,13 +282,13 @@ void btRSBroadphase::setAabb(btBroadphaseProxy* proxy, const btVector3& aabbMin,
 			int oldIndex = sbp->cellIdx;
 			sbp->m_aabbMin = aabbMin;
 			sbp->m_aabbMax = aabbMax;
-			
+
 			int newIndex = GetCellIdx(aabbMin);
 			sbp->cellIdx = newIndex;
 
-			if (numDynProxies > 1) {
-				if (oldIndex != newIndex) {
+			if (oldIndex != newIndex) {
 
+				if (numDynProxies > 1) {
 					_UpdateCellsDynamic<false>(this, sbp, sbp->iIdx, sbp->jIdx, sbp->kIdx);
 
 					// TODO: Can determine newIndex from these
@@ -366,10 +366,29 @@ public:
 	}
 };
 
+std::string ToStr(const btVector3& vec) {
+	std::stringstream stream;
+	stream << "[ " << vec.x() << ", " << vec.y() << ", " << vec.z() << " ]";
+	return stream.str();
+}
+
 void btRSBroadphase::calculateOverlappingPairs(btCollisionDispatcher* dispatcher) {
 
+	int lastRealPairs = totalRealPairs;
+
 	bool shouldRemove = !m_pairCache->hasDeferredRemoval();
+
+	if (shouldRemove) {
+		for (auto pair : activePairs) {
+			m_pairCache->removeOverlappingPair(pair.first, pair.second, dispatcher);
+		}
+		activePairs.clear();
+	} else {
+		THROW_ERR("Pair cache cannot have deferred removal");
+	}
+
 	if (m_numHandles >= 0) {
+
 		int new_largest_index = -1;
 		for (int i = 0; i <= m_LastHandleIndex; i++) {
 			btRSBroadphaseProxy* proxy = &m_pHandles[i];
@@ -391,16 +410,12 @@ void btRSBroadphase::calculateOverlappingPairs(btCollisionDispatcher* dispatcher
 
 				totalStaticPairs++;
 
+				
 				if (aabbOverlap(proxy, otherProxy)) {
 					if (!m_pairCache->findPair(proxy, otherProxy)) {
 						m_pairCache->addOverlappingPair(proxy, otherProxy);
+						activePairs.push_back({ proxy, otherProxy });
 						totalRealPairs++;
-					}
-				} else {
-					if (shouldRemove) {
-						if (m_pairCache->findPair(proxy, otherProxy)) {
-							m_pairCache->removeOverlappingPair(proxy, otherProxy, dispatcher);
-						}
 					}
 				}
 			}
@@ -419,13 +434,8 @@ void btRSBroadphase::calculateOverlappingPairs(btCollisionDispatcher* dispatcher
 						if (aabbOverlap(proxy, otherProxy)) {
 							if (!m_pairCache->findPair(proxy, otherProxy)) {
 								m_pairCache->addOverlappingPair(proxy, otherProxy);
+								activePairs.push_back({ proxy, otherProxy });
 								totalRealPairs++;
-							}
-						} else {
-							if (shouldRemove) {
-								if (m_pairCache->findPair(proxy, otherProxy)) {
-									m_pairCache->removeOverlappingPair(proxy, otherProxy, dispatcher);
-								}
 							}
 						}
 					}

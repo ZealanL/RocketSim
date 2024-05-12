@@ -51,6 +51,8 @@ public:
 	int totalRealPairs = 0;
 	int totalItrs = 0;
 
+	std::vector<std::pair<btRSBroadphaseProxy*, btRSBroadphaseProxy*>> activePairs;
+
 	struct Cell {
 		constexpr static int RESERVED_SIZE = 4;
 		std::vector<btRSBroadphaseProxy*> dynHandles;
