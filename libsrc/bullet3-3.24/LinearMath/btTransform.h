@@ -200,6 +200,11 @@ public:
 		static const btTransform identityTransform(btMatrix3x3::getIdentity());
 		return identityTransform;
 	}
+
+	friend std::ostream& operator<<(std::ostream& stream, const btTransform& trans) {
+		stream << "[" << trans.getBasis() << ", " << trans.getOrigin() << "]";
+		return stream;
+	}
 };
 
 SIMD_FORCE_INLINE btVector3

@@ -19,6 +19,7 @@ subject to the following restrictions:
 #include "btScalar.h"
 #include "btMinMax.h"
 #include "btAlignedAllocator.h"
+#include <sstream>
 
 #ifdef BT_USE_DOUBLE_PRECISION
 #define btVector3Data btVector3DoubleData
@@ -749,6 +750,11 @@ public:
 #else
 		return btVector3(dot(v0), dot(v1), dot(v2));
 #endif
+	}
+
+	friend std::ostream& operator<<(std::ostream& stream, const btVector3& v) {
+		stream << "[" << v.x() << ", " << v.y() << ", " << v.z() << "]";
+		return stream;
 	}
 };
 
