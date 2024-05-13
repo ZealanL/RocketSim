@@ -128,6 +128,8 @@ void _UpdateCellsStatic(btRSBroadphase* _this, btRSBroadphaseProxy* proxy) {
 			for (int k = kMin; k <= kMax; k++) {
 				auto& cell = _this->GetCell(i, j, k);
 
+#if 0	// TODO: This check misses certain cells for some reason
+				
 				if (isTriMesh) {
 					auto triMeshShape = (btTriangleMeshShape*)colObj->m_collisionShape;
 					btVector3 cellMin = _this->GetCellMinPos(i, j, k);
@@ -146,6 +148,7 @@ void _UpdateCellsStatic(btRSBroadphase* _this, btRSBroadphaseProxy* proxy) {
 						}
 					}
 				}
+#endif
 
 				if (ADD) {
 					cell.staticHandles.push_back(proxy);
