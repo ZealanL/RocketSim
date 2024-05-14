@@ -69,7 +69,41 @@ static SuspensionCollisionGrid
 
 void RocketSim::Init(std::filesystem::path collisionMeshesFolder) {
 
+	std::map<GameMode, std::vector<FileData>> meshFileMap = {};
+
+	for (int i = 0; i < 2; i++) { // Load collision meshes for soccar and hoops
+		GameMode gameMode = (i > 0) ? GameMode::HOOPS : GameMode::SOCCAR;
+		auto& meshes = GetArenaCollisionShapes(gameMode);
+
+		std::filesystem::path basePath = collisionMeshesFolder;
+		std::filesystem::path soccarMeshesFolder = basePath / GAMEMODE_STRS[(int)gameMode];
+
+		if (!std::filesystem::exists(soccarMeshesFolder))
+			continue;
+
+		MeshHashSet targetHashes = MeshHashSet(gameMode);
+
+		// Load collision meshes
+		auto dirItr = std::filesystem::directory_iterator(soccarMeshesFolder);
+		for (auto& entry : dirItr) {
+			auto entryPath = entry.path();
+			if (entryPath.has_extension() && entryPath.extension() == COLLISION_MESH_FILE_EXTENSION) {
+				DataStreamIn streamIn = DataStreamIn(entryPath, false);
+				meshFileMap[gameMode].push_back(streamIn.data);
+			}
+		}
+	}
+
+	RocketSim::InitFromMem(meshFileMap);
+
+	_collisionMeshesFolder = collisionMeshesFolder;
+}
+
+void RocketSim::InitFromMem(const std::map<GameMode, std::vector<FileData>>& meshFilesMap) {
+
 	constexpr char MSG_PREFIX[] = "RocketSim::Init(): ";
+
+	_collisionMeshesFolder = "<MESH FILES LOADED FROM MEMORY>";
 
 	_beginInitMutex.lock();
 	{
@@ -81,56 +115,56 @@ void RocketSim::Init(std::filesystem::path collisionMeshesFolder) {
 
 		RS_LOG("Initializing RocketSim version " RS_VERSION ", created by ZealanL...");
 
-		_collisionMeshesFolder = collisionMeshesFolder;
+		
 		stage = RocketSimStage::INITIALIZING;
 
 		uint64_t startMS = RS_CUR_MS();
 
-		for (int i = 0; i < 2; i++) { // Load collision meshes for soccar and hoops
-			GameMode gameMode = (i > 0) ? GameMode::HOOPS : GameMode::SOCCAR;
-			auto& meshes = GetArenaCollisionShapes(gameMode);
+		for (auto& mapPair : meshFilesMap) { // Load collision meshes for soccar and hoops
+			GameMode gameMode = mapPair.first;
+			auto& meshFiles = mapPair.second;
 
-			std::filesystem::path basePath = collisionMeshesFolder;
-			std::filesystem::path soccarMeshesFolder = basePath / GAMEMODE_STRS[(int)gameMode];
+			RS_LOG("Loading arena meshes for " << GAMEMODE_STRS[(int)gameMode] << "...");
 
-			RS_LOG("Loading arena meshes from " << soccarMeshesFolder << "...");
-
-			if (!std::filesystem::exists(soccarMeshesFolder)) {
-				RS_LOG("No arena meshes for " << GAMEMODE_STRS[(int)gameMode] << ", skipping...");
+			if (meshFiles.empty()) {
+				RS_LOG(" > No meshes, skipping");
 				continue;
 			}
+
+			auto& meshes = GetArenaCollisionShapes(gameMode);
 
 			MeshHashSet targetHashes = MeshHashSet(gameMode);
 
 			// Load collision meshes
-			auto dirItr = std::filesystem::directory_iterator(soccarMeshesFolder);
-			for (auto& entry : dirItr) {
-				auto entryPath = entry.path();
-				if (entryPath.has_extension() && entryPath.extension() == COLLISION_MESH_FILE_EXTENSION) {
-					CollisionMeshFile meshFile = {};
-					meshFile.ReadFromFile(entryPath.string());
-					int& hashCount = targetHashes[meshFile.hash];
+			int idx = 0;
+			for (auto& entry : meshFiles) {
+				DataStreamIn dataStream = {};
+				dataStream.data = entry;
+				CollisionMeshFile meshFile = {};
+				meshFile.ReadFromStream(dataStream);
+				int& hashCount = targetHashes[meshFile.hash];
 
-					if (hashCount > 0) {
-						RS_WARN(MSG_PREFIX << "Collision mesh " << entryPath << " is a duplicate (0x" << std::hex << meshFile.hash << "), " <<
-							"already loaded a mesh with the same hash."
-						);
-					} else if (targetHashes.hashes.count(meshFile.hash) == 0) {
-						RS_WARN(MSG_PREFIX <<
-							"Collision mesh " << entryPath << " does not match any known soccar collision file (0x" << std::hex << meshFile.hash << "), " <<
-							"make sure they were dumped from a normal soccar arena."
-						)
-					}
-					hashCount++;
-
-					btTriangleMesh* triMesh = meshFile.MakeBulletMesh();
-
-					auto bvtMesh = new btBvhTriangleMeshShape(triMesh, true);
-					btTriangleInfoMap* infoMap = new btTriangleInfoMap();
-					btGenerateInternalEdgeInfo(bvtMesh, infoMap);
-					bvtMesh->setTriangleInfoMap(infoMap);
-					meshes.push_back(bvtMesh);
+				if (hashCount > 0) {
+					RS_WARN(MSG_PREFIX << "Collision mesh [" << idx << "] is a duplicate (0x" << std::hex << meshFile.hash << "), " <<
+						"already loaded a mesh with the same hash."
+					);
+				} else if (targetHashes.hashes.count(meshFile.hash) == 0) {
+					RS_WARN(MSG_PREFIX <<
+						"Collision mesh [" << idx << "] does not match any known " << GAMEMODE_STRS[(int)gameMode] << " collision mesh (0x" << std::hex << meshFile.hash << "), " <<
+						"make sure they were dumped from a normal " << GAMEMODE_STRS[(int)gameMode] << " arena."
+					)
 				}
+				hashCount++;
+
+				btTriangleMesh* triMesh = meshFile.MakeBulletMesh();
+
+				auto bvtMesh = new btBvhTriangleMeshShape(triMesh, true);
+				btTriangleInfoMap* infoMap = new btTriangleInfoMap();
+				btGenerateInternalEdgeInfo(bvtMesh, infoMap);
+				bvtMesh->setTriangleInfoMap(infoMap);
+				meshes.push_back(bvtMesh);
+
+				idx++;
 			}
 		}
 
@@ -151,8 +185,8 @@ void RocketSim::Init(std::filesystem::path collisionMeshesFolder) {
 						auto& grid = GetDefaultSuspColGrid(gameMode, j);
 						grid.Allocate();
 						grid.SetupWorldCollision(meshes);
-					}
-				}
+	}
+}
 			}
 		}
 #endif
