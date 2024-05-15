@@ -215,7 +215,7 @@ inline int btIsDoublePrecision()
 	//non-windows systems
 
 			#if (!defined (BT_USE_DOUBLE_PRECISION))
-				#if defined (__i386__) || defined (__x86_64__)
+				#if !defined(__BT_DISABLE_SSE__) && (defined (__i386__) || defined (__x86_64__))
 					#define BT_USE_SIMD_VECTOR3
 					#define BT_USE_SSE
 					//BT_USE_SSE_IN_API is enabled on Mac OSX by default, because memory is automatically aligned on 16-byte boundaries
