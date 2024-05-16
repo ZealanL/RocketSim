@@ -43,7 +43,7 @@ void btStaticPlaneShape::getAabb(const btTransform& t, btVector3& aabbMin, btVec
 	aabbMin.setValue(btScalar(-BT_LARGE_FLOAT), btScalar(-BT_LARGE_FLOAT), btScalar(-BT_LARGE_FLOAT));
 	aabbMax.setValue(btScalar(BT_LARGE_FLOAT), btScalar(BT_LARGE_FLOAT), btScalar(BT_LARGE_FLOAT));
 	
-	constexpr float PLANE_CONSTANT_OFFSET = 0.01f;
+	constexpr float PLANE_CONSTANT_OFFSET = 0.2f;
 
 	if (m_isSingleAxis) {
 		aabbMin[m_singleAxisIdx] = t.getOrigin()[m_singleAxisIdx] + (m_planeConstant - PLANE_CONSTANT_OFFSET);

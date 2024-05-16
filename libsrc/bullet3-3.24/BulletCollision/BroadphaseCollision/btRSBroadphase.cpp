@@ -126,9 +126,21 @@ void _UpdateCellsStatic(btRSBroadphase* _this, btRSBroadphaseProxy* proxy) {
 	for (int i = iMin; i <= iMax; i++) {
 		for (int j = jMin; j <= jMax; j++) {
 			for (int k = kMin; k <= kMax; k++) {
-				auto& cell = _this->GetCell(i, j, k);
-
-#if 0	// TODO: This check misses certain cells for some reason
+				std::vector<btRSBroadphase::Cell*> cells = {};
+				for (int i1 = -1; i1 <= 1; i1++) {
+					for (int j1 = -1; j1 <= 1; j1++) {
+						for (int k1 = -1; k1 <= 1; k1++) {
+							int ci = i + i1;
+							int cj = j + j1;
+							int ck = k + k1;
+							if (ci < 0 || cj < 0 || ck < 0)
+								continue;
+							if (ci >= _this->cellsX || cj >= _this->cellsY || ck >= _this->cellsZ)
+								continue;
+							cells.push_back(&_this->GetCell(ci, cj, ck));
+						}
+					}
+				}
 				
 				if (isTriMesh) {
 					auto triMeshShape = (btTriangleMeshShape*)colObj->m_collisionShape;
@@ -148,12 +160,21 @@ void _UpdateCellsStatic(btRSBroadphase* _this, btRSBroadphaseProxy* proxy) {
 						}
 					}
 				}
-#endif
 
-				if (ADD) {
-					cell.staticHandles.push_back(proxy);
-				} else {
-					cell.RemoveStatic(proxy);
+				for (auto cell : cells) {
+					if (ADD) {
+						bool alreadyExists = false;
+						for (auto staticHandle : cell->staticHandles) {
+							if (staticHandle == proxy) {
+								alreadyExists = true;
+								break;
+							}
+						}
+						if (!alreadyExists)
+							cell->staticHandles.push_back(proxy);
+					} else {
+						cell->RemoveStatic(proxy);
+					}
 				}
 			}
 		}
