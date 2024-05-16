@@ -21,6 +21,7 @@ struct CarState : public PhysState {
 	// Not serialized
 	uint64_t updateCounter = 0;
 
+	// True if 3 or more wheels have contact
 	bool isOnGround = true;
 
 	// Whether each of the 4 wheels have contact
