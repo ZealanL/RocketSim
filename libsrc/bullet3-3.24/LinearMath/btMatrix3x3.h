@@ -803,6 +803,15 @@ public:
 	{
 		return m_el[r1][c1] * m_el[r2][c2] - m_el[r1][c2] * m_el[r2][c1];
 	}
+
+	friend std::ostream& operator<<(std::ostream& stream, const btMatrix3x3& mat) {
+		stream << "(" << std::endl;
+		stream << "  " << mat[0] << "," << std::endl;
+		stream << "  " << mat[1] << "," << std::endl;
+		stream << "  " << mat[2] << std::endl;
+		stream << ")";
+		return stream;
+	}
 };
 
 SIMD_FORCE_INLINE btMatrix3x3&

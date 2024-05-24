@@ -20,10 +20,19 @@ namespace RocketSim {
 		INITIALIZED
 	};
 
+	typedef std::vector<byte> FileData;
+
 	extern std::filesystem::path _collisionMeshesFolder;
 	extern std::mutex _beginInitMutex;
 
+	
 	void Init(std::filesystem::path collisionMeshesFolder);
+
+	// Instead of loading a collision meshes folder, you can pass in the meshes in this memory-only format
+	// The map sorts mesh files to their respective game modes, where each game mode has a list of mesh files
+	// The mesh files themselves are just byte arrays
+	void InitFromMem(const std::map<GameMode, std::vector<FileData>>& meshFilesMap);
+
 	void AssertInitialized(const char* errorMsgPrefix);
 
 	RocketSimStage GetStage();

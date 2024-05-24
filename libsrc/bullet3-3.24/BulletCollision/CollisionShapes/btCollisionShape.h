@@ -32,9 +32,9 @@ public:
 	int m_userIndex;
 	int m_userIndex2;
 
-	bool m_aabbCached = false;
-	btVector3 m_aabbMinCache, m_aabbMaxCache;
-	btTransform m_aabbCacheTrans;
+	mutable bool m_aabbCached = false;
+	mutable btVector3 m_aabbMinCache, m_aabbMaxCache;
+	mutable btTransform m_aabbCacheTrans;
 
 	BT_DECLARE_ALIGNED_ALLOCATOR();
 

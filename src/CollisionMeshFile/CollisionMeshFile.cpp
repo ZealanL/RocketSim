@@ -8,11 +8,10 @@
 
 RS_NS_START
 
-void CollisionMeshFile::ReadFromFile(std::string filePath) {
-	constexpr char ERROR_PREFIX_STR[] = " > CollisionMeshFile::ReadFromFile(): ";
+void CollisionMeshFile::ReadFromStream(DataStreamIn& in, std::string filePath) {
+	constexpr char ERROR_PREFIX_STR[] = " > CollisionMeshFile::ReadFromStream(): ";
 
-	DataStreamIn in = DataStreamIn(filePath, false);
-
+	// If you have more verts or tris then this, I have no idea what you are doing, godspeed
 	constexpr int MAX_VERT_OR_TRI_COUNT = 1000 * 1000;
 
 	// Read triangle/vertex counts

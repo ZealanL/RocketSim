@@ -14,12 +14,6 @@
 // Unreal Units (2cm) to BulletPhysics Units (1m) conversion scale
 #define UU_TO_BT (1.f/50.f)
 
-// For printing btVector3
-static inline std::ostream& operator <<(std::ostream& stream, const btVector3& v) {
-	stream << "[ " << v.x() << ", " << v.y() << ", " << v.z() << " ]";
-	return stream;
-}
-
 // Enum values for Bullet btCollisionObject userinfo usage
 enum : int {
 	BT_USERINFO_NONE,

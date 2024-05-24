@@ -166,7 +166,7 @@ float btVehicleRL::rayCast(btWheelInfoRL& wheel, SuspensionCollisionGrid* grid) 
 
 		float denominator = wheel.m_raycastInfo.m_contactNormalWS.dot(getUpVector());
 
-		btVector3 relpos = wheel.m_raycastInfo.m_contactPointWS - m_chassisBody->m_worldTransform.m_origin;
+		btVector3 relpos = wheel.m_raycastInfo.m_contactPointWS - m_chassisBody->getWorldTransform().m_origin;
 		wheel.m_velAtContactPoint = m_chassisBody->getVelocityInLocalPoint(relpos);
 
 		float projVel = wheel.m_raycastInfo.m_contactNormalWS.dot(wheel.m_velAtContactPoint);

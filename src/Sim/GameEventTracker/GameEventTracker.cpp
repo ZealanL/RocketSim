@@ -65,7 +65,7 @@ void GameEventTracker::Update(Arena* arena) {
 			Car* passer;
 			if (GetShooterPasser(
 				arena,
-				RS_TEAM_FROM_Y(-arena->ball->_rigidBody.m_worldTransform.m_origin.y()),
+				RS_TEAM_FROM_Y(-arena->ball->_rigidBody.getWorldTransform().m_origin.y()),
 				shooter, true, passer,
 				config.goalMaxTouchTime * tickrate,
 				config.passMaxTouchTime * tickrate

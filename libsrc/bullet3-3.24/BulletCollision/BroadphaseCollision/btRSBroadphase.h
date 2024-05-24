@@ -51,6 +51,8 @@ public:
 	int totalRealPairs = 0;
 	int totalItrs = 0;
 
+	std::vector<std::pair<btRSBroadphaseProxy*, btRSBroadphaseProxy*>> activePairs;
+
 	struct Cell {
 		constexpr static int RESERVED_SIZE = 4;
 		std::vector<btRSBroadphaseProxy*> dynHandles;
@@ -93,6 +95,10 @@ public:
 		btClamp(i, 0, cellsX - 1);
 		btClamp(j, 0, cellsY - 1);
 		btClamp(k, 0, cellsZ - 1);
+	}
+
+	btVector3 GetCellMinPos(int i, int j, int k) const {
+		return minPos + btVector3(i, j, k) * cellSize;
 	}
 
 	int GetCellIdx(const btVector3& pos) const {

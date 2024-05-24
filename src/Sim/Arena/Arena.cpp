@@ -5,6 +5,7 @@
 #include "../../../libsrc/bullet3-3.24/BulletCollision/BroadphaseCollision/btDbvtBroadphase.h"
 #include "../../../libsrc/bullet3-3.24/BulletCollision/BroadphaseCollision/btSimpleBroadphase.h"
 #include "../../../libsrc/bullet3-3.24/BulletCollision/BroadphaseCollision/btRSBroadphase.h"
+#include "../../../libsrc/bullet3-3.24/BulletCollision/BroadphaseCollision/btOverlappingPairCache.h"
 #include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionDispatch/btDefaultCollisionConfiguration.h"
 #include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionDispatch/btInternalEdgeUtility.h"
 #include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btBoxShape.h"
@@ -446,7 +447,7 @@ Arena::Arena(GameMode gameMode, const ArenaConfig& config, float tickRate) : _mu
 		_bulletWorldParams.collisionDispatcher.setup(&_bulletWorldParams.collisionConfig);
 		_bulletWorldParams.constraintSolver = btSequentialImpulseConstraintSolver();
 
-		_bulletWorldParams.overlappingPairCache = new (btAlignedAlloc(sizeof(btHashedOverlappingPairCache), 16)) btHashedOverlappingPairCache();
+		_bulletWorldParams.overlappingPairCache = new btHashedOverlappingPairCache();
 
 		if (_config.useCustomBroadphase) {
 			float cellSizeMultiplier = 1;
@@ -775,7 +776,7 @@ void Arena::Step(int ticksToSimulate) {
 
 		if (_goalScoreCallback.func != NULL) { // Potentially fire goal score callback
 			if (IsBallScored()) {
-				_goalScoreCallback.func(this, RS_TEAM_FROM_Y(-ball->_rigidBody.m_worldTransform.m_origin.y()), _goalScoreCallback.userInfo);
+				_goalScoreCallback.func(this, RS_TEAM_FROM_Y(-ball->_rigidBody.getWorldTransform().m_origin.y()), _goalScoreCallback.userInfo);
 			}
 		}
 
@@ -797,7 +798,7 @@ float BallWithinHoopsGoalXYMarginSq(float x, float y) {
 }
 
 bool Arena::IsBallProbablyGoingIn(float maxTime, float extraMargin, Team* goalTeamOut) const {
-	Vec ballPos = ball->_rigidBody.m_worldTransform.m_origin * BT_TO_UU;
+	Vec ballPos = ball->_rigidBody.getWorldTransform().m_origin * BT_TO_UU;
 	Vec ballVel = ball->_rigidBody.m_linearVelocity * BT_TO_UU;
 
 	if (gameMode == GameMode::SOCCAR || gameMode == GameMode::SNOWDAY) {
@@ -924,18 +925,18 @@ RSAPI bool Arena::IsBallScored() const {
 	case GameMode::HEATSEEKER:
 	case GameMode::SNOWDAY:
 	{
-		float ballPosY = ball->_rigidBody.m_worldTransform.m_origin.y() * BT_TO_UU;
+		float ballPosY = ball->_rigidBody.getWorldTransform().m_origin.y() * BT_TO_UU;
 		return abs(ballPosY) > (RLConst::SOCCAR_GOAL_SCORE_BASE_THRESHOLD_Y + _mutatorConfig.ballRadius);
 	}
 	case GameMode::HOOPS:
 	{
-		if (ball->_rigidBody.m_worldTransform.m_origin.z() < RLConst::HOOPS_GOAL_SCORE_THRESHOLD_Z * UU_TO_BT) {
+		if (ball->_rigidBody.getWorldTransform().m_origin.z() < RLConst::HOOPS_GOAL_SCORE_THRESHOLD_Z * UU_TO_BT) {
 			constexpr float
 				SCALE_Y = 0.9f,
 				OFFSET_Y = 2770.f,
 				RADIUS_SQ = 716 * 716;
 
-			Vec ballPos = ball->_rigidBody.m_worldTransform.m_origin * BT_TO_UU;
+			Vec ballPos = ball->_rigidBody.getWorldTransform().m_origin * BT_TO_UU;
 			return BallWithinHoopsGoalXYMarginSq(ballPos.x, ballPos.y) < 0;
 		} else {
 			return false;
@@ -980,9 +981,7 @@ Arena::~Arena() {
 		delete[] _worldCollisionBvhShapes;
 	}
 
-	_bulletWorldParams.overlappingPairCache->~btHashedOverlappingPairCache();
-	btAlignedFree(_bulletWorldParams.overlappingPairCache);
-
+	delete _bulletWorldParams.overlappingPairCache;
 	delete _bulletWorldParams.broadphase;
 }
 

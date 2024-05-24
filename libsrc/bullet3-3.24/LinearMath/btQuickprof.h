@@ -195,6 +195,7 @@ public:
 	~CProfileSample(void);
 };
 
-#define BT_PROFILE(name) CProfileSample __profile(name)
+//#define BT_PROFILE(name) CProfileSample __profile(name)
+#define BT_PROFILE(name)
 
 #endif  //BT_QUICK_PROF_H

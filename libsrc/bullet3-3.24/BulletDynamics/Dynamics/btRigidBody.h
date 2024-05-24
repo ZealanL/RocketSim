@@ -431,13 +431,13 @@ public:
 
 	const btVector3& getCenterOfMassPosition() const
 	{
-		return m_worldTransform.getOrigin();
+		return getWorldTransform().getOrigin();
 	}
 	btQuaternion getOrientation() const;
 
 	const btTransform& getCenterOfMassTransform() const
 	{
-		return m_worldTransform;
+		return getWorldTransform();
 	}
 	const btVector3& getLinearVelocity() const
 	{
@@ -485,7 +485,9 @@ public:
 
 	void translate(const btVector3& v)
 	{
-		m_worldTransform.getOrigin() += v;
+		btTransform newWorldTransform = getWorldTransform();
+		newWorldTransform.getOrigin() += v;
+		setWorldTransform(newWorldTransform);
 	}
 
 	void getAabb(btVector3& aabbMin, btVector3& aabbMax) const;
@@ -569,7 +571,7 @@ public:
 	{
 		m_optionalMotionState = motionState;
 		if (m_optionalMotionState)
-			motionState->getWorldTransform(m_worldTransform);
+			motionState->getWorldTransform(getWorldTransform());
 	}
 
 	//for experimental overriding of friction/contact solver func

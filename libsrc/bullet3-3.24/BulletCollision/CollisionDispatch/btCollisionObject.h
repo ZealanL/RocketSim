@@ -49,9 +49,10 @@ typedef btAlignedObjectArray<class btCollisionObject*> btCollisionObjectArray;
 ATTRIBUTE_ALIGNED16(class)
 btCollisionObject
 {
-public:
+private:
 	btTransform m_worldTransform;
 
+public:
 	///m_interpolationWorldTransform is used for CCD and interpolation
 	///it can be either previous or future (predicted) transform
 	btTransform m_interpolationWorldTransform;
@@ -400,11 +401,7 @@ public:
 		return m_worldTransform;
 	}
 
-	void setWorldTransform(const btTransform& worldTrans)
-	{
-		m_updateRevision++;
-		m_worldTransform = worldTrans;
-	}
+	void setWorldTransform(const btTransform& worldTrans);
 
 	SIMD_FORCE_INLINE btBroadphaseProxy* getBroadphaseHandle()
 	{

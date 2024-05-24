@@ -39,7 +39,7 @@ void BoostPad::_PreTickUpdate(float tickTime) {
 void BoostPad::_CheckCollide(Car* car) {
 	using namespace RLConst::BoostPads;
 
-	Vec carPosBT = car->_rigidBody.m_worldTransform.m_origin;
+	Vec carPosBT = car->_rigidBody.getWorldTransform().m_origin;
 
 	bool colliding = false;
 	if (_internalState.prevLockedCarID == car->id) {

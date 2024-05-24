@@ -2,6 +2,8 @@
 #include "../Framework.h"
 #include "../BulletLink.h"
 
+#include "../DataStream/DataStreamIn.h"
+
 #define COLLISION_MESH_BASE_PATH "./collision_meshes/"
 #define COLLISION_MESH_FILE_EXTENSION ".cmf"
 
@@ -30,7 +32,7 @@ struct CollisionMeshFile {
 
 	uint32_t hash;
 
-	void ReadFromFile(std::string filePath);
+	void ReadFromStream(DataStreamIn& in, std::string filePath = "<NO FILE PATH>");
 	btTriangleMesh* MakeBulletMesh();
 	void UpdateHash();
 };

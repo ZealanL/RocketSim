@@ -22,6 +22,8 @@ subject to the following restrictions:
 #include "../../LinearMath/btMatrix3x3.h"
 #include "../../LinearMath/btAabbUtil2.h"
 
+#include "../CollisionShapes/btBvhTriangleMeshShape.h"
+
 #include <new>
 #include <string>
 #include <stdexcept>
@@ -103,14 +105,76 @@ void _UpdateCellsStatic(btRSBroadphase* _this, btRSBroadphaseProxy* proxy) {
 	_this->GetCellIndices(proxy->m_aabbMin, iMin, jMin, kMin);
 	_this->GetCellIndices(aabbMax, iMax, jMax, kMax);
 
+	btCollisionObject* colObj = (btCollisionObject*)proxy->m_clientObject;
+
+	// We should check if each cell actually collides with the object
+	bool isTriMesh = colObj && colObj->m_collisionShape->getShapeType() == TRIANGLE_MESH_SHAPE_PROXYTYPE;
+
+	// For checking if an AABB has any containing triangles
+	struct BoolHitTriangleCallback : public btTriangleCallback {
+
+		bool hit = false;
+
+		BoolHitTriangleCallback() {}
+		virtual void processTriangle(btVector3* triangle, int partId, int triangleIndex) {
+			hit = true;
+		}
+	};
+	BoolHitTriangleCallback callbackInst = {};
+
+	int numSkipped = 0;
 	for (int i = iMin; i <= iMax; i++) {
 		for (int j = jMin; j <= jMax; j++) {
 			for (int k = kMin; k <= kMax; k++) {
-				auto& cell = _this->GetCell(i, j, k);
-				if (ADD) {
-					cell.staticHandles.push_back(proxy);
-				} else {
-					cell.RemoveStatic(proxy);
+				std::vector<btRSBroadphase::Cell*> cells = {};
+				for (int i1 = -1; i1 <= 1; i1++) {
+					for (int j1 = -1; j1 <= 1; j1++) {
+						for (int k1 = -1; k1 <= 1; k1++) {
+							int ci = i + i1;
+							int cj = j + j1;
+							int ck = k + k1;
+							if (ci < 0 || cj < 0 || ck < 0)
+								continue;
+							if (ci >= _this->cellsX || cj >= _this->cellsY || ck >= _this->cellsZ)
+								continue;
+							cells.push_back(&_this->GetCell(ci, cj, ck));
+						}
+					}
+				}
+				
+				if (isTriMesh) {
+					auto triMeshShape = (btTriangleMeshShape*)colObj->m_collisionShape;
+					btVector3 cellMin = _this->GetCellMinPos(i, j, k);
+					btVector3 cellMax = cellMin + btVector3(_this->cellSize, _this->cellSize, _this->cellSize);
+
+					callbackInst.hit = false;
+					triMeshShape->processAllTriangles(&callbackInst, cellMin, cellMax);
+
+					if (!callbackInst.hit) {
+						numSkipped++;
+
+						if (ADD) {
+							continue; // No tris in this AABB, ignore
+						} else {
+							// Remove it anyway
+						}
+					}
+				}
+
+				for (auto cell : cells) {
+					if (ADD) {
+						bool alreadyExists = false;
+						for (auto staticHandle : cell->staticHandles) {
+							if (staticHandle == proxy) {
+								alreadyExists = true;
+								break;
+							}
+						}
+						if (!alreadyExists)
+							cell->staticHandles.push_back(proxy);
+					} else {
+						cell->RemoveStatic(proxy);
+					}
 				}
 			}
 		}
@@ -239,16 +303,16 @@ void btRSBroadphase::setAabb(btBroadphaseProxy* proxy, const btVector3& aabbMin,
 			_UpdateCellsStatic<true>(this, sbp);
 		} else {
 
-			if (numDynProxies > 1) {
-				int oldIndex = sbp->cellIdx;
-				sbp->m_aabbMin = aabbMin;
-				sbp->m_aabbMax = aabbMax;
+			int oldIndex = sbp->cellIdx;
+			sbp->m_aabbMin = aabbMin;
+			sbp->m_aabbMax = aabbMax;
 
-				int newIndex = GetCellIdx(aabbMin);
-				sbp->cellIdx = newIndex;
+			int newIndex = GetCellIdx(aabbMin);
+			sbp->cellIdx = newIndex;
 
-				if (oldIndex != newIndex) {
+			if (oldIndex != newIndex) {
 
+				if (numDynProxies > 1) {
 					_UpdateCellsDynamic<false>(this, sbp, sbp->iIdx, sbp->jIdx, sbp->kIdx);
 
 					// TODO: Can determine newIndex from these
@@ -272,9 +336,11 @@ void btRSBroadphase::rayTest(const btVector3& rayFrom, const btVector3& rayTo, b
 
 		Cell& cell = cells[GetCellIdx(rayFrom)];
 		for (auto& otherProxy : cell.staticHandles)
-			rayCallback.process(otherProxy);
+			if (otherProxy->m_clientObject)
+				rayCallback.process(otherProxy);
 		for (auto& otherProxy : cell.dynHandles)
-			rayCallback.process(otherProxy);
+			if (otherProxy->m_clientObject)
+				rayCallback.process(otherProxy);
 	} else {
 		static std::once_flag onceFlag;
 		std::call_once(onceFlag, 
@@ -302,9 +368,9 @@ void btRSBroadphase::aabbTest(const btVector3& aabbMin, const btVector3& aabbMax
 
 	for (int i = 0; i <= m_LastHandleIndex; i++) {
 		btRSBroadphaseProxy* proxy = &m_pHandles[i];
-		if (!proxy->m_clientObject) {
+		if (!proxy->m_clientObject)
 			continue;
-		}
+		
 		if (TestAabbAgainstAabb2(aabbMin, aabbMax, proxy->m_aabbMin, proxy->m_aabbMax)) {
 			callback.process(proxy);
 		}
@@ -312,9 +378,7 @@ void btRSBroadphase::aabbTest(const btVector3& aabbMin, const btVector3& aabbMax
 }
 
 bool btRSBroadphase::aabbOverlap(btRSBroadphaseProxy* proxy0, btRSBroadphaseProxy* proxy1) {
-	return proxy0->m_aabbMin[0] <= proxy1->m_aabbMax[0] && proxy1->m_aabbMin[0] <= proxy0->m_aabbMax[0] &&
-		proxy0->m_aabbMin[1] <= proxy1->m_aabbMax[1] && proxy1->m_aabbMin[1] <= proxy0->m_aabbMax[1] &&
-		proxy0->m_aabbMin[2] <= proxy1->m_aabbMax[2] && proxy1->m_aabbMin[2] <= proxy0->m_aabbMax[2];
+	return TestAabbAgainstAabb2(proxy0->m_aabbMin, proxy0->m_aabbMax, proxy1->m_aabbMin, proxy1->m_aabbMax);
 }
 
 //then remove non-overlapping ones
@@ -326,9 +390,29 @@ public:
 	}
 };
 
+std::string ToStr(const btVector3& vec) {
+	std::stringstream stream;
+	stream << "[ " << vec.x() << ", " << vec.y() << ", " << vec.z() << " ]";
+	return stream.str();
+}
+
 void btRSBroadphase::calculateOverlappingPairs(btCollisionDispatcher* dispatcher) {
+
+	int lastRealPairs = totalRealPairs;
+
 	bool shouldRemove = !m_pairCache->hasDeferredRemoval();
+
+	if (shouldRemove) {
+		for (auto pair : activePairs) {
+			m_pairCache->removeOverlappingPair(pair.first, pair.second, dispatcher);
+		}
+		activePairs.clear();
+	} else {
+		THROW_ERR("Pair cache cannot have deferred removal");
+	}
+
 	if (m_numHandles >= 0) {
+
 		int new_largest_index = -1;
 		for (int i = 0; i <= m_LastHandleIndex; i++) {
 			btRSBroadphaseProxy* proxy = &m_pHandles[i];
@@ -345,18 +429,17 @@ void btRSBroadphase::calculateOverlappingPairs(btCollisionDispatcher* dispatcher
 			Cell& cell = cells[proxy->cellIdx];
 			
 			for (auto& otherProxy : cell.staticHandles) {
+				if (!otherProxy->m_clientObject)
+					continue;
+
 				totalStaticPairs++;
 
+				
 				if (aabbOverlap(proxy, otherProxy)) {
 					if (!m_pairCache->findPair(proxy, otherProxy)) {
 						m_pairCache->addOverlappingPair(proxy, otherProxy);
+						activePairs.push_back({ proxy, otherProxy });
 						totalRealPairs++;
-					}
-				} else {
-					if (shouldRemove) {
-						if (m_pairCache->findPair(proxy, otherProxy)) {
-							m_pairCache->removeOverlappingPair(proxy, otherProxy, dispatcher);
-						}
 					}
 				}
 			}
@@ -367,18 +450,16 @@ void btRSBroadphase::calculateOverlappingPairs(btCollisionDispatcher* dispatcher
 						if (otherProxy == proxy)
 							continue;
 
+						if (!otherProxy->m_clientObject)
+							continue;
+
 						totalDynPairs++;
 
 						if (aabbOverlap(proxy, otherProxy)) {
 							if (!m_pairCache->findPair(proxy, otherProxy)) {
 								m_pairCache->addOverlappingPair(proxy, otherProxy);
+								activePairs.push_back({ proxy, otherProxy });
 								totalRealPairs++;
-							}
-						} else {
-							if (shouldRemove) {
-								if (m_pairCache->findPair(proxy, otherProxy)) {
-									m_pairCache->removeOverlappingPair(proxy, otherProxy, dispatcher);
-								}
 							}
 						}
 					}
@@ -400,5 +481,5 @@ bool btRSBroadphase::testAabbOverlap(btBroadphaseProxy* proxy0, btBroadphaseProx
 }
 
 void btRSBroadphase::resetPool(btCollisionDispatcher* dispatcher) {
-	//not yet
+	// TODO: ?
 }

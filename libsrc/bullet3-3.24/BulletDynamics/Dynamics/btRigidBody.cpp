@@ -63,14 +63,14 @@ void btRigidBody::setupRigidBody(const btRigidBody::btRigidBodyConstructionInfo&
 
 	if (m_optionalMotionState)
 	{
-		m_optionalMotionState->getWorldTransform(m_worldTransform);
+		m_optionalMotionState->getWorldTransform(getWorldTransform());
 	}
 	else
 	{
-		m_worldTransform = constructionInfo.m_startWorldTransform;
+		setWorldTransform(constructionInfo.m_startWorldTransform);
 	}
 
-	m_interpolationWorldTransform = m_worldTransform;
+	m_interpolationWorldTransform = getWorldTransform();
 	m_interpolationLinearVelocity.setValue(0, 0, 0);
 	m_interpolationAngularVelocity.setValue(0, 0, 0);
 
@@ -100,9 +100,9 @@ void btRigidBody::predictIntegratedTransform(btScalar timeStep, btTransform& pre
 {
 
 	if (m_noRot) {
-		btTransformUtil::integrateTransformNoRot(m_worldTransform, m_linearVelocity, m_angularVelocity, timeStep, predictedTransform);
+		btTransformUtil::integrateTransformNoRot(getWorldTransform(), m_linearVelocity, m_angularVelocity, timeStep, predictedTransform);
 	} else {
-		btTransformUtil::integrateTransform(m_worldTransform, m_linearVelocity, m_angularVelocity, timeStep, predictedTransform);
+		btTransformUtil::integrateTransform(getWorldTransform(), m_linearVelocity, m_angularVelocity, timeStep, predictedTransform);
 	}
 }
 
@@ -113,20 +113,20 @@ void btRigidBody::saveKinematicState(btScalar timeStep)
 	{
 		//if we use motionstate to synchronize world transforms, get the new kinematic/animated world transform
 		if (getMotionState())
-			getMotionState()->getWorldTransform(m_worldTransform);
+			getMotionState()->getWorldTransform(getWorldTransform());
 		btVector3 linVel, angVel;
 
-		btTransformUtil::calculateVelocity(m_interpolationWorldTransform, m_worldTransform, timeStep, m_linearVelocity, m_angularVelocity);
+		btTransformUtil::calculateVelocity(m_interpolationWorldTransform, getWorldTransform(), timeStep, m_linearVelocity, m_angularVelocity);
 		m_interpolationLinearVelocity = m_linearVelocity;
 		m_interpolationAngularVelocity = m_angularVelocity;
-		m_interpolationWorldTransform = m_worldTransform;
+		m_interpolationWorldTransform = getWorldTransform();
 		//printf("angular = %f %f %f\n",m_angularVelocity.getX(),m_angularVelocity.getY(),m_angularVelocity.getZ());
 	}
 }
 
 void btRigidBody::getAabb(btVector3& aabbMin, btVector3& aabbMax) const
 {
-	getCollisionShape()->getAabb(m_worldTransform, aabbMin, aabbMax);
+	getCollisionShape()->getAabb(getWorldTransform(), aabbMin, aabbMax);
 }
 
 void btRigidBody::setGravity(const btVector3& acceleration)
@@ -252,7 +252,7 @@ void btRigidBody::setMassProps(btScalar mass, const btVector3& inertia)
 
 void btRigidBody::updateInertiaTensor()
 {
-	m_invInertiaTensorWorld = m_worldTransform.getBasis().scaled(m_invInertiaLocal) * m_worldTransform.getBasis().transpose();
+	m_invInertiaTensorWorld = getWorldTransform().getBasis().scaled(m_invInertiaLocal) * getWorldTransform().getBasis().transpose();
 }
 
 btVector3 btRigidBody::getLocalInertia() const
@@ -347,8 +347,8 @@ btVector3 btRigidBody::computeGyroscopicImpulseImplicit_World(btScalar step) con
 
 	btMatrix3x3 I;
 
-	I = m_worldTransform.getBasis().scaled(inertiaLocal) *
-		m_worldTransform.getBasis().transpose();
+	I = getWorldTransform().getBasis().scaled(inertiaLocal) *
+		getWorldTransform().getBasis().transpose();
 
 	// use newtons method to find implicit solution for new angular velocity (w')
 	// f(w') = -(T*step + Iw) + Iw' + w' + w'xIw'*step = 0
@@ -396,7 +396,7 @@ void btRigidBody::integrateVelocities(btScalar step)
 btQuaternion btRigidBody::getOrientation() const
 {
 	btQuaternion orn;
-	m_worldTransform.getBasis().getRotation(orn);
+	getWorldTransform().getBasis().getRotation(orn);
 	return orn;
 }
 
@@ -404,7 +404,7 @@ void btRigidBody::setCenterOfMassTransform(const btTransform& xform)
 {
 	if (isKinematicObject())
 	{
-		m_interpolationWorldTransform = m_worldTransform;
+		m_interpolationWorldTransform = getWorldTransform();
 	}
 	else
 	{
@@ -412,7 +412,7 @@ void btRigidBody::setCenterOfMassTransform(const btTransform& xform)
 	}
 	m_interpolationLinearVelocity = getLinearVelocity();
 	m_interpolationAngularVelocity = getAngularVelocity();
-	m_worldTransform = xform;
+	setWorldTransform(xform);
 	updateInertiaTensor();
 }
 
