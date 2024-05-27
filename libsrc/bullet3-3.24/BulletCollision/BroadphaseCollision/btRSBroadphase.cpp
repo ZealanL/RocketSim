@@ -270,13 +270,7 @@ void btRSBroadphase::destroyProxy(btBroadphaseProxy* proxyOrg, btCollisionDispat
 	if (sbp->isStatic) {
 		_UpdateCellsStatic<false>(this, sbp);
 	} else {
-		Cell& cell = cells[sbp->cellIdx];
-		for (int i = 0; i < cell.dynHandles.size(); i++) {
-			if (cell.dynHandles[i] == proxyOrg) {
-				cell.dynHandles.erase(cell.dynHandles.begin() + i);
-				break;
-			}
-		}
+		_UpdateCellsDynamic<false>(this, sbp, sbp->iIdx, sbp->jIdx, sbp->kIdx);
 		numDynProxies--;
 	}
 
