@@ -806,7 +806,7 @@ bool Arena::IsBallProbablyGoingIn(float maxTime, float extraMargin, Team* goalTe
 			return false;
 
 		float scoreDirSgn = RS_SGN(ballVel.y);
-		float goalY = RLConst::SOCCAR_GOAL_SCORE_BASE_THRESHOLD_Y * scoreDirSgn;
+		float goalY = _mutatorConfig.goalBaseThresholdY * scoreDirSgn;
 		float distToGoal = abs(ballPos.y - goalY);
 
 		float timeToGoal = distToGoal / abs(ballVel.y);
@@ -926,7 +926,7 @@ RSAPI bool Arena::IsBallScored() const {
 	case GameMode::SNOWDAY:
 	{
 		float ballPosY = ball->_rigidBody.getWorldTransform().m_origin.y() * BT_TO_UU;
-		return abs(ballPosY) > (RLConst::SOCCAR_GOAL_SCORE_BASE_THRESHOLD_Y + _mutatorConfig.ballRadius);
+		return abs(ballPosY) > (_mutatorConfig.goalBaseThresholdY + _mutatorConfig.ballRadius);
 	}
 	case GameMode::HOOPS:
 	{
