@@ -975,11 +975,11 @@ Arena::~Arena() {
 			for (BoostPad* boostPad : _boostPads)
 				delete boostPad;
 		}
-
-		delete[] _worldCollisionRBs;
-		delete[] _worldCollisionPlaneShapes;
-		delete[] _worldCollisionBvhShapes;
 	}
+
+	delete[] _worldCollisionRBs;
+	delete[] _worldCollisionPlaneShapes;
+	delete[] _worldCollisionBvhShapes;
 
 	delete _bulletWorldParams.overlappingPairCache;
 	delete _bulletWorldParams.broadphase;
