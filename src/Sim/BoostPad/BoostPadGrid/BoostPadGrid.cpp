@@ -14,8 +14,8 @@ void BoostPadGrid::CheckCollision(Car* car) {
 	int indexX = carPos.x / CELL_SIZE_X + (CELLS_X / 2);
 	int indexY = carPos.y / CELL_SIZE_Y + (CELLS_Y / 2);
 
-	for (int i = RS_MAX(indexX - 1, 0); i < CELLS_X; i++) {
-		for (int j = RS_MAX(indexY - 1, 0); j < CELLS_Y; j++) {
+	for (int i = RS_MAX(indexX - 1, 0); i <= RS_MIN(indexX + 1, CELLS_X - 1); i++) {
+		for (int j = RS_MAX(indexY - 1, 0); j <= RS_MIN(indexY + 1, CELLS_Y - 1); j++) {
 			BoostPad* pad = pads[i][j];
 			if (pad) {
 				pad->_CheckCollide(car);
