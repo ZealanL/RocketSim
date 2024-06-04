@@ -517,26 +517,38 @@ Arena::Arena(GameMode gameMode, const ArenaConfig& config, float tickRate) : _mu
 	if (loadArenaStuff) { // Initialize boost pads
 		using namespace RLConst::BoostPads;
 
-		bool isHoops = gameMode == GameMode::HOOPS;
+		if (_config.useCustomBoostPads) {
+			for (auto& padConfig : _config.customBoostPads) {
+				BoostPad* pad = BoostPad::_AllocBoostPad();
+				pad->_Setup(padConfig);
 
-		int amountSmall = isHoops ? LOCS_AMOUNT_SMALL_HOOPS : LOCS_AMOUNT_SMALL_SOCCAR;
-		_boostPads.reserve(LOCS_AMOUNT_BIG + amountSmall);
-
-		for (int i = 0; i < (LOCS_AMOUNT_BIG + amountSmall); i++) {
-			bool isBig = i < LOCS_AMOUNT_BIG;
-
-			btVector3 pos;
-			if (isHoops) {
-				pos = isBig ? LOCS_BIG_HOOPS[i] : LOCS_SMALL_HOOPS[i - LOCS_AMOUNT_BIG];
-			} else {
-				pos = isBig ? LOCS_BIG_SOCCAR[i] : LOCS_SMALL_SOCCAR[i - LOCS_AMOUNT_BIG];
+				_boostPads.push_back(pad);
 			}
+		} else {
+			bool isHoops = gameMode == GameMode::HOOPS;
 
-			BoostPad* pad = BoostPad::_AllocBoostPad();
-			pad->_Setup(isBig, pos);
+			int amountSmall = isHoops ? LOCS_AMOUNT_SMALL_HOOPS : LOCS_AMOUNT_SMALL_SOCCAR;
+			_boostPads.reserve(LOCS_AMOUNT_BIG + amountSmall);
 
-			_boostPads.push_back(pad);
-			_boostPadGrid.Add(pad);
+			for (int i = 0; i < (LOCS_AMOUNT_BIG + amountSmall); i++) {
+
+				BoostPadConfig padConfig;
+
+				padConfig.isBig = i < LOCS_AMOUNT_BIG;
+
+				btVector3 pos;
+				if (isHoops) {
+					padConfig.pos = padConfig.isBig ? LOCS_BIG_HOOPS[i] : LOCS_SMALL_HOOPS[i - LOCS_AMOUNT_BIG];
+				} else {
+					padConfig.pos = padConfig.isBig ? LOCS_BIG_SOCCAR[i] : LOCS_SMALL_SOCCAR[i - LOCS_AMOUNT_BIG];
+				}
+
+				BoostPad* pad = BoostPad::_AllocBoostPad();
+				pad->_Setup(padConfig);
+
+				_boostPads.push_back(pad);
+				_boostPadGrid.Add(pad);
+			}
 		}
 	}
 
@@ -764,8 +776,16 @@ void Arena::Step(int ticksToSimulate) {
 		for (Car* car : _cars) {
 			car->_PostTickUpdate(gameMode, tickTime, _mutatorConfig);
 			car->_FinishPhysicsTick(_mutatorConfig);
-			if (hasArenaStuff)
-				_boostPadGrid.CheckCollision(car);
+			if (hasArenaStuff) {
+				if (_config.useCustomBoostPads) {
+					// TODO: This is quite slow, we should use a sorting method of some sort
+					for (auto& boostPad : _boostPads) {
+						boostPad->_CheckCollide(car);
+					}
+				} else {
+					_boostPadGrid.CheckCollision(car);
+				}
+			}
 		}
 
 		if (hasArenaStuff && !ballOnly)
