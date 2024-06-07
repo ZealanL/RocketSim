@@ -1549,7 +1549,8 @@ btScalar btSequentialImpulseConstraintSolver::solveGroupCacheFriendlySetup(btCol
 	//convert all bodies
 	convertBodies(bodies, numBodies, infoGlobal);
 
-	convertJoints(constraints, numConstraints, infoGlobal);
+	// ROCKETSIM CHANGE: We do not need this
+	//convertJoints(constraints, numConstraints, infoGlobal);
 
 	convertContacts(manifoldPtr, numManifolds, infoGlobal);
 
