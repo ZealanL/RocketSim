@@ -236,20 +236,15 @@ btDiscreteDynamicsWorld::~btDiscreteDynamicsWorld()
 
 void btDiscreteDynamicsWorld::saveKinematicState(btScalar timeStep)
 {
-	///would like to iterate over m_nonStaticRigidBodies, but unfortunately old API allows
-	///to switch status _after_ adding kinematic objects to the world
-	///fix it for Bullet 3.x release
-	for (int i = 0; i < m_collisionObjects.size(); i++)
+	// ROCKETSIM CHANGE: Don't check if kinematic, just use m_nonStaticRigidBodies
+	for (int i = 0; i < m_nonStaticRigidBodies.size(); i++)
 	{
 		btCollisionObject* colObj = m_collisionObjects[i];
 		btRigidBody* body = btRigidBody::upcast(colObj);
 		if (body && body->getActivationState() != ISLAND_SLEEPING)
 		{
-			if (body->isKinematicObject())
-			{
-				//to calculate velocities next frame
-				body->saveKinematicState(timeStep);
-			}
+			//to calculate velocities next frame
+			body->saveKinematicState(timeStep);
 		}
 	}
 }
@@ -367,19 +362,23 @@ int btDiscreteDynamicsWorld::stepSimulation(btScalar timeStep, int maxSubSteps, 
 		//clamp the number of substeps, to prevent simulation grinding spiralling down to a halt
 		int clampedSimulationSteps = (numSimulationSubSteps > maxSubSteps) ? maxSubSteps : numSimulationSubSteps;
 
-		saveKinematicState(fixedTimeStep * clampedSimulationSteps);
+		// ROCKETSIM CHANGE: We do not need this
+		//saveKinematicState(fixedTimeStep * clampedSimulationSteps);
 
 		applyGravity();
 
 		for (int i = 0; i < clampedSimulationSteps; i++)
 		{
 			internalSingleStepSimulation(fixedTimeStep);
-			synchronizeMotionStates();
+
+			// ROCKETSIM CHANGE: We do not need this
+			//synchronizeMotionStates();
 		}
 	}
 	else
 	{
-		synchronizeMotionStates();
+		// ROCKETSIM CHANGE: We do not need this
+		//synchronizeMotionStates();
 	}
 
 	clearForces();
