@@ -69,10 +69,10 @@ void btSimulationIslandManager::updateActivationState(btCollisionWorld* colWorld
 	// put the index into m_controllers into m_tag
 	int index = 0;
 	{
-		int i;
-		for (i = 0; i < colWorld->getCollisionObjectArray().size(); i++)
+		auto& colObjArray = colWorld->getCollisionObjectArray();
+		for (int i = 0; i < colObjArray.size(); i++)
 		{
-			btCollisionObject* collisionObject = colWorld->getCollisionObjectArray()[i];
+			btCollisionObject* collisionObject = colObjArray[i];
 			//Adding filtering here
 			if (!collisionObject->isStaticOrKinematicObject())
 			{
