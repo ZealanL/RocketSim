@@ -47,8 +47,8 @@ namespace RLConst {
 		BOOST_MAX = 100.f,
 		BOOST_USED_PER_SECOND = BOOST_MAX / 3,
 		BOOST_MIN_TIME = 0.1f, // Minimum time we can be boosting for
-		BOOST_ACCEL_GROUND = 2380 / 120.f,
-		BOOST_ACCEL_AIR = (2380 + 160) / 120.f,
+		BOOST_ACCEL_GROUND = 2975/3.f, // uu/s for vel (on the ground)
+		BOOST_ACCEL_AIR = 3175/3.f, // uu/s for vel (airborne)
 		BOOST_SPAWN_AMOUNT = BOOST_MAX / 3,
 
 		CAR_MAX_ANG_SPEED = 5.5f, // Car can never exceed this angular velocity (radians/s)
@@ -75,7 +75,7 @@ namespace RLConst {
 		STOPPING_FORWARD_VEL = 25.f, // If we are costing with less than this forward vel, we full-brake
 		COASTING_BRAKE_FACTOR = 0.15f, // How much the brake is applied when costing
 		THROTTLE_DEADZONE = 0.001f, // Throttle input of less than this is ignored
-		THROTTLE_AIR_FORCE = (1 / 0.75f),
+		THROTTLE_AIR_ACCEL = 200/3.f,
 
 		JUMP_ACCEL = 4375.f / 3.f,
 		JUMP_IMMEDIATE_FORCE = 875.f / 3.f,
