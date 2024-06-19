@@ -127,6 +127,7 @@ void btCollisionShape::setMargin(btScalar margin) {
 
 void btCollisionShape::getBoundingSphere(btVector3& center, btScalar& radius) const {
 	switch (m_shapeType) {
+	// ROCKETSIM CHANGE: Add 0.08 to the radius if the object is a sphere
 	case SPHERE_SHAPE_PROXYTYPE:
 		center = btVector3(0, 0, 0);
 		radius = ((btSphereShape*)this)->getRadius() + 0.08;
