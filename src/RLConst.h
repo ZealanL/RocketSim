@@ -47,11 +47,9 @@ namespace RLConst {
 		BOOST_MAX = 100.f,
 		BOOST_USED_PER_SECOND = BOOST_MAX / 3,
 		BOOST_MIN_TIME = 0.1f, // Minimum time we can be boosting for
-		BOOST_ACCEL = 21.2f,
+		BOOST_ACCEL_GROUND = 2380 / 120.f,
+		BOOST_ACCEL_AIR = (2380 + 160) / 120.f,
 		BOOST_SPAWN_AMOUNT = BOOST_MAX / 3,
-
-		BOOST_ACCEL_GROUND_DECAY_MIN_VEL = 600.f,
-		BOOST_ACCEL_GROUND_DECAY_AMOUNT = 0.072f,
 
 		CAR_MAX_ANG_SPEED = 5.5f, // Car can never exceed this angular velocity (radians/s)
 
@@ -109,7 +107,7 @@ namespace RLConst {
 		SOCCAR_GOAL_SCORE_BASE_THRESHOLD_Y = 5124.25f,
 		HOOPS_GOAL_SCORE_THRESHOLD_Z = 270.f,
 
-		CAR_TORQUE_SCALE = 0.09587f,
+		CAR_TORQUE_SCALE = 2 * M_PI / (1 << 16) * 1000,
 
 		CAR_AUTOFLIP_IMPULSE = 200,
 		CAR_AUTOFLIP_TORQUE = 50,

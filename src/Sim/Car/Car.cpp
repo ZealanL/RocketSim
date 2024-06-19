@@ -90,7 +90,6 @@ void Car::_PreTickUpdate(GameMode gameMode, float tickTime, const MutatorConfig&
 	// Do first part of the btVehicleRL update (update wheel transforms, do traces, calculate friction impulses) 
 	_bulletVehicle.updateVehicleFirst(tickTime, grid);
 
-
 	btMatrix3x3 basis = _rigidBody.getWorldTransform().m_basis;
 
 	bool jumpPressed = controls.jump && !_internalState.lastControls.jump;
@@ -501,12 +500,10 @@ void Car::_UpdateBoost(float tickTime, const MutatorConfig& mutatorConfig, float
 	// Apply boosting force and consume boost
 	if (_internalState.boost > 0 && _internalState.timeSpentBoosting > 0) {
 		_internalState.boost = RS_MAX(_internalState.boost - mutatorConfig.boostUsedPerSecond * tickTime, 0);
-
-		float forceScale = 1;
-		if (_internalState.isOnGround && forwardSpeed_UU > BOOST_ACCEL_GROUND_DECAY_MIN_VEL)
-			forceScale = (1 - BOOST_ACCEL_GROUND_DECAY_AMOUNT);
-
-		_rigidBody.applyCentralForce(GetForwardDir() * mutatorConfig.boostAccel * forceScale * CAR_MASS_BT);
+		_rigidBody.applyCentralForce(
+			(_internalState.isOnGround ? mutatorConfig.boostAccelGround : mutatorConfig.boostAccelAir)
+			* GetForwardDir() * CAR_MASS_BT
+		);
 	}
 }
 
