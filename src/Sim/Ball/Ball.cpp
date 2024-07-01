@@ -198,9 +198,10 @@ void Ball::_OnHit(GameMode gameMode, Car* car) {
 	if (gameMode == GameMode::HEATSEEKER) {
 		using namespace RLConst;
 
-		bool increaseSpeed = (_internalState.hsInfo.timeSinceHit > Heatseeker::MIN_SPEEDUP_INTERVAL) || (_internalState.hsInfo.yTargetDir == 0);
-		_internalState.hsInfo.yTargetDir = car->team == Team::BLUE ? 1 : -1;
-		if (increaseSpeed) {
+		bool canIncrease = (_internalState.hsInfo.timeSinceHit > Heatseeker::MIN_SPEEDUP_INTERVAL) || (_internalState.hsInfo.yTargetDir == 0);
+		float newTargetDir = (car->team == Team::BLUE) ? 1 : -1;
+		if (canIncrease && (newTargetDir != _internalState.hsInfo.yTargetDir)) {
+			_internalState.hsInfo.yTargetDir = newTargetDir;
 			_internalState.hsInfo.timeSinceHit = 0;
 			_internalState.hsInfo.curTargetSpeed = RS_MIN(_internalState.hsInfo.curTargetSpeed + Heatseeker::TARGET_SPEED_INCREMENT, Heatseeker::MAX_SPEED);
 		}
