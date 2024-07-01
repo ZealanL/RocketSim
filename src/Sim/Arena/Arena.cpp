@@ -111,8 +111,6 @@ void Arena::SetCarBumpCallback(CarBumpEventFn callbackFunc, void* userInfo) {
 
 void Arena::ResetToRandomKickoff(int seed) {
 	using namespace RLConst;
-	bool isHoops = gameMode == GameMode::HOOPS;
-
 	// TODO: Make shuffling of kickoff setup more efficient (?)
 
 	static thread_local std::array<int, CAR_SPAWN_LOCATION_AMOUNT> KICKOFF_ORDER_TEMPLATE = { -1 };
@@ -131,10 +129,19 @@ void Arena::ResetToRandomKickoff(int seed) {
 		randEngine = new std::default_random_engine(seed);
 	}
 
-	std::shuffle(kickoffOrder.begin(), kickoffOrder.end(), *randEngine);
+	int locationAmount = (gameMode == GameMode::HEATSEEKER) ? CAR_SPAWN_LOCATION_AMOUNT_HEATSEEKER : CAR_SPAWN_LOCATION_AMOUNT;
 
-	const CarSpawnPos* CAR_SPAWN_LOCATIONS = isHoops ? CAR_SPAWN_LOCATIONS_HOOPS : CAR_SPAWN_LOCATIONS_SOCCAR;
-	const CarSpawnPos* CAR_RESPAWN_LOCATIONS = isHoops ? CAR_RESPAWN_LOCATIONS_HOOPS : CAR_RESPAWN_LOCATIONS_SOCCAR;
+	std::shuffle(kickoffOrder.begin(), kickoffOrder.begin() + locationAmount, *randEngine);
+
+	const CarSpawnPos* CAR_SPAWN_LOCATIONS = CAR_SPAWN_LOCATIONS_SOCCAR;
+	const CarSpawnPos* CAR_RESPAWN_LOCATIONS = CAR_RESPAWN_LOCATIONS_SOCCAR;
+	if (gameMode == GameMode::HOOPS) {
+		CAR_SPAWN_LOCATIONS = CAR_SPAWN_LOCATIONS_HOOPS;
+		CAR_RESPAWN_LOCATIONS = CAR_RESPAWN_LOCATIONS_HOOPS;
+	} else if (gameMode == GameMode::HEATSEEKER) {
+		CAR_SPAWN_LOCATIONS = CAR_SPAWN_LOCATIONS_HEATSEEKER;
+		CAR_RESPAWN_LOCATIONS = CAR_RESPAWN_LOCATIONS_SOCCAR;
+	}
 
 	std::vector<Car*> blueCars, orangeCars;
 	for (Car* car : _cars)
@@ -148,7 +155,7 @@ void Arena::ResetToRandomKickoff(int seed) {
 		CarSpawnPos spawnPos;
 	
 		if (i < CAR_SPAWN_LOCATION_AMOUNT) {
-			spawnPos = CAR_SPAWN_LOCATIONS[kickoffOrder[i]];
+			spawnPos = CAR_SPAWN_LOCATIONS[RS_MIN(kickoffOrder[i], locationAmount - 1)];
 		} else {
 			int respawnPosIdx = (i - (CAR_SPAWN_LOCATION_AMOUNT)) % CAR_RESPAWN_LOCATION_AMOUNT;
 			spawnPos = CAR_RESPAWN_LOCATIONS[respawnPosIdx];
@@ -194,7 +201,7 @@ void Arena::ResetToRandomKickoff(int seed) {
 	} else if (gameMode == GameMode::SNOWDAY) {
 		// Don't freeze
 		ballState.vel.z = FLT_EPSILON;
-	} else if (isHoops) {
+	} else if (gameMode == GameMode::HOOPS) {
 		ballState.vel.z = BALL_HOOPS_Z_VEL;
 	}
 	ball->SetState(ballState);

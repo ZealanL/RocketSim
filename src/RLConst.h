@@ -278,6 +278,7 @@ namespace RLConst {
 
 	constexpr int
 		CAR_SPAWN_LOCATION_AMOUNT = 5,
+		CAR_SPAWN_LOCATION_AMOUNT_HEATSEEKER = 4,
 		CAR_RESPAWN_LOCATION_AMOUNT = 4;
 
 	struct CarSpawnPos {
@@ -294,6 +295,14 @@ namespace RLConst {
 			{  -256, -3840, M_PI_4 * 2 },
 			{   256, -3840, M_PI_4 * 2 },
 			{     0, -4608, M_PI_4 * 2 }
+	};
+
+	const static CarSpawnPos
+		CAR_SPAWN_LOCATIONS_HEATSEEKER[CAR_SPAWN_LOCATION_AMOUNT_HEATSEEKER] = {
+			{ -1000, -4620, M_PI / 2 },
+			{  1000, -4620, M_PI / 2 },
+			{ -2000, -4620, M_PI / 2 },
+			{  2000, -4620, M_PI / 2 },
 	};
 
 	const static CarSpawnPos
