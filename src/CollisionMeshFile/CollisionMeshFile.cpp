@@ -8,7 +8,7 @@
 
 RS_NS_START
 
-void CollisionMeshFile::ReadFromStream(DataStreamIn& in, std::string filePath) {
+void CollisionMeshFile::ReadFromStream(DataStreamIn& in, bool silent, std::string filePath) {
 	constexpr char ERROR_PREFIX_STR[] = " > CollisionMeshFile::ReadFromStream(): ";
 
 	// If you have more verts or tris then this, I have no idea what you are doing, godspeed
@@ -56,7 +56,8 @@ void CollisionMeshFile::ReadFromStream(DataStreamIn& in, std::string filePath) {
 
 	UpdateHash();
 
-	RS_LOG("   > Loaded " << numVertices << " verts and " << numTris << " tris, hash: 0x" << std::hex << hash);
+	if (!silent)
+		RS_LOG("   > Loaded " << numVertices << " verts and " << numTris << " tris, hash: 0x" << std::hex << hash);
 }
 
 btTriangleMesh* CollisionMeshFile::MakeBulletMesh() {

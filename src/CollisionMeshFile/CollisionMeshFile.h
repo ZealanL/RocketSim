@@ -32,7 +32,7 @@ struct CollisionMeshFile {
 
 	uint32_t hash;
 
-	void ReadFromStream(DataStreamIn& in, std::string filePath = "<NO FILE PATH>");
+	void ReadFromStream(DataStreamIn& in, bool silent = false, std::string filePath = "<NO FILE PATH>");
 	btTriangleMesh* MakeBulletMesh();
 	void UpdateHash();
 };
