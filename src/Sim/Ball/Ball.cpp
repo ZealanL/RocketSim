@@ -190,7 +190,7 @@ void Ball::_PreTickUpdate(GameMode gameMode, float tickTime) {
 			_internalState.hsInfo.timeSinceHit += tickTime;
 		}
 	} else if (gameMode == GameMode::SNOWDAY) {
-		groundStickApplied = false;
+		_groundStickApplied = false;
 	}
 }
 
@@ -209,17 +209,38 @@ void Ball::_OnHit(GameMode gameMode, Car* car) {
 }
 
 void Ball::_OnWorldCollision(GameMode gameMode, Vec normal, float tickTime) {
+	using namespace RLConst;
+
 	if (gameMode == GameMode::HEATSEEKER) {
 		if (_internalState.hsInfo.yTargetDir != 0 ) {
+			Vec pos = _rigidBody.getWorldTransform().getOrigin() * BT_TO_UU;
 			float relNormalY = normal.y * _internalState.hsInfo.yTargetDir;
-			if (relNormalY <= -RLConst::Heatseeker::WALL_BOUNCE_CHANGE_NORMAL_Y) {
+			float relY = pos.y * _internalState.hsInfo.yTargetDir;
+			if (relNormalY <= -Heatseeker::WALL_BOUNCE_CHANGE_Y_NORMAL && 
+				relY >= ARENA_EXTENT_Y - Heatseeker::WALL_BOUNCE_CHANGE_Y_THRESH) {
+				// We hit far enough to change direction
 				_internalState.hsInfo.yTargetDir *= -1;
+
+				Vec pos = _rigidBody.getWorldTransform().getOrigin() * BT_TO_UU;
+				Vec vel = _rigidBody.m_linearVelocity * BT_TO_UU;
+
+				// TODO: Make this a member function
+				Vec goalTargetPos = Vec(0, Heatseeker::TARGET_Y * _internalState.hsInfo.yTargetDir, Heatseeker::TARGET_Z);
+
+				// Add wall bounce impulse
+				Vec dirToGoal = (goalTargetPos - pos).Normalized();
+
+				Vec bounceDir =
+					dirToGoal * (1 - Heatseeker::WALL_BOUNCE_UP_FRAC) +
+					Vec(0, 0, 1) * Heatseeker::WALL_BOUNCE_UP_FRAC;
+				Vec bounceImpulse = bounceDir * vel.Length() * Heatseeker::WALL_BOUNCE_FORCE_SCALE;
+				_velocityImpulseCache += bounceImpulse * UU_TO_BT;
 			}
 		}
 	} else if (gameMode == GameMode::SNOWDAY) {
-		if (!groundStickApplied) {
-			_rigidBody.applyCentralForce(-normal * RLConst::Snowday::PUCK_GROUND_STICK_FORCE);
-			groundStickApplied = true;
+		if (!_groundStickApplied) {
+			_rigidBody.applyCentralForce(-normal * Snowday::PUCK_GROUND_STICK_FORCE);
+			_groundStickApplied = true;
 		}
 	}
 }
