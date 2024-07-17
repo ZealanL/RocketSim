@@ -505,6 +505,8 @@ void Car::_UpdateBoost(float tickTime, const MutatorConfig& mutatorConfig, float
 			* GetForwardDir() * CAR_MASS_BT
 		);
 	}
+
+	_internalState.boost = RS_MIN(_internalState.boost, RLConst::BOOST_MAX);
 }
 
 void Car::_UpdateJump(float tickTime, const MutatorConfig& mutatorConfig, bool jumpPressed) {
