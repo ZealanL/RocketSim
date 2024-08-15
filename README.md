@@ -12,16 +12,13 @@ This means that with 12 threads running RocketSim, you can simulate around 10 da
 
 # Accuracy
 RocketSim is not a perfectly accurate replication of Rocket League, but is close enough for most applications (such as training ML bots).
-Perceivable differences between the simulation and the real game usually take at least a second to accumulate from an initial state.
-This means RocketSim is accurate enough to:
-- *Train machine learning bots*
+RocketSim is accurate enough to:
+- *Train machine learning bots to SSL level (and probably beyond)*
 - *Simulate different shots on the ball at different angles to find the best input combination*
 - *Simulate air control to find the optimal orientation input*
-- *Simulate ground and floor pinches*
+- *Simulate pinches*
 
-However, RocketSim is NOT accurate enough to:
-- *Accurately re-create entire games from inputs alone*
-- *Perfectly simulate long sequences of jumps and landings*
+However, the tiny errors will accumulate over time, so RocketSim is best suited for simulation with consistent feedback.
 
 ## Installation
 - Clone this repo and build it
