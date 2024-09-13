@@ -94,9 +94,17 @@ void Car::_PreTickUpdate(GameMode gameMode, float tickTime, const MutatorConfig&
 
 	bool jumpPressed = controls.jump && !_internalState.lastControls.jump;
 
+	// Update wheelsWithContact
 	int numWheelsInContact = 0;
-	for (int i = 0; i < 4; i++)
-		numWheelsInContact += _bulletVehicle.m_wheelInfo[i].m_raycastInfo.m_isInContact;
+	for (int i = 0; i < 4; i++) {
+		bool inContact = _bulletVehicle.m_wheelInfo[i].m_raycastInfo.m_isInContact;
+		_internalState.wheelsWithContact[i] = inContact;
+		numWheelsInContact += inContact;
+	}
+
+	{ // Update isOnGround
+		_internalState.isOnGround = numWheelsInContact >= 3;
+	}
 
 	float forwardSpeed_UU = _bulletVehicle.getForwardSpeed() * BT_TO_UU;
 	_UpdateWheels(tickTime, mutatorConfig, numWheelsInContact, forwardSpeed_UU);
@@ -129,18 +137,6 @@ void Car::_PostTickUpdate(GameMode gameMode, float tickTime, const MutatorConfig
 		return;
 
 	_internalState.rotMat = _rigidBody.getWorldTransform().m_basis;
-
-	// Update wheelsWithContact
-	int numWheelsInContact = 0;
-	for (int i = 0; i < 4; i++) {
-		bool inContact = _bulletVehicle.m_wheelInfo[i].m_raycastInfo.m_isInContact;
-		_internalState.wheelsWithContact[i] = inContact;
-		numWheelsInContact += inContact;
-	}
-
-	{ // Update isOnGround
-		_internalState.isOnGround = numWheelsInContact >= 3;
-	}
 
 	{ // Update supersonic
 		float speedSquared = (_rigidBody.m_linearVelocity * BT_TO_UU).length2();
