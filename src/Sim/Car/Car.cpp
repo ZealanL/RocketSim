@@ -546,6 +546,9 @@ void Car::_UpdateJump(float tickTime, const MutatorConfig& mutatorConfig, bool j
 		}
 
 		_rigidBody.applyCentralForce(totalJumpForce * UU_TO_BT * CAR_MASS_BT);
+	}
+
+	if (_internalState.isJumping || _internalState.hasJumped) {
 		_internalState.jumpTime += tickTime;
 	}
 }
