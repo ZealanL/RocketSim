@@ -514,6 +514,7 @@ void Car::_UpdateJump(float tickTime, const MutatorConfig& mutatorConfig, bool j
 			// TODO: RL does something similar to this time-pad, but not exactly the same
 		} else {
 			_internalState.hasJumped = false;
+			_internalState.jumpTime = 0;
 		}
 	}
 
