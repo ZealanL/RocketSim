@@ -24,11 +24,10 @@ void Car::SetState(const CarState& state) {
 	btTransform rbTransform;
 	rbTransform.setOrigin(state.pos * UU_TO_BT);
 	rbTransform.setBasis(state.rotMat);
-
 	_rigidBody.getWorldTransform() = rbTransform;
-
 	_rigidBody.m_linearVelocity = state.vel * UU_TO_BT;
 	_rigidBody.m_angularVelocity = state.angVel;
+	_rigidBody.updateInertiaTensor();
 
 	_velocityImpulseCache = { 0, 0, 0 };
 
