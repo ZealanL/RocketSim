@@ -12,7 +12,7 @@ struct CarControls {
 	float pitch, yaw, roll;
 
 	// Boolean action inputs
-	bool boost, jump, handbrake;
+	bool jump, boost, handbrake;
 
 	// Maybe someday...
 	// bool useItem;
