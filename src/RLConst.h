@@ -74,7 +74,9 @@ namespace RLConst {
 
 		STOPPING_FORWARD_VEL = 25.f, // If we are costing with less than this forward vel, we full-brake
 		COASTING_BRAKE_FACTOR = 0.15f, // How much the brake is applied when costing
+		BRAKING_NO_THROTTLE_SPEED_THRESH = 0.01f, // If we are braking and moving faster than this, disable throttle
 		THROTTLE_DEADZONE = 0.001f, // Throttle input of less than this is ignored
+		
 		THROTTLE_AIR_ACCEL = 200/3.f,
 
 		JUMP_ACCEL = 4375.f / 3.f,

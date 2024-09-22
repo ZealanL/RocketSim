@@ -366,7 +366,7 @@ void Car::_UpdateWheels(float tickTime, const MutatorConfig& mutatorConfig, int 
 					// Full brake is applied if we are trying to drive in the opposite direction
 					realBrake = 1;
 
-					if (absForwardSpeed_UU > 0.01f) {
+					if (absForwardSpeed_UU > BRAKING_NO_THROTTLE_SPEED_THRESH) {
 						// Kill actual throttle (we can't throttle and brake at the same time, even backwards)
 						engineThrottle = 0;
 					}
