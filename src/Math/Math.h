@@ -21,6 +21,9 @@ namespace Math {
 	RSAPI std::default_random_engine& GetRandEngine();
 
 	RSAPI float WrapNormalizeFloat(float val, float minmax);
+
+	// Simulates aggressive UE3 rotator rounding when converting from a UE3 rotator to vector
+	RSAPI Angle RoundAngleUE3(Angle ang);
 }
 
 RS_NS_END

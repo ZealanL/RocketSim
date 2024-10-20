@@ -180,11 +180,16 @@ void Ball::_PreTickUpdate(GameMode gameMode, float tickTime) {
 			// Limit pitch
 			newAngle.pitch = RS_CLAMP(newAngle.pitch, -Heatseeker::MAX_TURN_PITCH, Heatseeker::MAX_TURN_PITCH);
 
+			// Apply aggressive UE3 rotator rounding
+			// (This is suprisingly important for accuracy)
+			newAngle = Math::RoundAngleUE3(newAngle);
+			
 			// Determine new interpolated speed
 			float newSpeed = curSpeed + ((state.hsInfo.curTargetSpeed - curSpeed) * Heatseeker::SPEED_BLEND);
 
 			// Update velocity
 			Vec newDir = newAngle.GetForwardVec();
+
 			Vec newVel = newDir * newSpeed;
 			_rigidBody.m_linearVelocity = newVel * UU_TO_BT;
 
