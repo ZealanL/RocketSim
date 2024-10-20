@@ -312,6 +312,17 @@ struct Angle {
 		return other.GetDeltaTo(*this);
 	}
 
+	float operator[](size_t index) const {
+		assert(index < 3);
+		// TODO: Kind of lame? Unsure
+		return (index == 0) ? yaw : ((index == 1) ? pitch : roll);
+	}
+
+	float& operator[](size_t index) {
+		assert(index < 3);
+		return (index == 0) ? yaw : ((index == 1) ? pitch : roll);
+	}
+
 	friend std::ostream& operator<<(std::ostream& stream, const Angle& ang) {
 		stream << "(YPR)[ " << ang.yaw << ", " << ang.pitch << ", " << ang.roll << " ]";
 		return stream;
