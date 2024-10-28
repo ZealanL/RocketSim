@@ -8,7 +8,6 @@
 // AVAILABLE DEFS FOR ROCKETSIM:
 //	RS_MAX_SPEED: Define this to remove certain sanity checks for faster speed
 //	RS_DONT_LOG: Define this to disable all logging output
-//	RS_NO_SUSPCOLGRID: Disable the suspension-collision grid optimization
 //	RS_NO_NAMESPACE: Disable the RocketSim namespace encapsulating all RocketSim classes/structs
 
 class btBvhTriangleMeshShape;
@@ -37,8 +36,4 @@ namespace RocketSim {
 	RocketSimStage GetStage();
 
 	std::vector<btBvhTriangleMeshShape*>& GetArenaCollisionShapes(GameMode gameMode);
-
-#ifndef RS_NO_SUSPCOLGRID
-	SuspensionCollisionGrid& GetDefaultSuspColGrid(GameMode gameMode, bool isLight);
-#endif
 }

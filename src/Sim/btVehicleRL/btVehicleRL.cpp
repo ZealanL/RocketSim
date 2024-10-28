@@ -2,8 +2,6 @@
 #include "../../RLConst.h"
 #define ROLLING_INFLUENCE_FIX
 
-#include "../SuspensionCollisionGrid/SuspensionCollisionGrid.h"
-
 #include "../../../libsrc/bullet3-3.24/BulletDynamics/Dynamics/btDynamicsWorld.h"
 #include "../../../libsrc/bullet3-3.24/BulletDynamics/ConstraintSolver/btContactConstraint.h"
 
@@ -115,7 +113,7 @@ void btVehicleRL::updateWheelTransformsWS(btWheelInfoRL& wheel) {
 	wheel.m_raycastInfo.m_wheelAxleWS = chassisTrans.getBasis() * wheel.m_wheelAxleCS;
 }
 
-float btVehicleRL::rayCast(btWheelInfoRL& wheel, SuspensionCollisionGrid* grid) {
+float btVehicleRL::rayCast(btWheelInfoRL& wheel) {
 	updateWheelTransformsWS(wheel);
 
 	float depth = -1;
@@ -133,12 +131,7 @@ float btVehicleRL::rayCast(btWheelInfoRL& wheel, SuspensionCollisionGrid* grid) 
 	btVehicleRaycaster::btVehicleRaycasterResult rayResults;
 	
 	btAssert(m_vehicleRaycaster);
-	btCollisionObject* object;
-	if (grid) {
-		object = grid->CastSuspensionRay(m_vehicleRaycaster, source, target, m_chassisBody, rayResults);
-	} else {
-		object = (btCollisionObject*)m_vehicleRaycaster->castRay(source, target, m_chassisBody, rayResults);
-	}
+	btCollisionObject* object = (btCollisionObject*)m_vehicleRaycaster->castRay(source, target, m_chassisBody, rayResults);
 
 	// See: I23
 	if (object) {
@@ -215,7 +208,7 @@ const btTransform& btVehicleRL::getChassisWorldTransform() const {
 	return getRigidBody()->getCenterOfMassTransform();
 }
 
-void btVehicleRL::updateVehicleFirst(float step, SuspensionCollisionGrid* grid) {
+void btVehicleRL::updateVehicleFirst(float step) {
 
 	for (int i = 0; i < getNumWheels(); i++)
 		updateWheelTransform(i);
@@ -224,12 +217,8 @@ void btVehicleRL::updateVehicleFirst(float step, SuspensionCollisionGrid* grid) 
 	// simulate suspension
 	//
 
-	int i = 0;
-	for (i = 0; i < m_wheelInfo.size(); i++) {
-		//float depth;
-		//depth =
-		rayCast(m_wheelInfo[i], grid);
-	}
+	for (int i = 0; i < m_wheelInfo.size(); i++)
+		rayCast(m_wheelInfo[i]);
 
 	calcFrictionImpulses(step);
 }

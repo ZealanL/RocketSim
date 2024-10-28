@@ -7,7 +7,6 @@
 
 #include "../../CollisionMeshFile/CollisionMeshFile.h"
 #include "../BoostPad/BoostPadGrid/BoostPadGrid.h"
-#include "../SuspensionCollisionGrid/SuspensionCollisionGrid.h"
 #include "../MutatorConfig/MutatorConfig.h"
 #include "ArenaConfig/ArenaConfig.h"
 
@@ -44,8 +43,6 @@ public:
 	bool ownsBoostPads = true; // If true, deleing this arena instance deletes all boost pads
 	
 	BoostPadGrid _boostPadGrid;
-
-	SuspensionCollisionGrid _suspColGrid;
 
 	MutatorConfig _mutatorConfig;
 

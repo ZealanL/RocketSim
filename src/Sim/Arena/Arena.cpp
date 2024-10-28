@@ -426,7 +426,7 @@ void Arena::_BtCallback_OnCarWorldCollision(Car* car, btCollisionObject* world, 
 	manifoldPoint.m_combinedRestitution = _mutatorConfig.carWorldRestitution;
 }
 
-Arena::Arena(GameMode gameMode, const ArenaConfig& config, float tickRate) : _mutatorConfig(gameMode), _config(config), _suspColGrid(gameMode) {
+Arena::Arena(GameMode gameMode, const ArenaConfig& config, float tickRate) : _mutatorConfig(gameMode), _config(config) {
 
 	// Tickrate must be from 15 to 120tps
 	assert(tickRate >= 15 && tickRate <= 120);
@@ -492,11 +492,6 @@ Arena::Arena(GameMode gameMode, const ArenaConfig& config, float tickRate) : _mu
 
 	if (loadArenaStuff) {
 		_SetupArenaCollisionShapes();
-
-#ifndef RS_NO_SUSPCOLGRID
-		_suspColGrid = RocketSim::GetDefaultSuspColGrid(gameMode, memWeightMode == ArenaMemWeightMode::LIGHT);
-		_suspColGrid.defaultWorldCollisionRB = &_worldCollisionRBs[0];
-#endif
 
 		// Give arena collision shapes the proper restitution/friction values
 		for (size_t i = 0; i < _worldCollisionRBAmount; i++) {
@@ -729,45 +724,10 @@ void Arena::Step(int ticksToSimulate) {
 		bool ballOnly = _cars.empty();
 
 		bool hasArenaStuff = (gameMode != GameMode::THE_VOID);
-		bool shouldUpdateSuspColGrid = hasArenaStuff && !ballOnly;
-		if (shouldUpdateSuspColGrid) {
-#ifndef RS_NO_SUSPCOLGRID
-			{ // Add dynamic bodies to suspension grid
-				for (Car* car : _cars) {
-					if (car->_internalState.isDemoed)
-						continue;
 
-					btVector3 min, max;
-					car->_rigidBody.getAabb(min, max);
-					_suspColGrid.UpdateDynamicCollisions(min, max, false);
-				}
+		for (Car* car : _cars)
+			car->_PreTickUpdate(gameMode, tickTime, _mutatorConfig);
 
-				btVector3 min, max;
-				ball->_rigidBody.getAabb(min, max);
-				_suspColGrid.UpdateDynamicCollisions(min, max, false);
-			}
-#endif
-		}
-
-		for (Car* car : _cars) {
-			SuspensionCollisionGrid* suspColGridPtr;
-#ifdef RS_NO_SUSPCOLGRID
-			suspColGridPtr = NULL;
-#else
-			if (shouldUpdateSuspColGrid) {
-				suspColGridPtr = &_suspColGrid;
-			} else {
-				suspColGridPtr = NULL;
-			}
-#endif
-			car->_PreTickUpdate(gameMode, tickTime, _mutatorConfig, suspColGridPtr);
-		}
-
-		if (shouldUpdateSuspColGrid) {
-#ifndef RS_NO_SUSPCOLGRID
-			_suspColGrid.ClearDynamicCollisions();
-#endif
-		}
 
 		if (hasArenaStuff && !ballOnly) {
 			for (BoostPad* pad : _boostPads)

@@ -1,6 +1,5 @@
 #include "Car.h"
 #include "../../RLConst.h"
-#include "../SuspensionCollisionGrid/SuspensionCollisionGrid.h"
 
 #include "../../../libsrc/bullet3-3.24/BulletDynamics/Dynamics/btDynamicsWorld.h"
 
@@ -55,7 +54,7 @@ void Car::Respawn(GameMode gameMode, int seed, float boostAmount) {
 	this->SetState(newState);
 }
 
-void Car::_PreTickUpdate(GameMode gameMode, float tickTime, const MutatorConfig& mutatorConfig, SuspensionCollisionGrid* grid) {
+void Car::_PreTickUpdate(GameMode gameMode, float tickTime, const MutatorConfig& mutatorConfig) {
 	using namespace RLConst;
 
 #ifndef RS_MAX_SPEED
@@ -87,7 +86,7 @@ void Car::_PreTickUpdate(GameMode gameMode, float tickTime, const MutatorConfig&
 		return; // No other updates need to occur
 
 	// Do first part of the btVehicleRL update (update wheel transforms, do traces, calculate friction impulses) 
-	_bulletVehicle.updateVehicleFirst(tickTime, grid);
+	_bulletVehicle.updateVehicleFirst(tickTime);
 
 	btMatrix3x3 basis = _rigidBody.getWorldTransform().m_basis;
 
