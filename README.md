@@ -64,7 +64,7 @@ v2.1.0 = 114,481tps
 ## Issues & PRs
 Feel free to make issues and pull requests if you encounter any issues!
 
-You can also contact me on Discord if you have questions: `Zealan#5987`
+You can also contact me on Discord if you have questions: `zealanl`
 
 ## Legal Notice
 RocketSim was written to replicate Rocket League's game logic, but does not actually contain any code from the game.
