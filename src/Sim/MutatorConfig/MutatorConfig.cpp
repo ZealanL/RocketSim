@@ -12,6 +12,8 @@ MutatorConfig::MutatorConfig(GameMode gameMode) {
 	case GameMode::SNOWDAY:
 		ballRadius = Snowday::PUCK_RADIUS;
 		break;
+	case GameMode::DROPSHOT:
+		ballRadius = BALL_COLLISION_RADIUS_DROPSHOT;
 	default:
 		ballRadius = BALL_COLLISION_RADIUS_SOCCAR;
 	}

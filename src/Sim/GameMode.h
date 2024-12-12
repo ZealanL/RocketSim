@@ -8,10 +8,11 @@ enum class GameMode : byte {
 	HOOPS,
 	HEATSEEKER,
 	SNOWDAY,
+	DROPSHOT,
 
-	// More coming soon!
+	// I will not add rumble unless I am given a large amount of money, or, alternatively, a large amount of candy corn (I love candy corn)
 
-	// No goals, boosts, or arena - cars/ball will fall infinitely, ball is frozen until touched
+	// Soccar but without goals, boost pads, or the arena hull. The cars and ball will fall infinitely.
 	THE_VOID,
 };
 
@@ -19,7 +20,8 @@ constexpr const char* GAMEMODE_STRS[] = {
 	"soccar",
 	"hoops",
 	"heatseeker",
-	"snowday"
+	"snowday",
+	"dropshot"
 };
 
 RS_NS_END

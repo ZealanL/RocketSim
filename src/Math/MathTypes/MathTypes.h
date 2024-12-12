@@ -99,7 +99,7 @@ struct RS_ALIGN_16 Vec {
 		return ((float*)this)[index];
 	}
 
-	float operator[](uint32_t index) const {
+	constexpr float operator[](uint32_t index) const {
 		assert(index >= 0 && index < 3);
 		return ((float*)this)[index];
 	}

@@ -203,6 +203,8 @@ void Arena::ResetToRandomKickoff(int seed) {
 		ballState.vel.z = FLT_EPSILON;
 	} else if (gameMode == GameMode::HOOPS) {
 		ballState.vel.z = BALL_HOOPS_Z_VEL;
+	} else if (gameMode == GameMode::DROPSHOT) {
+		ballState.vel = Dropshot::BALL_START_VEL;
 	}
 	ball->SetState(ballState);
 
@@ -516,7 +518,7 @@ Arena::Arena(GameMode gameMode, const ArenaConfig& config, float tickRate) : _mu
 		ball->SetState(BallState());
 	}
 
-	if (loadArenaStuff) { // Initialize boost pads
+	if (loadArenaStuff && gameMode != GameMode::DROPSHOT) { // Initialize boost pads
 		using namespace RLConst::BoostPads;
 
 		if (_config.useCustomBoostPads) {
@@ -724,7 +726,7 @@ void Arena::Step(int ticksToSimulate) {
 		bool ballOnly = _cars.empty();
 
 		bool hasArenaStuff = (gameMode != GameMode::THE_VOID);
-
+		
 		for (Car* car : _cars)
 			car->_PreTickUpdate(gameMode, tickTime, _mutatorConfig);
 
@@ -975,6 +977,7 @@ Arena::~Arena() {
 void Arena::_SetupArenaCollisionShapes() {
 	assert(gameMode != GameMode::THE_VOID);
 	bool isHoops = gameMode == GameMode::HOOPS;
+	bool isDropShot = gameMode == GameMode::DROPSHOT;
 
 	auto collisionMeshes = RocketSim::GetArenaCollisionShapes(gameMode);
 
@@ -1023,17 +1026,19 @@ void Arena::_SetupArenaCollisionShapes() {
 		float 
 			extentX = isHoops ? ARENA_EXTENT_X_HOOPS : ARENA_EXTENT_X,
 			extentY = isHoops ? ARENA_EXTENT_Y_HOOPS : ARENA_EXTENT_Y,
-			height  = isHoops ? ARENA_HEIGHT_HOOPS : ARENA_HEIGHT;
+			height  = isDropShot ? ARENA_HEIGHT_DROPSHOT : (isHoops ? ARENA_HEIGHT_HOOPS : ARENA_HEIGHT);
 
 		// TODO: This is all very repetitive and silly
 
-		// Floor
-		auto floorShape = btStaticPlaneShape(btVector3(0, 0, 1), 0);
-		_AddStaticCollisionShape(
-			collisionMeshes.size() + 0,
-			0,
-			&floorShape, _worldCollisionPlaneShapes
-		);
+		if (!isDropShot) {
+			// Floor
+			auto floorShape = btStaticPlaneShape(btVector3(0, 0, 1), 0);
+			_AddStaticCollisionShape(
+				collisionMeshes.size() + 0,
+				0,
+				&floorShape, _worldCollisionPlaneShapes
+			);
+		}
 		
 		// Ceiling
 		auto ceilingShape = btStaticPlaneShape(btVector3(0, 0, -1), 0);
@@ -1044,21 +1049,23 @@ void Arena::_SetupArenaCollisionShapes() {
 			Vec(0, 0, height) * UU_TO_BT
 		);
 
-		// Side walls
-		auto leftWallShape = btStaticPlaneShape(btVector3(1, 0, 0), 0);
-		_AddStaticCollisionShape(
-			collisionMeshes.size() + 2,
-			2,
-			&leftWallShape, _worldCollisionPlaneShapes,
-			Vec(-extentX, 0, height / 2) * UU_TO_BT
-		);
-		auto rightWallShape = btStaticPlaneShape(btVector3(-1, 0, 0), 0);
-		_AddStaticCollisionShape(
-			collisionMeshes.size() + 3,
-			3,
-			&rightWallShape, _worldCollisionPlaneShapes,
-			Vec(extentX, 0, height / 2) * UU_TO_BT
-		);
+		if (!isDropShot) {
+			// Side walls
+			auto leftWallShape = btStaticPlaneShape(btVector3(1, 0, 0), 0);
+			_AddStaticCollisionShape(
+				collisionMeshes.size() + 2,
+				2,
+				&leftWallShape, _worldCollisionPlaneShapes,
+				Vec(-extentX, 0, height / 2) * UU_TO_BT
+			);
+			auto rightWallShape = btStaticPlaneShape(btVector3(-1, 0, 0), 0);
+			_AddStaticCollisionShape(
+				collisionMeshes.size() + 3,
+				3,
+				&rightWallShape, _worldCollisionPlaneShapes,
+				Vec(extentX, 0, height / 2) * UU_TO_BT
+			);
+		}
 
 		if (isHoops) {
 			// Y walls

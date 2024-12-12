@@ -20,8 +20,8 @@ struct ArenaConfig {
 	ArenaMemWeightMode memWeightMode = ArenaMemWeightMode::HEAVY;
 
 	// Mininimum and maximum positions all physics objects
-	Vec minPos = Vec(-4500, -6000, 0),
-		maxPos = Vec( 4500,  6000, 2500);
+	Vec minPos = Vec(-5600, -6000, 0),
+		maxPos = Vec( 5600,  6000, 2200);
 	
 	// Maximum length of any object
 	// Calculated as the distance from AABB min to AABB max
