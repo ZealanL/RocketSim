@@ -717,15 +717,11 @@ void Car::_UpdateDoubleJumpOrFlip(float tickTime, const MutatorConfig& mutatorCo
 							if (shouldDodgeBackwards)
 								initalDodgeVel.x() *= FLIP_BACKWARD_IMPULSE_SCALE_X;
 
-							btVector3 forwardDir = GetForwardDir();
-							float forwardAng = atan2f(forwardDir.y(), forwardDir.x());
-
-							btVector3
-								xVelDir = { cosf(forwardAng), -sinf(forwardAng), 0.f },
-								yVelDir = { sinf(forwardAng), cosf(forwardAng), 0.f };
+							btVector3 forwardDir = GetForwardDir().To2D();
+							btVector3 yVelDir(-forwardDir.y(), forwardDir.x(), 0.f);
 
 							btVector3 finalDeltaVel = {
-								initalDodgeVel.dot(xVelDir),
+								initalDodgeVel.dot(forwardDir),
 								initalDodgeVel.dot(yVelDir),
 								0.f
 							};
