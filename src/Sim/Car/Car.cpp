@@ -706,25 +706,21 @@ void Car::_UpdateDoubleJumpOrFlip(float tickTime, const MutatorConfig& mutatorCo
 								shouldDodgeBackwards = (dodgeDir.x() >= 0.0f) != (forwardSpeed_UU >= 0.0f);
 							}
 
-							btVector3 initalDodgeVel = dodgeDir * FLIP_INITIAL_VEL_SCALE;
+							Vec initalDodgeVel = dodgeDir * FLIP_INITIAL_VEL_SCALE;
 
 							float maxSpeedScaleX =
 								shouldDodgeBackwards ? FLIP_BACKWARD_IMPULSE_MAX_SPEED_SCALE : FLIP_FORWARD_IMPULSE_MAX_SPEED_SCALE;
 
-							initalDodgeVel.x() *= ((maxSpeedScaleX - 1) * forwardSpeedRatio) + 1.f;
-							initalDodgeVel.y() *= ((FLIP_SIDE_IMPULSE_MAX_SPEED_SCALE - 1) * forwardSpeedRatio) + 1.f;
+							initalDodgeVel.x *= ((maxSpeedScaleX - 1) * forwardSpeedRatio) + 1.f;
+							initalDodgeVel.y *= ((FLIP_SIDE_IMPULSE_MAX_SPEED_SCALE - 1) * forwardSpeedRatio) + 1.f;
 
 							if (shouldDodgeBackwards)
-								initalDodgeVel.x() *= FLIP_BACKWARD_IMPULSE_SCALE_X;
+								initalDodgeVel.x *= FLIP_BACKWARD_IMPULSE_SCALE_X;
 
-							btVector3 forwardDir = GetForwardDir().To2D();
-							btVector3 yVelDir(-forwardDir.y(), forwardDir.x(), 0.f);
+							Vec forwardDir2D = GetForwardDir().To2D().Normalized();
+							Vec rightDir2D = Vec(-forwardDir2D.y, forwardDir2D.x, 0.f);
 
-							btVector3 finalDeltaVel = {
-								initalDodgeVel.dot(forwardDir),
-								initalDodgeVel.dot(yVelDir),
-								0.f
-							};
+							Vec finalDeltaVel = initalDodgeVel.x * forwardDir2D + initalDodgeVel.y * rightDir2D;
 
 							_rigidBody.applyCentralImpulse(finalDeltaVel * UU_TO_BT * CAR_MASS_BT);
 						}
