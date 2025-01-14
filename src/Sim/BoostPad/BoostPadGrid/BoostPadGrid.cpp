@@ -3,7 +3,7 @@
 RS_NS_START
 
 void BoostPadGrid::CheckCollision(Car* car) {
-	if (car->_internalState.isDemoed || car->_internalState.boost >= 100)
+	if (car->_internalState.isDemoed || car->_internalState.boost >= RLConst::BOOST_MAX)
 		return;
 
 	Vec carPos = car->_rigidBody.getWorldTransform().m_origin * BT_TO_UU;
