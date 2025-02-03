@@ -28,7 +28,12 @@ struct CarConfig {
 
 	WheelPairConfig frontWheels, backWheels;
 
-	// abs(yaw or pitch or roll) input will need to be >= this in order to flip
+	// Car has three-wheel behavior (psyclops)
+	// NOTE: The psyclops actually has 4 wheels, the front two are combined
+	// No car actually has only 3 simulated wheels
+	bool threeWheels = false;
+
+	// (|yaw| + |pitch| + |roll|) will need to be >= this in order to flip
 	float dodgeDeadzone = 0.5f;
 };
 
@@ -40,6 +45,6 @@ WHEEL_PAIR_CONFIG_SERIALIZATION_FIELDS(name.backWheels) \
 // Global car configurations for all car type presets
 // NOTE: CAR_CONFIG_PLANK is the batmobile preset
 RSAPI const extern CarConfig
-	CAR_CONFIG_OCTANE, CAR_CONFIG_DOMINUS, CAR_CONFIG_PLANK, CAR_CONFIG_BREAKOUT, CAR_CONFIG_HYBRID, CAR_CONFIG_MERC;
+	CAR_CONFIG_OCTANE, CAR_CONFIG_DOMINUS, CAR_CONFIG_PLANK, CAR_CONFIG_BREAKOUT, CAR_CONFIG_HYBRID, CAR_CONFIG_MERC, CAR_CONFIG_PSYCLOPS;
 
 RS_NS_END

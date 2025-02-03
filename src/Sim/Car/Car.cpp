@@ -62,7 +62,7 @@ void Car::_PreTickUpdate(GameMode gameMode, float tickTime, const MutatorConfig&
 	controls.ClampFix();
 #endif
 
-	assert(_bulletVehicle.getNumWheels() == 4);
+	assert(_bulletVehicle.getNumWheels() == 4 || _bulletVehicle.getNumWheels() == 3);
 
 	{ // Update simulation state
 		if (_internalState.isDemoed) {
@@ -94,7 +94,7 @@ void Car::_PreTickUpdate(GameMode gameMode, float tickTime, const MutatorConfig&
 
 	// Update wheelsWithContact
 	int numWheelsInContact = 0;
-	for (int i = 0; i < 4; i++) {
+	for (int i = 0; i < _bulletVehicle.m_wheelInfo.size(); i++) {
 		bool inContact = _bulletVehicle.m_wheelInfo[i].m_raycastInfo.m_isInContact;
 		_internalState.wheelsWithContact[i] = inContact;
 		numWheelsInContact += inContact;
@@ -240,8 +240,12 @@ void Car::_BulletSetup(GameMode gameMode, btDynamicsWorld* bulletWorld, const Mu
 		btVector3 wheelDirectionCS(0, 0, -1), wheelAxleCS(0, -1, 0);
 
 		{ // Set up wheels
-			for (int i = 0; i < 4; i++) {
+			int numWheels = 4;//config.threeWheels ? 3 : 4;
+			for (int i = 0; i < numWheels; i++) {
 				bool front = i < 2;
+				if (numWheels == 3)
+					front = i == 0;
+
 				bool left = i % 2;
 
 				float radius = front ? config.frontWheels.wheelRadius : config.backWheels.wheelRadius;
@@ -332,7 +336,7 @@ void Car::_UpdateWheels(float tickTime, const MutatorConfig& mutatorConfig, int 
 	float absForwardSpeed_UU = abs(forwardSpeed_UU);
 
 	bool wheelsHaveWorldContact = false;
-	for (int i = 0; i < 4; i++)
+	for (int i = 0; i < _bulletVehicle.m_wheelInfo.size(); i++)
 		wheelsHaveWorldContact |= _bulletVehicle.m_wheelInfo[i].m_isInContactWithWorld;
 
 	{ // Increase/decrease handbrake value from input
@@ -385,14 +389,14 @@ void Car::_UpdateWheels(float tickTime, const MutatorConfig& mutatorConfig, int 
 
 		float driveEngineForce = engineThrottle * (THROTTLE_TORQUE_AMOUNT * UU_TO_BT) * driveSpeedScale;
 		float driveBrakeForce = realBrake * (BRAKE_TORQUE_AMOUNT * UU_TO_BT);
-		for (int i = 0; i < 4; i++) {
+		for (int i = 0; i < _bulletVehicle.m_wheelInfo.size(); i++) {
 			_bulletVehicle.m_wheelInfo[i].m_engineForce = driveEngineForce;
 			_bulletVehicle.m_wheelInfo[i].m_brake = driveBrakeForce;
 		}
 	}
 
 	{ // Update steering
-		float steerAngle = STEER_ANGLE_FROM_SPEED_CURVE.GetOutput(absForwardSpeed_UU);
+		float steerAngle = (config.threeWheels ? STEER_ANGLE_FROM_SPEED_CURVE_THREEWHEEL : STEER_ANGLE_FROM_SPEED_CURVE).GetOutput(absForwardSpeed_UU);
 
 		if (_internalState.handbrakeVal) {
 			steerAngle +=
@@ -406,7 +410,7 @@ void Car::_UpdateWheels(float tickTime, const MutatorConfig& mutatorConfig, int 
 	}
 
 	{ // Update friction
-		for (int i = 0; i < 4; i++) {
+		for (int i = 0; i < _bulletVehicle.m_wheelInfo.size(); i++) {
 			auto& wheel = _bulletVehicle.m_wheelInfo[i];
 			if (wheel.m_raycastInfo.m_groundObject) {
 
@@ -430,7 +434,7 @@ void Car::_UpdateWheels(float tickTime, const MutatorConfig& mutatorConfig, int 
 				if (baseFriction > 5)
 					frictionCurveInput = baseFriction / (abs(crossVec.dot(longDir)) + baseFriction);
 
-				float latFriction = LAT_FRICTION_CURVE.GetOutput(frictionCurveInput);
+				float latFriction = (config.threeWheels ? LAT_FRICTION_CURVE_THREEWHEEL : LAT_FRICTION_CURVE).GetOutput(frictionCurveInput);
 				float longFriction = LONG_FRICTION_CURVE.GetOutput(frictionCurveInput);
 
 				if (_internalState.handbrakeVal) {
@@ -465,7 +469,7 @@ void Car::_UpdateWheels(float tickTime, const MutatorConfig& mutatorConfig, int 
 
 		bool fullStick = (realThrottle != 0) || (absForwardSpeed_UU > STOPPING_FORWARD_VEL);
 
-		float stickyForceScale = 0.5f;
+		float stickyForceScale = config.threeWheels ? 0 : 0.5f;
 		if (fullStick)
 			stickyForceScale += 1 - abs(upwardsDir.z());
 
@@ -517,7 +521,7 @@ void Car::_UpdateJump(float tickTime, const MutatorConfig& mutatorConfig, bool j
 	}
 
 	if (_internalState.isJumping) {
-		if (_internalState.jumpTime < JUMP_MIN_TIME || controls.jump && _internalState.jumpTime < JUMP_MAX_TIME) {
+		if (_internalState.jumpTime < JUMP_MIN_TIME || (controls.jump && _internalState.jumpTime < JUMP_MAX_TIME)) {
 			// Continue jump
 			_internalState.isJumping = true;
 		} else {

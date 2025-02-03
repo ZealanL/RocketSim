@@ -389,6 +389,13 @@ namespace RLConst {
 		}
 	};
 
+	const static LinearPieceCurve STEER_ANGLE_FROM_SPEED_CURVE_THREEWHEEL = {
+		{
+			{0,		0.342473f},
+			{2300,	0.034837f}
+		}
+	};
+
 	// Input: Forward car speed 
 	// Output: Extended steering angle (radians)
 	const static LinearPieceCurve POWERSLIDE_STEER_ANGLE_FROM_SPEED_CURVE = {
@@ -420,6 +427,13 @@ namespace RLConst {
 		{
 			{0,	1.0f},
 			{1,	0.2f},
+		}
+	};
+
+	const static LinearPieceCurve LAT_FRICTION_CURVE_THREEWHEEL = {
+		{
+			{0,	0.30f},
+			{1,	0.25f},
 		}
 	};
 

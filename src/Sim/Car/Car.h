@@ -26,6 +26,7 @@ struct CarState : public PhysState {
 
 	// Whether each of the 4 wheels have contact
 	// First two are front
+	// If your car has 3 wheels, the 4th bool will always be false
 	bool wheelsWithContact[4] = {}; 
 
 	// Whether we jumped to get into the air

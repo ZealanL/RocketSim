@@ -304,7 +304,7 @@ void btVehicleRL::calcFrictionImpulses(float timeStep) {
 	float frictionScale = m_chassisBody->getMass() / 3;
 
 	// Determine impulses
-	for (int i = 0; i < 4; i++) {
+	for (int i = 0; i < m_wheelInfo.size(); i++) {
 		btWheelInfoRL& wheel = m_wheelInfo[i];
 
 		btRigidBody* groundObject = (btRigidBody*)wheel.m_raycastInfo.m_groundObject;
@@ -379,7 +379,7 @@ void btVehicleRL::calcFrictionImpulses(float timeStep) {
 void btVehicleRL::applyFrictionImpulses(float timeStep) {
 	// Apply impulses
 	btVector3 upDir = m_chassisBody->getWorldTransform().getBasis().getColumn(m_indexUpAxis);
-	for (int i = 0; i < 4; i++) {
+	for (int i = 0; i < m_wheelInfo.size(); i++) {
 		btWheelInfoRL& wheel = m_wheelInfo[i];
 		if (!wheel.m_impulse.isZero()) {
 			btVector3 wheelContactOffset = wheel.m_raycastInfo.m_contactPointWS - m_chassisBody->getWorldTransform().getOrigin();
@@ -392,7 +392,7 @@ void btVehicleRL::applyFrictionImpulses(float timeStep) {
 
 btVector3 btVehicleRL::getUpwardsDirFromWheelContacts() {
 	btVector3 sumContactDir = btVector3(0, 0, 0);
-	for (int i = 0; i < 4; i++)
+	for (int i = 0; i < m_wheelInfo.size(); i++)
 		if (m_wheelInfo[i].m_raycastInfo.m_isInContact)
 			sumContactDir += m_wheelInfo[i].m_raycastInfo.m_contactNormalWS;
 
