@@ -4,39 +4,19 @@
 
 RS_NS_START
 
+static Vec g_TilePositions[RLConst::Dropshot::NUM_TILES_PER_TEAM] = {};
+
+// NOTE: Neighbors include the starting tile
+static std::vector<int> g_TileNeighbors1[RLConst::Dropshot::NUM_TILES_PER_TEAM] = {};
+static std::vector<int> g_TileNeighbors2[RLConst::Dropshot::NUM_TILES_PER_TEAM] = {};
+
 Vec DropshotTiles::GetTilePos(int team, int index) {
 	using namespace RLConst;
 
-	Vec tilePositions[Dropshot::NUM_TILES_PER_TEAM];
+	assert(team >= 0 && team <= 1);
+	assert(index >= 0 && team < Dropshot::NUM_TILES_PER_TEAM);
 
-	// Build tile lookup table
-	static std::once_flag onceFlag;
-	std::call_once(onceFlag,
-		[&tilePositions] {
-
-			// Generate rows of tiles (along y)
-			int curIdx = 0;
-			float y = Dropshot::TILE_OFFSET_Y;
-			for (
-				int i = 0, numTiles = Dropshot::TILES_IN_FIRST_ROW; 
-				i < Dropshot::NUM_TILE_ROWS; 
-				i++, numTiles--) {
-
-				// Generate columns (along x)
-				float rowSizeX = Dropshot::TILE_SIZE_X * numTiles;
-				float rowStartX = -(rowSizeX / 2);
-				for (int j = 0; j < numTiles; j++, curIdx++) {
-					float x = rowStartX + Dropshot::TILE_SIZE_X * j;
-					tilePositions[curIdx] = Vec(x, y, 0);
-				}
-
-				y += Dropshot::TILE_OFFSET_Y;
-			}
-				
-		}
-	);
-
-	return tilePositions[index] * ((team == 0) ? -1 : 1);
+	return g_TilePositions[index] * ((team == 0) ? -1 : 1);
 }
 
 std::vector<btCollisionShape*> DropshotTiles::MakeTileShapes() {
@@ -48,27 +28,105 @@ std::vector<btCollisionShape*> DropshotTiles::MakeTileShapes() {
 		for (int i = 0; i < Dropshot::NUM_TILES_PER_TEAM; i++) {
 			Vec pos = GetTilePos(team, i);
 
-			// TODO: Hardcoding 6 is not that unreasonable but a little lame, I should add "RS_ARRAYSIZE()"...
-			Vec verts[6]; 
-			for (int j = 0; j < 6; j++) {
-				Vec vert = pos + Dropshot::TILE_HEXAGON_VERTS_BT[j] * UU_TO_BT;
+			btConvexHullShape* hullShape = new btConvexHullShape();
 
-				// Clamp vert from crossing x=0
+			for (int j = 0; j < 6; j++) {
+
+				Vec vert = pos * UU_TO_BT + Dropshot::TILE_HEXAGON_VERTS_BT[j];
+
+				constexpr float CLAMP_Y = Dropshot::TILE_OFFSET_Y * UU_TO_BT;
+
+				// Clamp vert from crossing middle part at x=0
 				if (team == 0) {
-					// Clamp max to 0
-					vert.y = RS_MIN(vert.y, 0);
+					// Clamp max to CLAMP_Y
+					vert.y = RS_MIN(vert.y, -CLAMP_Y);
 				} else {
-					// Clamp min to 0
-					vert.y = RS_MAX(vert.y, 0);
+					// Clamp min to CLAMP_Y
+					vert.y = RS_MAX(vert.y, CLAMP_Y);
 				}
+
+				hullShape->addPoint(vert);
 			}
 
-			btConvexHullShape* hullShape = new btConvexHullShape((const btScalar*)verts, 6, sizeof(Vec));
+			hullShape->recalcLocalAabb();
+			btVector3 localInertia;
+			hullShape->calculateLocalInertia(0, localInertia);
+
 			results.push_back(hullShape);
 		}
 	}
 
 	return results;
+}
+
+void DropshotTiles::Init() {
+	using namespace RLConst;
+
+	{ // Generate g_TilePositions by making rows along X
+
+		int curIdx = 0;
+		float y = Dropshot::TILE_OFFSET_Y;
+		for (
+			int i = 0, numTiles = Dropshot::TILES_IN_FIRST_ROW;
+			i < Dropshot::NUM_TILE_ROWS;
+			i++, numTiles--) {
+
+			// Generate column (along x)
+			float rowSizeX = Dropshot::TILE_WIDTH_X * numTiles;
+			float rowStartX = -(rowSizeX / 2.f) + (Dropshot::TILE_WIDTH_X/2);
+
+			for (int j = 0; j < numTiles; j++, curIdx++) {
+				if (curIdx > Dropshot::NUM_TILES_PER_TEAM)
+					RS_ERR_CLOSE("DropshotTiles::Init(): Exceeded maximum tile count, make sure tile info is correct");
+
+				float x = rowStartX + Dropshot::TILE_WIDTH_X * j;
+				g_TilePositions[curIdx] = Vec(x, y, 0);
+			}
+
+			y += Dropshot::ROW_OFFSET_Y;
+		}
+
+		if (curIdx < Dropshot::NUM_TILES_PER_TEAM)
+			RS_ERR_CLOSE("DropshotTiles::Init(): Failed to reach tile amount, make sure tile info is correct");
+	}
+
+	{ // Generate g_TileNeighbors
+
+		constexpr float NEIGHBOR_MAX_RADIUS = Dropshot::TILE_WIDTH_X * 1.2f;
+		int maxNeighbors1 = 0, maxNeighbors2 = 0;
+		for (int i = 0; i < Dropshot::NUM_TILES_PER_TEAM; i++) {
+			Vec pos = GetTilePos(0, i);
+			auto& neighborMap1 = g_TileNeighbors1[i];
+			auto& neighborMap2 = g_TileNeighbors2[i];
+			for (int j = 0; j < Dropshot::NUM_TILES_PER_TEAM; j++) {
+				Vec otherPos = GetTilePos(0, j);
+				if (pos.Dist(otherPos) < NEIGHBOR_MAX_RADIUS)
+					neighborMap1.push_back(j);
+				if (pos.Dist(otherPos) < NEIGHBOR_MAX_RADIUS * 2)
+					neighborMap2.push_back(j);
+
+				maxNeighbors1 = RS_MAX(maxNeighbors1, neighborMap1.size());
+				maxNeighbors2 = RS_MAX(maxNeighbors2, neighborMap2.size());
+			}
+		}
+
+		if (maxNeighbors1 > 7 || maxNeighbors2 > 20)
+			RS_ERR_CLOSE("DropshotTiles::Init(): Too high neighbor count, tile placement may be incorrect");
+	}
+}
+
+// TODO: Return reference instead of copy
+std::vector<int> DropshotTiles::GetNeighborIndices(int startIdx, int radius) {
+	if (radius < 1 || radius > 3)
+		RS_ERR_CLOSE("DropshotTiles::GetNeighborIndices(): Radius must be from 1-3");
+
+	if (radius == 1) {
+		return { startIdx };
+	} else if (radius == 2) {
+		return g_TileNeighbors1[startIdx];
+	} else {
+		return g_TileNeighbors2[startIdx];
+	}
 }
 
 RS_NS_END

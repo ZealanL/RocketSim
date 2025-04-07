@@ -9,6 +9,7 @@
 #include "../BoostPad/BoostPadGrid/BoostPadGrid.h"
 #include "../MutatorConfig/MutatorConfig.h"
 #include "ArenaConfig/ArenaConfig.h"
+#include "DropshotTiles/DropshotTiles.h"
 
 #include "../../../libsrc/bullet3-3.24/BulletCollision/BroadphaseCollision/btDbvtBroadphase.h"
 #include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btStaticPlaneShape.h"
@@ -45,6 +46,8 @@ public:
 	BoostPadGrid _boostPadGrid;
 
 	MutatorConfig _mutatorConfig;
+
+	DropshotTilesState _dropshotTilesState;
 
 	const MutatorConfig& GetMutatorConfig() { return _mutatorConfig; }
 	RSAPI void SetMutatorConfig(const MutatorConfig& mutatorConfig);
@@ -87,10 +90,10 @@ public:
 		btSequentialImpulseConstraintSolver constraintSolver;
 	} _bulletWorldParams;
 
-	btRigidBody* _worldCollisionRBs = NULL;
-	size_t _worldCollisionRBAmount = 0;
-	btBvhTriangleMeshShape* _worldCollisionBvhShapes = NULL;
-	btStaticPlaneShape* _worldCollisionPlaneShapes = NULL;
+	std::vector<btRigidBody*> _worldCollisionRBs = {};
+	std::vector<btBvhTriangleMeshShape*> _worldCollisionBvhShapes = {};
+	std::vector<btStaticPlaneShape*> _worldCollisionPlaneShapes = {};
+	std::vector<btRigidBody*> _worldDropshotTileRBs = {};
 
 	struct {
 		GoalScoreEventFn func = NULL;
@@ -130,6 +133,9 @@ public:
 
 	RSAPI void ResetToRandomKickoff(int seed = -1);
 
+	// Calls ResetToRandomKickoff, but also resets and game-persistent information such as dropshot tile damage
+	RSAPI void ResetGame(int seed = -1);
+
 	// Returns true if the ball is probably going in, does not account for wall or ceiling bounces
 	// NOTE: Purposefully overestimates, just like the real RL's shot prediction
 	// To check which goal it will score in, use the ball's velocity
@@ -144,26 +150,11 @@ public:
 	RSAPI ~Arena();
 
 	// NOTE: Passed shape pointer will be freed when arena is deconstructed
-	template <class T>
+	// NOTE: Shape will be automatically added to _worldCollisionRBs but no other list 
 	btRigidBody* _AddStaticCollisionShape(
-		size_t rbIndex, size_t meshListIndex, T* shape, T* meshList, btVector3 posBT = btVector3(0, 0, 0), 
-		bool isHoopsNet = false) {
-
-		static_assert(std::is_base_of<btCollisionShape, T>::value);
-		meshList[meshListIndex] = *shape;
-
-		assert(rbIndex < _worldCollisionRBAmount);
-		btRigidBody& shapeRB = _worldCollisionRBs[rbIndex];
-		shapeRB = btRigidBody(0, NULL, &meshList[meshListIndex]);
-		shapeRB.setWorldTransform(btTransform(btMatrix3x3::getIdentity(), posBT));
-		shapeRB.setUserPointer(this);
-		if (isHoopsNet) {
-			_bulletWorld.addRigidBody(&shapeRB, CollisionMasks::HOOPS_NET, CollisionMasks::HOOPS_NET);
-		} else {
-			_bulletWorld.addRigidBody(&shapeRB);
-		}
-		return &shapeRB;
-	}
+		btCollisionShape* shape,
+		btVector3 posBT = btVector3(0, 0, 0),
+		int group = 0, int mask = 0);
 
 	void _SetupArenaCollisionShapes();
 
@@ -186,6 +177,9 @@ public:
 	ArenaMemWeightMode GetMemWeightMode() {
 		return _config.memWeightMode;
 	}
+
+	DropshotTilesState GetDropshotTilesState() const { return _dropshotTilesState; };
+	RSAPI void SetDropshotTilesState(const DropshotTilesState& tilesState);
 
 private:
 	

@@ -74,8 +74,9 @@ public:
 
 	btVehicleRL() {}
 
-	//constructor to create a car from an existing rigidbody
-	btVehicleRL(const btVehicleTuning& tuning, btRigidBody* chassis, btVehicleRaycaster* raycaster, btDynamicsWorld* world);
+	btVehicleRL(const btVehicleTuning& tuning,
+		btRigidBody* chassis, btVehicleRaycaster* raycaster, btDynamicsWorld* world,
+		int addedRayCollisionMask);
 
 	virtual ~btVehicleRL();
 

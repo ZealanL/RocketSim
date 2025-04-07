@@ -2,6 +2,7 @@
 #include "../../RLConst.h"
 
 #include "../../../libsrc/bullet3-3.24/BulletDynamics/Dynamics/btDynamicsWorld.h"
+#include "../CollisionMasks.h"
 
 RS_NS_START
 
@@ -31,7 +32,7 @@ void Car::SetState(const CarState& state) {
 	_velocityImpulseCache = { 0, 0, 0 };
 
 	_internalState = state;
-	_internalState.updateCounter = 0;
+	_internalState.tickCountSinceUpdate = 0;
 }
 
 void Car::Demolish(float respawnDelay) {
@@ -188,7 +189,7 @@ void Car::_FinishPhysicsTick(const MutatorConfig& mutatorConfig) {
 		_rigidBody.m_angularVelocity = angVel;
 	}
 
-	_internalState.updateCounter++;
+	_internalState.tickCountSinceUpdate++;
 }
 
 void Car::_BulletSetup(GameMode gameMode, btDynamicsWorld* bulletWorld, const MutatorConfig& mutatorConfig) {
@@ -222,16 +223,21 @@ void Car::_BulletSetup(GameMode gameMode, btDynamicsWorld* bulletWorld, const Mu
 
 	// Disable gyroscopic force
 	_rigidBody.m_rigidbodyFlags = 0;
+	
+	// We want our car and our suspension rays to collide with the dropshot floor
+	int extraCollisionMask = CollisionMasks::DROPSHOT_FLOOR;
 
 	// Add rigidbody to world
-	bulletWorld->addRigidBody(&_rigidBody);
+	bulletWorld->addRigidBody(
+		&_rigidBody, btBroadphaseProxy::DefaultFilter | extraCollisionMask, btBroadphaseProxy::AllFilter
+	);
 
 	{ // Set up actual vehicle stuff
 		_bulletVehicleRaycaster = btDefaultVehicleRaycaster(bulletWorld);
 
 		btVehicleRL::btVehicleTuning tuning = btVehicleRL::btVehicleTuning();
 
-		_bulletVehicle = btVehicleRL(tuning, &_rigidBody, &_bulletVehicleRaycaster, bulletWorld);
+		_bulletVehicle = btVehicleRL(tuning, &_rigidBody, &_bulletVehicleRaycaster, bulletWorld, extraCollisionMask);
 
 		// Match RL with X forward, Y right, Z up
 		_bulletVehicle.setCoordinateSystem(1, 2, 0);
@@ -502,6 +508,14 @@ void Car::_UpdateBoost(float tickTime, const MutatorConfig& mutatorConfig, float
 			(_internalState.isOnGround ? mutatorConfig.boostAccelGround : mutatorConfig.boostAccelAir) * UU_TO_BT
 			* GetForwardDir() * CAR_MASS_BT
 		);
+		_internalState.timeSinceBoosted = 0;
+	} else {
+		_internalState.timeSinceBoosted += tickTime;
+
+		// Recharge boost
+		if (mutatorConfig.rechargeBoostEnabled)
+			if (_internalState.timeSinceBoosted >= mutatorConfig.rechargeBoostDelay)
+				_internalState.boost += mutatorConfig.rechargeBoostPerSecond * tickTime;
 	}
 
 	_internalState.boost = RS_MIN(_internalState.boost, RLConst::BOOST_MAX);

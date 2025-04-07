@@ -32,6 +32,10 @@ MutatorConfig::MutatorConfig(GameMode gameMode) {
 		// Infinite boost
 		carSpawnBoostAmount = 100;
 		boostUsedPerSecond = 0;
+	} else if (gameMode == GameMode::DROPSHOT) {
+		// Spawn with 100, and recharge
+		carSpawnBoostAmount = 100;
+		rechargeBoostEnabled = true;
 	}
 }
 

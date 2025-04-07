@@ -49,7 +49,7 @@ void GameEventTracker::Update(Arena* arena) {
 	bool scored = arena->IsBallScored();
 	
 	float tickrate = arena->GetTickRate();
-	uint64_t ballUpdateCount = arena->ball->_internalState.updateCounter;
+	uint64_t ballUpdateCount = arena->ball->_internalState.tickCountSinceUpdate;
 
 	if (ballUpdateCount > _lastBallUpdateCount || !autoStateSetDetection) {
 		// Game is continuing

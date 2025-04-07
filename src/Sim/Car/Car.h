@@ -19,7 +19,7 @@ struct CarState : public PhysState {
 	// Incremented every update, reset when SetState() is called
 	// Used for telling if a stateset occured
 	// Not serialized
-	uint64_t updateCounter = 0;
+	uint64_t tickCountSinceUpdate = 0;
 
 	// True if 3 or more wheels have contact
 	bool isOnGround = true;
@@ -62,6 +62,9 @@ struct CarState : public PhysState {
 
 	// Goes from 0 to 100
 	float boost = RLConst::BOOST_SPAWN_AMOUNT;
+
+	// Used for recharge boost, counts up from 0 on spawn (in seconds)
+	float timeSinceBoosted = 0.f;
 
 	// Added to replicate minimum boosting time
 	// NOTE: Will be used even when we have no boost
@@ -118,7 +121,7 @@ struct CarState : public PhysState {
 #define CARSTATE_SERIALIZATION_FIELDS \
 pos, rotMat, vel, angVel, isOnGround, hasJumped, hasDoubleJumped, hasFlipped, \
 flipRelTorque, jumpTime, isFlipping, flipTime, isJumping, airTimeSinceJump, \
-boost, timeSpentBoosting, supersonicTime, handbrakeVal, isAutoFlipping, \
+boost, timeSpentBoosting, timeSinceBoosted, supersonicTime, handbrakeVal, isAutoFlipping, \
 autoFlipTimer, autoFlipTorqueScale, isDemoed, demoRespawnTimer, lastControls, \
 worldContact.hasContact, worldContact.contactNormal, \
 carContact.otherCarID, carContact.cooldownTimer

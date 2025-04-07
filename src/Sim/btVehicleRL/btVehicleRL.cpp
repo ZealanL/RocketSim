@@ -7,12 +7,16 @@
 
 RS_NS_START
 
-btVehicleRL::btVehicleRL(const btVehicleTuning& tuning, btRigidBody* chassis, btVehicleRaycaster* raycaster, btDynamicsWorld* world)
-	: m_vehicleRaycaster(raycaster), m_pitchControl(0),  m_dynamicsWorld(world) {
+btVehicleRL::btVehicleRL(
+	const btVehicleTuning& tuning, 
+	btRigidBody* chassis, btVehicleRaycaster* raycaster, btDynamicsWorld* world, 
+	int addedRayCollisionMask
+) : m_vehicleRaycaster(raycaster), m_pitchControl(0),  m_dynamicsWorld(world) {
 	m_chassisBody = chassis;
 	m_indexRightAxis = 0;
 	m_indexUpAxis = 2;
 	m_indexForwardAxis = 1;
+	m_vehicleRaycaster->addedFilterMask = addedRayCollisionMask;
 	defaultInit(tuning);
 }
 

@@ -43,9 +43,11 @@ void Ball::SetState(const BallState& state) {
 	_rigidBody.setLinearVelocity(state.vel * UU_TO_BT);
 	_rigidBody.setAngularVelocity(state.angVel);
 	_rigidBody.updateInertiaTensor();
+	if (!state.vel.IsZero() || !state.angVel.IsZero())
+		_rigidBody.setActivationState(ACTIVE_TAG);
 
 	_velocityImpulseCache = { 0,0,0 };
-	_internalState.updateCounter = 0;
+	_internalState.tickCountSinceUpdate = 0;
 }
 
 btCollisionShape* MakeBallCollisionShape(GameMode gameMode, const MutatorConfig& mutatorConfig, btVector3& localIntertia) {
@@ -106,7 +108,10 @@ void Ball::_BulletSetup(GameMode gameMode, btDynamicsWorld* bulletWorld, const M
 
 	_rigidBody.m_noRot = noRot && (_collisionShape->getShapeType() == SPHERE_SHAPE_PROXYTYPE);
 
-	bulletWorld->addRigidBody(&_rigidBody, btBroadphaseProxy::DefaultFilter | CollisionMasks::HOOPS_NET, btBroadphaseProxy::AllFilter);
+	bulletWorld->addRigidBody(
+		&_rigidBody,
+		btBroadphaseProxy::DefaultFilter | CollisionMasks::HOOPS_NET | CollisionMasks::DROPSHOT_TILE, btBroadphaseProxy::AllFilter
+	);
 }
 
 void Ball::_FinishPhysicsTick(const MutatorConfig& mutatorConfig) {
@@ -134,7 +139,7 @@ void Ball::_FinishPhysicsTick(const MutatorConfig& mutatorConfig) {
 		_rigidBody.m_angularVelocity = angVel;
 	}
 
-	_internalState.updateCounter++;
+	_internalState.tickCountSinceUpdate++;
 }
 
 bool Ball::IsSphere() const {
@@ -147,6 +152,10 @@ float Ball::GetRadiusBullet() const {
 	} else {
 		return 0;
 	}
+}
+
+float Ball::GetMass() const {
+	return _rigidBody.getMass();
 }
 
 void Ball::_PreTickUpdate(GameMode gameMode, float tickTime) {
@@ -197,13 +206,89 @@ void Ball::_PreTickUpdate(GameMode gameMode, float tickTime) {
 		}
 	} else if (gameMode == GameMode::SNOWDAY) {
 		_groundStickApplied = false;
+	} else if (gameMode == GameMode::DROPSHOT || gameMode == GameMode::HOOPS) {
+		// Launch ball after a short delay on kickoff
+
+		bool isDropshot = (gameMode == GameMode::DROPSHOT);
+
+		float launchDelay = isDropshot ? RLConst::Dropshot::BALL_LAUNCH_DELAY : RLConst::BALL_HOOPS_LAUNCH_DELAY;
+
+		float curKickoffTime = _internalState.tickCountSinceUpdate * tickTime;
+		float prevKickoffTime = curKickoffTime - tickTime;
+
+		if (prevKickoffTime < launchDelay && curKickoffTime >= launchDelay) {
+
+			// Launch triggered
+			
+			// Make sure the ball is frozen at the kickoff X and Y
+			BallState state = GetState();
+			if (state.vel.IsZero() && state.angVel.IsZero() && state.pos.To2D().IsZero()) {
+
+				// Apply the force
+				float launchVelZ = isDropshot ? RLConst::Dropshot::BALL_LAUNCH_Z_VEL : RLConst::BALL_HOOPS_LAUNCH_Z_VEL;
+				_rigidBody.applyCentralImpulse(Vec(0, 0, launchVelZ) * GetMass() * UU_TO_BT);
+				_rigidBody.setActivationState(ACTIVE_TAG);
+			}
+		}
+
 	}
 }
 
-void Ball::_OnHit(GameMode gameMode, Car* car) {
-	if (gameMode == GameMode::HEATSEEKER) {
-		using namespace RLConst;
+void Ball::_OnHit(
+	Car* car, Vec relPos,
+	float& outFriction, float& outRestitution,
+	GameMode gameMode, const MutatorConfig& mutatorConfig, uint64_t tickCount
+) {
+	using namespace RLConst;
 
+	auto carState = car->GetState();
+	auto ballState = GetState();
+
+	// Override friction/restitution
+	outFriction = CARBALL_COLLISION_FRICTION;
+	outRestitution = CARBALL_COLLISION_RESTITUTION;
+
+	auto& ballHitInfo = car->_internalState.ballHitInfo;
+
+	ballHitInfo.isValid = true;
+
+	ballHitInfo.relativePosOnBall = relPos;
+	ballHitInfo.tickCountWhenHit = tickCount;
+
+	ballHitInfo.ballPos = ballState.pos;
+	ballHitInfo.extraHitVel = Vec();
+
+	// Once we do an extra car-ball impulse, we need to wait at least 1 tick to do it again
+	if ((tickCount > ballHitInfo.tickCountWhenExtraImpulseApplied + 1) || (ballHitInfo.tickCountWhenExtraImpulseApplied > tickCount)) {
+		// Apply extra hit impulse
+		ballHitInfo.tickCountWhenExtraImpulseApplied = tickCount;
+		Vec carForward = car->GetForwardDir();
+		Vec relPos = ballState.pos - carState.pos;
+		Vec relVel = ballState.vel - carState.vel;
+
+		float relSpeed = RS_MIN(relVel.Length(), BALL_CAR_EXTRA_IMPULSE_MAXDELTAVEL_UU);
+
+		if (relSpeed > 0) {
+			bool extraZScale =
+				gameMode == GameMode::HOOPS &&
+				carState.isOnGround &&
+				carState.rotMat.up.z > BALL_CAR_EXTRA_IMPULSE_Z_SCALE_HOOPS_NORMAL_Z_THRESH;
+			float zScale = extraZScale ? BALL_CAR_EXTRA_IMPULSE_Z_SCALE_HOOPS_GROUND : BALL_CAR_EXTRA_IMPULSE_Z_SCALE;
+			Vec hitDir = (relPos * Vec(1, 1, zScale)).Normalized();
+			Vec forwardDirAdjustment = carForward * hitDir.Dot(carForward) * (1 - BALL_CAR_EXTRA_IMPULSE_FORWARD_SCALE);
+			hitDir = (hitDir - forwardDirAdjustment).Normalized();
+			Vec addedVel = (hitDir * relSpeed) * BALL_CAR_EXTRA_IMPULSE_FACTOR_CURVE.GetOutput(relSpeed) * mutatorConfig.ballHitExtraForceScale;
+			ballHitInfo.extraHitVel = addedVel;
+
+			// Velocity won't be actually added until the end of this tick
+			_velocityImpulseCache += addedVel * UU_TO_BT;
+		}
+	} else {
+		// Don't do multiple extra impulses in a row
+		return;
+	}
+
+	if (gameMode == GameMode::HEATSEEKER) {
 		bool canIncrease = (_internalState.hsInfo.timeSinceHit > Heatseeker::MIN_SPEEDUP_INTERVAL) || (_internalState.hsInfo.yTargetDir == 0);
 		float newTargetDir = (car->team == Team::BLUE) ? 1 : -1;
 		if (canIncrease && (newTargetDir != _internalState.hsInfo.yTargetDir)) {
@@ -211,6 +296,30 @@ void Ball::_OnHit(GameMode gameMode, Car* car) {
 			_internalState.hsInfo.curTargetSpeed = RS_MIN(_internalState.hsInfo.curTargetSpeed + Heatseeker::TARGET_SPEED_INCREMENT, Heatseeker::MAX_SPEED);
 		}
 		_internalState.hsInfo.yTargetDir = newTargetDir;
+	} else if (gameMode == GameMode::DROPSHOT) {
+		auto& accumulatedHitForce = _internalState.dsInfo.accumulatedHitForce;
+		auto& chargeLevel = _internalState.dsInfo.chargeLevel;
+
+		Vec dirFromCar = (ballState.pos - carState.pos).Normalized();
+		Vec relVelFromCar = carState.vel - ballState.vel;
+		float velIntoBall = dirFromCar.Dot(relVelFromCar);
+		if (velIntoBall >= Dropshot::MIN_CHARGE_HIT_SPEED) {
+			
+			accumulatedHitForce += velIntoBall;
+
+			// Normal charge
+			if (accumulatedHitForce >= Dropshot::MIN_ABSORBED_FORCE_FOR_CHARGE)
+				chargeLevel = 2;
+			
+			// Supercharge
+			if (accumulatedHitForce >= Dropshot::MIN_ABSORBED_FORCE_FOR_SUPERCHARGE)
+				chargeLevel = 3;
+		}
+		
+		if (chargeLevel > 1) {
+			float newTargetDir = (car->team == Team::BLUE) ? 1 : -1;
+			_internalState.dsInfo.yTargetDir = newTargetDir;
+		}
 	}
 }
 
@@ -250,6 +359,53 @@ void Ball::_OnWorldCollision(GameMode gameMode, Vec normal, float tickTime) {
 			_groundStickApplied = true;
 		}
 	}
+}
+
+bool Ball::_OnDropshotTileCollision(
+	DropshotTilesState& tilesState, int tileTotalIndex, const btCollisionObject* tileObj,
+	uint64_t tickCount, float tickTime
+) {
+	int teamIdx = tileTotalIndex / RLConst::Dropshot::NUM_TILES_PER_TEAM;
+	int tileIdx = tileTotalIndex % RLConst::Dropshot::NUM_TILES_PER_TEAM;
+	auto& tileState = tilesState.states[teamIdx][tileIdx];
+	Vec tilePos = DropshotTiles::GetTilePos(teamIdx, tileIdx);
+	auto& dsInfo = _internalState.dsInfo;
+
+	// This should be possible in rare circumstances where two tiles are hit simultaneously
+	if (tileState.damageState == DropshotTileState::STATE_BROKEN)
+		return false;
+
+	if (dsInfo.hasDamaged) {
+		float timeSinceDamage = (tickCount - dsInfo.lastDamageTick) * tickTime;
+		if (timeSinceDamage <= RLConst::Dropshot::MIN_DAMAGE_INTERVAL)
+			return false; // Hasn't been long enough since we last damaged
+	}
+
+	Vec vel = _rigidBody.getLinearVelocity() * BT_TO_UU;
+	if (vel.z > -RLConst::Dropshot::MIN_DOWNWARD_SPEED_TO_DAMAGE)
+		return false;
+
+	if (dsInfo.chargeLevel > 1 && dsInfo.yTargetDir != 0)
+		if (RS_SGN(tilePos.y) != dsInfo.yTargetDir)
+			return false; // Wrong side of the arena
+
+	// All checks passed
+
+	// Break the tile(s)
+	{
+		std::vector<int> indicesToBreak = DropshotTiles::GetNeighborIndices(tileIdx, dsInfo.chargeLevel);
+		for (int i : indicesToBreak) {
+			DropshotTileState& state = tilesState.states[teamIdx][i];
+			if (state.damageState != DropshotTileState::STATE_BROKEN)
+				state.damageState++;
+		}
+	}
+	dsInfo.hasDamaged = true;
+	dsInfo.lastDamageTick = tickCount;
+	dsInfo.accumulatedHitForce = 0;
+	dsInfo.chargeLevel = 1;
+	dsInfo.yTargetDir = 0;
+	return true;
 }
 
 RS_NS_END

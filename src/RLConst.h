@@ -22,6 +22,9 @@ namespace RLConst {
 		ARENA_HEIGHT_DROPSHOT = 2024,
 		FLOOR_HEIGHT_DROPSHOT = 1.5f,
 
+		ARENA_COLLISION_BASE_FRICTION = 0.6f,
+		ARENA_COLLISION_BASE_RESTITUTION = 0.3f,
+
 		CAR_MASS_BT = 180.f,
 		BALL_MASS_BT = CAR_MASS_BT / 6.f, // Ref: https://www.reddit.com/r/RocketLeague/comments/bmje9l/comment/emxkwrl/?context=3
 
@@ -44,7 +47,8 @@ namespace RLConst {
 		BALL_RESTITUTION = 0.6f, // Bounce factor
 
 		// TODO: Move to a "Hoops" inner namespace, also make a Vec for internal consistency
-		BALL_HOOPS_Z_VEL = 1000, // Z impulse applied to hoops ball on kickoff
+		BALL_HOOPS_LAUNCH_Z_VEL = 1000, // Z impulse applied to hoops ball on kickoff
+		BALL_HOOPS_LAUNCH_DELAY = 0.265f,
 
 		CAR_MAX_SPEED = 2300.f,
 		BALL_MAX_SPEED = 6000.f,
@@ -55,6 +59,9 @@ namespace RLConst {
 		BOOST_ACCEL_GROUND = 2975/3.f, // uu/s for vel (on the ground)
 		BOOST_ACCEL_AIR = 3175/3.f, // uu/s for vel (airborne)
 		BOOST_SPAWN_AMOUNT = BOOST_MAX / 3,
+
+		RECHARGE_BOOST_PER_SECOND = 10, // Amount of boost recharged per second when recharging
+		RECHARGE_BOOST_DELAY = 0.25, // Delay after the car stops boosting
 
 		CAR_MAX_ANG_SPEED = 5.5f, // Car can never exceed this angular velocity (radians/s)
 
@@ -194,38 +201,51 @@ namespace RLConst {
 
 	namespace Dropshot {
 
-		constexpr static Vec BALL_START_VEL = Vec(0, 0, 985.f); // TODO: Might be slightly off, just based on quick testing
+		// TODO: Some of these values are unconfirmed assumptions based on lots of testing,
+		// so there is a chance some of them are slightly off.
+		// TO CONFIRM:
+		//	MIN_ABSORBED_FORCE_FOR_CHARGE, MIN_ABSORBED_FORCE_FOR_SUPERCHARGE, MIN_DAMAGE_INTERVAL, BALL_LAUNCH_Z_VEL, BALL_LAUNCH_DELAY
+			
+		constexpr float BALL_LAUNCH_Z_VEL = 985.f;
+		constexpr float BALL_LAUNCH_DELAY = 0.26f;
+
+		constexpr float MIN_DOWNWARD_SPEED_TO_DAMAGE = 250; // Minimum downward speed to damage tiles
+		constexpr float MIN_CHARGE_HIT_SPEED = 500; // Minimum car->ball delta speed required to accumulate absorbed force
+		constexpr float MIN_ABSORBED_FORCE_FOR_CHARGE = 2500; // Minimum absorbed force to charge/"break open" the ball
+		constexpr float MIN_ABSORBED_FORCE_FOR_SUPERCHARGE = 11000; // Minimum absorbed force to super-charge the ball
+		constexpr float MIN_DAMAGE_INTERVAL = 0.1f; // Minimum time between damaging tiles
 
 		////////////
 
-		constexpr static int 
-			NUM_TILES_PER_TEAM = 57,
+		constexpr int 
+			NUM_TILES_PER_TEAM = 70,
 			TEAM_AMOUNT = 2;
 
 		// Maximum of the relative AABB of the hexagon (2D) in UU
-		constexpr static Vec TILE_HEXAGON_AABB_MAX = Vec(8.85f, 7.6643f, 0.f);
+		constexpr Vec TILE_HEXAGON_AABB_MAX = Vec(7.6643f, 8.85f, 0.f);
 
 		// Vertices of the hexagon in bullet units
-		constexpr static Vec TILE_HEXAGON_VERTS_BT[6] = {
-			{ 8.85f,    0.0f,    0.f},
-			{ 4.425f,   7.6643f, 0.f},
-			{-4.425f,   7.6643f, 0.f},
-			{-8.85f,    0.0f,    0.f},
-			{-4.425f,  -7.6643f, 0.f},
-			{ 4.425f,  -7.6643f, 0.f},
+		constexpr Vec TILE_HEXAGON_VERTS_BT[6] = {
+			{  0.0f,    -8.85f,  0.f},
+			{  7.6643f, -4.425f, 0.f},
+			{  7.6643f,  4.425f, 0.f},
+			{  0.0f,     8.85f,  0.f},
+			{ -7.6643f,  4.425f, 0.f},
+			{ -7.6643f, -4.425f, 0.f}
 		}; // NOTE: Clamp the world-space vertices to not cross over the y=0 line
 
-		constexpr static float TILE_SIZE_X = TILE_HEXAGON_VERTS_BT[0].x * BT_TO_UU;
+		// Full width from end to end
+		constexpr float TILE_WIDTH_X = TILE_HEXAGON_VERTS_BT[1].x * 2 * BT_TO_UU;
 
 		// Offset on Y between rows, to make the next row interlock
 		// We take the maximum width of the hexagon and add on the diagonal x to obtain this value
-		constexpr static float ROW_OFFSET_Y = (TILE_HEXAGON_VERTS_BT[0].x + TILE_HEXAGON_VERTS_BT[1].x) * BT_TO_UU;
+		constexpr float ROW_OFFSET_Y = (TILE_HEXAGON_VERTS_BT[3].y + TILE_HEXAGON_VERTS_BT[4].y) * BT_TO_UU;
 
 		// Y-offset of all the tiles (inverted for opposite team)
-		constexpr static float TILE_OFFSET_Y = 2.54736f * BT_TO_UU;
-		constexpr static int TILES_IN_FIRST_ROW = 13; // Number decends each row
-		constexpr static int TILES_IN_LAST_ROW = 7;
-		constexpr static int NUM_TILE_ROWS = TILES_IN_FIRST_ROW - TILES_IN_LAST_ROW + 1;
+		constexpr float TILE_OFFSET_Y = 2.54736f * BT_TO_UU;
+		constexpr int TILES_IN_FIRST_ROW = 13; // Number decends each row
+		constexpr int TILES_IN_LAST_ROW = 7;
+		constexpr int NUM_TILE_ROWS = TILES_IN_FIRST_ROW - TILES_IN_LAST_ROW + 1;
 	}
 
 	namespace BoostPads {
@@ -358,6 +378,15 @@ namespace RLConst {
 			{     0, -3200, M_PI_4 * 2 }
 	};
 
+	const static CarSpawnPos	
+		CAR_SPAWN_LOCATIONS_DROPSHOT[CAR_SPAWN_LOCATION_AMOUNT] = {
+			{ -1867, -2380, M_PI_4 * 1 },
+			{  1867, -2380, M_PI_4 * 3 },
+			{  -256, -3576, M_PI_4 * 2 },
+			{   256, -3576, M_PI_4 * 2 },
+			{     0, -4088, M_PI_4 * 2 }
+	};
+
 	// https://github.com/RLBot/RLBot/wiki/Useful-Game-Values
 	// For blue team, flip for orange
 	const static CarSpawnPos // For blue team, flip for orange
@@ -374,6 +403,14 @@ namespace RLConst {
 		{ -1152, -3072, M_PI / 2 },
 		{  1920, -3072, M_PI / 2 },
 		{  1152, -3072, M_PI / 2 }
+	};
+
+	const static CarSpawnPos
+		CAR_RESPAWN_LOCATIONS_DROPSHOT[CAR_RESPAWN_LOCATION_AMOUNT] = {
+		{ -2176, -3410, M_PI / 2 },
+		{ -1152, -3100, M_PI / 2 },
+		{  2176, -3410, M_PI / 2 },
+		{  1152, -3100, M_PI / 2 }
 	};
 
 	// Input: Forward car speed

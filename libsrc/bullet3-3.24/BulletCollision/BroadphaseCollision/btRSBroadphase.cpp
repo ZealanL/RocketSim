@@ -203,13 +203,12 @@ void _UpdateCellsDynamic(btRSBroadphase* _this, btRSBroadphaseProxy* proxy, int 
 
 btBroadphaseProxy* btRSBroadphase::createProxy(const btVector3& aabbMin, const btVector3& aabbMax, int shapeType, void* userPtr, int collisionFilterGroup, int collisionFilterMask, btCollisionDispatcher* /*dispatcher*/) {
 	if (m_numHandles >= m_maxHandles) {
-		btAssert(0);
-		return 0;  //should never happen, but don't let the game crash ;-)
+		THROW_ERR("Max handles exceeded when creating proxy");
 	}
 	btAssert(aabbMin[0] <= aabbMax[0] && aabbMin[1] <= aabbMax[1] && aabbMin[2] <= aabbMax[2]);
 
-	// TODO: Stupid
-	bool isStatic = (shapeType == TRIANGLE_MESH_SHAPE_PROXYTYPE || shapeType == STATIC_PLANE_PROXYTYPE);
+	auto* obj = (btCollisionObject*)(userPtr);
+	bool isStatic = obj->isStaticObject();
 
 	int newHandleIndex = allocHandle();
 	int cellIdx = GetCellIdx(aabbMin);
@@ -227,7 +226,7 @@ btBroadphaseProxy* btRSBroadphase::createProxy(const btVector3& aabbMin, const b
 
 	} else {
 		if (aabbMin.distance2(aabbMax) > cellSizeSq)
-			THROW_ERR("Object AABB size exceeds maximum cell size (" + std::to_string(aabbMin.distance(aabbMax)) + " > " + std::to_string(cellSize) + ")");
+			THROW_ERR("Dynamic object's AABB size exceeds maximum cell size (" + std::to_string(aabbMin.distance(aabbMax)) + " > " + std::to_string(cellSize) + ")");
 
 		_UpdateCellsDynamic<true>(this, proxy, iIdx, jIdx, kIdx);
 		numDynProxies++;

@@ -34,7 +34,7 @@ void* btDefaultVehicleRaycaster::castRay(const btVector3& from, const btVector3&
 	//	RayResultCallback& resultCallback;
 
 	btCollisionWorld::ClosestRayResultCallback rayCallback(from, to, ignoreObj);
-
+	rayCallback.m_collisionFilterGroup |= addedFilterMask;
 	m_dynamicsWorld->rayTest(from, to, rayCallback);
 
 	if (rayCallback.hasHit())

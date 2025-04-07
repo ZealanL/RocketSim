@@ -48,18 +48,21 @@ RocketSimStage RocketSim::GetStage() {
 }
 
 std::vector<btBvhTriangleMeshShape*>& RocketSim::GetArenaCollisionShapes(GameMode gameMode) {
-	static std::vector<btBvhTriangleMeshShape*> arenaCollisionMeshes;
-	static std::vector<btBvhTriangleMeshShape*> arenaCollisionMeshes_hoops;
-
-	return (gameMode == GameMode::HOOPS ? arenaCollisionMeshes_hoops : arenaCollisionMeshes);
+	static std::map<GameMode, std::vector<btBvhTriangleMeshShape*>> arenaCollisionMeshes;
+	return arenaCollisionMeshes[gameMode];
 }
 
 void RocketSim::Init(std::filesystem::path collisionMeshesFolder, bool silent) {
 
 	std::map<GameMode, std::vector<FileData>> meshFileMap = {};
 
-	for (int i = 0; i < 2; i++) { // Load collision meshes for soccar and hoops
-		GameMode gameMode = (i > 0) ? GameMode::HOOPS : GameMode::SOCCAR;
+	constexpr GameMode GAMEMODES_WITH_UNIQUE_MESHES[] = {
+		GameMode::SOCCAR,
+		GameMode::HOOPS,
+		GameMode::DROPSHOT,
+	};
+
+	for (GameMode gameMode : GAMEMODES_WITH_UNIQUE_MESHES) { // Load collision meshes for soccar and hoops
 		auto& meshes = GetArenaCollisionShapes(gameMode);
 
 		std::filesystem::path basePath = collisionMeshesFolder;
@@ -104,10 +107,12 @@ void RocketSim::InitFromMem(const std::map<GameMode, std::vector<FileData>>& mes
 		if (!silent)
 			RS_LOG("Initializing RocketSim version " RS_VERSION ", created by ZealanL...");
 
-
 		stage = RocketSimStage::INITIALIZING;
 
 		uint64_t startMS = RS_CUR_MS();
+
+		// Init dropshot stuff
+		DropshotTiles::Init();
 
 		for (auto& mapPair : meshFilesMap) { // Load collision meshes for soccar and hoops
 			GameMode gameMode = mapPair.first;
@@ -165,6 +170,7 @@ void RocketSim::InitFromMem(const std::map<GameMode, std::vector<FileData>>& mes
 			RS_LOG(MSG_PREFIX << "Finished loading arena collision meshes:");
 			RS_LOG(" > Soccar: " << GetArenaCollisionShapes(GameMode::SOCCAR).size());
 			RS_LOG(" > Hoops: " << GetArenaCollisionShapes(GameMode::HOOPS).size());
+			RS_LOG(" > Dropshot: " << GetArenaCollisionShapes(GameMode::DROPSHOT).size());
 		}
 
 

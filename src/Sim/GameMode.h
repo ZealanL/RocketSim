@@ -21,7 +21,8 @@ constexpr const char* GAMEMODE_STRS[] = {
 	"hoops",
 	"heatseeker",
 	"snowday",
-	"dropshot"
+	"dropshot",
+	"void"
 };
 
 RS_NS_END
