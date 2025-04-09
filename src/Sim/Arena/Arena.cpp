@@ -208,20 +208,18 @@ void Arena::ResetToRandomKickoff(int seed) {
 	}
 	ball->SetState(ballState);
 
+	// Reset boost pads
 	for (BoostPad* boostPad : _boostPads)
 		boostPad->SetState(BoostPadState());
+
+	// Reset tile states
+	if (gameMode == GameMode::DROPSHOT)
+		SetDropshotTilesState({});
 
 	if (seed != -1) {
 		// Custom random engine was created for this seed, so we need to free it
 		delete randEngine;
 	}
-}
-
-RSAPI void Arena::ResetGame(int seed) {
-	ResetToRandomKickoff(seed);
-
-	if (gameMode == GameMode::DROPSHOT)
-		SetDropshotTilesState({});
 }
 
 RSAPI void Arena::SetDropshotTilesState(const DropshotTilesState& state) {

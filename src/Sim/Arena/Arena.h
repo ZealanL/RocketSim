@@ -133,9 +133,6 @@ public:
 
 	RSAPI void ResetToRandomKickoff(int seed = -1);
 
-	// Calls ResetToRandomKickoff, but also resets and game-persistent information such as dropshot tile damage
-	RSAPI void ResetGame(int seed = -1);
-
 	// Returns true if the ball is probably going in, does not account for wall or ceiling bounces
 	// NOTE: Purposefully overestimates, just like the real RL's shot prediction
 	// To check which goal it will score in, use the ball's velocity
