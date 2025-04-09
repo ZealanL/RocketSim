@@ -958,10 +958,19 @@ Arena::~Arena() {
 		}
 	}
 
-	// Remove plane collision shapes
-	// (BVH shapes are not stored per-arena and thus should not be freed)
-	for (auto planeShape : _worldCollisionPlaneShapes)
-		delete planeShape;
+	// Remove all rigidbodies and collision shapes that we own
+	for (auto rb : _worldCollisionRBs) {
+		auto shape = rb->getCollisionShape();
+		
+		bool isBvh = dynamic_cast<btBvhTriangleMeshShape*>(shape);
+		if (isBvh) {
+			// Don't free BVH shapes because we don't own them
+		} else {
+			delete shape;
+		}
+
+		delete rb;
+	}
 
 	delete _bulletWorldParams.overlappingPairCache;
 	delete _bulletWorldParams.broadphase;
