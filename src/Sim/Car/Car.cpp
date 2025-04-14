@@ -486,23 +486,28 @@ void Car::_UpdateWheels(float tickTime, const MutatorConfig& mutatorConfig, int 
 void Car::_UpdateBoost(float tickTime, const MutatorConfig& mutatorConfig, float forwardSpeed_UU) {
 	using namespace RLConst;
 
+	bool hasBoost = _internalState.boost > 0;
+
 	{ // Update boosting timer
-		if (_internalState.timeSpentBoosting > 0) {
-			if (!controls.boost && _internalState.timeSpentBoosting >= BOOST_MIN_TIME) {
-				_internalState.timeSpentBoosting = 0;
-			} else {
-				_internalState.timeSpentBoosting += tickTime;
-			}
-		} else {
-			if (controls.boost) {
+		if (hasBoost) {
+			if (_internalState.timeSpentBoosting > 0) {
+				if (controls.boost || _internalState.timeSpentBoosting < BOOST_MIN_TIME) {
+					// Keep boosting
+					_internalState.timeSpentBoosting += tickTime;
+				} else {
+					_internalState.timeSpentBoosting = 0;
+				}
+			} else if (controls.boost) {
 				// Start boosting (even if we dont have any)
 				_internalState.timeSpentBoosting = tickTime;
 			}
 		}
 	}
 
+	bool isBoosting = hasBoost && (_internalState.timeSpentBoosting > 0);
+
 	// Apply boosting force and consume boost
-	if (_internalState.boost > 0 && _internalState.timeSpentBoosting > 0) {
+	if (isBoosting) {
 		_internalState.boost = RS_MAX(_internalState.boost - mutatorConfig.boostUsedPerSecond * tickTime, 0);
 		_rigidBody.applyCentralForce(
 			(_internalState.isOnGround ? mutatorConfig.boostAccelGround : mutatorConfig.boostAccelAir) * UU_TO_BT
