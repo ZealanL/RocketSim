@@ -66,9 +66,10 @@ struct CarState : public PhysState {
 	// Used for recharge boost, counts up from 0 on spawn (in seconds)
 	float timeSinceBoosted = 0.f;
 
-	// Added to replicate minimum boosting time
-	// NOTE: Will be used even when we have no boost
-	float timeSpentBoosting = 0;
+	// True if we boosted that tick
+	// There exists a minimum boosting time, thus why we must track boosting time
+	bool isBoosting = false;
+	float boostingTime = 0;
 
 	bool isSupersonic = false;
 
@@ -121,7 +122,7 @@ struct CarState : public PhysState {
 #define CARSTATE_SERIALIZATION_FIELDS \
 pos, rotMat, vel, angVel, isOnGround, hasJumped, hasDoubleJumped, hasFlipped, \
 flipRelTorque, jumpTime, isFlipping, flipTime, isJumping, airTimeSinceJump, \
-boost, timeSpentBoosting, timeSinceBoosted, supersonicTime, handbrakeVal, isAutoFlipping, \
+boost, isBoosting, boostingTime, timeSinceBoosted, supersonicTime, handbrakeVal, isAutoFlipping, \
 autoFlipTimer, autoFlipTorqueScale, isDemoed, demoRespawnTimer, lastControls, \
 worldContact.hasContact, worldContact.contactNormal, \
 carContact.otherCarID, carContact.cooldownTimer
