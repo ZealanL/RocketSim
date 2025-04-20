@@ -14,7 +14,7 @@
 
 RS_NS_START
 
-RSAPI void Arena::SetMutatorConfig(const MutatorConfig& mutatorConfig) {
+void Arena::SetMutatorConfig(const MutatorConfig& mutatorConfig) {
 
 	bool
 		ballChanged = mutatorConfig.ballRadius != this->_mutatorConfig.ballRadius || mutatorConfig.ballMass != this->_mutatorConfig.ballMass,
@@ -222,7 +222,7 @@ void Arena::ResetToRandomKickoff(int seed) {
 	}
 }
 
-RSAPI void Arena::SetDropshotTilesState(const DropshotTilesState& state) {
+void Arena::SetDropshotTilesState(const DropshotTilesState& state) {
 	for (int teamIdx = 0; teamIdx <= 1; teamIdx++) {
 		for (int tileIdx = 0; tileIdx < RLConst::Dropshot::NUM_TILES_PER_TEAM; tileIdx++) {
 			auto& newState = state.states[teamIdx][tileIdx];
@@ -890,7 +890,7 @@ bool Arena::IsBallProbablyGoingIn(float maxTime, float extraMargin, Team* goalTe
 	}
 }
 
-RSAPI bool Arena::IsBallScored() const {
+bool Arena::IsBallScored() const {
 	switch (gameMode) {
 	case GameMode::SOCCAR:
 	case GameMode::HEATSEEKER:

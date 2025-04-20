@@ -77,7 +77,7 @@ RotMat Angle::ToRotMat() const {
 	return mat;
 }
 
-RSAPI Angle Angle::FromVec(const Vec& forward) {
+Angle Angle::FromVec(const Vec& forward) {
 	float yaw, pitch;
 
 	if (abs(forward.y) > FLT_EPSILON || abs(forward.x) > FLT_EPSILON) {

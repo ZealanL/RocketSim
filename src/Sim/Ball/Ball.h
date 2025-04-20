@@ -65,8 +65,8 @@ class Ball {
 public:
 
 	BallState _internalState;
-	RSAPI BallState GetState();
-	RSAPI void SetState(const BallState& state);
+	BallState GetState();
+	void SetState(const BallState& state);
 
 	btRigidBody _rigidBody;
 	btCollisionShape* _collisionShape;
@@ -83,10 +83,10 @@ public:
 	Vec _velocityImpulseCache = { 0,0,0 };
 	void _FinishPhysicsTick(const MutatorConfig& mutatorConfig);
 
-	RSAPI bool IsSphere() const;
+	bool IsSphere() const;
 
 	// Returns radius in BulletPhysics units
-	RSAPI float GetRadiusBullet() const;
+	float GetRadiusBullet() const;
 
 	// Returns radius in Unreal Engine units (uu)
 	float GetRadius() const {
@@ -94,7 +94,7 @@ public:
 	}
 
 	// Returns mass
-	RSAPI float GetMass() const;
+	float GetMass() const;
 
 	void _PreTickUpdate(GameMode gameMode, float tickTime);
 	void _OnHit(

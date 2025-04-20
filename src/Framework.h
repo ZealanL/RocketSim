@@ -71,16 +71,6 @@ typedef uint8_t byte;
 	exit(EXIT_FAILURE); \
 }
 
-#if 0 // FOR FUTURE USE: Exports/imports setup
-#ifdef ROCKETSIM_EXPORTS
-#define RSAPI __declspec(dllexport)
-#else
-#define RSAPI __declspec(dllimport)
-#endif
-#else
-#define RSAPI
-#endif
-
 #define RS_ALIGN_16 alignas(16)
 
 #ifndef RS_NO_NAMESPACE

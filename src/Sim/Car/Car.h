@@ -148,8 +148,8 @@ public:
 	// The controls to simulate the car with
 	CarControls controls;
 
-	RSAPI CarState GetState();
-	RSAPI void SetState(const CarState& state);
+	CarState GetState();
+	void SetState(const CarState& state);
 
 	void Demolish(float respawnDelay = RLConst::DEMO_RESPAWN_TIME);
 
@@ -192,7 +192,7 @@ public:
 	// For construction by Arena
 	static Car* _AllocateCar() { return new Car(); }
 
-	RSAPI void Serialize(DataStreamOut& out);
+	void Serialize(DataStreamOut& out);
 	void _Deserialize(DataStreamIn& in);
 
 	Car(const Car& other) = delete;

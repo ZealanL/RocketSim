@@ -13,7 +13,7 @@ enum class DemoMode : byte {
 	DISABLED
 };
 
-RSAPI struct MutatorConfig {
+struct MutatorConfig {
 
 	Vec gravity = Vec(0, 0, RLConst::GRAVITY_Z);
 

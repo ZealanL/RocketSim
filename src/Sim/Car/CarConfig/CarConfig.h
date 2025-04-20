@@ -44,7 +44,7 @@ WHEEL_PAIR_CONFIG_SERIALIZATION_FIELDS(name.backWheels) \
 
 // Global car configurations for all car type presets
 // NOTE: CAR_CONFIG_PLANK is the batmobile preset
-RSAPI const extern CarConfig
+const extern CarConfig
 	CAR_CONFIG_OCTANE, CAR_CONFIG_DOMINUS, CAR_CONFIG_PLANK, CAR_CONFIG_BREAKOUT, CAR_CONFIG_HYBRID, CAR_CONFIG_MERC, CAR_CONFIG_PSYCLOPS;
 
 RS_NS_END

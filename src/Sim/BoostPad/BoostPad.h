@@ -42,8 +42,8 @@ public:
 
 	BoostPadState _internalState;
 
-	RSAPI BoostPadState GetState() const { return _internalState; }
-	RSAPI void SetState(const BoostPadState& state) { _internalState = state; }
+	BoostPadState GetState() const { return _internalState; }
+	void SetState(const BoostPadState& state) { _internalState = state; }
 
 	// For construction by Arena
 	static BoostPad* _AllocBoostPad();

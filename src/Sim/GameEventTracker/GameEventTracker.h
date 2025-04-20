@@ -87,7 +87,7 @@ struct GameEventTracker {
 
 	// Doesn't need to be every tick, but should be called pretty frequently, otherwise events may be missed
 	// If you're running an ML bot with tick-skip, update it at that interval
-	RSAPI void Update(Arena* arena);
+	void Update(Arena* arena);
 
 	// Automatically detect when the ball's state is set and clear persistent info
 	// Turn this off if it is happening when you don't want it, and you are going to call ResetPersistentInfo() manually 
@@ -96,7 +96,7 @@ struct GameEventTracker {
 	// Resets info that is maintained between ticks
 	// Automatically called from Update() when the ball's state has been set since last update
 	// Call this whenever you set the arena to a new state if you want to be extra safe
-	RSAPI void ResetPersistentInfo();
+	void ResetPersistentInfo();
 };
 
 RS_NS_END

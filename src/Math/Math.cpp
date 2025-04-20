@@ -72,7 +72,7 @@ float Math::WrapNormalizeFloat(float val, float minmax) {
 	return result;
 }
 
-RSAPI Angle Math::RoundAngleUE3(Angle ang) {
+Angle Math::RoundAngleUE3(Angle ang) {
 	// See: https://unrealarchive.org/wikis/unreal-wiki/Rotator.html
 	// You can determine the rounding from measuring the resulting vector directions from conversions
 	// This was very, very annoying to figure out :/
