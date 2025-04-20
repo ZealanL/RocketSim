@@ -13,7 +13,12 @@ struct RS_ALIGN_16 Vec {
 		x = y = z = _w = 0;
 	}
 
-	constexpr Vec(float x, float y, float z, float _w = 0) : x(x), y(y), z(z), _w(_w) {}
+	constexpr Vec(float x, float y, float z) : x(x), y(y), z(z), _w(0) {}
+
+protected:
+	// Internal 4th-component constructor for SIMD operations
+	constexpr Vec(float x, float y, float z, float w) : x(x), y(y), z(z), _w(w) {}
+public:
 
 	Vec(const btVector3& bulletVec) {
 		*(btVector3*)this = bulletVec;
@@ -123,6 +128,8 @@ struct RS_ALIGN_16 Vec {
 
 	RSAPI Vec& operator*=(float val);
 	RSAPI Vec& operator/=(float val);
+	RSAPI friend Vec operator*(float val, const Vec& vec);
+	RSAPI friend Vec operator/(float val, const Vec& vec);
 
 	bool operator<(const Vec& other) const {
 		return (x < other.x) && (y < other.y) && (z < other.z);
