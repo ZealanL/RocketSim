@@ -14,6 +14,7 @@ MutatorConfig::MutatorConfig(GameMode gameMode) {
 		break;
 	case GameMode::DROPSHOT:
 		ballRadius = BALL_COLLISION_RADIUS_DROPSHOT;
+		break;
 	default:
 		ballRadius = BALL_COLLISION_RADIUS_SOCCAR;
 	}
