@@ -50,8 +50,11 @@ RocketSimStage RocketSim::GetStage() {
 std::vector<btBvhTriangleMeshShape*>& RocketSim::GetArenaCollisionShapes(GameMode gameMode) {
 	static std::map<GameMode, std::vector<btBvhTriangleMeshShape*>> arenaCollisionMeshes;
 
-	if (!arenaCollisionMeshes.contains(gameMode))
-		return arenaCollisionMeshes[GameMode::SOCCAR];
+	switch (gameMode) {
+	case GameMode::SNOWDAY:
+	case GameMode::HEATSEEKER:
+		gameMode = GameMode::SOCCAR;
+	}
 
 	return arenaCollisionMeshes[gameMode];
 }
