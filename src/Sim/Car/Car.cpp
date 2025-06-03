@@ -46,7 +46,20 @@ void Car::Respawn(GameMode gameMode, int seed, float boostAmount) {
 	CarState newState = CarState();
 
 	int spawnPosIndex = Math::RandInt(0, CAR_RESPAWN_LOCATION_AMOUNT, seed);
-	CarSpawnPos spawnPos = ((gameMode == GameMode::HOOPS) ? CAR_RESPAWN_LOCATIONS_HOOPS : CAR_RESPAWN_LOCATIONS_SOCCAR)[spawnPosIndex];
+
+	const CarSpawnPos* spawnPosArray;
+	switch (gameMode) {
+	case GameMode::HOOPS:
+		spawnPosArray = CAR_RESPAWN_LOCATIONS_HOOPS;
+		break;
+	case GameMode::DROPSHOT:
+		spawnPosArray = CAR_RESPAWN_LOCATIONS_DROPSHOT;
+		break;
+	default:
+		spawnPosArray = CAR_RESPAWN_LOCATIONS_SOCCAR;
+	}
+
+	CarSpawnPos spawnPos = spawnPosArray[spawnPosIndex];
 
 	newState.pos = Vec(spawnPos.x, spawnPos.y * (team == Team::BLUE ? 1 : -1), CAR_RESPAWN_Z);
 	newState.rotMat = Angle(spawnPos.yawAng + (team == Team::BLUE ? 0 : M_PI), 0.f, 0.f).ToRotMat();
