@@ -31,7 +31,6 @@ Documentation is available at: https://zealanl.github.io/RocketSimDocs/
 ## Bindings
 If you don't want to work in C++, here are some (unofficial) bindings written in other languages:
 - **Python**: https://github.com/mtheall/RocketSim by `mtheall`
-- **Python**: https://github.com/uservar/pyrocketsim by `uservar`
 - **Rust**: https://github.com/VirxEC/rocketsim-rs by `VirxEC`
 
 Official Python bindings are currently in the works.
