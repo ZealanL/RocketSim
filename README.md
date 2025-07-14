@@ -3,7 +3,7 @@
 **A C++ library for simulating Rocket League games at maximum efficiency**
 
 RocketSim is a complete simulation of Rocket League's gameplay logic and physics that is completely standalone.
-RocketSim supports the game modes: Soccar, Hoops, Heatseeker, and Snowday.
+RocketSim supports the game modes: Soccar, Hoops, Dropshot, Heatseeker, and Snowday.
 
 # Speed
 RocketSim is designed to run extremely fast, even when complex collisions and suspension calculations are happening every tick.
@@ -31,7 +31,6 @@ Documentation is available at: https://zealanl.github.io/RocketSimDocs/
 ## Bindings
 If you don't want to work in C++, here are some (unofficial) bindings written in other languages:
 - **Python**: https://github.com/mtheall/RocketSim by `mtheall`
-- **Python**: https://github.com/uservar/pyrocketsim by `uservar`
 - **Rust**: https://github.com/VirxEC/rocketsim-rs by `VirxEC`
 
 Official Python bindings are currently in the works.
@@ -61,7 +60,7 @@ v2.1.0 = 114,481tps
 ## Issues & PRs
 Feel free to make issues and pull requests if you encounter any issues!
 
-You can also contact me on Discord if you have questions: `Zealan#5987`
+You can also contact me on Discord if you have questions, my username is `zealanl`.
 
 ## Legal Notice
 RocketSim was written to replicate Rocket League's game logic, but does not actually contain any code from the game.
