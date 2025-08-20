@@ -684,6 +684,8 @@ void Car::_UpdateAirTorque(float tickTime, const MutatorConfig& mutatorConfig, b
 void Car::_UpdateDoubleJumpOrFlip(float tickTime, const MutatorConfig& mutatorConfig, bool jumpPressed, float forwardSpeed_UU) {
 	using namespace RLConst;
 
+	float tickTimeScale = tickTime / (1 / 120.f);
+
 	if (_internalState.isOnGround) {
 		_internalState.hasDoubleJumped = false;
 		_internalState.hasFlipped = false;
@@ -734,7 +736,7 @@ void Car::_UpdateDoubleJumpOrFlip(float tickTime, const MutatorConfig& mutatorCo
 							dodgeDir = dodgeDir.safeNormalized();
 						}
 
-						_internalState.flipRelTorque = btVector3(-dodgeDir.y(), dodgeDir.x(), 0);
+						_internalState.flipRelTorque = btVector3(-dodgeDir.y() / tickTimeScale, dodgeDir.x() / tickTimeScale, 0);
 
 						if (abs(dodgeDir.x()) < 0.1f) dodgeDir.x() = 0;
 						if (abs(dodgeDir.y()) < 0.1f) dodgeDir.y() = 0;
@@ -783,7 +785,7 @@ void Car::_UpdateDoubleJumpOrFlip(float tickTime, const MutatorConfig& mutatorCo
 		_internalState.flipTime += tickTime;
 		if (_internalState.flipTime <= FLIP_TORQUE_TIME) {
 			if (_internalState.flipTime >= FLIP_Z_DAMP_START && (_rigidBody.m_linearVelocity.z() < 0 || _internalState.flipTime < FLIP_Z_DAMP_END)) {
-				_rigidBody.m_linearVelocity.z() *= powf(1 - FLIP_Z_DAMP_120, tickTime / (1 / 120.f));
+				_rigidBody.m_linearVelocity.z() *= powf(1 - FLIP_Z_DAMP_120, tickTimeScale);
 			}
 		}
 	} else if (_internalState.hasFlipped) {
