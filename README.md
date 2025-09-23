@@ -3,7 +3,7 @@
 **A C++ library for simulating Rocket League games at maximum efficiency**
 
 RocketSim is a complete simulation of Rocket League's gameplay logic and physics that is completely standalone.
-RocketSim supports the game modes: Soccar, Hoops, Heatseeker, and Snowday.
+RocketSim supports the game modes: Soccar, Hoops, Heatseeker, Snowday and Dropshot.
 
 # Speed
 RocketSim is designed to run extremely fast, even when complex collisions and suspension calculations are happening every tick.
