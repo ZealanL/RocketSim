@@ -1,3 +1,4 @@
+use crate::consts::TICK_TIME;
 use crate::shared::bvh::SimpleNodeProcessor;
 use crate::shared::{Aabb, bvh};
 use crate::{BoostPad, BoostPadConfig, CarState, MutatorConfig, consts::boost_pads};
@@ -77,7 +78,6 @@ impl BoostPadGrid {
         car_state: &mut CarState,
         mutator_config: &MutatorConfig,
         tick_count: u64,
-        tick_time: f32,
     ) {
         if car_state.boost >= mutator_config.car_max_boost_amount {
             return; // Already full on boost
@@ -96,7 +96,7 @@ impl BoostPadGrid {
             let pad = &mut self.all_pads[pad_idx];
 
             if let Some(last_give_tick_count) = pad.gave_boost_tick_count
-                && (tick_count - last_give_tick_count) as f32 * tick_time < pad.max_cooldown
+                && ((tick_count - last_give_tick_count) as f32 * TICK_TIME) < pad.max_cooldown
             {
                 continue;
             }

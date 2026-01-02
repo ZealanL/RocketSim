@@ -4,6 +4,7 @@ use glam::{Affine3A, EulerRot, Mat3A, Vec3A};
 use std::{f32::consts::PI, iter::repeat_n, mem};
 
 use super::{Ball, BoostPadConfig, Car, CarBodyConfig, CarState, MutatorConfig, PhysState, Team};
+use crate::consts::TICK_TIME;
 use crate::{
     ARENA_COLLISION_SHAPES, ArenaConfig, ArenaMemWeightMode, BoostPadGrid, GameMode,
     bullet::{
@@ -256,7 +257,6 @@ impl Arena {
 pub struct Arena {
     pub(crate) bullet_world: DiscreteDynamicsWorld,
     pub(crate) rng: Rng,
-    pub(crate) tick_time: f32,
     config: ArenaConfig,
 
     pub(crate) ball: Ball,
@@ -271,15 +271,10 @@ pub struct Arena {
 impl Arena {
     #[must_use]
     pub fn new(game_mode: GameMode) -> Self {
-        Self::new_with_config(game_mode, ArenaConfig::DEFAULT, 120)
+        Self::new_with_config(game_mode, ArenaConfig::DEFAULT)
     }
 
-    pub fn new_with_config(game_mode: GameMode, config: ArenaConfig, tick_rate: u8) -> Self {
-        assert!(
-            (15..=120).contains(&tick_rate),
-            "tick_rate must be between 15 and 120"
-        );
-
+    pub fn new_with_config(game_mode: GameMode, config: ArenaConfig) -> Self {
         let mutator_config = MutatorConfig::new(game_mode);
 
         let collision_dispatcher = CollisionDispatcher::default();
@@ -347,7 +342,6 @@ impl Arena {
         Self {
             rng,
             config,
-            tick_time: 1. / f32::from(tick_rate),
             ball,
             game_mode,
             boost_pad_grid,
@@ -528,16 +522,6 @@ impl Arena {
         }
     }
 
-    #[must_use]
-    pub fn tick_rate(&self) -> f32 {
-        1.0 / self.tick_time
-    }
-
-    #[must_use]
-    pub fn tick_time(&self) -> f32 {
-        self.tick_time
-    }
-
     pub fn reset_to_random_kickoff(&mut self) {
         let game_mode = self.game_mode;
         let kickoff_locs = consts::car::spawn::get_kickoff_spawn_locations(game_mode);
@@ -690,7 +674,6 @@ impl Arena {
                 &mut self.bullet_world,
                 &mut self.rng,
                 self.game_mode,
-                self.tick_time,
                 &self.mutator_config,
             );
         }
@@ -698,7 +681,7 @@ impl Arena {
         self.ball_pre_tick_update();
 
         self.bullet_world
-            .step_simulation(self.tick_time, &mut self.contact_tracker);
+            .step_simulation(TICK_TIME, &mut self.contact_tracker);
         for contact in self.contact_tracker.drain_records() {
             let (body_a, body_b) = self
                 .bullet_world
@@ -733,14 +716,13 @@ impl Arena {
 
         for car in &mut self.cars {
             let rb = &mut self.bullet_world.bodies_mut()[car.rigid_body_idx];
-            car.post_tick_update(self.tick_time, rb);
+            car.post_tick_update(rb);
             car.finish_physics_tick(rb);
 
             self.boost_pad_grid.maybe_give_car_boost(
                 &mut car.state,
                 &self.mutator_config,
                 self.tick_count,
-                self.tick_time,
             );
         }
 

@@ -128,7 +128,6 @@ fn main() {
             rng_seed: Some(0),
             ..Default::default()
         },
-        120,
     );
 
     fastrand::seed(0);

@@ -273,4 +273,8 @@ impl RigidBody {
     pub fn get_forward_speed(&self) -> f32 {
         self.linear_velocity.dot(self.get_forward_vector())
     }
+
+    pub fn get_world_pos(&self) -> Vec3A {
+        self.collision_object.get_world_transform().translation
+    }
 }

@@ -30,6 +30,13 @@ pub(crate) const BT_TO_UU: f32 = 50.0;
 /// Unreal Units (2cm) to `BulletPhysics` Units (1m) conversion scale
 pub(crate) const UU_TO_BT: f32 = 1.0 / 50.0;
 
+/// How many ticks occur in one second
+pub const TICK_RATE: f32 = 120.0;
+
+/// The amount of time each tick takes up (inverse of TICK_RATE)
+pub const TICK_TIME: f32 = 1.0 / TICK_RATE;
+
+/// The z-velocity added by gravity each second
 pub const GRAVITY_Z: f32 = -650.0;
 
 pub mod arena {

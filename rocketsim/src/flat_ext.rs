@@ -442,7 +442,7 @@ impl From<crate::BallState> for flat::BallState {
 impl From<&flat::GameState> for crate::GameState {
     fn from(value: &flat::GameState) -> Self {
         Self {
-            tick_rate: value.tick_rate,
+            TICK_RATE: value.TICK_RATE,
             tick_count: value.tick_count,
             game_mode: value.game_mode.into(),
             cars: value
@@ -467,7 +467,7 @@ impl From<&flat::GameState> for crate::GameState {
 impl From<&crate::GameState> for Box<flat::GameState> {
     fn from(value: &crate::GameState) -> Self {
         let mut new = Self::default();
-        new.tick_rate = value.tick_rate;
+        new.TICK_RATE = value.TICK_RATE;
         new.tick_count = value.tick_count;
         new.game_mode = value.game_mode.into();
         new.cars = value
