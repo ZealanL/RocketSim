@@ -1,4 +1,3 @@
-mod arena_impl;
 mod ball_hit_info;
 mod ball_state;
 mod base;

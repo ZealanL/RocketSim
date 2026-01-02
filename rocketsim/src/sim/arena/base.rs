@@ -13,12 +13,9 @@ use crate::{
         collision::{
             broadphase::{GridBroadphase, HashedOverlappingPairCache},
             dispatch::{
-                collision_dispatcher::CollisionDispatcher,
-                collision_object::ActivationState,
+                collision_dispatcher::CollisionDispatcher, collision_object::ActivationState,
             },
-            narrowphase::{
-                manifold_point::ManifoldPoint,
-            },
+            narrowphase::manifold_point::ManifoldPoint,
             shapes::{collision_shape::CollisionShapes, static_plane_shape::StaticPlaneShape},
         },
         dynamics::{
@@ -45,7 +42,13 @@ impl Arena {
             manifold_point.local_point_b
         } * BT_TO_UU;
 
-        self.on_ball_hit(car_idx, rel_ball_pos);
+        self.ball.on_hit(
+            &mut self.cars[car_idx],
+            rel_ball_pos,
+            self.tick_count,
+            self.game_mode,
+            &self.mutator_config,
+        );
     }
 
     fn on_car_world_collision(&mut self, car_idx: usize, manifold_point: &ManifoldPoint) {
@@ -589,7 +592,7 @@ impl Arena {
             );
         }
 
-        self.ball_pre_tick_update();
+        self.ball.pre_tick_update(self.game_mode);
 
         self.bullet_world
             .step_simulation(TICK_TIME, &mut self.contact_tracker);
@@ -637,7 +640,8 @@ impl Arena {
             );
         }
 
-        self.ball_finish_physics_tick();
+        let ball_rb = &mut self.bullet_world.bodies_mut()[self.ball.rigid_body_idx];
+        self.ball.finish_physics_tick(ball_rb, &self.mutator_config);
 
         if self.game_mode == GameMode::Dropshot {
             todo!("dropshot tile state sync")
@@ -668,6 +672,17 @@ impl Arena {
     #[must_use]
     pub const fn mutator_config(&self) -> &MutatorConfig {
         &self.mutator_config
+    }
+
+    pub fn set_ball_state(&mut self, ball_state: BallState) {
+        self.ball.set_state(
+            &mut self.bullet_world.bodies_mut()[self.ball.rigid_body_idx],
+            ball_state,
+        );
+    }
+
+    pub fn get_ball_state(&self) -> &BallState {
+        &self.ball.state
     }
 
     #[inline]
