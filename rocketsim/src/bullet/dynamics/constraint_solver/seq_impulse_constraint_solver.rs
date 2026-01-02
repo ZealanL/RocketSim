@@ -148,8 +148,8 @@ impl SeqImpulseConstraintSolver {
             for cp in &mut manifold.point_cache {
                 assert!(cp.distance_1 <= manifold.contact_processing_threshold);
 
-                let rel_pos1 = cp.position_world_on_a - body0.get_world_trans().translation;
-                let rel_pos2 = cp.position_world_on_b - body1.get_world_trans().translation;
+                let rel_pos1 = cp.pos_world_on_a - body0.get_world_trans().translation;
+                let rel_pos2 = cp.pos_world_on_b - body1.get_world_trans().translation;
 
                 if cp.is_special {
                     self.special_resolve_info
@@ -274,7 +274,7 @@ impl SeqImpulseConstraintSolver {
 
         let penetration = distance;
 
-        let vel = body.get_velocity_in_local_point(rel_pos1);
+        let vel = body.get_vel_in_local_point(rel_pos1);
         let rel_vel = normal_world_on_b.dot(vel);
 
         let restitution = SolverConstraint::restitution_curve(rel_vel, sri.restitution).max(0.0);
@@ -285,8 +285,8 @@ impl SeqImpulseConstraintSolver {
         );
 
         let rel_vel = contact_normal_1
-            .dot(solver_body_a.linear_velocity + external_force_impulse_a)
-            + rel_pos1_cross_normal.dot(solver_body_a.angular_velocity + external_torque_impulse_a);
+            .dot(solver_body_a.lin_vel + external_force_impulse_a)
+            + rel_pos1_cross_normal.dot(solver_body_a.ang_vel + external_torque_impulse_a);
 
         let positional_error = if penetration > 0.0 {
             0.0
@@ -294,16 +294,16 @@ impl SeqImpulseConstraintSolver {
             -penetration * erp * inv_time_step
         };
 
-        let velocity_error = restitution - rel_vel;
+        let vel_error = restitution - rel_vel;
 
         let penetration_impulse = positional_error * jac_diag_ab_inv;
-        let velocity_impulse = velocity_error * jac_diag_ab_inv;
+        let vel_impulse = vel_error * jac_diag_ab_inv;
 
         let (rhs, rhs_penetration) =
             if penetration > contact_solver_info::SPLIT_IMPULSE_PENETRATION_THRESHOLD {
-                (penetration_impulse + velocity_impulse, 0.0)
+                (penetration_impulse + vel_impulse, 0.0)
             } else {
-                (velocity_impulse, penetration_impulse)
+                (vel_impulse, penetration_impulse)
             };
 
         self.tmp_solver_contact_constraint_pool
@@ -322,7 +322,7 @@ impl SeqImpulseConstraintSolver {
                 ..Default::default()
             });
 
-        let vel = solver_body_a.get_velocity_in_local_point_no_delta(rel_pos1);
+        let vel = solver_body_a.get_vel_in_local_point_no_delta(rel_pos1);
         let rel_vel = normal_world_on_b.dot(vel);
 
         let mut lateral_friction_dir_1 = vel - normal_world_on_b * rel_vel;
@@ -352,11 +352,11 @@ impl SeqImpulseConstraintSolver {
         let jac_diag_ab_inv = relaxation / denom;
 
         let rel_vel = contact_normal_1
-            .dot(solver_body_a.linear_velocity + external_force_impulse_a)
-            + rel_pos1_cross_normal.dot(solver_body_a.angular_velocity + external_torque_impulse_a);
+            .dot(solver_body_a.lin_vel + external_force_impulse_a)
+            + rel_pos1_cross_normal.dot(solver_body_a.ang_vel + external_torque_impulse_a);
 
-        let velocity_error = -rel_vel;
-        let velocity_impulse = velocity_error * jac_diag_ab_inv;
+        let vel_error = -rel_vel;
+        let vel_impulse = vel_error * jac_diag_ab_inv;
 
         self.tmp_solver_contact_friction_constraint_pool
             .push(SolverConstraint {
@@ -367,7 +367,7 @@ impl SeqImpulseConstraintSolver {
                 rel_pos1_cross_normal,
                 angular_component_a,
                 jac_diag_ab_inv,
-                rhs: velocity_impulse,
+                rhs: vel_impulse,
                 lower_limit: -sri.friction,
                 upper_limit: sri.friction,
                 friction: sri.friction,
@@ -473,30 +473,30 @@ impl SeqImpulseConstraintSolver {
                 continue;
             };
 
-            solver.linear_velocity += solver.delta_linear_velocity;
-            solver.angular_velocity += solver.delta_angular_velocity;
+            solver.lin_vel += solver.delta_lin_vel;
+            solver.ang_vel += solver.delta_ang_vel;
 
-            if solver.push_velocity.length_squared() != 0.0
-                || solver.turn_velocity.length_squared() != 0.0
+            if solver.push_vel.length_squared() != 0.0
+                || solver.turn_vel.length_squared() != 0.0
             {
                 if body.no_rot {
                     integrate_trans_no_rot(
                         &mut solver.world_trans,
-                        solver.push_velocity,
+                        solver.push_vel,
                         time_step,
                     );
                 } else {
                     integrate_trans(
                         &mut solver.world_trans,
-                        solver.push_velocity,
-                        solver.turn_velocity * contact_solver_info::SPLIT_IMPULSE_TURN_ERP,
+                        solver.push_vel,
+                        solver.turn_vel * contact_solver_info::SPLIT_IMPULSE_TURN_ERP,
                         time_step,
                     );
                 }
             }
 
-            body.set_linear_velocity(solver.linear_velocity + solver.external_force_impulse);
-            body.set_angular_velocity(solver.angular_velocity + solver.external_torque_impulse);
+            body.set_lin_vel(solver.lin_vel + solver.external_force_impulse);
+            body.set_ang_vel(solver.ang_vel + solver.external_torque_impulse);
 
             body.set_world_trans(solver.world_trans);
         }

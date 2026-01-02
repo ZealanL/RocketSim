@@ -8,8 +8,8 @@ use crate::bullet::{
 pub struct ManifoldPoint {
     pub local_point_a: Vec3A,
     pub local_point_b: Vec3A,
-    pub position_world_on_b: Vec3A,
-    pub position_world_on_a: Vec3A,
+    pub pos_world_on_b: Vec3A,
+    pub pos_world_on_a: Vec3A,
     pub normal_world_on_b: Vec3A,
     pub distance_1: f32,
     pub combined_friction: f32,
@@ -27,8 +27,8 @@ impl ManifoldPoint {
         Self {
             local_point_a: point_a,
             local_point_b: point_b,
-            position_world_on_a: Vec3A::ZERO,
-            position_world_on_b: Vec3A::ZERO,
+            pos_world_on_a: Vec3A::ZERO,
+            pos_world_on_b: Vec3A::ZERO,
             normal_world_on_b: normal,
             distance_1: distance,
             combined_friction: 0.0,
@@ -49,8 +49,8 @@ impl ManifoldPoint {
         rel_pos1: Vec3A,
         rel_pos2: Vec3A,
     ) {
-        let vel1 = solver_body_a.get_velocity_in_local_point_no_delta(rel_pos1);
-        let vel2 = solver_body_b.get_velocity_in_local_point_no_delta(rel_pos2);
+        let vel1 = solver_body_a.get_vel_in_local_point_no_delta(rel_pos1);
+        let vel2 = solver_body_b.get_vel_in_local_point_no_delta(rel_pos2);
 
         let vel = vel1 - vel2;
         let rel_vel = self.normal_world_on_b.dot(vel);

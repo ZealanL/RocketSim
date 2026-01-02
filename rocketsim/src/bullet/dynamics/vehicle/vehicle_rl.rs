@@ -99,7 +99,7 @@ impl WheelInfoRL {
     fn reset_wheel_suspension(&mut self, suspension_travel: f32) {
         self.wheel_info.raycast_info.suspension_length =
             self.wheel_info.suspension_rest_length_1 + suspension_travel;
-        self.wheel_info.suspension_relative_velocity = 0.0;
+        self.wheel_info.suspension_relative_vel = 0.0;
         self.wheel_info.raycast_info.contact_normal_ws =
             -self.wheel_info.raycast_info.wheel_direction_ws;
         self.wheel_info.clipped_inv_contact_dot_suspension = 1.0;
@@ -138,7 +138,7 @@ impl WheelInfoRL {
 
         let rel_pos =
             self.wheel_info.raycast_info.contact_point_ws - chassis.get_world_trans().translation;
-        self.vel_at_contact_point = chassis.get_velocity_in_local_point(rel_pos);
+        self.vel_at_contact_point = chassis.get_vel_in_local_point(rel_pos);
 
         let proj_vel = self
             .wheel_info
@@ -149,10 +149,10 @@ impl WheelInfoRL {
 
         if denom > 0.1 {
             let inv = 1.0 / denom;
-            self.wheel_info.suspension_relative_velocity = proj_vel * inv;
+            self.wheel_info.suspension_relative_vel = proj_vel * inv;
             self.wheel_info.clipped_inv_contact_dot_suspension = inv;
         } else {
-            self.wheel_info.suspension_relative_velocity = 0.0;
+            self.wheel_info.suspension_relative_vel = 0.0;
             self.wheel_info.clipped_inv_contact_dot_suspension = 10.0;
         }
 
@@ -215,8 +215,8 @@ impl WheelInfoRL {
                 let contact_point = self.wheel_info.raycast_info.contact_point_ws;
                 let car_rel_contact_point = contact_point - chassis.get_world_trans().translation;
 
-                let v1 = chassis.get_velocity_in_local_point(car_rel_contact_point);
-                let v2 = ground_rb.get_velocity_in_local_point(car_rel_contact_point);
+                let v1 = chassis.get_vel_in_local_point(car_rel_contact_point);
+                let v2 = ground_rb.get_vel_in_local_point(car_rel_contact_point);
                 let contact_vel = v1 - v2;
                 let mut rel_vel = contact_vel.dot(forward_dir);
 
@@ -251,14 +251,14 @@ impl WheelInfoRL {
             * bullet_vehicle::SUSPENSION_STIFFNESS
             * self.wheel_info.clipped_inv_contact_dot_suspension;
 
-        let damping_vel_scale = if self.wheel_info.suspension_relative_velocity < 0.0 {
+        let damping_vel_scale = if self.wheel_info.suspension_relative_vel < 0.0 {
             bullet_vehicle::WHEELS_DAMPING_COMPRESSION
         } else {
             bullet_vehicle::WHEELS_DAMPING_RELAXATION
         };
 
         self.wheel_info.wheels_suspension_force =
-            force - (damping_vel_scale * self.wheel_info.suspension_relative_velocity);
+            force - (damping_vel_scale * self.wheel_info.suspension_relative_vel);
 
         self.wheel_info.wheels_suspension_force *= self.suspsension_force_scale;
         self.wheel_info.wheels_suspension_force = self.wheel_info.wheels_suspension_force.max(0.0);

@@ -156,7 +156,7 @@ impl Arena {
                     * self.mutator_config.bump_force_scale;
                 let bump_impulse = (vel_dir * base_scale) + (hit_up_dir * upward_force);
 
-                victim.velocity_impulse_cache += bump_impulse;
+                victim.vel_impulse_cache += bump_impulse;
             }
 
             attacker.state.car_contact = Some(CarContact {
@@ -457,8 +457,8 @@ impl Arena {
         let mut num_cars_at_respawn_pos = ArrayVec::<usize, 4>::new();
         num_cars_at_respawn_pos.extend(repeat_n(0, 4));
 
-        let kickoff_position_amount = num_blue_cars.max(num_orange_cars);
-        for i in 0..kickoff_position_amount {
+        let kickoff_pos_amount = num_blue_cars.max(num_orange_cars);
+        for i in 0..kickoff_pos_amount {
             let spawn_pos = if i < kickoff_locs.len() {
                 kickoff_locs[kickoff_order_perm[i]]
             } else {
@@ -567,8 +567,8 @@ impl Arena {
         {
             // Update ball activation
             let ball_rb = &mut self.bullet_world.bodies_mut()[self.ball.rigid_body_idx];
-            let should_sleep = ball_rb.linear_velocity.length_squared() == 0.0
-                && ball_rb.angular_velocity.length_squared() == 0.0;
+            let should_sleep = ball_rb.lin_vel.length_squared() == 0.0
+                && ball_rb.ang_vel.length_squared() == 0.0;
 
             ball_rb.set_activation_state(if should_sleep {
                 ActivationState::Sleeping

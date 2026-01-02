@@ -21,7 +21,7 @@ pub(crate) struct Ball {
     pub state: BallState,
     pub rigid_body_idx: usize,
     pub ground_stick_applied: bool,
-    pub velocity_impulse_cache: Vec3A,
+    pub vel_impulse_cache: Vec3A,
 }
 
 impl Ball {
@@ -79,7 +79,7 @@ impl Ball {
             state: BallState::DEFAULT,
             rigid_body_idx,
             ground_stick_applied: false,
-            velocity_impulse_cache: Vec3A::ZERO,
+            vel_impulse_cache: Vec3A::ZERO,
         }
     }
 
@@ -92,8 +92,8 @@ impl Ball {
             translation: state.phys.pos * UU_TO_BT,
         });
 
-        rb.set_linear_velocity(state.phys.vel * UU_TO_BT);
-        rb.set_angular_velocity(state.phys.ang_vel);
+        rb.set_lin_vel(state.phys.vel * UU_TO_BT);
+        rb.set_ang_vel(state.phys.ang_vel);
         rb.update_inertia_tensor();
 
         if state.phys.vel != Vec3A::ZERO || state.phys.ang_vel != Vec3A::ZERO {
@@ -120,24 +120,24 @@ impl Ball {
         rb: &mut RigidBody,
         mutator_config: &MutatorConfig,
     ) {
-        if self.velocity_impulse_cache.length_squared() != 0.0 {
-            rb.linear_velocity += self.velocity_impulse_cache * UU_TO_BT;
-            self.velocity_impulse_cache = Vec3A::ZERO;
+        if self.vel_impulse_cache.length_squared() != 0.0 {
+            rb.lin_vel += self.vel_impulse_cache * UU_TO_BT;
+            self.vel_impulse_cache = Vec3A::ZERO;
         }
 
         let ball_max_speed_bt = mutator_config.ball_max_speed * UU_TO_BT;
-        if rb.linear_velocity.length_squared() > ball_max_speed_bt * ball_max_speed_bt {
-            rb.linear_velocity = rb.linear_velocity.normalize() * ball_max_speed_bt;
+        if rb.lin_vel.length_squared() > ball_max_speed_bt * ball_max_speed_bt {
+            rb.lin_vel = rb.lin_vel.normalize() * ball_max_speed_bt;
         }
 
-        if rb.angular_velocity.length_squared()
+        if rb.ang_vel.length_squared()
             > consts::ball::MAX_ANG_SPEED * consts::ball::MAX_ANG_SPEED
         {
-            rb.angular_velocity = rb.angular_velocity.normalize() * consts::ball::MAX_ANG_SPEED;
+            rb.ang_vel = rb.ang_vel.normalize() * consts::ball::MAX_ANG_SPEED;
         }
 
-        self.state.phys.vel = rb.linear_velocity * consts::BT_TO_UU;
-        self.state.phys.ang_vel = rb.angular_velocity;
+        self.state.phys.vel = rb.lin_vel * consts::BT_TO_UU;
+        self.state.phys.ang_vel = rb.ang_vel;
 
         let trans = *rb.get_world_trans();
         self.state.phys.pos = trans.translation * consts::BT_TO_UU;
@@ -205,7 +205,7 @@ impl Ball {
                 * mutator_config.ball_hit_extra_force_scale;
             ball_hit_info.extra_hit_vel = added_vel;
 
-            self.velocity_impulse_cache += added_vel;
+            self.vel_impulse_cache += added_vel;
         }
 
         car.state.ball_hit_info = Some(ball_hit_info);

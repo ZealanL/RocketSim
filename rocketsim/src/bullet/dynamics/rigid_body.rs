@@ -63,8 +63,8 @@ pub struct RigidBody {
     rb_flags: u8,
 
     pub interp_world_trans: Affine3A,
-    pub interp_linear_velocity: Vec3A,
-    pub interp_angular_velocity: Vec3A,
+    pub interp_lin_vel: Vec3A,
+    pub interp_ang_vel: Vec3A,
     pub contact_processing_threshold: f32,
     broadphase_handle: Option<usize>,
 
@@ -82,8 +82,8 @@ pub struct RigidBody {
 
     pub inertia_tensor_world: Mat3A,
     pub inv_inertia_tensor_world: Mat3A,
-    pub linear_velocity: Vec3A,
-    pub angular_velocity: Vec3A,
+    pub lin_vel: Vec3A,
+    pub ang_vel: Vec3A,
     pub inverse_mass: f32,
     pub gravity: Vec3A,
     pub gravity_acceleration: Vec3A,
@@ -123,8 +123,8 @@ impl RigidBody {
         Self {
             world_trans: info.start_world_trans,
             interp_world_trans: info.start_world_trans,
-            interp_linear_velocity: Vec3A::ZERO,
-            interp_angular_velocity: Vec3A::ZERO,
+            interp_lin_vel: Vec3A::ZERO,
+            interp_ang_vel: Vec3A::ZERO,
             contact_processing_threshold: f32::MAX,
             broadphase_handle: None,
             shape: info.collision_shape,
@@ -146,8 +146,8 @@ impl RigidBody {
 
             inv_inertia_tensor_world,
             inertia_tensor_world: inv_inertia_tensor_world.transpose(),
-            linear_velocity: Vec3A::ZERO,
-            angular_velocity: Vec3A::ZERO,
+            lin_vel: Vec3A::ZERO,
+            ang_vel: Vec3A::ZERO,
             inverse_mass,
             gravity: Vec3A::ZERO,
             gravity_acceleration: Vec3A::ZERO,
@@ -235,14 +235,14 @@ impl RigidBody {
         self.gravity_acceleration = acceleration;
     }
 
-    pub fn set_linear_velocity(&mut self, lin_vel: Vec3A) {
+    pub fn set_lin_vel(&mut self, lin_vel: Vec3A) {
         debug_assert!(!lin_vel.is_nan());
-        self.linear_velocity = lin_vel;
+        self.lin_vel = lin_vel;
     }
 
-    pub fn set_angular_velocity(&mut self, ang_vel: Vec3A) {
+    pub fn set_ang_vel(&mut self, ang_vel: Vec3A) {
         debug_assert!(!ang_vel.is_nan());
-        self.angular_velocity = ang_vel;
+        self.ang_vel = ang_vel;
     }
 
     fn get_inertia_tensor(world_mat: Mat3A, inv_inertia_local: Vec3A) -> Mat3A {
@@ -262,7 +262,7 @@ impl RigidBody {
 
     pub fn apply_torque_impulse(&mut self, torque: Vec3A) {
         debug_assert!(!torque.is_nan());
-        self.angular_velocity += self.inv_inertia_tensor_world * torque;
+        self.ang_vel += self.inv_inertia_tensor_world * torque;
     }
 
     pub fn apply_impulse(&mut self, impulse: Vec3A, rel_pos: Vec3A) {
@@ -278,7 +278,7 @@ impl RigidBody {
 
     pub fn apply_central_impulse(&mut self, impulse: Vec3A) {
         debug_assert!(!impulse.is_nan());
-        self.linear_velocity += impulse * self.inverse_mass;
+        self.lin_vel += impulse * self.inverse_mass;
     }
 
     pub fn apply_central_force(&mut self, force: Vec3A) {
@@ -292,8 +292,8 @@ impl RigidBody {
     }
 
     pub fn apply_damping(&mut self, time_step: f32) {
-        self.linear_velocity *= (1.0 - self.linear_damping).powf(time_step);
-        self.angular_velocity *= (1.0 - self.angular_damping).powf(time_step);
+        self.lin_vel *= (1.0 - self.linear_damping).powf(time_step);
+        self.ang_vel *= (1.0 - self.angular_damping).powf(time_step);
     }
 
     #[must_use]
@@ -301,12 +301,12 @@ impl RigidBody {
         let mut trans = *self.get_world_trans();
 
         if self.no_rot {
-            integrate_trans_no_rot(&mut trans, self.linear_velocity, time_step);
+            integrate_trans_no_rot(&mut trans, self.lin_vel, time_step);
         } else {
             integrate_trans(
                 &mut trans,
-                self.linear_velocity,
-                self.angular_velocity,
+                self.lin_vel,
+                self.ang_vel,
                 time_step,
             );
         }
@@ -316,16 +316,16 @@ impl RigidBody {
 
     pub fn set_center_of_mass_trans(&mut self, xform: Affine3A) {
         self.interp_world_trans = xform;
-        self.interp_linear_velocity = self.linear_velocity;
-        self.interp_angular_velocity = self.angular_velocity;
+        self.interp_lin_vel = self.lin_vel;
+        self.interp_ang_vel = self.ang_vel;
         self.set_world_trans(xform);
 
         self.update_inertia_tensor();
     }
 
     #[must_use]
-    pub fn get_velocity_in_local_point(&self, rel_pos: Vec3A) -> Vec3A {
-        self.linear_velocity + self.angular_velocity.cross(rel_pos)
+    pub fn get_vel_in_local_point(&self, rel_pos: Vec3A) -> Vec3A {
+        self.lin_vel + self.ang_vel.cross(rel_pos)
     }
 
     pub fn update_activation_state(&mut self, _time_step: f32) {
@@ -336,8 +336,8 @@ impl RigidBody {
 
         let thresh_lin_sq = self.linear_sleeping_threshold.powi(2);
         let thresh_ang_sq = self.angular_sleeping_threshold.powi(2);
-        let within_sleep_thresh = (self.linear_velocity.length_squared() < thresh_lin_sq)
-            && (self.angular_velocity.length_squared() < thresh_ang_sq);
+        let within_sleep_thresh = (self.lin_vel.length_squared() < thresh_lin_sq)
+            && (self.ang_vel.length_squared() < thresh_ang_sq);
 
         if within_sleep_thresh {
             self.set_activation_state(ActivationState::Sleeping);
@@ -376,7 +376,7 @@ impl RigidBody {
     }
 
     pub fn get_forward_speed(&self) -> f32 {
-        self.linear_velocity.dot(self.get_forward_vector())
+        self.lin_vel.dot(self.get_forward_vector())
     }
 
     pub fn get_world_pos(&self) -> Vec3A {

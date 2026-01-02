@@ -32,7 +32,7 @@ pub struct WheelInfo {
     pub engine_force: f32,
     pub brake: f32,
     pub clipped_inv_contact_dot_suspension: f32,
-    pub suspension_relative_velocity: f32,
+    pub suspension_relative_vel: f32,
     pub wheels_suspension_force: f32,
 }
 
@@ -49,7 +49,7 @@ impl WheelInfo {
             raycast_info: RaycastInfo::default(),
             world_trans: Affine3A::IDENTITY,
             clipped_inv_contact_dot_suspension: 0.0,
-            suspension_relative_velocity: 0.0,
+            suspension_relative_vel: 0.0,
             wheels_suspension_force: 0.0,
         }
     }

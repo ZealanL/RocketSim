@@ -35,7 +35,7 @@ pub struct Car {
     pub(crate) info: CarInfo,
     pub(crate) bullet_vehicle: VehicleRL,
     pub(crate) rigid_body_idx: usize,
-    pub(crate) velocity_impulse_cache: Vec3A,
+    pub(crate) vel_impulse_cache: Vec3A,
     pub(crate) state: CarState,
 }
 
@@ -132,7 +132,7 @@ impl Car {
             info: CarInfo { idx, team, config },
             rigid_body_idx,
             bullet_vehicle,
-            velocity_impulse_cache: Vec3A::ZERO,
+            vel_impulse_cache: Vec3A::ZERO,
             state: CarState {
                 boost: mutator_config.car_spawn_boost_amount,
                 ..Default::default()
@@ -206,11 +206,11 @@ impl Car {
             translation: state.phys.pos * UU_TO_BT,
         });
 
-        rb.linear_velocity = state.phys.vel * UU_TO_BT;
-        rb.angular_velocity = state.phys.ang_vel;
+        rb.lin_vel = state.phys.vel * UU_TO_BT;
+        rb.ang_vel = state.phys.ang_vel;
         rb.update_inertia_tensor();
 
-        self.velocity_impulse_cache = Vec3A::ZERO;
+        self.vel_impulse_cache = Vec3A::ZERO;
         self.state = *state;
     }
 
@@ -289,8 +289,8 @@ impl Car {
         self.bullet_vehicle.wheels[1].steer_angle = steer_angle;
 
         let car_pos = rb.get_world_pos();
-        let car_vel = rb.linear_velocity;
-        let car_ang_vel = rb.angular_velocity;
+        let car_vel = rb.lin_vel;
+        let car_ang_vel = rb.ang_vel;
 
         for wheel in &mut self.bullet_vehicle.wheels {
             if wheel.wheel_info.raycast_info.ground_object.is_none() {
@@ -434,7 +434,7 @@ impl Car {
                 Vec3A::ZERO
             };
 
-            let ang_vel = rb.angular_velocity;
+            let ang_vel = rb.ang_vel;
 
             let damp_pitch = dir_pitch.dot(ang_vel)
                 * car_consts::air_control::DAMPING.x
@@ -541,7 +541,7 @@ impl Car {
                 self.state.is_auto_flipping = false;
                 self.state.auto_flip_timer = 0.0;
             } else {
-                rb.angular_velocity += self.state.get_forward_dir()
+                rb.ang_vel += self.state.get_forward_dir()
                     * car_consts::autoflip::TORQUE
                     * self.state.auto_flip_torque_scale
                     * TICK_TIME;
@@ -664,10 +664,10 @@ impl Car {
             self.state.flip_time += TICK_TIME;
             if self.state.flip_time <= car_consts::flip::TORQUE_TIME
                 && self.state.flip_time >= car_consts::flip::Z_DAMP_START
-                && (rb.linear_velocity.z < 0.0
+                && (rb.lin_vel.z < 0.0
                     || self.state.flip_time < car_consts::flip::Z_DAMP_END)
             {
-                rb.linear_velocity.z *= 1.0 - car_consts::flip::Z_DAMP_120;
+                rb.lin_vel.z *= 1.0 - car_consts::flip::Z_DAMP_120;
             }
         } else if self.state.has_flipped {
             self.state.flip_time += TICK_TIME;
@@ -836,7 +836,7 @@ impl Car {
 
         self.state.phys.rot_mat = rb.get_world_trans().matrix3;
 
-        let speed_squared = (rb.linear_velocity * BT_TO_UU).length_squared();
+        let speed_squared = (rb.lin_vel * BT_TO_UU).length_squared();
         self.state.is_supersonic = speed_squared
             >= if self.state.is_supersonic
                 && self.state.supersonic_time < car_consts::supersonic::MAINTAIN_MAX_TIME
@@ -878,17 +878,17 @@ impl Car {
             return;
         }
 
-        if self.velocity_impulse_cache != Vec3A::ZERO {
-            rb.linear_velocity += self.velocity_impulse_cache * UU_TO_BT;
-            self.velocity_impulse_cache = Vec3A::ZERO;
+        if self.vel_impulse_cache != Vec3A::ZERO {
+            rb.lin_vel += self.vel_impulse_cache * UU_TO_BT;
+            self.vel_impulse_cache = Vec3A::ZERO;
         }
 
-        let vel = &mut rb.linear_velocity;
+        let vel = &mut rb.lin_vel;
         if vel.length_squared() > const { MAX_SPEED * MAX_SPEED } {
             *vel = vel.normalize() * MAX_SPEED;
         }
 
-        let ang_vel = &mut rb.angular_velocity;
+        let ang_vel = &mut rb.ang_vel;
         if ang_vel.length_squared()
             > const { car_consts::MAX_ANG_SPEED * car_consts::MAX_ANG_SPEED }
         {
@@ -896,7 +896,7 @@ impl Car {
         }
 
         self.state.phys.pos = rb.get_world_trans().translation * BT_TO_UU;
-        self.state.phys.vel = rb.linear_velocity * BT_TO_UU;
-        self.state.phys.ang_vel = rb.angular_velocity;
+        self.state.phys.vel = rb.lin_vel * BT_TO_UU;
+        self.state.phys.ang_vel = rb.ang_vel;
     }
 }

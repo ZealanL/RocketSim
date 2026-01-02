@@ -11,29 +11,29 @@ use crate::bullet::dynamics::{
 pub fn resolve_single_collision(
     body1: &RigidBody,
     body2: &RigidBody,
-    contact_position_world: Vec3A,
+    contact_pos_world: Vec3A,
     contact_normal_on_b: Vec3A,
     time_step: f32,
     distance: f32,
 ) -> f32 {
-    let rel_pos1 = contact_position_world - body1.get_world_trans().translation;
-    let rel_pos2 = contact_position_world - body2.get_world_trans().translation;
+    let rel_pos1 = contact_pos_world - body1.get_world_trans().translation;
+    let rel_pos2 = contact_pos_world - body2.get_world_trans().translation;
 
-    let vel1 = body1.get_velocity_in_local_point(rel_pos1);
-    let vel2 = body2.get_velocity_in_local_point(rel_pos2);
+    let vel1 = body1.get_vel_in_local_point(rel_pos1);
+    let vel2 = body2.get_vel_in_local_point(rel_pos2);
     let vel = vel1 - vel2;
     let rel_vel = contact_normal_on_b.dot(vel);
 
     let positional_error = contact_solver_info::ERP * -distance / time_step;
-    let velocity_error = -rel_vel;
-    let denom0 = body1.compute_impulse_denominator(contact_position_world, contact_normal_on_b);
-    let denom1 = body2.compute_impulse_denominator(contact_position_world, contact_normal_on_b);
+    let vel_error = -rel_vel;
+    let denom0 = body1.compute_impulse_denominator(contact_pos_world, contact_normal_on_b);
+    let denom1 = body2.compute_impulse_denominator(contact_pos_world, contact_normal_on_b);
     let jac_diag_ab_inv = 1.0 / (denom0 + denom1);
 
     let penetration_impulse = positional_error * jac_diag_ab_inv;
-    let velocity_impulse = velocity_error * jac_diag_ab_inv;
+    let vel_impulse = vel_error * jac_diag_ab_inv;
 
-    let normal_impulse = penetration_impulse + velocity_impulse;
+    let normal_impulse = penetration_impulse + vel_impulse;
     normal_impulse.max(0.0)
 }
 
@@ -53,8 +53,8 @@ pub fn resolve_single_bilateral(
     let rel_pos1 = pos1 - body1_comt.translation;
     let rel_pos2 = pos2 - body2_comt.translation;
 
-    let vel1 = body1.get_velocity_in_local_point(rel_pos1);
-    let vel2 = body2.get_velocity_in_local_point(rel_pos2);
+    let vel1 = body1.get_vel_in_local_point(rel_pos1);
+    let vel2 = body2.get_vel_in_local_point(rel_pos2);
     let vel = vel1 - vel2;
 
     let jac_body_a = JacbobianBody {
