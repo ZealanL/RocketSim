@@ -14,18 +14,18 @@ impl BoostPadGrid {
     pub fn new(pad_configs: &Vec<BoostPadConfig>, mutator_config: &MutatorConfig) -> Self {
         assert!(!pad_configs.is_empty());
 
-        let mut all_pads: Vec<BoostPad> = pad_configs.clone().into_iter().map(
-            |pad_config| BoostPad::new(pad_config, mutator_config)
-        ).collect();
+        let mut all_pads: Vec<BoostPad> = pad_configs
+            .clone()
+            .into_iter()
+            .map(|pad_config| BoostPad::new(pad_config, mutator_config))
+            .collect();
 
         // Sort them to match RLBot/RLGym ordering
         all_pads.sort_by(|a, b| {
             let a_pos = a.config.pos;
             let b_pos = b.config.pos;
             match a_pos.y.total_cmp(&b_pos.y) {
-                std::cmp::Ordering::Equal => {
-                    a_pos.x.total_cmp(&b_pos.x)
-                }
+                std::cmp::Ordering::Equal => a_pos.x.total_cmp(&b_pos.x),
                 other => other,
             }
         });
@@ -96,8 +96,7 @@ impl BoostPadGrid {
             let pad = &mut self.all_pads[pad_idx];
 
             if let Some(last_give_tick_count) = pad.gave_boost_tick_count
-                && (tick_count - last_give_tick_count) as f32 * tick_time
-                    < pad.max_cooldown
+                && (tick_count - last_give_tick_count) as f32 * tick_time < pad.max_cooldown
             {
                 continue;
             }
@@ -111,8 +110,8 @@ impl BoostPadGrid {
                 && (car_state.pos.z - pad_pos.z).abs() <= boost_pads::CYL_HEIGHT;
             if overlapping {
                 // Give boost
-                car_state.boost = (car_state.boost + pad.boost_amount)
-                    .min(mutator_config.car_max_boost_amount);
+                car_state.boost =
+                    (car_state.boost + pad.boost_amount).min(mutator_config.car_max_boost_amount);
                 pad.gave_boost_tick_count = Some(tick_count);
                 return;
             }

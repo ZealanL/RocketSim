@@ -1,9 +1,5 @@
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(
-    feature = "rkyv",
-    derive(rkyv::Serialize, rkyv::Deserialize, rkyv::Archive)
-)]
+
 pub struct CarControls {
     pub throttle: f32,
     pub steer: f32,

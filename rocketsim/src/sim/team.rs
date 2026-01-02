@@ -1,9 +1,4 @@
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(
-    feature = "rkyv",
-    derive(rkyv::Serialize, rkyv::Deserialize, rkyv::Archive)
-)]
 pub enum Team {
     #[default]
     Blue,

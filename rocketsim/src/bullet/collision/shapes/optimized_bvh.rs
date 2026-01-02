@@ -42,7 +42,9 @@ pub fn create_bvh(triangles: &TriangleMesh, aabb: Aabb) -> Tree {
         .enumerate()
         .map(|(triangle_index, aabb)| Node {
             aabb,
-            node_type: BvhNodeType::Leaf { leaf_index: triangle_index },
+            node_type: BvhNodeType::Leaf {
+                leaf_index: triangle_index,
+            },
         })
         .collect();
 

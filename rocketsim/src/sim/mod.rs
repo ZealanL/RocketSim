@@ -8,7 +8,6 @@ mod collision_masks;
 pub(crate) mod collision_meshes;
 pub mod consts;
 mod game_mode;
-mod game_state;
 mod linear_piece_curve;
 mod mutator_config;
 mod phys_state;
@@ -23,7 +22,6 @@ pub use car::*;
 #[allow(clippy::redundant_pub_crate)]
 pub(crate) use collision_masks::*;
 pub use game_mode::*;
-pub use game_state::*;
 pub use mutator_config::*;
 pub use phys_state::*;
 pub use team::*;

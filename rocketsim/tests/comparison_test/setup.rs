@@ -2,7 +2,6 @@ use crate::comparison_test::ControlSeq;
 use glam::{Mat3A, Vec3A};
 use rocketsim::{BallState, CarControls, CarState, Team};
 use rocketsim_rs::consts;
-use serde::Serialize;
 
 #[derive(Debug, Clone)]
 pub struct CarSetup {
@@ -75,7 +74,7 @@ impl CarSetup {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize)]
+#[derive(Debug, Clone, Copy)]
 pub struct BallSetup {
     pub pos: Vec3A,
     pub rot_mat: Mat3A,

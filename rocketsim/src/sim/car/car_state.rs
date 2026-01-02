@@ -5,22 +5,12 @@ use glam::{Mat3A, Vec3A};
 use crate::{BallHitInfo, CarControls, PhysState};
 
 #[derive(Clone, Copy, Debug, Default)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(
-    feature = "rkyv",
-    derive(rkyv::Serialize, rkyv::Deserialize, rkyv::Archive)
-)]
 pub struct CarContact {
     pub other_car_idx: usize,
     pub cooldown_timer: f32,
 }
 
 #[derive(Clone, Copy, Debug)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(
-    feature = "rkyv",
-    derive(rkyv::Serialize, rkyv::Deserialize, rkyv::Archive)
-)]
 pub struct CarState {
     pub phys: PhysState,
     /// Controls to simulate the car with

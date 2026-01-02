@@ -1,5 +1,5 @@
 use crate::bullet::collision::dispatch::collision_object::ActivationState;
-use crate::consts::{dropshot, heatseeker, UU_TO_BT};
+use crate::consts::{UU_TO_BT, dropshot, heatseeker};
 use crate::sim::UserInfoTypes;
 use crate::{Arena, BallHitInfo, BallState, GameMode, Team, consts};
 use glam::{Affine3A, Vec3A};

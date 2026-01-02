@@ -112,7 +112,7 @@ impl WheelInfoRL {
         chassis: &RigidBody,
         suspension_travel: f32,
         ray_results: VehicleRaycasterResult,
-        time_step: f32
+        time_step: f32,
     ) {
         let co = &ray_results.rigid_body.collision_object;
         self.wheel_info.raycast_info.contact_point_ws = ray_results.hit_point_in_world;
@@ -365,7 +365,11 @@ impl VehicleRL {
         self.wheels.len()
     }
 
-    pub fn update_vehicle_first(&mut self, collision_world: &DiscreteDynamicsWorld, time_step: f32) {
+    pub fn update_vehicle_first(
+        &mut self,
+        collision_world: &DiscreteDynamicsWorld,
+        time_step: f32,
+    ) {
         let chassis = &collision_world.bodies()[self.chassis_body_idx];
 
         let friction_scale = chassis.get_mass() / 3.0;
@@ -397,7 +401,12 @@ impl VehicleRL {
         }
 
         for wheel in &mut self.wheels {
-            wheel.calc_friction_impulses(chassis, collision_world.bodies(), friction_scale, time_step);
+            wheel.calc_friction_impulses(
+                chassis,
+                collision_world.bodies(),
+                friction_scale,
+                time_step,
+            );
         }
     }
 

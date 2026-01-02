@@ -5,11 +5,6 @@ use glam::{Mat3A, Vec3A};
 use crate::{PhysState, consts, consts::heatseeker};
 
 #[derive(Clone, Copy, Debug)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(
-    feature = "rkyv",
-    derive(rkyv::Serialize, rkyv::Deserialize, rkyv::Archive)
-)]
 pub struct HeatseekerInfo {
     /// Which net the ball should seek towards;
     /// When 0, no net
@@ -33,11 +28,7 @@ impl HeatseekerInfo {
 }
 
 #[derive(Clone, Copy, Debug)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(
-    feature = "rkyv",
-    derive(rkyv::Serialize, rkyv::Deserialize, rkyv::Archive)
-)]
+
 pub struct DropshotInfo {
     /// Charge level number, which controls the radius of damage when hitting tiles
     /// 1 = damages r=1 -> 1 tile
@@ -70,11 +61,7 @@ impl DropshotInfo {
 }
 
 #[derive(Clone, Copy, Debug)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(
-    feature = "rkyv",
-    derive(rkyv::Serialize, rkyv::Deserialize, rkyv::Archive)
-)]
+
 pub struct BallState {
     pub phys: PhysState,
     pub hs_info: HeatseekerInfo,

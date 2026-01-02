@@ -6,11 +6,6 @@ use glam::{Mat3A, Vec3A};
 /// because the initial start height of the ball/car is different.
 /// The correct values are set in `BallState::default()` and `CarState::default()`
 #[derive(Clone, Copy, Debug)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(
-    feature = "rkyv",
-    derive(rkyv::Serialize, rkyv::Deserialize, rkyv::Archive)
-)]
 pub struct PhysState {
     pub pos: Vec3A,
     pub rot_mat: Mat3A,

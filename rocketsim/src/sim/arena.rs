@@ -27,10 +27,7 @@ use crate::{
     },
     consts,
     consts::{BT_TO_UU, UU_TO_BT},
-    sim::{
-        BallState, BoostPadInfo, CarContact, CarInfo, DemoMode, GameState, UserInfoTypes,
-        collision_masks::CollisionMasks,
-    },
+    sim::{BallState, CarContact, DemoMode, UserInfoTypes, collision_masks::CollisionMasks},
 };
 
 // An instance of a collision event
@@ -52,7 +49,7 @@ struct ArenaContactTracker {
 impl ArenaContactTracker {
     pub fn new() -> Self {
         Self {
-            collision_records: Vec::with_capacity(4) // Rarely exceeded
+            collision_records: Vec::with_capacity(4), // Rarely exceeded
         }
     }
 
@@ -205,7 +202,7 @@ impl Arena {
                 } else {
                     manifold_point.local_point_a
                 }
-                    .x * BT_TO_UU;
+                .x * BT_TO_UU;
 
                 let hit_with_bumper = local_point_x > consts::car::bump::MIN_FORWARD_DIST;
                 if !hit_with_bumper {
@@ -232,7 +229,7 @@ impl Arena {
                 } else {
                     consts::curves::BUMP_VEL_AMOUNT_AIR
                 }
-                    .get_output(speed_towards_other_car);
+                .get_output(speed_towards_other_car);
 
                 let hit_up_dir = if victim_state.is_on_ground {
                     victim_state.phys.rot_mat.z_axis
@@ -703,9 +700,12 @@ impl Arena {
         self.bullet_world
             .step_simulation(self.tick_time, &mut self.contact_tracker);
         for contact in self.contact_tracker.drain_records() {
-            let (body_a, body_b) = self.bullet_world.bodies_mut().get_disjoint_mut(
-                [contact.rb_index_a, contact.rb_index_b]
-            ).unwrap().into();
+            let (body_a, body_b) = self
+                .bullet_world
+                .bodies_mut()
+                .get_disjoint_mut([contact.rb_index_a, contact.rb_index_b])
+                .unwrap()
+                .into();
 
             let user_pointer_a = body_a.collision_object.user_pointer;
             let user_pointer_b = body_b.collision_object.user_pointer;
@@ -713,10 +713,18 @@ impl Arena {
             if contact.user_index_a == UserInfoTypes::Car {
                 match contact.user_index_b {
                     UserInfoTypes::Ball => {
-                        self.on_car_ball_collision(user_pointer_a, &contact.manifold_point, contact.is_swap);
+                        self.on_car_ball_collision(
+                            user_pointer_a,
+                            &contact.manifold_point,
+                            contact.is_swap,
+                        );
                     }
                     UserInfoTypes::Car => {
-                        self.on_car_car_collision(user_pointer_a, user_pointer_b, &contact.manifold_point);
+                        self.on_car_car_collision(
+                            user_pointer_a,
+                            user_pointer_b,
+                            &contact.manifold_point,
+                        );
                     }
                     _ => self.on_car_world_collision(user_pointer_a, &contact.manifold_point),
                 }
@@ -809,81 +817,5 @@ impl Arena {
             self.game_mode,
             self.mutator_config.car_spawn_boost_amount,
         );
-    }
-
-    #[must_use]
-    pub fn get_game_state(&self) -> GameState {
-        GameState {
-            tick_rate: self.tick_time(),
-            tick_count: self.tick_count(),
-            game_mode: self.game_mode(),
-            cars: if self.cars().is_empty() {
-                None
-            } else {
-                Some(
-                    self.cars()
-                        .iter()
-                        .map(|car| CarInfo {
-                            id: (car.idx + 1) as u64,
-                            team: car.team,
-                            state: *car.get_state(),
-                            config: *car.get_config(),
-                        })
-                        .collect(),
-                )
-            },
-            ball: *self.get_ball_state(),
-            pads: if self.boost_pads().is_empty() {
-                None
-            } else {
-                Some(
-                    self.boost_pads()
-                        .iter()
-                        .enumerate()
-                        .map(|(pad_idx, pad)| BoostPadInfo {
-                            config: *pad.config(),
-                            state: self.get_boost_pad_state(pad_idx),
-                        })
-                        .collect(),
-                )
-            },
-            tiles: None,
-        }
-    }
-
-    pub fn set_game_state(&mut self, state: GameState) {
-        assert_eq!(self.game_mode(), state.game_mode, "Game mode mismatch");
-
-        if let Some(cars) = state.cars {
-            if cars.len() != self.cars().len() {
-                panic!(
-                    "Car count mismatch: expected {}, got {}",
-                    self.cars().len(),
-                    cars.len()
-                );
-            }
-
-            for car_info in cars {
-                self.set_car_state((car_info.id - 1) as usize, car_info.state);
-            }
-        }
-
-        self.set_ball_state(state.ball);
-
-        if let Some(pads) = state.pads {
-            if pads.len() != self.boost_pads().len() {
-                panic!(
-                    "Boost pad count mismatch: expected {}, got {}",
-                    self.boost_pads().len(),
-                    pads.len()
-                );
-            }
-
-            for i in 0..self.boost_pads().len() {
-                self.set_boost_pad_state(i, pads[i].state);
-            }
-        }
-
-        // todo: tiles
     }
 }

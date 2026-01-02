@@ -11,7 +11,7 @@ pub(crate) struct BoostPad {
     pub max_cooldown: f32,
     pub boost_amount: f32,
     pub aabb: Aabb,
-    pub gave_boost_tick_count: Option<u64>
+    pub gave_boost_tick_count: Option<u64>,
 }
 
 impl BoostPad {

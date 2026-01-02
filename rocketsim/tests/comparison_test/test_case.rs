@@ -41,7 +41,9 @@ impl TestCase {
                 let start_controls = car_setup.control_seq.get_controls_at_tick(0);
                 {
                     let new_car_idx = new_arena.add_car(car_setup.team, CarBodyConfig::OCTANE);
-                    new_arena.get_car_mut(new_car_idx).set_controls(start_controls);
+                    new_arena
+                        .get_car_mut(new_car_idx)
+                        .set_controls(start_controls);
                 }
                 {
                     let old_car_idx = old_arena_ptr.pin_mut().add_car(

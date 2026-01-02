@@ -11,29 +11,13 @@ byteorder = "1.5.0"
 fastrand = "2.3.0"
 log = "0.4.29"
 env_logger = "0.11.8"
-rocketsim_flat = { path = "../rocketsim_flat", optional = true }
 glam = { workspace = true }
-serde = { version = "1.0.228", features = ["derive"], optional = true }
-rkyv = { version = "0.8.12", optional = true }
 
 [dev-dependencies]
-rocketsim = { path = ".", features = ["serde"] } # Self-dependency required for tests
 rocketsim_rs = "0.36.0" # For comparing to original C++ RocketSim in tests
 
 [features]
 default = []
-rlviser = ["flatbuffer"]
-flatbuffer = ["dep:rocketsim_flat"]
-serde = ["dep:serde", "glam/serde"]
-rkyv = ["dep:rkyv", "glam/rkyv"]
-
-[[example]]
-name = "rlviser"
-required-features = ["rlviser"]
-
-[[example]]
-name = "car_tri"
-required-features = ["rlviser"]
 
 [lints.clippy]
 all = "warn"

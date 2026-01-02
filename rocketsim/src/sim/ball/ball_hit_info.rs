@@ -1,11 +1,7 @@
 use glam::Vec3A;
 
 #[derive(Clone, Copy, Debug, Default)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(
-    feature = "rkyv",
-    derive(rkyv::Serialize, rkyv::Deserialize, rkyv::Archive)
-)]
+
 pub struct BallHitInfo {
     /// Position of the hit relative to the ball's position
     pub relative_pos_on_ball: Vec3A,

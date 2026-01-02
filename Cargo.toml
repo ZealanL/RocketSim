@@ -1,5 +1,5 @@
 [workspace]
-members = ["rocketsim", "rocketsim_flat"]
+members = ["rocketsim"]
 resolver = "3"
 package.license-file = "LICENSE"
 package.version = "0.2.0"

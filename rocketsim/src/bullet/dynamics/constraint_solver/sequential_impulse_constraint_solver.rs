@@ -1,9 +1,6 @@
 use glam::Vec3A;
 
-use super::{
-    contact_solver_info, solver_body::SolverBody,
-    solver_constraint::SolverConstraint,
-};
+use super::{contact_solver_info, solver_body::SolverBody, solver_constraint::SolverConstraint};
 use crate::bullet::{
     collision::narrowphase::{
         manifold_point::ManifoldPoint, persistent_manifold::PersistentManifold,

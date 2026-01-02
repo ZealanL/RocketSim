@@ -10,7 +10,7 @@ pub struct DynamicsWorld {
 impl DynamicsWorld {
     pub fn new(dispatcher: CollisionDispatcher, broadphase: GridBroadphase) -> Self {
         Self {
-            collision_world: CollisionWorld::new(dispatcher, broadphase)
+            collision_world: CollisionWorld::new(dispatcher, broadphase),
         }
     }
 }

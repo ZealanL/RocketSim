@@ -1,5 +1,5 @@
-use crate::{Arena, BoostPadConfig, BoostPadState};
 use crate::sim::BoostPad;
+use crate::{Arena, BoostPadConfig, BoostPadState};
 
 impl Arena {
     pub fn get_boost_pad_state(&self, idx: usize) -> BoostPadState {
@@ -14,9 +14,7 @@ impl Arena {
             0.0
         };
 
-        BoostPadState {
-            cooldown,
-        }
+        BoostPadState { cooldown }
     }
 
     pub fn set_boost_pad_state(&mut self, idx: usize, state: BoostPadState) {

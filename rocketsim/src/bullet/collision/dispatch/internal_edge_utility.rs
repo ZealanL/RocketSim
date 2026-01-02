@@ -3,6 +3,7 @@ use std::{f32::consts::PI, mem};
 use glam::{Quat, Vec3, Vec3A};
 
 use super::collision_object::CollisionObject;
+use crate::bullet::collision::dispatch::tri_bvh_util::*;
 use crate::bullet::{
     collision::{
         narrowphase::manifold_point::ManifoldPoint,
@@ -18,7 +19,6 @@ use crate::bullet::{
 };
 use crate::shared::Aabb;
 use crate::shared::bvh::Tree;
-use crate::bullet::collision::dispatch::tri_bvh_util::*;
 
 fn get_angle(edge_a: Vec3A, normal_a: Vec3A, normal_b: Vec3A) -> f32 {
     normal_b.dot(edge_a).atan2(normal_b.dot(normal_a))
