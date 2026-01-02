@@ -73,12 +73,12 @@ impl Car {
             RigidBodyConstructionInfo::new(car_consts::MASS_BT, collision_shape, false);
         rb_info.friction = car_consts::BASE_COEFS.friction;
         rb_info.restitution = car_consts::BASE_COEFS.restitution;
-        rb_info.start_world_transform = Affine3A::IDENTITY;
+        rb_info.start_world_trans = Affine3A::IDENTITY;
         rb_info.local_inertia = local_inertia;
 
         let mut body = RigidBody::new(rb_info);
-        body.collision_object.user_index = UserInfoTypes::Car;
-        body.collision_object.collision_flags |= CollisionFlags::CustomMaterialCallback as u8;
+        body.co.user_idx = UserInfoTypes::Car;
+        body.co.flags |= CollisionFlags::CustomMaterialCallback as u8;
 
         let rigid_body_idx = bullet_world.add_rigid_body(
             body,
@@ -113,7 +113,7 @@ impl Car {
             }
 
             bullet_vehicle.add_wheel(
-                &rb.collision_object,
+                &rb.co,
                 wheel_ray_start_offset * UU_TO_BT,
                 wheel_direction_cs,
                 wheel_axle_cs,
@@ -157,8 +157,8 @@ impl Car {
         boost_amount: f32,
     ) {
         let respawn_locations = car_consts::spawn::get_respawn_locations(game_mode);
-        let spawn_pos_index = rng.usize(0..respawn_locations.len());
-        let spawn_pos = respawn_locations[spawn_pos_index];
+        let spawn_pos_idx = rng.usize(0..respawn_locations.len());
+        let spawn_pos = respawn_locations[spawn_pos_idx];
 
         let new_state = CarState {
             phys: PhysState {
@@ -198,10 +198,10 @@ impl Car {
     }
 
     pub(crate) fn set_state(&mut self, rb: &mut RigidBody, state: &CarState) {
-        debug_assert_eq!(rb.collision_object.user_index, UserInfoTypes::Car);
-        debug_assert_eq!(rb.collision_object.world_array_index, self.rigid_body_idx);
+        debug_assert_eq!(rb.co.user_idx, UserInfoTypes::Car);
+        debug_assert_eq!(rb.co.world_array_idx, self.rigid_body_idx);
 
-        rb.collision_object.set_world_transform(Affine3A {
+        rb.co.set_world_trans(Affine3A {
             matrix3: state.phys.rot_mat,
             translation: state.phys.pos * UU_TO_BT,
         });
@@ -297,7 +297,7 @@ impl Car {
                 continue;
             }
 
-            let lat_dir = wheel.wheel_info.world_transform.matrix3.y_axis;
+            let lat_dir = wheel.wheel_info.world_trans.matrix3.y_axis;
             let long_dir = lat_dir.cross(wheel.wheel_info.raycast_info.contact_normal_ws);
 
             let wheel_delta = wheel.wheel_info.raycast_info.hard_point_ws - car_pos;
@@ -397,7 +397,7 @@ impl Car {
                     * const { Vec3A::new(car_consts::flip::TORQUE_X, car_consts::flip::TORQUE_Y, 0.0) };
 
                 let rb_torque = rb.inv_inertia_tensor_world.bullet_inverse()
-                    * rb.collision_object.get_world_transform().matrix3
+                    * rb.co.get_world_trans().matrix3
                     * dodge_torque;
                 rb.apply_torque(rb_torque);
             }
@@ -765,12 +765,12 @@ impl Car {
                     self.respawn(rb, rng, game_mode, mutator_config.car_spawn_boost_amount);
                 }
 
-                rb.collision_object
+                rb.co
                     .set_activation_state(ActivationState::DisableSimulation);
-                rb.collision_object.collision_flags |= CollisionFlags::NoContactResponse as u8;
+                rb.co.flags |= CollisionFlags::NoContactResponse as u8;
             } else {
-                rb.collision_object.force_activate();
-                rb.collision_object.collision_flags &= !(CollisionFlags::NoContactResponse as u8);
+                rb.co.force_activate();
+                rb.co.flags &= !(CollisionFlags::NoContactResponse as u8);
             }
 
             if self.state.is_demoed {
@@ -830,12 +830,12 @@ impl Car {
     }
 
     pub(crate) fn post_tick_update(&mut self, rb: &RigidBody) {
-        debug_assert_eq!(rb.collision_object.world_array_index, self.rigid_body_idx);
+        debug_assert_eq!(rb.co.world_array_idx, self.rigid_body_idx);
         if self.state.is_demoed {
             return;
         }
 
-        self.state.phys.rot_mat = rb.collision_object.get_world_transform().matrix3;
+        self.state.phys.rot_mat = rb.co.get_world_trans().matrix3;
 
         let speed_squared = (rb.linear_velocity * BT_TO_UU).length_squared();
         self.state.is_supersonic = speed_squared
@@ -873,7 +873,7 @@ impl Car {
 
     pub(crate) fn finish_physics_tick(&mut self, rb: &mut RigidBody) {
         const MAX_SPEED: f32 = car_consts::MAX_SPEED * UU_TO_BT;
-        debug_assert_eq!(rb.collision_object.world_array_index, self.rigid_body_idx);
+        debug_assert_eq!(rb.co.world_array_idx, self.rigid_body_idx);
 
         if self.state.is_demoed {
             return;
@@ -896,7 +896,7 @@ impl Car {
             *ang_vel = ang_vel.normalize() * car_consts::MAX_ANG_SPEED;
         }
 
-        self.state.phys.pos = rb.collision_object.get_world_transform().translation * BT_TO_UU;
+        self.state.phys.pos = rb.co.get_world_trans().translation * BT_TO_UU;
         self.state.phys.vel = rb.linear_velocity * BT_TO_UU;
         self.state.phys.ang_vel = rb.angular_velocity;
     }

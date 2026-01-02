@@ -51,7 +51,7 @@ impl Ball {
 
         let mut info =
             RigidBodyConstructionInfo::new(mutator_config.ball_mass, collision_shape, true);
-        info.start_world_transform.translation.z = consts::ball::REST_Z * UU_TO_BT;
+        info.start_world_trans.translation.z = consts::ball::REST_Z * UU_TO_BT;
         info.local_inertia = local_inertia;
         info.linear_damping = mutator_config.ball_drag;
 
@@ -64,11 +64,11 @@ impl Ball {
         info.restitution = coefs.restitution;
 
         let mut body = RigidBody::new(info);
-        body.collision_object.user_index = UserInfoTypes::Ball;
-        body.collision_object.collision_flags |= CollisionFlags::CustomMaterialCallback as u8;
-        body.collision_object.no_rot = no_rot
+        body.co.user_idx = UserInfoTypes::Ball;
+        body.co.flags |= CollisionFlags::CustomMaterialCallback as u8;
+        body.co.no_rot = no_rot
             && matches!(
-                body.collision_object.get_collision_shape(),
+                body.co.get_collision_shape(),
                 CollisionShapes::Sphere(_)
             );
 
@@ -89,10 +89,10 @@ impl Ball {
     }
 
     pub fn set_state(&mut self, rb: &mut RigidBody, state: BallState) {
-        debug_assert_eq!(rb.collision_object.world_array_index, self.rigid_body_idx);
-        debug_assert_eq!(rb.collision_object.user_index, UserInfoTypes::Ball);
+        debug_assert_eq!(rb.co.world_array_idx, self.rigid_body_idx);
+        debug_assert_eq!(rb.co.user_idx, UserInfoTypes::Ball);
 
-        rb.collision_object.set_world_transform(Affine3A {
+        rb.co.set_world_trans(Affine3A {
             matrix3: state.phys.rot_mat,
             translation: state.phys.pos * UU_TO_BT,
         });
@@ -102,7 +102,7 @@ impl Ball {
         rb.update_inertia_tensor();
 
         if state.phys.vel != Vec3A::ZERO || state.phys.ang_vel != Vec3A::ZERO {
-            rb.collision_object
+            rb.co
                 .set_activation_state(ActivationState::Active);
         }
 
@@ -145,7 +145,7 @@ impl Ball {
         self.state.phys.vel = rb.linear_velocity * consts::BT_TO_UU;
         self.state.phys.ang_vel = rb.angular_velocity;
 
-        let trans = *rb.collision_object.get_world_transform();
+        let trans = *rb.co.get_world_trans();
         self.state.phys.pos = trans.translation * consts::BT_TO_UU;
         self.state.phys.rot_mat = trans.matrix3;
     }

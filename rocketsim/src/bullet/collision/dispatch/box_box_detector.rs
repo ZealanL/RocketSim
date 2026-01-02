@@ -180,7 +180,7 @@ fn cull_points2(p: &[[f32; 2]], i0: usize, m: usize) -> ArrayVec<usize, 8> {
 struct Hit {
     depth: f32,
     normal: Vec3A,
-    axis_index: usize,
+    axis_idx: usize,
 }
 
 pub struct BoxBoxDetector<'a, T: ContactAddedCallback> {
@@ -239,7 +239,7 @@ impl<T: ContactAddedCallback> BoxBoxDetector<'_, T> {
         let mut r1t_axes = [r1t.x_axis, r1t.y_axis, r1t.z_axis];
         let mut r2t_axes = [r2t.x_axis, r2t.y_axis, r2t.z_axis];
 
-        if hit.axis_index > 6 {
+        if hit.axis_idx > 6 {
             // an edge from box 1 touches an edge from box 2
             // find a point pa on the intersecting edge of box 1
             let mut pa = obb1.center;
@@ -257,8 +257,8 @@ impl<T: ContactAddedCallback> BoxBoxDetector<'_, T> {
                 pb += sign * extent * axis;
             }
 
-            let ua = r1t_axes[(hit.axis_index - 7) / 3];
-            let ub = r2t_axes[(hit.axis_index - 7) % 3];
+            let ua = r1t_axes[(hit.axis_idx - 7) / 3];
+            let ub = r2t_axes[(hit.axis_idx - 7) % 3];
 
             let beta = line_closest_approach(pa, ua, pb, ub);
             manifold.add_contact_point(
@@ -279,7 +279,7 @@ impl<T: ContactAddedCallback> BoxBoxDetector<'_, T> {
         // axis is perpendicular to a face). define face 'a' to be the reference
         // face (i.e. the normal vector is perpendicular to this) and face 'b' to be
         // the incident face (the closest face of the other box).
-        if hit.axis_index > 3 {
+        if hit.axis_idx > 3 {
             mem::swap(&mut obb1, &mut obb2);
             mem::swap(&mut r1t, &mut r2t);
             mem::swap(&mut r1t_axes, &mut r2t_axes);
@@ -287,7 +287,7 @@ impl<T: ContactAddedCallback> BoxBoxDetector<'_, T> {
 
         // nr = normal vector of reference face dotted with axes of incident box
         // anr = absolute values of nr
-        let normal_2 = if hit.axis_index <= 3 {
+        let normal_2 = if hit.axis_idx <= 3 {
             hit.normal
         } else {
             -hit.normal
@@ -317,10 +317,10 @@ impl<T: ContactAddedCallback> BoxBoxDetector<'_, T> {
             } * r2t_axes[lanr];
 
         // find the normal and non-normal axis numbers of the reference box
-        let code_n = if hit.axis_index <= 3 {
-            hit.axis_index - 1
+        let code_n = if hit.axis_idx <= 3 {
+            hit.axis_idx - 1
         } else {
-            hit.axis_index - 4
+            hit.axis_idx - 4
         };
 
         let (code1, code2) = match code_n {
@@ -394,7 +394,7 @@ impl<T: ContactAddedCallback> BoxBoxDetector<'_, T> {
 
         if cnum <= maxc {
             // use all the contact points we have
-            if hit.axis_index < 4 {
+            if hit.axis_idx < 4 {
                 for (depth, point) in dep.into_iter().zip(point).take(cnum) {
                     manifold.add_contact_point(
                         self.col1,
@@ -439,7 +439,7 @@ impl<T: ContactAddedCallback> BoxBoxDetector<'_, T> {
         for idx in iret.into_iter().take(maxc) {
             let pos_in_world = point[idx] + obb1.center;
 
-            if hit.axis_index < 4 {
+            if hit.axis_idx < 4 {
                 manifold.add_contact_point(
                     self.col1,
                     self.col2,
@@ -721,6 +721,6 @@ fn box_box_sat(obb1: &Obb, r1t: &Mat3A, obb2: &Obb) -> Option<Hit> {
     Some(Hit {
         depth,
         normal,
-        axis_index: code,
+        axis_idx: code,
     })
 }

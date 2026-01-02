@@ -10,10 +10,10 @@ use std::mem;
 #[derive(Debug, Copy, Clone)]
 pub(crate) struct ContactRecord {
     pub is_swap: bool,
-    pub rb_index_a: usize,
-    pub rb_index_b: usize,
-    pub user_index_a: UserInfoTypes,
-    pub user_index_b: UserInfoTypes,
+    pub rb_idx_a: usize,
+    pub rb_idx_b: usize,
+    pub user_idx_a: UserInfoTypes,
+    pub user_idx_b: UserInfoTypes,
     pub manifold_point: ManifoldPoint,
 }
 
@@ -43,33 +43,33 @@ impl ContactAddedCallback for ArenaContactTracker {
     ) {
         debug_assert!(body_a.has_contact_response() || body_b.has_contact_response());
 
-        let should_swap = if body_a.user_index != UserInfoTypes::None
-            && body_b.user_index != UserInfoTypes::None
+        let should_swap = if body_a.user_idx != UserInfoTypes::None
+            && body_b.user_idx != UserInfoTypes::None
         {
-            body_a.user_index > body_b.user_index
+            body_a.user_idx > body_b.user_idx
         } else {
-            body_b.user_index != UserInfoTypes::None
+            body_b.user_idx != UserInfoTypes::None
         };
 
         if should_swap {
             mem::swap(&mut body_a, &mut body_b);
         }
 
-        let user_index_a = body_a.user_index;
-        let user_index_b = body_b.user_index;
+        let user_idx_a = body_a.user_idx;
+        let user_idx_b = body_b.user_idx;
 
-        if user_index_a == UserInfoTypes::Car {
-            let hit_coefs = match user_index_b {
+        if user_idx_a == UserInfoTypes::Car {
+            let hit_coefs = match user_idx_b {
                 UserInfoTypes::Ball => consts::car::HIT_BALL_COEFS,
                 UserInfoTypes::Car => consts::car::HIT_CAR_COEFS,
                 _ => consts::car::HIT_WORLD_COEFS,
             };
             manifold_point.combined_friction = hit_coefs.friction;
             manifold_point.combined_restitution = hit_coefs.restitution;
-        } else if user_index_a == UserInfoTypes::Ball {
-            if user_index_b == UserInfoTypes::DropshotTile {
+        } else if user_idx_a == UserInfoTypes::Ball {
+            if user_idx_b == UserInfoTypes::DropshotTile {
                 todo!()
-            } else if user_index_b == UserInfoTypes::None {
+            } else if user_idx_b == UserInfoTypes::None {
                 manifold_point.is_special = true;
             }
         }
@@ -77,10 +77,10 @@ impl ContactAddedCallback for ArenaContactTracker {
         // NOTE: Push *before* the manifold is mutated by adjust_internal_edge_contacts()
         self.collision_records.push(ContactRecord {
             is_swap: should_swap,
-            rb_index_a: body_a.world_array_index,
-            rb_index_b: body_b.world_array_index,
-            user_index_a,
-            user_index_b,
+            rb_idx_a: body_a.world_array_idx,
+            rb_idx_b: body_b.world_array_idx,
+            user_idx_a,
+            user_idx_b,
             manifold_point: *manifold_point,
         });
 

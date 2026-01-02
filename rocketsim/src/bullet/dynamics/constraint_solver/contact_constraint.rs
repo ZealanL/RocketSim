@@ -17,9 +17,9 @@ pub fn resolve_single_collision(
     distance: f32,
 ) -> f32 {
     let rel_pos1 =
-        contact_position_world - body1.collision_object.get_world_transform().translation;
+        contact_position_world - body1.co.get_world_trans().translation;
     let rel_pos2 =
-        contact_position_world - body2.collision_object.get_world_transform().translation;
+        contact_position_world - body2.co.get_world_trans().translation;
 
     let vel1 = body1.get_velocity_in_local_point(rel_pos1);
     let vel2 = body2.get_velocity_in_local_point(rel_pos2);
@@ -49,8 +49,8 @@ pub fn resolve_single_bilateral(
     const CONTACT_DAMPING: f32 = -0.2;
 
     debug_assert!(normal.is_normalized());
-    let body1_comt = body1.collision_object.get_world_transform();
-    let body2_comt = body2.collision_object.get_world_transform();
+    let body1_comt = body1.co.get_world_trans();
+    let body2_comt = body2.co.get_world_trans();
 
     let rel_pos1 = pos1 - body1_comt.translation;
     let rel_pos2 = pos2 - body2_comt.translation;

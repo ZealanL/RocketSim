@@ -83,7 +83,7 @@ impl ProcessTriangle for SupportVertexCallback {
         &mut self,
         triangle: &TriangleShape,
         _tri_aabb: &Aabb,
-        _triangle_index: usize,
+        _triangle_idx: usize,
     ) {
         for vert in triangle.points {
             let dot = self.support_vec_local.dot(vert);

@@ -26,11 +26,11 @@ impl<'a, T: ProcessTriangle> NodeOverlapCallback<'a, T> {
 }
 
 impl<T: ProcessTriangle> ProcessNode for NodeOverlapCallback<'_, T> {
-    fn process_node(&mut self, node_triangle_index: usize) {
+    fn process_node(&mut self, node_triangle_idx: usize) {
         self.callback.process_triangle(
-            &self.tris[node_triangle_index],
-            &self.aabbs[node_triangle_index],
-            node_triangle_index,
+            &self.tris[node_triangle_idx],
+            &self.aabbs[node_triangle_idx],
+            node_triangle_idx,
         );
     }
 }
@@ -49,8 +49,8 @@ impl<'a, T: ProcessRayTriangle> RayNodeOverlapCallback<'a, T> {
 }
 
 impl<T: ProcessRayTriangle> ProcessRayNode for RayNodeOverlapCallback<'_, T> {
-    fn process_node(&mut self, triangle_index: usize, active_mask: u8, lambda_max: &mut Vec4) {
+    fn process_node(&mut self, triangle_idx: usize, active_mask: u8, lambda_max: &mut Vec4) {
         self.callback
-            .process_node(&self.tris[triangle_index], active_mask, lambda_max);
+            .process_node(&self.tris[triangle_idx], active_mask, lambda_max);
     }
 }

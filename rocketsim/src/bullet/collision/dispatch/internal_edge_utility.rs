@@ -31,8 +31,8 @@ struct ConnectivityProcessor<'a> {
 }
 
 impl ProcessTriangle for ConnectivityProcessor<'_> {
-    fn process_triangle(&mut self, tri: &TriangleShape, _tri_aabb: &Aabb, triangle_index: usize) {
-        if self.index == triangle_index
+    fn process_triangle(&mut self, tri: &TriangleShape, _tri_aabb: &Aabb, triangle_idx: usize) {
+        if self.index == triangle_idx
             || tri.normal_length < TriangleInfoMap::EQUAL_VERTEX_THRESHOLD
             || self.shape.normal_length < TriangleInfoMap::EQUAL_VERTEX_THRESHOLD
         {
@@ -66,17 +66,17 @@ impl ProcessTriangle for ConnectivityProcessor<'_> {
 
             let info = &mut self.info_map[self.index];
             let sum_verts_a = shared_verts_a[0] + shared_verts_a[1];
-            let other_index_a = 3 - sum_verts_a;
+            let other_idx_a = 3 - sum_verts_a;
 
             let edge = (self.shape.points[shared_verts_a[1]]
                 - self.shape.points[shared_verts_a[0]])
                 .normalize();
 
-            let other_index_b = 3 - (shared_verts_b[0] + shared_verts_b[1]);
+            let other_idx_b = 3 - (shared_verts_b[0] + shared_verts_b[1]);
 
             let mut edge_cross_a = edge.cross(self.shape.normal).normalize();
             {
-                let tmp = self.shape.points[other_index_a] - self.shape.points[shared_verts_a[0]];
+                let tmp = self.shape.points[other_idx_a] - self.shape.points[shared_verts_a[0]];
                 if edge_cross_a.dot(tmp) < 0.0 {
                     edge_cross_a *= -1.0;
                 }
@@ -84,7 +84,7 @@ impl ProcessTriangle for ConnectivityProcessor<'_> {
 
             let mut edge_cross_b = edge.cross(tri.normal).normalize();
             {
-                let tmp = tri.points[other_index_b] - tri.points[shared_verts_b[0]];
+                let tmp = tri.points[other_idx_b] - tri.points[shared_verts_b[0]];
                 if edge_cross_b.dot(tmp) < 0.0 {
                     edge_cross_b *= -1.0;
                 }
@@ -229,7 +229,7 @@ pub fn adjust_internal_edge_contacts(
     let contact = cp.local_point_b;
 
     let local_contact_normal_on_b =
-        tri_mesh_col_obj.get_world_transform().matrix3.transpose() * cp.normal_world_on_b;
+        tri_mesh_col_obj.get_world_trans().matrix3.transpose() * cp.normal_world_on_b;
     debug_assert!(local_contact_normal_on_b.is_normalized());
 
     let mut best_edge = BestEdge::None;
@@ -297,12 +297,12 @@ pub fn adjust_internal_edge_contacts(
                     ) && clamped_local_normal.dot(tri.normal) > 0.0
                     {
                         let new_normal =
-                            tri_mesh_col_obj.get_world_transform().matrix3 * clamped_local_normal;
+                            tri_mesh_col_obj.get_world_trans().matrix3 * clamped_local_normal;
                         cp.normal_world_on_b = new_normal;
                         cp.position_world_on_b =
                             cp.position_world_on_a - new_normal * cp.distance_1;
                         cp.local_point_b = tri_mesh_col_obj
-                            .get_world_transform()
+                            .get_world_trans()
                             .inv_x_form(cp.position_world_on_b);
                     }
 
@@ -344,12 +344,12 @@ pub fn adjust_internal_edge_contacts(
                     ) && clamped_local_normal.dot(tri.normal) > 0.0
                     {
                         let new_normal =
-                            tri_mesh_col_obj.get_world_transform().matrix3 * clamped_local_normal;
+                            tri_mesh_col_obj.get_world_trans().matrix3 * clamped_local_normal;
                         cp.normal_world_on_b = new_normal;
                         cp.position_world_on_b =
                             cp.position_world_on_a - new_normal * cp.distance_1;
                         cp.local_point_b = tri_mesh_col_obj
-                            .get_world_transform()
+                            .get_world_trans()
                             .inv_x_form(cp.position_world_on_b);
                     }
 
@@ -391,12 +391,12 @@ pub fn adjust_internal_edge_contacts(
                     ) && clamped_local_normal.dot(tri.normal) > 0.0
                     {
                         let new_normal =
-                            tri_mesh_col_obj.get_world_transform().matrix3 * clamped_local_normal;
+                            tri_mesh_col_obj.get_world_trans().matrix3 * clamped_local_normal;
                         cp.normal_world_on_b = new_normal;
                         cp.position_world_on_b =
                             cp.position_world_on_a - new_normal * cp.distance_1;
                         cp.local_point_b = tri_mesh_col_obj
-                            .get_world_transform()
+                            .get_world_trans()
                             .inv_x_form(cp.position_world_on_b);
                     }
 
@@ -411,9 +411,9 @@ pub fn adjust_internal_edge_contacts(
         return;
     }
 
-    cp.normal_world_on_b = tri_mesh_col_obj.get_world_transform().matrix3 * tri.normal;
+    cp.normal_world_on_b = tri_mesh_col_obj.get_world_trans().matrix3 * tri.normal;
     cp.position_world_on_b = cp.position_world_on_a - cp.normal_world_on_b * cp.distance_1;
     cp.local_point_b = tri_mesh_col_obj
-        .get_world_transform()
+        .get_world_trans()
         .inv_x_form(cp.position_world_on_b);
 }

@@ -37,10 +37,10 @@ impl CollisionWorld {
         filter_mask: u8,
     ) -> usize {
         {
-            let obj = &mut object.collision_object;
-            obj.world_array_index = self.collision_objects.len();
+            let obj = &mut object.co;
+            obj.world_array_idx = self.collision_objects.len();
 
-            let trans = obj.get_world_transform();
+            let trans = obj.get_world_trans();
             let aabb = obj.get_collision_shape().get_aabb(trans);
 
             let proxy =
@@ -66,8 +66,8 @@ impl CollisionWorld {
             .enumerate()
             .skip(self.num_skippable_statics)
         {
-            let col_obj = &rb.collision_object;
-            debug_assert_eq!(col_obj.world_array_index, i);
+            let col_obj = &rb.co;
+            debug_assert_eq!(col_obj.world_array_idx, i);
 
             if prev_is_static && col_obj.is_static_object() {
                 // static objects only need their aabbs set the first time
@@ -78,7 +78,7 @@ impl CollisionWorld {
 
             let mut aabb = col_obj
                 .get_collision_shape()
-                .get_aabb(col_obj.get_world_transform());
+                .get_aabb(col_obj.get_world_trans());
 
             aabb.min -= CBT;
             aabb.max += CBT;
@@ -86,7 +86,7 @@ impl CollisionWorld {
             if !col_obj.is_static_object() {
                 let mut aabb2 = col_obj
                     .get_collision_shape()
-                    .get_aabb(&col_obj.interpolation_world_transform);
+                    .get_aabb(&col_obj.interp_world_trans);
                 aabb2.min -= CBT;
                 aabb2.max += CBT;
                 aabb += aabb2;
@@ -121,10 +121,10 @@ impl CollisionWorld {
         ray_from: &[Vec3A; 4],
         ray_to: &[Vec3A; 4],
         co: &CollisionObject,
-        object_index: usize,
+        object_idx: usize,
         result_callback: &mut T,
     ) {
-        let world_to_co = co.get_world_transform().transpose();
+        let world_to_co = co.get_world_trans().transpose();
 
         let ray_from_local = [
             world_to_co.transform_point3a(ray_from[0]),
@@ -145,7 +145,7 @@ impl CollisionWorld {
             to: &ray_to_local,
             hit_fraction: result_callback.get_base().closest_hit_fraction,
             collision_object: co,
-            collision_object_index: object_index,
+            collision_object_idx: object_idx,
             result_callback,
         };
 

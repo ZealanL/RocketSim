@@ -51,7 +51,7 @@ impl WheelInfoRL {
         }
     }
 
-    fn update_wheel_transform_ws(&mut self, chassis_trans: &Affine3A) {
+    fn update_wheel_trans_ws(&mut self, chassis_trans: &Affine3A) {
         self.is_in_contact_with_world = false;
         self.wheel_info.raycast_info.is_in_contact = false;
         self.wheel_info.raycast_info.hard_point_ws =
@@ -62,8 +62,8 @@ impl WheelInfoRL {
             chassis_trans.matrix3 * self.wheel_info.wheel_axle_cs;
     }
 
-    fn update_wheel_transform(&mut self, cb_co: &CollisionObject) {
-        self.update_wheel_transform_ws(cb_co.get_world_transform());
+    fn update_wheel_trans(&mut self, cb_co: &CollisionObject) {
+        self.update_wheel_trans_ws(cb_co.get_world_trans());
         let up = -self.wheel_info.raycast_info.wheel_direction_ws;
         let right = self.wheel_info.raycast_info.wheel_axle_ws;
         let fwd = up.cross(right).normalize();
@@ -72,7 +72,7 @@ impl WheelInfoRL {
         let steering_mat = Mat3A::bullet_from_quat(steering_orn);
 
         let basis2 = Mat3A::from_cols(fwd, -right, up);
-        self.wheel_info.world_transform = Affine3A {
+        self.wheel_info.world_trans = Affine3A {
             matrix3: steering_mat * basis2,
             translation: self.wheel_info.raycast_info.hard_point_ws
                 + self.wheel_info.wheel_direction_cs
@@ -81,7 +81,7 @@ impl WheelInfoRL {
     }
 
     fn prepare_for_raycast(&mut self, chassis: &RigidBody) -> (Vec3A, Vec3A, f32) {
-        self.update_wheel_transform_ws(chassis.collision_object.get_world_transform());
+        self.update_wheel_trans_ws(chassis.co.get_world_trans());
 
         let suspension_travel = bullet_vehicle::MAX_SUSPENSION_TRAVEL * UU_TO_BT;
         let real_ray_length = self.wheel_info.suspension_rest_length_1
@@ -114,17 +114,17 @@ impl WheelInfoRL {
         ray_results: VehicleRaycasterResult,
         time_step: f32,
     ) {
-        let co = &ray_results.rigid_body.collision_object;
+        let co = &ray_results.rigid_body.co;
         self.wheel_info.raycast_info.contact_point_ws = ray_results.hit_point_in_world;
         self.wheel_info.raycast_info.contact_normal_ws = ray_results.hit_normal_in_world;
         self.wheel_info.raycast_info.is_in_contact = true;
         self.is_in_contact_with_world = co.is_static_object();
 
-        self.wheel_info.raycast_info.ground_object = Some(co.world_array_index);
+        self.wheel_info.raycast_info.ground_object = Some(co.world_array_idx);
 
         let up = chassis
-            .collision_object
-            .get_world_transform()
+            .co
+            .get_world_trans()
             .matrix3
             .z_axis;
         let wheel_trace_len_sq = (self.wheel_info.raycast_info.hard_point_ws
@@ -142,7 +142,7 @@ impl WheelInfoRL {
             .clamp(min_suspension_len, max_suspension_len);
 
         let rel_pos = self.wheel_info.raycast_info.contact_point_ws
-            - chassis.collision_object.get_world_transform().translation;
+            - chassis.co.get_world_trans().translation;
         self.vel_at_contact_point = chassis.get_velocity_in_local_point(rel_pos);
 
         let proj_vel = self
@@ -189,13 +189,13 @@ impl WheelInfoRL {
         friction_scale: f32,
         time_step: f32,
     ) {
-        let Some(ground_rb_index) = self.wheel_info.raycast_info.ground_object else {
+        let Some(ground_rb_idx) = self.wheel_info.raycast_info.ground_object else {
             self.impulse = Vec3A::ZERO;
             return;
         };
-        let ground_rb = &bodies[ground_rb_index];
+        let ground_rb = &bodies[ground_rb_idx];
 
-        let mut axle_dir = self.wheel_info.world_transform.matrix3.y_axis;
+        let mut axle_dir = self.wheel_info.world_trans.matrix3.y_axis;
         let surf_normal_ws = self.wheel_info.raycast_info.contact_normal_ws;
         let proj = axle_dir.dot(surf_normal_ws);
         axle_dir -= surf_normal_ws * proj;
@@ -219,7 +219,7 @@ impl WheelInfoRL {
 
                 let contact_point = self.wheel_info.raycast_info.contact_point_ws;
                 let car_rel_contact_point =
-                    contact_point - chassis.collision_object.get_world_transform().translation;
+                    contact_point - chassis.co.get_world_trans().translation;
 
                 let v1 = chassis.get_velocity_in_local_point(car_rel_contact_point);
                 let v2 = ground_rb.get_velocity_in_local_point(car_rel_contact_point);
@@ -276,7 +276,7 @@ impl WheelInfoRL {
         let base_force_scale =
             self.wheel_info.wheels_suspension_force * delta_time + self.extra_pushback;
         let contact_point_offset = self.wheel_info.raycast_info.contact_point_ws
-            - cb.collision_object.get_world_transform().translation;
+            - cb.co.get_world_trans().translation;
 
         let force = self.wheel_info.raycast_info.contact_normal_ws * base_force_scale;
         cb.apply_impulse(force, contact_point_offset);
@@ -287,7 +287,7 @@ impl WheelInfoRL {
             return;
         }
 
-        let trans = cb.collision_object.get_world_transform();
+        let trans = cb.co.get_world_trans();
         let wheel_contact_offset =
             self.wheel_info.raycast_info.contact_point_ws - trans.translation;
         let contact_up_dot = trans.matrix3.z_axis.dot(wheel_contact_offset);
@@ -357,7 +357,7 @@ impl VehicleRL {
         };
 
         let mut wheel = WheelInfoRL::new(ci);
-        wheel.update_wheel_transform(cb_co);
+        wheel.update_wheel_trans(cb_co);
         self.wheels.push(wheel);
     }
 
@@ -374,7 +374,7 @@ impl VehicleRL {
 
         let friction_scale = chassis.get_mass() / 3.0;
         for wheel in &mut self.wheels {
-            wheel.update_wheel_transform(&chassis.collision_object);
+            wheel.update_wheel_trans(&chassis.co);
         }
 
         let mut sources = [Vec3A::ZERO; 4];
@@ -389,7 +389,7 @@ impl VehicleRL {
             collision_world,
             &sources,
             &targets,
-            &chassis.collision_object,
+            &chassis.co,
         );
 
         for (i, wheel) in self.wheels.iter_mut().enumerate() {

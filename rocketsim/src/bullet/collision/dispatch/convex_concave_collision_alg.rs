@@ -48,7 +48,7 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
         &mut self,
         triangle: &TriangleShape,
         _tri_aabb: &Aabb,
-        triangle_index: usize,
+        triangle_idx: usize,
     ) {
         let Some(contact_info) = triangle.intersect_sphere(
             self.sphere_center,
@@ -60,11 +60,11 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
 
         let normal_on_b = self
             .tri_obj
-            .get_world_transform()
+            .get_world_trans()
             .transform_vector3a(contact_info.result_normal);
         let point_in_world = self
             .tri_obj
-            .get_world_transform()
+            .get_world_trans()
             .transform_point3a(contact_info.contact_point);
 
         self.manifold.add_contact_point(
@@ -74,7 +74,7 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
             point_in_world,
             contact_info.depth,
             -1,
-            triangle_index as i32,
+            triangle_idx as i32,
             self.contact_added_callback,
         );
     }
@@ -111,8 +111,8 @@ impl<'a, T: ContactAddedCallback> ConvexConcaveCollisionAlgorithm<'a, T> {
 
 impl<T: ContactAddedCallback> CollisionAlgorithm for ConvexConcaveCollisionAlgorithm<'_, T> {
     fn process_collision(self) -> Option<PersistentManifold> {
-        let xform1 = self.convex_obj.get_world_transform();
-        let xform2 = self.concave_obj.get_world_transform().transpose();
+        let xform1 = self.convex_obj.get_world_trans();
+        let xform2 = self.concave_obj.get_world_trans().transpose();
         let convex_in_triangle_space = Affine3A {
             matrix3: xform2.matrix3 * xform1.matrix3,
             translation: xform2.transform_point3a(xform1.translation),

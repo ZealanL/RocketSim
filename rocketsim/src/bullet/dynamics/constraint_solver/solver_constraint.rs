@@ -27,7 +27,7 @@ pub struct SolverConstraint {
     pub lower_limit: f32,
     pub upper_limit: f32,
     pub rhs_penetration: f32,
-    pub friction_index: usize,
+    pub friction_idx: usize,
     pub solver_body_id_a: usize,
     pub solver_body_id_b: usize,
     pub is_special: bool,
@@ -40,10 +40,10 @@ impl SolverConstraint {
         (rb0, rb1): (Option<&RigidBody>, Option<&RigidBody>),
         (rel_pos1, rel_pos2): (Vec3A, Vec3A),
         cp: &ManifoldPoint,
-        friction_index: usize,
+        friction_idx: usize,
     ) -> Self {
         let mut constraint = Self {
-            friction_index,
+            friction_idx,
             solver_body_id_a,
             solver_body_id_b,
             lower_limit: -cp.combined_friction,
@@ -68,13 +68,13 @@ impl SolverConstraint {
         (rb0, rb1): (Option<&RigidBody>, Option<&RigidBody>),
         (rel_pos1, rel_pos2): (Vec3A, Vec3A),
         cp: &ManifoldPoint,
-        friction_index: usize,
+        friction_idx: usize,
         time_step: f32,
     ) -> Self {
         let mut constraint = Self {
             solver_body_id_a,
             solver_body_id_b,
-            friction_index,
+            friction_idx,
             friction: cp.combined_friction,
             is_special: cp.is_special,
             lower_limit: 0.0,

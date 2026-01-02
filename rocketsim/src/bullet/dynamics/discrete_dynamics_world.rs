@@ -1,7 +1,7 @@
 use glam::Vec3A;
 
 use super::{
-    constraint_solver::sequential_impulse_constraint_solver::SequentialImpulseConstraintSolver,
+    constraint_solver::seq_impulse_constraint_solver::SeqImpulseConstraintSolver,
     rigid_body::{RigidBody, RigidBodyFlags},
     world::DynamicsWorld,
 };
@@ -13,7 +13,7 @@ use crate::bullet::collision::{
 
 pub struct DiscreteDynamicsWorld {
     pub dynamics_world: DynamicsWorld,
-    solver: SequentialImpulseConstraintSolver,
+    solver: SeqImpulseConstraintSolver,
     non_static_rigid_bodies: Vec<usize>,
     gravity: Vec3A,
     apply_speculative_contact_restitution: bool,
@@ -24,7 +24,7 @@ impl DiscreteDynamicsWorld {
     pub fn new(
         dispatcher: CollisionDispatcher,
         pair_cache: GridBroadphase,
-        constraint_solver: SequentialImpulseConstraintSolver,
+        constraint_solver: SeqImpulseConstraintSolver,
     ) -> Self {
         Self {
             dynamics_world: DynamicsWorld::new(dispatcher, pair_cache),
@@ -56,13 +56,13 @@ impl DiscreteDynamicsWorld {
     }
 
     pub fn add_rigid_body_default(&mut self, mut body: RigidBody) -> usize {
-        if !body.collision_object.is_static_object()
+        if !body.co.is_static_object()
             && body.get_flags() & RigidBodyFlags::DisableWorldGravity as u8 == 0
         {
             body.set_gravity(self.gravity);
         }
 
-        let (group, mask) = if body.collision_object.is_static_object() {
+        let (group, mask) = if body.co.is_static_object() {
             (
                 CollisionFilterGroups::Static as u8,
                 CollisionFilterGroups::All as u8 ^ CollisionFilterGroups::Static as u8,
@@ -74,43 +74,43 @@ impl DiscreteDynamicsWorld {
             )
         };
 
-        let rb_index = self.add_collision_object(body, group, mask);
+        let rb_idx = self.add_collision_object(body, group, mask);
 
-        let rb = &mut self.dynamics_world.collision_world.collision_objects[rb_index];
-        if rb.collision_object.is_static_object() {
-            rb.collision_object
+        let rb = &mut self.dynamics_world.collision_world.collision_objects[rb_idx];
+        if rb.co.is_static_object() {
+            rb.co
                 .set_activation_state(ActivationState::Sleeping);
         } else {
-            self.non_static_rigid_bodies.push(rb_index);
+            self.non_static_rigid_bodies.push(rb_idx);
         }
 
-        rb_index
+        rb_idx
     }
 
     pub fn add_rigid_body(&mut self, mut body: RigidBody, group: u8, mask: u8) -> usize {
-        if !body.collision_object.is_static_object()
+        if !body.co.is_static_object()
             && body.get_flags() & RigidBodyFlags::DisableWorldGravity as u8 == 0
         {
             body.set_gravity(self.gravity);
         }
 
-        let rb_index = self.add_collision_object(body, group, mask);
+        let rb_idx = self.add_collision_object(body, group, mask);
 
-        let rb = &mut self.dynamics_world.collision_world.collision_objects[rb_index];
-        if rb.collision_object.is_static_object() {
-            rb.collision_object
+        let rb = &mut self.dynamics_world.collision_world.collision_objects[rb_idx];
+        if rb.co.is_static_object() {
+            rb.co
                 .set_activation_state(ActivationState::Sleeping);
         } else {
-            self.non_static_rigid_bodies.push(rb_index);
+            self.non_static_rigid_bodies.push(rb_idx);
         }
 
-        rb_index
+        rb_idx
     }
 
     fn apply_gravity(&mut self) {
         for &body in &self.non_static_rigid_bodies {
             let body = &mut self.dynamics_world.collision_world.collision_objects[body];
-            if body.collision_object.is_active() {
+            if body.co.is_active() {
                 body.apply_gravity();
             }
         }
@@ -119,11 +119,11 @@ impl DiscreteDynamicsWorld {
     fn predict_unconstraint_motion(&mut self, time_step: f32) {
         for &body in &self.non_static_rigid_bodies {
             let body = &mut self.dynamics_world.collision_world.collision_objects[body];
-            debug_assert!(!body.collision_object.is_static_object());
+            debug_assert!(!body.co.is_static_object());
 
             body.apply_damping(time_step);
-            let predicted_transform = body.predict_integration_transform(time_step);
-            body.collision_object.interpolation_world_transform = predicted_transform;
+            let predicted_trans = body.predict_integration_trans(time_step);
+            body.co.interp_world_trans = predicted_trans;
         }
     }
 
@@ -136,23 +136,23 @@ impl DiscreteDynamicsWorld {
         );
     }
 
-    fn integrate_transforms_internal(&mut self, time_step: f32) {
+    fn integrate_transs_internal(&mut self, time_step: f32) {
         for &body in &self.non_static_rigid_bodies {
             let body = &mut self.dynamics_world.collision_world.collision_objects[body];
 
-            debug_assert!(!body.collision_object.is_static_object());
-            if !body.collision_object.is_active() {
+            debug_assert!(!body.co.is_static_object());
+            if !body.co.is_active() {
                 continue;
             }
 
-            let predicted_trans = body.predict_integration_transform(time_step);
-            body.set_center_of_mass_transform(predicted_trans);
+            let predicted_trans = body.predict_integration_trans(time_step);
+            body.set_center_of_mass_trans(predicted_trans);
         }
     }
 
-    fn integrate_transforms(&mut self, time_step: f32) {
+    fn integrate_transs(&mut self, time_step: f32) {
         if !self.non_static_rigid_bodies.is_empty() {
-            self.integrate_transforms_internal(time_step);
+            self.integrate_transs_internal(time_step);
         }
 
         debug_assert!(!self.apply_speculative_contact_restitution);
@@ -183,7 +183,7 @@ impl DiscreteDynamicsWorld {
             .perform_discrete_collision_detection(contact_added_callback);
 
         self.solve_constraints(time_step);
-        self.integrate_transforms(time_step);
+        self.integrate_transs(time_step);
         self.update_activation_state(time_step);
     }
 

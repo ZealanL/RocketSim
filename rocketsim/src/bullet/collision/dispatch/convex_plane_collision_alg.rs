@@ -37,19 +37,19 @@ impl<'a, T: ContactAddedCallback> ConvexPlaneCollisionAlgorithm<'a, T> {
 impl<T: ContactAddedCallback> CollisionAlgorithm for ConvexPlaneCollisionAlgorithm<'_, T> {
     fn process_collision(self) -> Option<PersistentManifold> {
         let col_shape = self.convex_obj.object.get_collision_shape();
-        let convex_aabb = col_shape.get_aabb(&self.convex_obj.world_transform);
+        let convex_aabb = col_shape.get_aabb(&self.convex_obj.world_trans);
         if !convex_aabb.intersects(&self.plane_shape.aabb_cache) {
             return None;
         }
 
         let plane_normal = self.plane_shape.get_plane_normal();
 
-        let plane_trans = self.plane_obj.get_world_transform();
+        let plane_trans = self.plane_obj.get_world_trans();
         let plane_in_convex =
-            self.convex_obj.world_transform.matrix3.transpose() * plane_trans.matrix3;
+            self.convex_obj.world_trans.matrix3.transpose() * plane_trans.matrix3;
         let convex_in_plane_trans = Affine3A {
-            matrix3: plane_trans.matrix3.transpose() * self.convex_obj.world_transform.matrix3,
-            translation: plane_trans.matrix3 * self.convex_obj.world_transform.translation
+            matrix3: plane_trans.matrix3.transpose() * self.convex_obj.world_trans.matrix3,
+            translation: plane_trans.matrix3 * self.convex_obj.world_trans.translation
                 - plane_trans.translation,
         };
 
@@ -66,9 +66,9 @@ impl<T: ContactAddedCallback> CollisionAlgorithm for ConvexPlaneCollisionAlgorit
         let vtx_in_plane_projected = vtx_in_plane - distance * plane_normal;
         let vtx_in_plane_world = self
             .plane_obj
-            .get_world_transform()
+            .get_world_trans()
             .transform_point3a(vtx_in_plane_projected);
-        let normal_on_surface_b = self.plane_obj.get_world_transform().matrix3 * plane_normal;
+        let normal_on_surface_b = self.plane_obj.get_world_trans().matrix3 * plane_normal;
 
         manifold.add_contact_point(
             self.convex_obj.object,

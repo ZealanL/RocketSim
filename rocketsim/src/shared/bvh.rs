@@ -7,7 +7,7 @@ use crate::bullet::linear_math::{aabb_util_2::intersect_ray_aabb_packet, ray_pac
 use crate::shared::Aabb;
 
 pub trait ProcessNode {
-    fn process_node(&mut self, leaf_index: usize);
+    fn process_node(&mut self, leaf_idx: usize);
 }
 
 /// Just adds all the leaf indices to a Vec<usize>
@@ -23,19 +23,19 @@ impl SimpleNodeProcessor {
     }
 }
 impl ProcessNode for SimpleNodeProcessor {
-    fn process_node(&mut self, leaf_index: usize) {
-        self.leaf_indices.push(leaf_index);
+    fn process_node(&mut self, leaf_idx: usize) {
+        self.leaf_indices.push(leaf_idx);
     }
 }
 
 pub trait ProcessRayNode {
-    fn process_node(&mut self, leaf_index: usize, active_mask: u8, lambda_max: &mut Vec4);
+    fn process_node(&mut self, leaf_idx: usize, active_mask: u8, lambda_max: &mut Vec4);
 }
 
 #[derive(Debug, Default, Clone)]
 pub struct Tree {
     pub aabb: Aabb,
-    pub cur_node_index: usize,
+    pub cur_node_idx: usize,
     pub nodes: Box<[Node]>,
 }
 
@@ -45,7 +45,7 @@ impl Tree {
     pub fn new(aabb: Aabb, num_leaf_nodes: usize) -> Self {
         Self {
             aabb,
-            cur_node_index: 0,
+            cur_node_idx: 0,
             nodes: repeat_n(Node::DEFAULT, 2 * num_leaf_nodes).collect(),
         }
     }
@@ -55,16 +55,16 @@ impl Tree {
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss
     )]
-    fn calc_sah_split(leaf_nodes: &mut [Node], start_index: usize, end_index: usize) -> usize {
-        let count = end_index - start_index;
+    fn calc_sah_split(leaf_nodes: &mut [Node], start_idx: usize, end_idx: usize) -> usize {
+        let count = end_idx - start_idx;
         debug_assert!(count >= 2);
 
         if count == 2 {
-            return start_index + 1;
+            return start_idx + 1;
         }
 
         // Compute centroid bounds
-        let (cmin, cmax) = leaf_nodes[start_index..end_index]
+        let (cmin, cmax) = leaf_nodes[start_idx..end_idx]
             .iter()
             .map(|leaf| leaf.aabb.center())
             .fold(
@@ -88,7 +88,7 @@ impl Tree {
 
             // Fill bins
             let scale = (Self::SAH_BINS - 1) as f32 / extent;
-            for leaf in &leaf_nodes[start_index..end_index] {
+            for leaf in &leaf_nodes[start_idx..end_idx] {
                 let c = leaf.aabb.center();
                 let idx = ((c[axis] - cmin[axis]) * scale).clamp(0.0, (Self::SAH_BINS - 1) as f32)
                     as usize;
@@ -154,8 +154,8 @@ impl Tree {
         // Partition by chosen axis/bin
         let split_value =
             cmin[axis] + extents[axis] * ((best_bin + 1) as f32) / (Self::SAH_BINS as f32);
-        let mut mid = start_index;
-        for i in start_index..end_index {
+        let mut mid = start_idx;
+        for i in start_idx..end_idx {
             let c = leaf_nodes[i].aabb.center();
             if c[axis] <= split_value {
                 if i != mid {
@@ -168,68 +168,68 @@ impl Tree {
         mid
     }
 
-    fn swap_leaf_nodes(leaf_nodes: &mut [Node], i: usize, split_index: usize) {
-        debug_assert_ne!(i, split_index);
-        let [a, b] = unsafe { leaf_nodes.get_disjoint_unchecked_mut([split_index, i]) };
+    fn swap_leaf_nodes(leaf_nodes: &mut [Node], i: usize, split_idx: usize) {
+        debug_assert_ne!(i, split_idx);
+        let [a, b] = unsafe { leaf_nodes.get_disjoint_unchecked_mut([split_idx, i]) };
         mem::swap(a, b);
     }
 
-    pub fn build_tree(&mut self, leaf_nodes: &mut [Node], start_index: usize, end_index: usize) {
-        let num_indices = end_index - start_index;
-        let cur_index = self.cur_node_index;
+    pub fn build_tree(&mut self, leaf_nodes: &mut [Node], start_idx: usize, end_idx: usize) {
+        let num_indices = end_idx - start_idx;
+        let cur_idx = self.cur_node_idx;
 
         debug_assert!(num_indices > 0);
 
         if num_indices == 1 {
-            self.nodes[self.cur_node_index] = leaf_nodes[start_index];
-            self.cur_node_index += 1;
+            self.nodes[self.cur_node_idx] = leaf_nodes[start_idx];
+            self.cur_node_idx += 1;
             return;
         }
 
-        let split_index = Self::calc_sah_split(leaf_nodes, start_index, end_index);
+        let split_idx = Self::calc_sah_split(leaf_nodes, start_idx, end_idx);
 
-        let internal_node_index = self.cur_node_index;
+        let internal_node_idx = self.cur_node_idx;
 
         {
-            let node = &mut self.nodes[internal_node_index];
+            let node = &mut self.nodes[internal_node_idx];
             node.aabb.min = self.aabb.max;
             node.aabb.max = self.aabb.min;
 
-            for leaf in &leaf_nodes[start_index..end_index] {
+            for leaf in &leaf_nodes[start_idx..end_idx] {
                 node.aabb += leaf.aabb;
             }
         }
 
-        self.cur_node_index += 1;
+        self.cur_node_idx += 1;
 
-        self.build_tree(leaf_nodes, start_index, split_index);
-        self.build_tree(leaf_nodes, split_index, end_index);
+        self.build_tree(leaf_nodes, start_idx, split_idx);
+        self.build_tree(leaf_nodes, split_idx, end_idx);
 
-        let escape_index = self.cur_node_index - cur_index;
-        self.nodes[internal_node_index].node_type = BvhNodeType::Branch { escape_index };
+        let escape_idx = self.cur_node_idx - cur_idx;
+        self.nodes[internal_node_idx].node_type = BvhNodeType::Branch { escape_idx };
     }
 
     fn walk_stackless_tree_find_overlap(
         &self,
         aabb: &Aabb,
-        start_node_index: usize,
-        end_node_index: usize,
+        start_node_idx: usize,
+        end_node_idx: usize,
     ) -> bool {
-        let mut cur_index = start_node_index;
-        while cur_index < end_node_index {
-            let root_node = &self.nodes[cur_index];
+        let mut cur_idx = start_node_idx;
+        while cur_idx < end_node_idx {
+            let root_node = &self.nodes[cur_idx];
             let aabb_overlap = aabb.intersects(&root_node.aabb);
 
             match root_node.node_type {
-                BvhNodeType::Leaf { leaf_index: _ } => {
+                BvhNodeType::Leaf { leaf_idx: _ } => {
                     if aabb_overlap {
                         return true;
                     }
 
-                    cur_index += 1;
+                    cur_idx += 1;
                 }
-                BvhNodeType::Branch { escape_index } => {
-                    cur_index += if aabb_overlap { 1 } else { escape_index };
+                BvhNodeType::Branch { escape_idx } => {
+                    cur_idx += if aabb_overlap { 1 } else { escape_idx };
                 }
             }
         }
@@ -239,31 +239,31 @@ impl Tree {
 
     pub fn check_overlap_with(&self, aabb: &Aabb) -> bool {
         aabb.intersects(&self.aabb)
-            && self.walk_stackless_tree_find_overlap(aabb, 0, self.cur_node_index)
+            && self.walk_stackless_tree_find_overlap(aabb, 0, self.cur_node_idx)
     }
 
     fn walk_stackless_tree<T: ProcessNode>(
         &self,
         node_callback: &mut T,
         aabb: &Aabb,
-        start_node_index: usize,
-        end_node_index: usize,
+        start_node_idx: usize,
+        end_node_idx: usize,
     ) {
-        let mut cur_index = start_node_index;
-        while cur_index < end_node_index {
-            let root_node = &self.nodes[cur_index];
+        let mut cur_idx = start_node_idx;
+        while cur_idx < end_node_idx {
+            let root_node = &self.nodes[cur_idx];
             let aabb_overlap = aabb.intersects(&root_node.aabb);
 
             match root_node.node_type {
-                BvhNodeType::Leaf { leaf_index } => {
+                BvhNodeType::Leaf { leaf_idx } => {
                     if aabb_overlap {
-                        node_callback.process_node(leaf_index);
+                        node_callback.process_node(leaf_idx);
                     }
 
-                    cur_index += 1;
+                    cur_idx += 1;
                 }
-                BvhNodeType::Branch { escape_index } => {
-                    cur_index += if aabb_overlap { 1 } else { escape_index };
+                BvhNodeType::Branch { escape_idx } => {
+                    cur_idx += if aabb_overlap { 1 } else { escape_idx };
                 }
             }
         }
@@ -271,7 +271,7 @@ impl Tree {
 
     pub fn report_aabb_overlapping_node<T: ProcessNode>(&self, node_callback: &mut T, aabb: &Aabb) {
         if aabb.intersects(&self.aabb) {
-            self.walk_stackless_tree(node_callback, aabb, 0, self.cur_node_index);
+            self.walk_stackless_tree(node_callback, aabb, 0, self.cur_node_idx);
         }
     }
 
@@ -281,16 +281,16 @@ impl Tree {
         ray_info: &mut RayInfo,
         origins: &[Vec4; 3],
         inv_dir: &[Vec4; 3],
-        start_node_index: usize,
-        end_node_index: usize,
+        start_node_idx: usize,
+        end_node_idx: usize,
     ) {
-        let mut cur_index = start_node_index;
-        while cur_index < end_node_index {
-            let root_node = &self.nodes[cur_index];
+        let mut cur_idx = start_node_idx;
+        while cur_idx < end_node_idx {
+            let root_node = &self.nodes[cur_idx];
             let overlap = ray_info.aabb.intersects(&root_node.aabb);
 
             match root_node.node_type {
-                BvhNodeType::Leaf { leaf_index } => {
+                BvhNodeType::Leaf { leaf_idx } => {
                     if overlap {
                         let mask = intersect_ray_aabb_packet(
                             origins,
@@ -300,13 +300,13 @@ impl Tree {
                         );
 
                         if mask != 0 {
-                            node_callback.process_node(leaf_index, mask, &mut ray_info.lambda_max);
+                            node_callback.process_node(leaf_idx, mask, &mut ray_info.lambda_max);
                         }
                     }
-                    cur_index += 1;
+                    cur_idx += 1;
                 }
-                BvhNodeType::Branch { escape_index } => {
-                    cur_index += if overlap { 1 } else { escape_index };
+                BvhNodeType::Branch { escape_idx } => {
+                    cur_idx += if overlap { 1 } else { escape_idx };
                 }
             }
         }
@@ -328,15 +328,15 @@ impl Tree {
             &origins,
             &inv_dirs,
             0,
-            self.cur_node_index,
+            self.cur_node_idx,
         );
     }
 }
 
 #[derive(Debug, Clone, Copy)]
 pub enum BvhNodeType {
-    Leaf { leaf_index: usize },
-    Branch { escape_index: usize },
+    Leaf { leaf_idx: usize },
+    Branch { escape_idx: usize },
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -348,6 +348,6 @@ pub struct Node {
 impl Node {
     pub const DEFAULT: Self = Self {
         aabb: Aabb::ZERO,
-        node_type: BvhNodeType::Leaf { leaf_index: 0 },
+        node_type: BvhNodeType::Leaf { leaf_idx: 0 },
     };
 }

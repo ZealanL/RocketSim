@@ -32,7 +32,7 @@ pub struct PersistentManifold {
 
 impl PersistentManifold {
     pub fn new(body0: &CollisionObject, body1: &CollisionObject, is_swapped: bool) -> Self {
-        debug_assert_ne!(body0.world_array_index, body1.world_array_index);
+        debug_assert_ne!(body0.world_array_idx, body1.world_array_idx);
 
         let body0_cbt = body0
             .get_collision_shape()
@@ -46,8 +46,8 @@ impl PersistentManifold {
             .min(body1.contact_processing_threshold);
 
         Self {
-            body0_idx: body0.world_array_index,
-            body1_idx: body1.world_array_index,
+            body0_idx: body0.world_array_idx,
+            body1_idx: body1.world_array_idx,
             contact_breaking_threshold,
             contact_processing_threshold,
             point_cache: ArrayVec::new(),
@@ -119,16 +119,16 @@ impl PersistentManifold {
     }
 
     fn sort_cached_points(&self, new_contact: &ManifoldPoint) -> usize {
-        let mut max_penetration_index = MANIFOLD_CACHE_SIZE;
+        let mut max_penetration_idx = MANIFOLD_CACHE_SIZE;
         let mut max_penetration = new_contact.distance_1;
         for (i, contact) in self.point_cache.iter().enumerate() {
             if contact.distance_1 < max_penetration {
-                max_penetration_index = i;
+                max_penetration_idx = i;
                 max_penetration = contact.distance_1;
             }
         }
 
-        let res = match max_penetration_index {
+        let res = match max_penetration_idx {
             0 => Vec4::new(
                 0.,
                 self.get_res_1(new_contact.local_point_a),
@@ -194,8 +194,8 @@ impl PersistentManifold {
 
         let point_a = point_in_world + normal_on_b_in_world * depth;
         let (local_a, local_b) = (
-            body0.get_world_transform().inv_x_form(point_a),
-            body1.get_world_transform().inv_x_form(point_in_world),
+            body0.get_world_trans().inv_x_form(point_a),
+            body1.get_world_trans().inv_x_form(point_in_world),
         );
 
         let mut new_pt = ManifoldPoint::new(local_a, local_b, normal_on_b_in_world, depth);
@@ -216,16 +216,16 @@ impl PersistentManifold {
             new_pt.index_1 = index_1;
         }
 
-        let insert_index = self.add_manifold_point(new_pt);
+        let insert_idx = self.add_manifold_point(new_pt);
 
         if self.is_swapped {
             mem::swap(&mut body0, &mut body1);
         }
 
-        if body0.collision_flags & CollisionFlags::CustomMaterialCallback as u8 != 0
-            || body1.collision_flags & CollisionFlags::CustomMaterialCallback as u8 != 0
+        if body0.flags & CollisionFlags::CustomMaterialCallback as u8 != 0
+            || body1.flags & CollisionFlags::CustomMaterialCallback as u8 != 0
         {
-            contact_added_callback.callback(&mut self.point_cache[insert_index], body0, body1);
+            contact_added_callback.callback(&mut self.point_cache[insert_idx], body0, body1);
         }
     }
 
@@ -234,8 +234,8 @@ impl PersistentManifold {
             return;
         }
 
-        let tr_a = body0.get_world_transform();
-        let tr_b = body1.get_world_transform();
+        let tr_a = body0.get_world_trans();
+        let tr_b = body1.get_world_trans();
 
         for manifold_point in &mut self.point_cache {
             manifold_point.position_world_on_a =

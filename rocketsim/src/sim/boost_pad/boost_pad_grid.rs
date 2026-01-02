@@ -51,7 +51,7 @@ impl BoostPadGrid {
         for (i, pad) in all_pads.iter().enumerate() {
             let node = bvh::Node {
                 aabb: pad.aabb(),
-                node_type: bvh::BvhNodeType::Leaf { leaf_index: i },
+                node_type: bvh::BvhNodeType::Leaf { leaf_idx: i },
             };
             aabb_nodes.push(node);
         }

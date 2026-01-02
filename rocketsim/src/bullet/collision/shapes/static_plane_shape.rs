@@ -19,7 +19,7 @@ pub struct StaticPlaneShape {
 
 impl StaticPlaneShape {
     #[must_use]
-    pub fn new(world_transform: Affine3A, plane_normal: Vec3A) -> Self {
+    pub fn new(world_trans: Affine3A, plane_normal: Vec3A) -> Self {
         debug_assert!(plane_normal.is_normalized());
 
         let [x, y, z]: [bool; 3] = plane_normal.abs().cmpge(Vec3A::splat(f32::EPSILON)).into();
@@ -41,11 +41,11 @@ impl StaticPlaneShape {
             aabb_ident_cache: Aabb::ZERO,
             aabb_cache: Aabb::ZERO,
             #[cfg(debug_assertions)]
-            aabb_cache_trans: world_transform,
+            aabb_cache_trans: world_trans,
         };
 
         plane.aabb_ident_cache = plane.get_aabb(&Affine3A::IDENTITY);
-        plane.aabb_cache = plane.get_aabb(&world_transform);
+        plane.aabb_cache = plane.get_aabb(&world_trans);
 
         plane
     }

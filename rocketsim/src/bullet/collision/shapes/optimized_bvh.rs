@@ -40,10 +40,10 @@ pub fn create_bvh(triangles: &TriangleMesh, aabb: Aabb) -> Tree {
         .copied()
         .map(update_triangle_aabb)
         .enumerate()
-        .map(|(triangle_index, aabb)| Node {
+        .map(|(triangle_idx, aabb)| Node {
             aabb,
             node_type: BvhNodeType::Leaf {
-                leaf_index: triangle_index,
+                leaf_idx: triangle_idx,
             },
         })
         .collect();

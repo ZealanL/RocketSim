@@ -22,104 +22,106 @@ pub enum CollisionFlags {
 }
 
 pub struct CollisionObject {
-    world_transform: Affine3A,
-    pub interpolation_world_transform: Affine3A,
-    pub interpolation_linear_velocity: Vec3A,
-    pub interpolation_angular_velocity: Vec3A,
+    world_trans: Affine3A,
+    shape: CollisionShapes,
+    activation: ActivationState,
+
+    pub interp_world_trans: Affine3A,
+    pub interp_linear_velocity: Vec3A,
+    pub interp_angular_velocity: Vec3A,
     pub contact_processing_threshold: f32,
     broadphase_handle: Option<usize>,
-    collision_shape: CollisionShapes,
-    pub collision_flags: u8,
+
+    pub flags: u8,
     pub companion_id: Option<usize>,
     /// The index of this object in `CollisionWorld`
-    pub world_array_index: usize,
-    activation_state: ActivationState,
+    pub world_array_idx: usize,
     pub can_sleep: bool,
     pub deactivation_time: f32,
     pub friction: f32,
     pub restitution: f32,
     pub no_rot: bool,
     pub user_pointer: usize,
-    pub user_index: UserInfoTypes,
+    pub user_idx: UserInfoTypes,
 }
 
 impl From<RigidBodyConstructionInfo> for CollisionObject {
     fn from(value: RigidBodyConstructionInfo) -> Self {
         Self {
-            world_transform: value.start_world_transform,
-            interpolation_world_transform: value.start_world_transform,
-            interpolation_linear_velocity: Vec3A::ZERO,
-            interpolation_angular_velocity: Vec3A::ZERO,
+            world_trans: value.start_world_trans,
+            interp_world_trans: value.start_world_trans,
+            interp_linear_velocity: Vec3A::ZERO,
+            interp_angular_velocity: Vec3A::ZERO,
             contact_processing_threshold: f32::MAX,
             broadphase_handle: None,
-            collision_shape: value.collision_shape,
-            collision_flags: if value.mass == 0.0 {
+            shape: value.collision_shape,
+            flags: if value.mass == 0.0 {
                 CollisionFlags::StaticObject as u8
             } else {
                 0
             },
             companion_id: None,
-            world_array_index: 0,
-            activation_state: ActivationState::Active,
+            world_array_idx: 0,
+            activation: ActivationState::Active,
             deactivation_time: 0.0,
             friction: value.friction,
             restitution: value.restitution,
             no_rot: false,
             user_pointer: 0,
-            user_index: UserInfoTypes::default(),
+            user_idx: UserInfoTypes::default(),
             can_sleep: value.can_sleep,
         }
     }
 }
 
 impl CollisionObject {
-    pub const fn set_world_transform(&mut self, world_trans: Affine3A) {
-        self.world_transform = world_trans;
+    pub const fn set_world_trans(&mut self, world_trans: Affine3A) {
+        self.world_trans = world_trans;
     }
 
     #[must_use]
-    pub const fn get_world_transform(&self) -> &Affine3A {
-        &self.world_transform
+    pub const fn get_world_trans(&self) -> &Affine3A {
+        &self.world_trans
     }
 
     #[must_use]
     pub const fn get_collision_shape(&self) -> &CollisionShapes {
-        &self.collision_shape
+        &self.shape
     }
 
     #[must_use]
     pub const fn is_static_object(&self) -> bool {
-        self.collision_flags & CollisionFlags::StaticObject as u8 != 0
+        self.flags & CollisionFlags::StaticObject as u8 != 0
     }
 
     #[must_use]
     pub const fn is_active(&self) -> bool {
         !matches!(
-            self.activation_state,
+            self.activation,
             ActivationState::Sleeping | ActivationState::DisableSimulation
         )
     }
 
     #[must_use]
     pub const fn has_contact_response(&self) -> bool {
-        self.collision_flags & CollisionFlags::NoContactResponse as u8 == 0
+        self.flags & CollisionFlags::NoContactResponse as u8 == 0
     }
 
     #[inline]
     #[must_use]
     #[allow(unused)]
     pub const fn get_activation_state(&self) -> ActivationState {
-        self.activation_state
+        self.activation
     }
 
     pub fn set_activation_state(&mut self, new_state: ActivationState) {
-        if self.activation_state != ActivationState::DisableSimulation {
-            self.activation_state = new_state;
+        if self.activation != ActivationState::DisableSimulation {
+            self.activation = new_state;
         }
     }
 
     pub const fn force_activate(&mut self) {
-        self.activation_state = ActivationState::Active;
+        self.activation = ActivationState::Active;
         self.deactivation_time = 0.0;
     }
 

@@ -16,7 +16,7 @@ use crate::{ARENA_COLLISION_SHAPES, ArenaConfig, ArenaMemWeightMode, BoostPadCon
         shapes::{collision_shape::CollisionShapes, static_plane_shape::StaticPlaneShape},
     },
     dynamics::{
-        constraint_solver::sequential_impulse_constraint_solver::SequentialImpulseConstraintSolver,
+        constraint_solver::seq_impulse_constraint_solver::SeqImpulseConstraintSolver,
         discrete_dynamics_world::DiscreteDynamicsWorld,
         rigid_body::{RigidBody, RigidBodyConstructionInfo},
     },
@@ -185,7 +185,7 @@ impl Arena {
         let mutator_config = MutatorConfig::new(game_mode);
 
         let collision_dispatcher = CollisionDispatcher::default();
-        let constraint_solver = SequentialImpulseConstraintSolver::default();
+        let constraint_solver = SeqImpulseConstraintSolver::default();
         let overlapping_pair_cache = HashedOverlappingPairCache::default();
 
         let (cell_size_multiplier, initial_handle_size) = match config.mem_weight_mode {
@@ -275,7 +275,7 @@ impl Arena {
         let mut rb_info = RigidBodyConstructionInfo::new(0.0, shape, false);
         rb_info.restitution = consts::arena::BASE_COEFS.restitution;
         rb_info.friction = consts::arena::BASE_COEFS.friction;
-        rb_info.start_world_transform.translation = pos_bt;
+        rb_info.start_world_trans.translation = pos_bt;
 
         let shape_rb = RigidBody::new(rb_info);
         if (group | mask) != 0 {
@@ -407,8 +407,8 @@ impl Arena {
     #[must_use]
     pub fn is_ball_scored(&self) -> bool {
         let ball_pos = self.bullet_world.bodies()[self.ball.rigid_body_idx]
-            .collision_object
-            .get_world_transform()
+            .co
+            .get_world_trans()
             .translation
             * BT_TO_UU;
 
@@ -554,7 +554,7 @@ impl Arena {
         );
 
         self.bullet_world.bodies_mut()[car.rigid_body_idx]
-            .collision_object
+            .co
             .user_pointer = idx;
         self.cars.push(car);
         idx
@@ -568,7 +568,7 @@ impl Arena {
                 && ball_rb.angular_velocity.length_squared() == 0.0;
 
             ball_rb
-                .collision_object
+                .co
                 .set_activation_state(if should_sleep {
                     ActivationState::Sleeping
                 } else {
@@ -593,15 +593,15 @@ impl Arena {
             let (body_a, body_b) = self
                 .bullet_world
                 .bodies_mut()
-                .get_disjoint_mut([contact.rb_index_a, contact.rb_index_b])
+                .get_disjoint_mut([contact.rb_idx_a, contact.rb_idx_b])
                 .unwrap()
                 .into();
 
-            let user_pointer_a = body_a.collision_object.user_pointer;
-            let user_pointer_b = body_b.collision_object.user_pointer;
+            let user_pointer_a = body_a.co.user_pointer;
+            let user_pointer_b = body_b.co.user_pointer;
 
-            if contact.user_index_a == UserInfoTypes::Car {
-                match contact.user_index_b {
+            if contact.user_idx_a == UserInfoTypes::Car {
+                match contact.user_idx_b {
                     UserInfoTypes::Ball => {
                         self.on_car_ball_collision(
                             user_pointer_a,
@@ -722,7 +722,7 @@ impl Arena {
 
     pub fn get_boost_pad_state(&self, idx: usize) -> BoostPadState {
         let pad = self.boost_pads()[idx];
-        
+
         let cooldown = if let Some(gave_boost_tick) = pad.gave_boost_tick_count {
             let max_cooldown = pad.max_cooldown;
             let time_since = ((self.tick_count() - gave_boost_tick) as f32) * TICK_TIME;

@@ -33,18 +33,18 @@ impl<'a, T: ContactAddedCallback> ObbObbCollisionAlgorithm<'a, T> {
 
 impl<T: ContactAddedCallback> CollisionAlgorithm for ObbObbCollisionAlgorithm<'_, T> {
     fn process_collision<'a>(self) -> Option<PersistentManifold> {
-        let org_0_trans = self.compound_0_obj.get_world_transform();
+        let org_0_trans = self.compound_0_obj.get_world_trans();
         let aabb_0 = self.compound_0_shape.get_aabb(org_0_trans);
-        let org_1_trans = self.compound_1_obj.get_world_transform();
+        let org_1_trans = self.compound_1_obj.get_world_trans();
         let aabb_1 = self.compound_1_shape.get_aabb(org_1_trans);
         if !aabb_0.intersects(&aabb_1) {
             return None;
         }
 
-        let child_0_trans = &self.compound_0_shape.child_transform;
+        let child_0_trans = &self.compound_0_shape.child_trans;
         let child_0_world_trans = org_0_trans * child_0_trans;
 
-        let child_1_trans = &self.compound_0_shape.child_transform;
+        let child_1_trans = &self.compound_0_shape.child_trans;
         let child_1_world_trans = org_1_trans * child_1_trans;
 
         let mut detector = BoxBoxDetector {

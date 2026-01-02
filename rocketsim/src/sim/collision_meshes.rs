@@ -49,8 +49,8 @@ impl CollisionMeshFile {
 
         let mut hash = Wrapping((vertices.len() + (indices.len() / 3 * vertices.len())) as u32);
 
-        for &vert_index in indices {
-            for pos in vertices[vert_index].to_array() {
+        for &vert_idx in indices {
+            for pos in vertices[vert_idx].to_array() {
                 let mut cur_val = Wrapping(pos as i32 as u32);
                 cur_val = ((cur_val >> 16) ^ cur_val) * HASH_VAL_MUELLER;
                 cur_val = ((cur_val >> 16) ^ cur_val) * HASH_VAL_MUELLER;
@@ -88,9 +88,9 @@ impl CollisionMeshFile {
         #[cfg(debug_assertions)]
         {
             // Verify that the triangle data is correct
-            for &vert_index in &indices {
+            for &vert_idx in &indices {
                 assert!(
-                    vert_index < num_vertices,
+                    vert_idx < num_vertices,
                     "Invalid collision mesh file (bad triangle vertex index)"
                 );
             }

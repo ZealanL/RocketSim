@@ -1,15 +1,15 @@
 use super::{
-    convex_concave_collision_algorithm::ConvexConcaveCollisionAlgorithm,
-    convex_plane_collision_algorithm::ConvexPlaneCollisionAlgorithm,
+    convex_concave_collision_alg::ConvexConcaveCollisionAlgorithm,
+    convex_plane_collision_alg::ConvexPlaneCollisionAlgorithm,
 };
 use crate::bullet::{
     collision::{
         broadphase::{CollisionAlgorithm, GridBroadphase, GridBroadphaseProxy},
         dispatch::{
             collision_object::CollisionObject, collision_object_wrapper::CollisionObjectWrapper,
-            compound_collision_algorithm::CompoundCollisionAlgorithm,
-            obb_obb_collision_algorithm::ObbObbCollisionAlgorithm,
-            sphere_obb_collision_algorithm::SphereObbCollisionAlgorithm,
+            compound_collision_alg::CompoundCollisionAlgorithm,
+            obb_obb_collision_alg::ObbObbCollisionAlgorithm,
+            sphere_obb_collision_alg::SphereObbCollisionAlgorithm,
         },
         narrowphase::persistent_manifold::{ContactAddedCallback, PersistentManifold},
         shapes::{
@@ -140,7 +140,7 @@ impl Default for CollisionDispatcher {
 }
 
 impl CollisionDispatcher {
-    fn find_algorithm<'a, T: ContactAddedCallback>(
+    fn find_alg<'a, T: ContactAddedCallback>(
         col_obj_0: &'a CollisionObject,
         col_obj_1: &'a CollisionObject,
         contact_added_callback: &'a mut T,
@@ -150,7 +150,7 @@ impl CollisionDispatcher {
                 CollisionShapes::Sphere(_) => Algorithms::new_convex_plane(
                     CollisionObjectWrapper {
                         object: col_obj_1,
-                        world_transform: *col_obj_1.get_world_transform(),
+                        world_trans: *col_obj_1.get_world_trans(),
                     },
                     col_obj_0,
                     plane,
@@ -170,7 +170,7 @@ impl CollisionDispatcher {
                 CollisionShapes::StaticPlane(plane) => Algorithms::new_convex_plane(
                     CollisionObjectWrapper {
                         object: col_obj_0,
-                        world_transform: *col_obj_0.get_world_transform(),
+                        world_trans: *col_obj_0.get_world_trans(),
                     },
                     col_obj_1,
                     plane,
@@ -252,16 +252,16 @@ impl CollisionDispatcher {
         let rb0 = &collision_objects[proxy0.client_object_idx];
         let rb1 = &collision_objects[proxy1.client_object_idx];
 
-        if !rb0.collision_object.is_active() && !rb1.collision_object.is_active()
-            || !rb0.collision_object.has_contact_response()
-            || !rb1.collision_object.has_contact_response()
+        if !rb0.co.is_active() && !rb1.co.is_active()
+            || !rb0.co.has_contact_response()
+            || !rb1.co.has_contact_response()
         {
             return;
         }
 
-        let algorithm = Self::find_algorithm(
-            &rb0.collision_object,
-            &rb1.collision_object,
+        let algorithm = Self::find_alg(
+            &rb0.co,
+            &rb1.co,
             contact_added_callback,
         );
 

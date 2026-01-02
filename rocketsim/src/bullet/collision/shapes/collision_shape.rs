@@ -23,7 +23,7 @@ pub enum CollisionShapes {
 }
 
 #[cfg(debug_assertions)]
-fn fast_compare_transforms(a: &Affine3A, b: &Affine3A) -> bool {
+fn fast_compare_transs(a: &Affine3A, b: &Affine3A) -> bool {
     a.translation == b.translation
         && a.matrix3.x_axis == b.matrix3.x_axis
         && a.matrix3.y_axis == b.matrix3.y_axis
@@ -37,12 +37,12 @@ impl CollisionShapes {
             Self::Compound(shape) => shape.get_aabb(t),
             Self::StaticPlane(shape) => {
                 #[cfg(debug_assertions)]
-                debug_assert!(fast_compare_transforms(t, &shape.aabb_cache_trans));
+                debug_assert!(fast_compare_transs(t, &shape.aabb_cache_trans));
                 shape.aabb_cache
             }
             Self::TriangleMesh(shape) => {
                 #[cfg(debug_assertions)]
-                debug_assert!(fast_compare_transforms(t, &Affine3A::IDENTITY));
+                debug_assert!(fast_compare_transs(t, &Affine3A::IDENTITY));
                 shape.aabb_ident_cache
             }
         }

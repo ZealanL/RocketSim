@@ -9,17 +9,17 @@ use crate::shared::Aabb;
 
 pub struct CompoundShape {
     pub child_shape: BoxShape,
-    pub child_transform: Affine3A,
+    pub child_trans: Affine3A,
     local_aabb: Aabb,
 }
 
 impl CompoundShape {
-    pub fn new(child_shape: BoxShape, child_transform: Affine3A) -> Self {
-        let local_aabb = child_shape.get_aabb(&child_transform);
+    pub fn new(child_shape: BoxShape, child_trans: Affine3A) -> Self {
+        let local_aabb = child_shape.get_aabb(&child_trans);
 
         Self {
             child_shape,
-            child_transform,
+            child_trans,
             local_aabb,
         }
     }

@@ -8,7 +8,7 @@ pub trait ProcessTriangle {
         &mut self,
         triangle: &TriangleShape,
         tri_aabb: &Aabb,
-        triangle_index: usize,
+        triangle_idx: usize,
     );
 }
 

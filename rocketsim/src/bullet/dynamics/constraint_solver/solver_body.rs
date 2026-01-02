@@ -3,7 +3,7 @@ use glam::{Affine3A, Vec3A};
 use crate::bullet::dynamics::rigid_body::RigidBody;
 
 pub struct SolverBody {
-    pub world_transform: Affine3A,
+    pub world_trans: Affine3A,
     pub delta_linear_velocity: Vec3A,
     pub delta_angular_velocity: Vec3A,
     pub inv_mass: Vec3A,
@@ -18,7 +18,7 @@ pub struct SolverBody {
 
 impl SolverBody {
     pub const DEFAULT: Self = Self {
-        world_transform: Affine3A::IDENTITY,
+        world_trans: Affine3A::IDENTITY,
         delta_linear_velocity: Vec3A::ZERO,
         delta_angular_velocity: Vec3A::ZERO,
         inv_mass: Vec3A::ZERO,
@@ -33,7 +33,7 @@ impl SolverBody {
 
     pub fn new(rb: &RigidBody, time_step: f32) -> Self {
         Self {
-            world_transform: *rb.collision_object.get_world_transform(),
+            world_trans: *rb.co.get_world_trans(),
             delta_linear_velocity: Vec3A::ZERO,
             delta_angular_velocity: Vec3A::ZERO,
             inv_mass: rb.inv_mass,
@@ -43,7 +43,7 @@ impl SolverBody {
             angular_velocity: rb.angular_velocity,
             external_force_impulse: rb.total_force * rb.inverse_mass * time_step,
             external_torque_impulse: rb.inv_inertia_tensor_world * rb.total_torque * time_step,
-            original_body: Some(rb.collision_object.world_array_index),
+            original_body: Some(rb.co.world_array_idx),
         }
     }
 

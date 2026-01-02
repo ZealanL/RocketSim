@@ -87,11 +87,11 @@ impl CellGrid {
             .clamp(USizeVec3::ZERO, self.num_cells - USizeVec3::ONE)
     }
 
-    fn get_cell_index(&self, pos: Vec3A) -> usize {
-        self.cell_indices_to_index(self.get_cell_indices(pos))
+    fn get_cell_idx(&self, pos: Vec3A) -> usize {
+        self.cell_indices_to_idx(self.get_cell_indices(pos))
     }
 
-    const fn cell_indices_to_index(&self, indices: USizeVec3) -> usize {
+    const fn cell_indices_to_idx(&self, indices: USizeVec3) -> usize {
         indices.x * self.num_cells.y * self.num_cells.z + indices.y * self.num_cells.z + indices.z
     }
 
@@ -100,7 +100,7 @@ impl CellGrid {
     }
 
     fn get_cell(&mut self, indices: USizeVec3) -> &mut GridCell {
-        let idx = self.cell_indices_to_index(indices);
+        let idx = self.cell_indices_to_idx(indices);
         &mut self.cells[idx]
     }
 
@@ -151,7 +151,7 @@ impl CellGrid {
                                     continue;
                                 }
 
-                                cells.push(self.cell_indices_to_index(cell));
+                                cells.push(self.cell_indices_to_idx(cell));
                             }
                         }
                     }
@@ -203,7 +203,7 @@ impl CellGrid {
 
 pub struct GridBroadphase {
     cell_grid: CellGrid,
-    min_dyn_handle_index: usize,
+    min_dyn_handle_idx: usize,
     pub handles: Vec<GridBroadphaseProxy>,
     pair_cache: HashedOverlappingPairCache,
 }
@@ -230,7 +230,7 @@ impl GridBroadphase {
             .collect();
 
         Self {
-            min_dyn_handle_index: 0,
+            min_dyn_handle_idx: 0,
             cell_grid: CellGrid {
                 max_pos,
                 min_pos,
@@ -258,14 +258,14 @@ impl GridBroadphase {
                 self.cell_grid
                     .update_cells_static::<true>(sbp, col_obj, proxy_idx);
             } else {
-                let old_index = sbp.cell_idx;
+                let old_idx = sbp.cell_idx;
                 sbp.broadphase_proxy.aabb = aabb;
 
                 let new_indices = self.cell_grid.get_cell_indices(aabb.min);
-                let new_index = self.cell_grid.cell_indices_to_index(new_indices);
-                self.handles[proxy_idx].cell_idx = new_index;
+                let new_idx = self.cell_grid.cell_indices_to_idx(new_indices);
+                self.handles[proxy_idx].cell_idx = new_idx;
 
-                if new_index != old_index && self.cell_grid.num_dyn_proxies > 1 {
+                if new_idx != old_idx && self.cell_grid.num_dyn_proxies > 1 {
                     self.cell_grid
                         .update_cells_dynamic::<false>(proxy_idx, new_indices);
                     self.handles[proxy_idx].indices = new_indices;
@@ -286,16 +286,16 @@ impl GridBroadphase {
         debug_assert!(aabb.min.cmple(aabb.max).all());
 
         let is_static = co.is_static_object();
-        let world_index = co.world_array_index;
+        let world_idx = co.world_array_idx;
 
         let new_handle_idx = self.handles.len();
         let indices = self.cell_grid.get_cell_indices(aabb.min);
-        let cell_idx = self.cell_grid.cell_indices_to_index(indices);
+        let cell_idx = self.cell_grid.cell_indices_to_idx(indices);
 
         let new_handle = GridBroadphaseProxy {
             broadphase_proxy: BroadphaseProxy {
                 aabb,
-                client_object_idx: world_index,
+                client_object_idx: world_idx,
                 collision_filter_group,
                 collision_filter_mask,
                 is_static,
@@ -307,7 +307,7 @@ impl GridBroadphase {
 
         if is_static {
             if self.cell_grid.num_dyn_proxies == 0 {
-                self.min_dyn_handle_index = new_handle_idx + 1;
+                self.min_dyn_handle_idx = new_handle_idx + 1;
             }
 
             self.cell_grid
@@ -334,7 +334,7 @@ impl GridBroadphase {
             .handles
             .iter()
             .enumerate()
-            .skip(self.min_dyn_handle_index)
+            .skip(self.min_dyn_handle_idx)
             .filter(|(_, proxy)| !proxy.is_static)
         {
             let cell = &self.cell_grid.cells[proxy.cell_idx];
@@ -395,7 +395,7 @@ impl GridBroadphase {
         debug_assert!(ray_from[1].distance_squared(ray_to[1]) < self.cell_grid.cell_size_sq);
         debug_assert!(ray_from[2].distance_squared(ray_to[2]) < self.cell_grid.cell_size_sq);
         debug_assert!(ray_from[3].distance_squared(ray_to[3]) < self.cell_grid.cell_size_sq);
-        let cell = &self.cell_grid.cells[self.cell_grid.get_cell_index(ray_from[0])];
+        let cell = &self.cell_grid.cells[self.cell_grid.get_cell_idx(ray_from[0])];
 
         for &other_proxy_idx in cell.static_handles.iter().chain(&cell.dyn_handles) {
             let other_proxy = &self.handles[other_proxy_idx];

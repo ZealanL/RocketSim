@@ -5,7 +5,7 @@ use crate::bullet::{
         broadphase::CollisionAlgorithm,
         dispatch::{
             collision_object::CollisionObject, collision_object_wrapper::CollisionObjectWrapper,
-            convex_plane_collision_algorithm::ConvexPlaneCollisionAlgorithm,
+            convex_plane_collision_alg::ConvexPlaneCollisionAlgorithm,
         },
         narrowphase::persistent_manifold::{ContactAddedCallback, PersistentManifold},
         shapes::{
@@ -20,7 +20,7 @@ use crate::shared::Aabb;
 struct Hit {
     depth: f32,
     normal: Vec3A,
-    axis_index: usize,
+    axis_idx: usize,
     neg_axis: bool,
 }
 
@@ -52,12 +52,12 @@ fn aabb_triangle_sat(
     } else {
         tri.normal
     };
-    let mut min_axis_index = 0;
+    let mut min_axis_idx = 0;
     let mut min_neg_axis = tri_normal_neg_axis;
 
-    let mut axis_index = 0;
+    let mut axis_idx = 0;
     for obb_axis in IDENT_AXES {
-        axis_index += 1;
+        axis_idx += 1;
 
         let r_obb = project_box_radius(extent, obb_axis);
         let (tri_min, tri_max) = project_triangle(tri, obb_axis);
@@ -77,14 +77,14 @@ fn aabb_triangle_sat(
         if depth < min_depth {
             min_depth = depth;
             min_axis = normal;
-            min_axis_index = axis_index;
+            min_axis_idx = axis_idx;
             min_neg_axis = neg_axis;
         }
     }
 
     for obb_axis in IDENT_AXES {
         for &tri_edge in &tri.edges {
-            axis_index += 1;
+            axis_idx += 1;
             let Some(axis) = obb_axis.cross(tri_edge).try_normalize() else {
                 continue;
             };
@@ -107,7 +107,7 @@ fn aabb_triangle_sat(
             if depth < min_depth {
                 min_depth = depth;
                 min_axis = normal;
-                min_axis_index = axis_index;
+                min_axis_idx = axis_idx;
                 min_neg_axis = neg_axis;
             }
         }
@@ -115,7 +115,7 @@ fn aabb_triangle_sat(
 
     // No separating axis found
     Some(Hit {
-        axis_index: min_axis_index,
+        axis_idx: min_axis_idx,
         depth: min_depth,
         normal: min_axis,
         neg_axis: min_neg_axis,
@@ -152,15 +152,15 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
         &mut self,
         triangle: &TriangleShape,
         tri_aabb: &Aabb,
-        triangle_index: usize,
+        triangle_idx: usize,
     ) {
         if !tri_aabb.intersects(self.local_convex_aabb) {
             return;
         }
 
         // transform the triangle into OBB space
-        let xform1 = self.convex_obj.world_transform.transpose();
-        let xform2 = self.tri_obj.get_world_transform();
+        let xform1 = self.convex_obj.world_trans.transpose();
+        let xform2 = self.tri_obj.get_world_trans();
         let triangle_in_obb = Affine3A {
             matrix3: xform1.matrix3 * xform2.matrix3,
             translation: xform1.transform_point3a(xform2.translation),
@@ -197,8 +197,8 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
         }
 
         let obb = Obb::new(
-            self.convex_obj.world_transform.translation,
-            self.convex_obj.world_transform.matrix3,
+            self.convex_obj.world_trans.translation,
+            self.convex_obj.world_trans.matrix3,
             self.box_shape.get_half_extents(),
         );
 
@@ -213,10 +213,10 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
 
         let normal_on_b_in_world = self
             .convex_obj
-            .world_transform
+            .world_trans
             .transform_vector3a(hit.normal);
 
-        let point_in_world = match hit.axis_index {
+        let point_in_world = match hit.axis_idx {
             0 => {
                 // Triangle normal axis
                 let mut closest_pt = triangle.points[0];
@@ -234,7 +234,7 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
             1..4 => {
                 // Box edge axis
                 let box_face_verts =
-                    obb.get_face_verts(hit.axis_index - 1, if hit.neg_axis { -1.0 } else { 1.0 });
+                    obb.get_face_verts(hit.axis_idx - 1, if hit.neg_axis { -1.0 } else { 1.0 });
 
                 let mut min_dist_sqr = f32::MAX;
                 let mut closest_pt_tri = Vec3A::ZERO;
@@ -251,14 +251,14 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
 
                 closest_pt_tri
             }
-            mut axis_index => {
+            mut axis_idx => {
                 // Edge-edge axis
-                axis_index -= 4;
+                axis_idx -= 4;
 
                 closest_point_on_segment(
                     obb.center,
-                    triangle.points[axis_index % 3],
-                    triangle.points[(axis_index + 1) % 3],
+                    triangle.points[axis_idx % 3],
+                    triangle.points[(axis_idx + 1) % 3],
                 )
             }
         };
@@ -270,7 +270,7 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
             point_in_world,
             -hit.depth,
             -1,
-            triangle_index as i32,
+            triangle_idx as i32,
             self.contact_added_callback,
         );
     }
@@ -286,16 +286,16 @@ pub struct CompoundCollisionAlgorithm<'a, T: ContactAddedCallback> {
 
 impl<T: ContactAddedCallback> CompoundCollisionAlgorithm<'_, T> {
     pub fn process_child_shape(&mut self) -> Option<PersistentManifold> {
-        let org_trans = *self.compound_obj.get_world_transform();
+        let org_trans = *self.compound_obj.get_world_trans();
 
-        let child_trans = &self.compound_shape.child_transform;
+        let child_trans = &self.compound_shape.child_trans;
         let new_child_world_trans = org_trans * child_trans;
 
         let box_shape = &self.compound_shape.child_shape;
         let aabb1 = box_shape.get_aabb(&new_child_world_trans);
 
         let other_col_shape = self.other_obj.get_collision_shape();
-        let aabb2 = other_col_shape.get_aabb(self.other_obj.get_world_transform());
+        let aabb2 = other_col_shape.get_aabb(self.other_obj.get_world_trans());
 
         if !aabb1.intersects(&aabb2) {
             return None;
@@ -303,12 +303,12 @@ impl<T: ContactAddedCallback> CompoundCollisionAlgorithm<'_, T> {
 
         let compound_obj_wrap = CollisionObjectWrapper {
             object: self.compound_obj,
-            world_transform: new_child_world_trans,
+            world_trans: new_child_world_trans,
         };
 
         match other_col_shape {
             CollisionShapes::TriangleMesh(tri_mesh) => {
-                let xform1 = self.other_obj.get_world_transform().transpose();
+                let xform1 = self.other_obj.get_world_trans().transpose();
                 let xform2 = new_child_world_trans;
                 let convex_in_triangle_space = Affine3A {
                     matrix3: xform1.matrix3 * xform2.matrix3,

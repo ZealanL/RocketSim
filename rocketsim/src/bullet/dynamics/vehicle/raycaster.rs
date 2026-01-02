@@ -42,10 +42,10 @@ impl VehicleRaycaster {
 
         for (i, result) in results.iter_mut().enumerate() {
             if ray_callback.has_hit(i)
-                && let Some(co_index) = ray_callback.base.collision_object_index[i]
+                && let Some(co_idx) = ray_callback.base.collision_object_idx[i]
             {
-                let rb = &collision_world.bodies()[co_index];
-                if rb.collision_object.has_contact_response() {
+                let rb = &collision_world.bodies()[co_idx];
+                if rb.co.has_contact_response() {
                     *result = Some(VehicleRaycasterResult {
                         rigid_body: rb,
                         hit_point_in_world: ray_callback.hit_point_world[i],

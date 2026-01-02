@@ -41,17 +41,17 @@ impl<'a, T: ContactAddedCallback> SphereObbCollisionAlgorithm<'a, T> {
 
 impl<T: ContactAddedCallback> CollisionAlgorithm for SphereObbCollisionAlgorithm<'_, T> {
     fn process_collision<'a>(self) -> Option<PersistentManifold> {
-        let sphere_trans = self.sphere_obj.get_world_transform();
+        let sphere_trans = self.sphere_obj.get_world_trans();
         let aabb_1 = self.sphere_shape.get_aabb(sphere_trans);
 
-        let org_trans = self.obb_obj.get_world_transform();
+        let org_trans = self.obb_obj.get_world_trans();
         let aabb_2 = self.obb_shape.get_aabb(org_trans);
 
         if !aabb_1.intersects(&aabb_2) {
             return None;
         }
 
-        let child_trans = &self.obb_shape.child_transform;
+        let child_trans = &self.obb_shape.child_trans;
         let new_child_world_trans = org_trans * child_trans;
 
         let box_shape = &self.obb_shape.child_shape;
