@@ -4,30 +4,23 @@ use fastrand::Rng;
 use glam::{Affine3A, EulerRot, Mat3A, Vec3A};
 use std::{f32::consts::PI, iter::repeat_n, mem};
 
-use crate::consts::TICK_TIME;
-use crate::sim::Ball;
-use crate::{
-    ARENA_COLLISION_SHAPES, ArenaConfig, ArenaMemWeightMode, BoostPadConfig, BoostPadGrid, Car,
-    CarBodyConfig, CarState, GameMode, MutatorConfig, PhysState, Team,
-    bullet::{
-        collision::{
-            broadphase::{GridBroadphase, HashedOverlappingPairCache},
-            dispatch::{
-                collision_dispatcher::CollisionDispatcher, collision_object::ActivationState,
-            },
-            narrowphase::manifold_point::ManifoldPoint,
-            shapes::{collision_shape::CollisionShapes, static_plane_shape::StaticPlaneShape},
+use crate::consts::{TICK_RATE, TICK_TIME};
+use crate::sim::{Ball, BoostPad};
+use crate::{ARENA_COLLISION_SHAPES, ArenaConfig, ArenaMemWeightMode, BoostPadConfig, BoostPadGrid, Car, CarBodyConfig, CarState, GameMode, MutatorConfig, PhysState, Team, bullet::{
+    collision::{
+        broadphase::{GridBroadphase, HashedOverlappingPairCache},
+        dispatch::{
+            collision_dispatcher::CollisionDispatcher, collision_object::ActivationState,
         },
-        dynamics::{
-            constraint_solver::sequential_impulse_constraint_solver::SequentialImpulseConstraintSolver,
-            discrete_dynamics_world::DiscreteDynamicsWorld,
-            rigid_body::{RigidBody, RigidBodyConstructionInfo},
-        },
+        narrowphase::manifold_point::ManifoldPoint,
+        shapes::{collision_shape::CollisionShapes, static_plane_shape::StaticPlaneShape},
     },
-    consts,
-    consts::{BT_TO_UU, UU_TO_BT},
-    sim::{BallState, CarContact, DemoMode, UserInfoTypes, collision_masks::CollisionMasks},
-};
+    dynamics::{
+        constraint_solver::sequential_impulse_constraint_solver::SequentialImpulseConstraintSolver,
+        discrete_dynamics_world::DiscreteDynamicsWorld,
+        rigid_body::{RigidBody, RigidBodyConstructionInfo},
+    },
+}, consts, consts::{BT_TO_UU, UU_TO_BT}, sim::{BallState, CarContact, DemoMode, UserInfoTypes, collision_masks::CollisionMasks}, BoostPadState};
 
 impl Arena {
     fn on_car_ball_collision(
@@ -725,5 +718,50 @@ impl Arena {
             self.game_mode,
             self.mutator_config.car_spawn_boost_amount,
         );
+    }
+
+    pub fn get_boost_pad_state(&self, idx: usize) -> BoostPadState {
+        let pad = self.boost_pads()[idx];
+        
+        let cooldown = if let Some(gave_boost_tick) = pad.gave_boost_tick_count {
+            let max_cooldown = pad.max_cooldown;
+            let time_since = ((self.tick_count() - gave_boost_tick) as f32) * TICK_TIME;
+            (max_cooldown - time_since).max(0.0)
+        } else {
+            0.0
+        };
+
+        BoostPadState { cooldown }
+    }
+
+    pub fn set_boost_pad_state(&mut self, idx: usize, state: BoostPadState) {
+        let tick_count = self.tick_count;
+        let pad = &mut self.boost_pad_grid.all_pads[idx];
+        if state.cooldown > 0.0 {
+            let time_since_pickup = (pad.max_cooldown - state.cooldown).max(0.0);
+            let ticks_since_pickup = (time_since_pickup * TICK_RATE).round() as u64;
+            pad.gave_boost_tick_count = Some(tick_count - ticks_since_pickup);
+        } else {
+            self.boost_pad_grid.all_pads[idx].gave_boost_tick_count = None;
+        }
+    }
+
+    pub fn get_boost_pad_config(&self, idx: usize) -> &BoostPadConfig {
+        self.boost_pads()[idx].config()
+    }
+
+    pub(crate) fn boost_pads(&self) -> &[BoostPad] {
+        &self.boost_pad_grid.all_pads
+    }
+
+    pub fn num_boost_pads(&self) -> usize {
+        self.boost_pads().len()
+    }
+
+    pub fn get_all_boost_pad_states(&self) -> Vec<BoostPadState> {
+        (0..self.num_boost_pads())
+            .into_iter()
+            .map(|i| self.get_boost_pad_state(i))
+            .collect()
     }
 }

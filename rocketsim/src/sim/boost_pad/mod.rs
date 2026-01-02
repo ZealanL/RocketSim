@@ -1,4 +1,3 @@
-mod arena_impl;
 mod base;
 mod boost_pad_config;
 mod boost_pad_grid;
