@@ -4,17 +4,15 @@ use arrayvec::ArrayVec;
 use glam::{Vec3A, Vec4};
 
 use super::manifold_point::ManifoldPoint;
-use crate::bullet::{
-    collision::dispatch::collision_object::{CollisionFlags, CollisionObject},
-    linear_math::{AffineExt, plane_space_2},
-};
+use crate::bullet::dynamics::rigid_body::{CollisionFlags, RigidBody};
+use crate::bullet::linear_math::{AffineExt, plane_space_2};
 
 pub trait ContactAddedCallback {
     fn callback(
         &mut self,
         contact_point: &mut ManifoldPoint,
-        body_a: &CollisionObject,
-        body_b: &CollisionObject,
+        body_a: &RigidBody,
+        body_b: &RigidBody,
     );
 }
 
@@ -31,7 +29,7 @@ pub struct PersistentManifold {
 }
 
 impl PersistentManifold {
-    pub fn new(body0: &CollisionObject, body1: &CollisionObject, is_swapped: bool) -> Self {
+    pub fn new(body0: &RigidBody, body1: &RigidBody, is_swapped: bool) -> Self {
         debug_assert_ne!(body0.world_array_idx, body1.world_array_idx);
 
         let body0_cbt = body0
@@ -55,7 +53,7 @@ impl PersistentManifold {
         }
     }
 
-    fn calculate_combined_friction(body0: &CollisionObject, body1: &CollisionObject) -> f32 {
+    fn calculate_combined_friction(body0: &RigidBody, body1: &RigidBody) -> f32 {
         if body0.is_static_object() || body1.is_static_object() {
             body0.friction.min(body1.friction)
         } else {
@@ -63,7 +61,7 @@ impl PersistentManifold {
         }
     }
 
-    fn calculate_combined_restitution(body0: &CollisionObject, body1: &CollisionObject) -> f32 {
+    fn calculate_combined_restitution(body0: &RigidBody, body1: &RigidBody) -> f32 {
         if body0.is_static_object() || body1.is_static_object() {
             body0.restitution.max(body1.restitution)
         } else {
@@ -179,8 +177,8 @@ impl PersistentManifold {
     #[allow(clippy::too_many_arguments)]
     pub fn add_contact_point<'a, T: ContactAddedCallback>(
         &mut self,
-        mut body0: &'a CollisionObject,
-        mut body1: &'a CollisionObject,
+        mut body0: &'a RigidBody,
+        mut body1: &'a RigidBody,
         normal_on_b_in_world: Vec3A,
         point_in_world: Vec3A,
         depth: f32,
@@ -222,14 +220,14 @@ impl PersistentManifold {
             mem::swap(&mut body0, &mut body1);
         }
 
-        if body0.flags & CollisionFlags::CustomMaterialCallback as u8 != 0
-            || body1.flags & CollisionFlags::CustomMaterialCallback as u8 != 0
+        if body0.collision_flags & CollisionFlags::CustomMaterialCallback as u8 != 0
+            || body1.collision_flags & CollisionFlags::CustomMaterialCallback as u8 != 0
         {
             contact_added_callback.callback(&mut self.point_cache[insert_idx], body0, body1);
         }
     }
 
-    pub fn refresh_contact_points(&mut self, body0: &CollisionObject, body1: &CollisionObject) {
+    pub fn refresh_contact_points(&mut self, body0: &RigidBody, body1: &RigidBody) {
         if self.point_cache.is_empty() {
             return;
         }

@@ -1,25 +1,25 @@
 use glam::Affine3A;
 
-use super::collision_object::CollisionObject;
 use crate::bullet::collision::{
     broadphase::CollisionAlgorithm,
-    dispatch::collision_object_wrapper::CollisionObjectWrapper,
+    dispatch::collision_object_wrapper::RigidBodyWrapper,
     narrowphase::persistent_manifold::{ContactAddedCallback, PersistentManifold},
     shapes::static_plane_shape::StaticPlaneShape,
 };
+use crate::bullet::dynamics::rigid_body::RigidBody;
 
 pub struct ConvexPlaneCollisionAlgorithm<'a, T: ContactAddedCallback> {
     is_swapped: bool,
-    convex_obj: CollisionObjectWrapper<'a>,
-    plane_obj: &'a CollisionObject,
+    convex_obj: RigidBodyWrapper<'a>,
+    plane_obj: &'a RigidBody,
     plane_shape: &'a StaticPlaneShape,
     contact_added_callback: &'a mut T,
 }
 
 impl<'a, T: ContactAddedCallback> ConvexPlaneCollisionAlgorithm<'a, T> {
     pub const fn new(
-        convex_obj: CollisionObjectWrapper<'a>,
-        plane_obj: &'a CollisionObject,
+        convex_obj: RigidBodyWrapper<'a>,
+        plane_obj: &'a RigidBody,
         plane_shape: &'a StaticPlaneShape,
         is_swapped: bool,
         contact_added_callback: &'a mut T,
@@ -45,8 +45,7 @@ impl<T: ContactAddedCallback> CollisionAlgorithm for ConvexPlaneCollisionAlgorit
         let plane_normal = self.plane_shape.get_plane_normal();
 
         let plane_trans = self.plane_obj.get_world_trans();
-        let plane_in_convex =
-            self.convex_obj.world_trans.matrix3.transpose() * plane_trans.matrix3;
+        let plane_in_convex = self.convex_obj.world_trans.matrix3.transpose() * plane_trans.matrix3;
         let convex_in_plane_trans = Affine3A {
             matrix3: plane_trans.matrix3.transpose() * self.convex_obj.world_trans.matrix3,
             translation: plane_trans.matrix3 * self.convex_obj.world_trans.translation

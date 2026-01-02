@@ -7,7 +7,6 @@ use super::{
 };
 use crate::{
     bullet::{
-        collision::dispatch::collision_object::CollisionObject,
         dynamics::{
             constraint_solver::contact_constraint::{
                 resolve_single_bilateral, resolve_single_collision,
@@ -62,7 +61,7 @@ impl WheelInfoRL {
             chassis_trans.matrix3 * self.wheel_info.wheel_axle_cs;
     }
 
-    fn update_wheel_trans(&mut self, cb_co: &CollisionObject) {
+    fn update_wheel_trans(&mut self, cb_co: &RigidBody) {
         self.update_wheel_trans_ws(cb_co.get_world_trans());
         let up = -self.wheel_info.raycast_info.wheel_direction_ws;
         let right = self.wheel_info.raycast_info.wheel_axle_ws;
@@ -81,7 +80,7 @@ impl WheelInfoRL {
     }
 
     fn prepare_for_raycast(&mut self, chassis: &RigidBody) -> (Vec3A, Vec3A, f32) {
-        self.update_wheel_trans_ws(chassis.co.get_world_trans());
+        self.update_wheel_trans_ws(chassis.get_world_trans());
 
         let suspension_travel = bullet_vehicle::MAX_SUSPENSION_TRAVEL * UU_TO_BT;
         let real_ray_length = self.wheel_info.suspension_rest_length_1
@@ -114,7 +113,7 @@ impl WheelInfoRL {
         ray_results: VehicleRaycasterResult,
         time_step: f32,
     ) {
-        let co = &ray_results.rigid_body.co;
+        let co = &ray_results.rigid_body;
         self.wheel_info.raycast_info.contact_point_ws = ray_results.hit_point_in_world;
         self.wheel_info.raycast_info.contact_normal_ws = ray_results.hit_normal_in_world;
         self.wheel_info.raycast_info.is_in_contact = true;
@@ -122,11 +121,7 @@ impl WheelInfoRL {
 
         self.wheel_info.raycast_info.ground_object = Some(co.world_array_idx);
 
-        let up = chassis
-            .co
-            .get_world_trans()
-            .matrix3
-            .z_axis;
+        let up = chassis.get_world_trans().matrix3.z_axis;
         let wheel_trace_len_sq = (self.wheel_info.raycast_info.hard_point_ws
             - self.wheel_info.raycast_info.contact_point_ws)
             .dot(up);
@@ -141,8 +136,8 @@ impl WheelInfoRL {
             .suspension_length
             .clamp(min_suspension_len, max_suspension_len);
 
-        let rel_pos = self.wheel_info.raycast_info.contact_point_ws
-            - chassis.co.get_world_trans().translation;
+        let rel_pos =
+            self.wheel_info.raycast_info.contact_point_ws - chassis.get_world_trans().translation;
         self.vel_at_contact_point = chassis.get_velocity_in_local_point(rel_pos);
 
         let proj_vel = self
@@ -218,8 +213,7 @@ impl WheelInfoRL {
                 const ROLLING_FRICTION_SCALE: f32 = 113.73963;
 
                 let contact_point = self.wheel_info.raycast_info.contact_point_ws;
-                let car_rel_contact_point =
-                    contact_point - chassis.co.get_world_trans().translation;
+                let car_rel_contact_point = contact_point - chassis.get_world_trans().translation;
 
                 let v1 = chassis.get_velocity_in_local_point(car_rel_contact_point);
                 let v2 = ground_rb.get_velocity_in_local_point(car_rel_contact_point);
@@ -275,8 +269,8 @@ impl WheelInfoRL {
 
         let base_force_scale =
             self.wheel_info.wheels_suspension_force * delta_time + self.extra_pushback;
-        let contact_point_offset = self.wheel_info.raycast_info.contact_point_ws
-            - cb.co.get_world_trans().translation;
+        let contact_point_offset =
+            self.wheel_info.raycast_info.contact_point_ws - cb.get_world_trans().translation;
 
         let force = self.wheel_info.raycast_info.contact_normal_ws * base_force_scale;
         cb.apply_impulse(force, contact_point_offset);
@@ -287,7 +281,7 @@ impl WheelInfoRL {
             return;
         }
 
-        let trans = cb.co.get_world_trans();
+        let trans = cb.get_world_trans();
         let wheel_contact_offset =
             self.wheel_info.raycast_info.contact_point_ws - trans.translation;
         let contact_up_dot = trans.matrix3.z_axis.dot(wheel_contact_offset);
@@ -341,7 +335,7 @@ impl VehicleRL {
     #[allow(clippy::too_many_arguments)]
     pub fn add_wheel(
         &mut self,
-        cb_co: &CollisionObject,
+        cb_co: &RigidBody,
         connection_point_cs: Vec3A,
         wheel_direction_cs0: Vec3A,
         wheel_axle_cs: Vec3A,
@@ -374,7 +368,7 @@ impl VehicleRL {
 
         let friction_scale = chassis.get_mass() / 3.0;
         for wheel in &mut self.wheels {
-            wheel.update_wheel_trans(&chassis.co);
+            wheel.update_wheel_trans(&chassis);
         }
 
         let mut sources = [Vec3A::ZERO; 4];
@@ -385,12 +379,9 @@ impl VehicleRL {
             (sources[i], targets[i], suspension_travels[i]) = wheel.prepare_for_raycast(chassis);
         }
 
-        let ray_results = self.raycaster.cast_rays(
-            collision_world,
-            &sources,
-            &targets,
-            &chassis.co,
-        );
+        let ray_results = self
+            .raycaster
+            .cast_rays(collision_world, &sources, &targets, &chassis);
 
         for (i, wheel) in self.wheels.iter_mut().enumerate() {
             if let Some(ray_result) = ray_results[i] {

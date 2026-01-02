@@ -1,10 +1,7 @@
 use glam::Vec3A;
 
 use crate::bullet::{
-    collision::dispatch::{
-        collision_object::CollisionObject,
-        ray_callbacks::{ClosestRayResultCallback, RayResultCallback},
-    },
+    collision::dispatch::ray_callbacks::{ClosestRayResultCallback, RayResultCallback},
     dynamics::{discrete_dynamics_world::DiscreteDynamicsWorld, rigid_body::RigidBody},
 };
 
@@ -29,7 +26,7 @@ impl VehicleRaycaster {
         collision_world: &'a DiscreteDynamicsWorld,
         from: &[Vec3A; 4],
         to: &[Vec3A; 4],
-        ignore_obj: &CollisionObject,
+        ignore_obj: &RigidBody,
     ) -> [Option<VehicleRaycasterResult<'a>>; 4] {
         let mut ray_callback = ClosestRayResultCallback::new(from, to, ignore_obj);
         ray_callback.base.collision_filter_group |= self.added_filter_mask;
@@ -45,7 +42,7 @@ impl VehicleRaycaster {
                 && let Some(co_idx) = ray_callback.base.collision_object_idx[i]
             {
                 let rb = &collision_world.bodies()[co_idx];
-                if rb.co.has_contact_response() {
+                if rb.has_contact_response() {
                     *result = Some(VehicleRaycasterResult {
                         rigid_body: rb,
                         hit_point_in_world: ray_callback.hit_point_world[i],

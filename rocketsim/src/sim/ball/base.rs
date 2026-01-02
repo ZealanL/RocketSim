@@ -1,13 +1,12 @@
 use glam::{Affine3A, Vec3A};
 
-use crate::bullet::collision::dispatch::collision_object::ActivationState;
+use crate::bullet::dynamics::rigid_body::{ActivationState, CollisionFlags};
 use crate::consts::{UU_TO_BT, dropshot, heatseeker};
 use crate::{
     BallHitInfo, BallState, Car, GameMode, MutatorConfig, Team,
     bullet::{
         collision::{
             broadphase::CollisionFilterGroups,
-            dispatch::collision_object::CollisionFlags,
             shapes::{collision_shape::CollisionShapes, sphere_shape::SphereShape},
         },
         dynamics::{
@@ -64,13 +63,9 @@ impl Ball {
         info.restitution = coefs.restitution;
 
         let mut body = RigidBody::new(info);
-        body.co.user_idx = UserInfoTypes::Ball;
-        body.co.flags |= CollisionFlags::CustomMaterialCallback as u8;
-        body.co.no_rot = no_rot
-            && matches!(
-                body.co.get_collision_shape(),
-                CollisionShapes::Sphere(_)
-            );
+        body.user_idx = UserInfoTypes::Ball;
+        body.collision_flags |= CollisionFlags::CustomMaterialCallback as u8;
+        body.no_rot = no_rot && matches!(body.get_collision_shape(), CollisionShapes::Sphere(_));
 
         let rigid_body_idx = bullet_world.add_rigid_body(
             body,
@@ -89,10 +84,10 @@ impl Ball {
     }
 
     pub fn set_state(&mut self, rb: &mut RigidBody, state: BallState) {
-        debug_assert_eq!(rb.co.world_array_idx, self.rigid_body_idx);
-        debug_assert_eq!(rb.co.user_idx, UserInfoTypes::Ball);
+        debug_assert_eq!(rb.world_array_idx, self.rigid_body_idx);
+        debug_assert_eq!(rb.user_idx, UserInfoTypes::Ball);
 
-        rb.co.set_world_trans(Affine3A {
+        rb.set_world_trans(Affine3A {
             matrix3: state.phys.rot_mat,
             translation: state.phys.pos * UU_TO_BT,
         });
@@ -102,8 +97,7 @@ impl Ball {
         rb.update_inertia_tensor();
 
         if state.phys.vel != Vec3A::ZERO || state.phys.ang_vel != Vec3A::ZERO {
-            rb.co
-                .set_activation_state(ActivationState::Active);
+            rb.set_activation_state(ActivationState::Active);
         }
 
         self.state = state;
@@ -145,7 +139,7 @@ impl Ball {
         self.state.phys.vel = rb.linear_velocity * consts::BT_TO_UU;
         self.state.phys.ang_vel = rb.angular_velocity;
 
-        let trans = *rb.co.get_world_trans();
+        let trans = *rb.get_world_trans();
         self.state.phys.pos = trans.translation * consts::BT_TO_UU;
         self.state.phys.rot_mat = trans.matrix3;
     }

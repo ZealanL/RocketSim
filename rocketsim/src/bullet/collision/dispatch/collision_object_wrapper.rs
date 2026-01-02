@@ -1,8 +1,8 @@
 use glam::Affine3A;
 
-use crate::bullet::collision::dispatch::collision_object::CollisionObject;
+use crate::bullet::dynamics::rigid_body::RigidBody;
 
-pub struct CollisionObjectWrapper<'a> {
-    pub object: &'a CollisionObject,
+pub struct RigidBodyWrapper<'a> {
+    pub object: &'a RigidBody,
     pub world_trans: Affine3A,
 }

@@ -33,7 +33,7 @@ impl SolverBody {
 
     pub fn new(rb: &RigidBody, time_step: f32) -> Self {
         Self {
-            world_trans: *rb.co.get_world_trans(),
+            world_trans: *rb.get_world_trans(),
             delta_linear_velocity: Vec3A::ZERO,
             delta_angular_velocity: Vec3A::ZERO,
             inv_mass: rb.inv_mass,
@@ -43,7 +43,7 @@ impl SolverBody {
             angular_velocity: rb.angular_velocity,
             external_force_impulse: rb.total_force * rb.inverse_mass * time_step,
             external_torque_impulse: rb.inv_inertia_tensor_world * rb.total_torque * time_step,
-            original_body: Some(rb.co.world_array_idx),
+            original_body: Some(rb.world_array_idx),
         }
     }
 

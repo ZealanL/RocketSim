@@ -2,8 +2,8 @@ use std::{f32::consts::PI, mem};
 
 use glam::{Quat, Vec3, Vec3A};
 
-use super::collision_object::CollisionObject;
 use crate::bullet::collision::dispatch::tri_bvh_util::*;
+use crate::bullet::dynamics::rigid_body::RigidBody;
 use crate::bullet::{
     collision::{
         narrowphase::manifold_point::ManifoldPoint,
@@ -215,7 +215,7 @@ enum BestEdge {
 
 pub fn adjust_internal_edge_contacts(
     cp: &mut ManifoldPoint,
-    tri_mesh_col_obj: &CollisionObject,
+    tri_mesh_col_obj: &RigidBody,
     index: usize,
 ) {
     let CollisionShapes::TriangleMesh(tri_mesh) = tri_mesh_col_obj.get_collision_shape() else {

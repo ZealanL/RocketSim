@@ -1,23 +1,24 @@
 use crate::bullet::collision::{
     broadphase::CollisionAlgorithm,
-    dispatch::{box_box_detector::BoxBoxDetector, collision_object::CollisionObject},
+    dispatch::box_box_detector::BoxBoxDetector,
     narrowphase::persistent_manifold::{ContactAddedCallback, PersistentManifold},
     shapes::compound_shape::CompoundShape,
 };
+use crate::bullet::dynamics::rigid_body::RigidBody;
 
 pub struct ObbObbCollisionAlgorithm<'a, T: ContactAddedCallback> {
-    compound_0_obj: &'a CollisionObject,
+    compound_0_obj: &'a RigidBody,
     compound_0_shape: &'a CompoundShape,
-    compound_1_obj: &'a CollisionObject,
+    compound_1_obj: &'a RigidBody,
     compound_1_shape: &'a CompoundShape,
     contact_added_callback: &'a mut T,
 }
 
 impl<'a, T: ContactAddedCallback> ObbObbCollisionAlgorithm<'a, T> {
     pub const fn new(
-        compound_0_obj: &'a CollisionObject,
+        compound_0_obj: &'a RigidBody,
         compound_0_shape: &'a CompoundShape,
-        compound_1_obj: &'a CollisionObject,
+        compound_1_obj: &'a RigidBody,
         compound_1_shape: &'a CompoundShape,
         contact_added_callback: &'a mut T,
     ) -> Self {

@@ -1,9 +1,9 @@
 use glam::Vec3A;
 
+use crate::bullet::dynamics::rigid_body::RigidBody;
 use crate::bullet::{
     collision::{
         broadphase::CollisionAlgorithm,
-        dispatch::collision_object::CollisionObject,
         narrowphase::persistent_manifold::{ContactAddedCallback, PersistentManifold},
         shapes::{compound_shape::CompoundShape, sphere_shape::SphereShape},
     },
@@ -11,9 +11,9 @@ use crate::bullet::{
 };
 
 pub struct SphereObbCollisionAlgorithm<'a, T: ContactAddedCallback> {
-    sphere_obj: &'a CollisionObject,
+    sphere_obj: &'a RigidBody,
     sphere_shape: &'a SphereShape,
-    obb_obj: &'a CollisionObject,
+    obb_obj: &'a RigidBody,
     obb_shape: &'a CompoundShape,
     is_swapped: bool,
     contact_added_callback: &'a mut T,
@@ -21,9 +21,9 @@ pub struct SphereObbCollisionAlgorithm<'a, T: ContactAddedCallback> {
 
 impl<'a, T: ContactAddedCallback> SphereObbCollisionAlgorithm<'a, T> {
     pub const fn new(
-        sphere_obj: &'a CollisionObject,
+        sphere_obj: &'a RigidBody,
         sphere_shape: &'a SphereShape,
-        obb_obj: &'a CollisionObject,
+        obb_obj: &'a RigidBody,
         obb_shape: &'a CompoundShape,
         is_swapped: bool,
         contact_added_callback: &'a mut T,

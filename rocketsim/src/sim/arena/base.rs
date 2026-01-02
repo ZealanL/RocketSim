@@ -4,23 +4,29 @@ use fastrand::Rng;
 use glam::{Affine3A, EulerRot, Mat3A, Vec3A};
 use std::{f32::consts::PI, iter::repeat_n, mem};
 
+use crate::bullet::dynamics::rigid_body::ActivationState;
 use crate::consts::{TICK_RATE, TICK_TIME};
 use crate::sim::{Ball, BoostPad};
-use crate::{ARENA_COLLISION_SHAPES, ArenaConfig, ArenaMemWeightMode, BoostPadConfig, BoostPadGrid, Car, CarBodyConfig, CarState, GameMode, MutatorConfig, PhysState, Team, bullet::{
-    collision::{
-        broadphase::{GridBroadphase, HashedOverlappingPairCache},
-        dispatch::{
-            collision_dispatcher::CollisionDispatcher, collision_object::ActivationState,
+use crate::{
+    ARENA_COLLISION_SHAPES, ArenaConfig, ArenaMemWeightMode, BoostPadConfig, BoostPadGrid,
+    BoostPadState, Car, CarBodyConfig, CarState, GameMode, MutatorConfig, PhysState, Team,
+    bullet::{
+        collision::{
+            broadphase::{GridBroadphase, HashedOverlappingPairCache},
+            dispatch::collision_dispatcher::CollisionDispatcher,
+            narrowphase::manifold_point::ManifoldPoint,
+            shapes::{collision_shape::CollisionShapes, static_plane_shape::StaticPlaneShape},
         },
-        narrowphase::manifold_point::ManifoldPoint,
-        shapes::{collision_shape::CollisionShapes, static_plane_shape::StaticPlaneShape},
+        dynamics::{
+            constraint_solver::seq_impulse_constraint_solver::SeqImpulseConstraintSolver,
+            discrete_dynamics_world::DiscreteDynamicsWorld,
+            rigid_body::{RigidBody, RigidBodyConstructionInfo},
+        },
     },
-    dynamics::{
-        constraint_solver::seq_impulse_constraint_solver::SeqImpulseConstraintSolver,
-        discrete_dynamics_world::DiscreteDynamicsWorld,
-        rigid_body::{RigidBody, RigidBodyConstructionInfo},
-    },
-}, consts, consts::{BT_TO_UU, UU_TO_BT}, sim::{BallState, CarContact, DemoMode, UserInfoTypes, collision_masks::CollisionMasks}, BoostPadState};
+    consts,
+    consts::{BT_TO_UU, UU_TO_BT},
+    sim::{BallState, CarContact, DemoMode, UserInfoTypes, collision_masks::CollisionMasks},
+};
 
 impl Arena {
     fn on_car_ball_collision(
@@ -407,7 +413,6 @@ impl Arena {
     #[must_use]
     pub fn is_ball_scored(&self) -> bool {
         let ball_pos = self.bullet_world.bodies()[self.ball.rigid_body_idx]
-            .co
             .get_world_trans()
             .translation
             * BT_TO_UU;
@@ -553,9 +558,7 @@ impl Arena {
             self.mutator_config.car_spawn_boost_amount,
         );
 
-        self.bullet_world.bodies_mut()[car.rigid_body_idx]
-            .co
-            .user_pointer = idx;
+        self.bullet_world.bodies_mut()[car.rigid_body_idx].user_pointer = idx;
         self.cars.push(car);
         idx
     }
@@ -567,13 +570,11 @@ impl Arena {
             let should_sleep = ball_rb.linear_velocity.length_squared() == 0.0
                 && ball_rb.angular_velocity.length_squared() == 0.0;
 
-            ball_rb
-                .co
-                .set_activation_state(if should_sleep {
-                    ActivationState::Sleeping
-                } else {
-                    ActivationState::Active
-                });
+            ball_rb.set_activation_state(if should_sleep {
+                ActivationState::Sleeping
+            } else {
+                ActivationState::Active
+            });
         }
 
         for car in &mut self.cars {
@@ -597,8 +598,8 @@ impl Arena {
                 .unwrap()
                 .into();
 
-            let user_pointer_a = body_a.co.user_pointer;
-            let user_pointer_b = body_b.co.user_pointer;
+            let user_pointer_a = body_a.user_pointer;
+            let user_pointer_b = body_b.user_pointer;
 
             if contact.user_idx_a == UserInfoTypes::Car {
                 match contact.user_idx_b {

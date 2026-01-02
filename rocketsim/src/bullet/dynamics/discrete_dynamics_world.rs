@@ -7,9 +7,10 @@ use super::{
 };
 use crate::bullet::collision::{
     broadphase::{CollisionFilterGroups, GridBroadphase},
-    dispatch::{collision_dispatcher::CollisionDispatcher, collision_object::ActivationState},
+    dispatch::collision_dispatcher::CollisionDispatcher,
     narrowphase::persistent_manifold::ContactAddedCallback,
 };
+use crate::bullet::dynamics::rigid_body::ActivationState;
 
 pub struct DiscreteDynamicsWorld {
     pub dynamics_world: DynamicsWorld,
@@ -56,13 +57,13 @@ impl DiscreteDynamicsWorld {
     }
 
     pub fn add_rigid_body_default(&mut self, mut body: RigidBody) -> usize {
-        if !body.co.is_static_object()
-            && body.get_flags() & RigidBodyFlags::DisableWorldGravity as u8 == 0
+        if !body.is_static_object()
+            && body.get_rb_flags() & RigidBodyFlags::DisableWorldGravity as u8 == 0
         {
             body.set_gravity(self.gravity);
         }
 
-        let (group, mask) = if body.co.is_static_object() {
+        let (group, mask) = if body.is_static_object() {
             (
                 CollisionFilterGroups::Static as u8,
                 CollisionFilterGroups::All as u8 ^ CollisionFilterGroups::Static as u8,
@@ -77,9 +78,8 @@ impl DiscreteDynamicsWorld {
         let rb_idx = self.add_collision_object(body, group, mask);
 
         let rb = &mut self.dynamics_world.collision_world.collision_objects[rb_idx];
-        if rb.co.is_static_object() {
-            rb.co
-                .set_activation_state(ActivationState::Sleeping);
+        if rb.is_static_object() {
+            rb.set_activation_state(ActivationState::Sleeping);
         } else {
             self.non_static_rigid_bodies.push(rb_idx);
         }
@@ -88,8 +88,8 @@ impl DiscreteDynamicsWorld {
     }
 
     pub fn add_rigid_body(&mut self, mut body: RigidBody, group: u8, mask: u8) -> usize {
-        if !body.co.is_static_object()
-            && body.get_flags() & RigidBodyFlags::DisableWorldGravity as u8 == 0
+        if !body.is_static_object()
+            && body.get_rb_flags() & RigidBodyFlags::DisableWorldGravity as u8 == 0
         {
             body.set_gravity(self.gravity);
         }
@@ -97,9 +97,8 @@ impl DiscreteDynamicsWorld {
         let rb_idx = self.add_collision_object(body, group, mask);
 
         let rb = &mut self.dynamics_world.collision_world.collision_objects[rb_idx];
-        if rb.co.is_static_object() {
-            rb.co
-                .set_activation_state(ActivationState::Sleeping);
+        if rb.is_static_object() {
+            rb.set_activation_state(ActivationState::Sleeping);
         } else {
             self.non_static_rigid_bodies.push(rb_idx);
         }
@@ -110,7 +109,7 @@ impl DiscreteDynamicsWorld {
     fn apply_gravity(&mut self) {
         for &body in &self.non_static_rigid_bodies {
             let body = &mut self.dynamics_world.collision_world.collision_objects[body];
-            if body.co.is_active() {
+            if body.is_active() {
                 body.apply_gravity();
             }
         }
@@ -119,11 +118,11 @@ impl DiscreteDynamicsWorld {
     fn predict_unconstraint_motion(&mut self, time_step: f32) {
         for &body in &self.non_static_rigid_bodies {
             let body = &mut self.dynamics_world.collision_world.collision_objects[body];
-            debug_assert!(!body.co.is_static_object());
+            debug_assert!(!body.is_static_object());
 
             body.apply_damping(time_step);
             let predicted_trans = body.predict_integration_trans(time_step);
-            body.co.interp_world_trans = predicted_trans;
+            body.interp_world_trans = predicted_trans;
         }
     }
 
@@ -140,8 +139,8 @@ impl DiscreteDynamicsWorld {
         for &body in &self.non_static_rigid_bodies {
             let body = &mut self.dynamics_world.collision_world.collision_objects[body];
 
-            debug_assert!(!body.co.is_static_object());
-            if !body.co.is_active() {
+            debug_assert!(!body.is_static_object());
+            if !body.is_active() {
                 continue;
             }
 

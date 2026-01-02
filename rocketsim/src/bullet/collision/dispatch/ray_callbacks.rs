@@ -1,9 +1,10 @@
 use glam::{Vec3A, Vec4};
 
+use crate::bullet::dynamics::rigid_body::RigidBody;
 use crate::bullet::{
     collision::{
         broadphase::{BroadphaseAabbCallback, BroadphaseProxy, CollisionFilterGroups},
-        dispatch::{collision_object::CollisionObject, collision_world::CollisionWorld},
+        dispatch::collision_world::CollisionWorld,
         shapes::{triangle_callback::ProcessRayTriangle, triangle_shape::TriangleShape},
     },
     linear_math::interpolate_3,
@@ -65,7 +66,7 @@ impl<'a> ClosestRayResultCallback<'a> {
     pub fn new(
         ray_from_world: &'a [Vec3A; 4],
         ray_to_world: &'a [Vec3A; 4],
-        ignore_object: &CollisionObject,
+        ignore_object: &RigidBody,
     ) -> Self {
         Self {
             base: RayResultCallbackBase {
@@ -130,14 +131,14 @@ impl<T: RayResultCallback> BroadphaseAabbCallback for QuadRayCallback<'_, T> {
     fn process(&mut self, proxy: &BroadphaseProxy) -> bool {
         let obj_idx = proxy.client_object_idx;
         let rb = &self.world.collision_objects[proxy.client_object_idx];
-        let handle_idx = rb.co.get_broadphase_handle().unwrap();
+        let handle_idx = rb.get_broadphase_handle().unwrap();
         let handle = &self.world.broadphase_pair_cache.handles[handle_idx];
 
         if self.result_callback.needs_collision(handle) {
             CollisionWorld::quad_ray_test(
                 self.ray_from_world,
                 self.ray_to_world,
-                &rb.co,
+                &rb,
                 obj_idx,
                 self.result_callback,
             );
@@ -151,15 +152,14 @@ pub struct BridgeTriangleRaycastPacketCallback<'a, T: RayResultCallback> {
     pub to: &'a [Vec3A; 4],
     pub from: &'a [Vec3A; 4],
     pub hit_fraction: Vec4,
-    pub collision_object: &'a CollisionObject,
+    pub collision_object: &'a RigidBody,
     pub collision_object_idx: usize,
     pub result_callback: &'a mut T,
 }
 
 impl<T: RayResultCallback> BridgeTriangleRaycastPacketCallback<'_, T> {
     fn internal_report_hit(&mut self, hit_normal_local: Vec3A, hit_fraction: f32, ray_idx: usize) {
-        let hit_normal_world =
-            self.collision_object.get_world_trans().matrix3 * hit_normal_local;
+        let hit_normal_world = self.collision_object.get_world_trans().matrix3 * hit_normal_local;
 
         let ray_result = LocalRayResult {
             hit_fraction,

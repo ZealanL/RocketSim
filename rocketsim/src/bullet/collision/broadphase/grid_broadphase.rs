@@ -9,7 +9,7 @@ use super::{
 use crate::bullet::{
     collision::{
         broadphase::broadphase_proxy::BroadphaseAabbCallback,
-        dispatch::{collision_dispatcher::CollisionDispatcher, collision_object::CollisionObject},
+        dispatch::collision_dispatcher::CollisionDispatcher,
         narrowphase::persistent_manifold::ContactAddedCallback,
         shapes::collision_shape::CollisionShapes,
     },
@@ -107,7 +107,7 @@ impl CellGrid {
     fn update_cells_static<const ADD: bool>(
         &mut self,
         proxy: &GridBroadphaseProxy,
-        col_obj: &CollisionObject,
+        col_obj: &RigidBody,
         proxy_idx: usize,
     ) {
         // TODO: "Fix dumb massive value aabb bug"
@@ -245,7 +245,7 @@ impl GridBroadphase {
         }
     }
 
-    pub fn set_aabb(&mut self, col_obj: &CollisionObject, proxy_idx: usize, aabb: Aabb) {
+    pub fn set_aabb(&mut self, col_obj: &RigidBody, proxy_idx: usize, aabb: Aabb) {
         let sbp = &mut self.handles[proxy_idx];
 
         if sbp.aabb.min != aabb.min || sbp.aabb.max != aabb.max {
@@ -279,7 +279,7 @@ impl GridBroadphase {
     pub fn create_proxy(
         &mut self,
         aabb: Aabb,
-        co: &CollisionObject,
+        co: &RigidBody,
         collision_filter_group: u8,
         collision_filter_mask: u8,
     ) -> usize {

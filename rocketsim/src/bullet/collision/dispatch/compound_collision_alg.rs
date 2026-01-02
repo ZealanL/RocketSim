@@ -1,10 +1,11 @@
 use glam::{Affine3A, Vec3A};
 
+use crate::bullet::dynamics::rigid_body::RigidBody;
 use crate::bullet::{
     collision::{
         broadphase::CollisionAlgorithm,
         dispatch::{
-            collision_object::CollisionObject, collision_object_wrapper::CollisionObjectWrapper,
+            collision_object_wrapper::RigidBodyWrapper,
             convex_plane_collision_alg::ConvexPlaneCollisionAlgorithm,
         },
         narrowphase::persistent_manifold::{ContactAddedCallback, PersistentManifold},
@@ -130,8 +131,8 @@ fn closest_point_on_segment(p: Vec3A, a: Vec3A, b: Vec3A) -> Vec3A {
 
 struct ConvexTriangleCallback<'a, T: ContactAddedCallback> {
     pub manifold: PersistentManifold,
-    pub convex_obj: CollisionObjectWrapper<'a>,
-    pub tri_obj: &'a CollisionObject,
+    pub convex_obj: RigidBodyWrapper<'a>,
+    pub tri_obj: &'a RigidBody,
     pub local_convex_aabb: &'a Aabb,
     pub box_shape: &'a BoxShape,
     pub contact_added_callback: &'a mut T,
@@ -148,12 +149,7 @@ impl<T: ContactAddedCallback> ConvexTriangleCallback<'_, T> {
 }
 
 impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> {
-    fn process_triangle(
-        &mut self,
-        triangle: &TriangleShape,
-        tri_aabb: &Aabb,
-        triangle_idx: usize,
-    ) {
+    fn process_triangle(&mut self, triangle: &TriangleShape, tri_aabb: &Aabb, triangle_idx: usize) {
         if !tri_aabb.intersects(self.local_convex_aabb) {
             return;
         }
@@ -211,10 +207,7 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
             return;
         };
 
-        let normal_on_b_in_world = self
-            .convex_obj
-            .world_trans
-            .transform_vector3a(hit.normal);
+        let normal_on_b_in_world = self.convex_obj.world_trans.transform_vector3a(hit.normal);
 
         let point_in_world = match hit.axis_idx {
             0 => {
@@ -277,9 +270,9 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
 }
 
 pub struct CompoundCollisionAlgorithm<'a, T: ContactAddedCallback> {
-    compound_obj: &'a CollisionObject,
+    compound_obj: &'a RigidBody,
     compound_shape: &'a CompoundShape,
-    other_obj: &'a CollisionObject,
+    other_obj: &'a RigidBody,
     is_swapped: bool,
     contact_added_callback: &'a mut T,
 }
@@ -301,7 +294,7 @@ impl<T: ContactAddedCallback> CompoundCollisionAlgorithm<'_, T> {
             return None;
         }
 
-        let compound_obj_wrap = CollisionObjectWrapper {
+        let compound_obj_wrap = RigidBodyWrapper {
             object: self.compound_obj,
             world_trans: new_child_world_trans,
         };
@@ -359,9 +352,9 @@ impl<T: ContactAddedCallback> CompoundCollisionAlgorithm<'_, T> {
 
 impl<'a, T: ContactAddedCallback> CompoundCollisionAlgorithm<'a, T> {
     pub const fn new(
-        compound_obj: &'a CollisionObject,
+        compound_obj: &'a RigidBody,
         compound_shape: &'a CompoundShape,
-        other_obj: &'a CollisionObject,
+        other_obj: &'a RigidBody,
         is_swapped: bool,
         contact_added_callback: &'a mut T,
     ) -> Self {

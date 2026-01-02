@@ -1,7 +1,7 @@
-use crate::bullet::collision::dispatch::collision_object::CollisionObject;
 use crate::bullet::collision::dispatch::internal_edge_utility::adjust_internal_edge_contacts;
 use crate::bullet::collision::narrowphase::manifold_point::ManifoldPoint;
 use crate::bullet::collision::narrowphase::persistent_manifold::ContactAddedCallback;
+use crate::bullet::dynamics::rigid_body::RigidBody;
 use crate::consts;
 use crate::sim::UserInfoTypes;
 use std::mem;
@@ -38,18 +38,17 @@ impl ContactAddedCallback for ArenaContactTracker {
     fn callback<'a>(
         &mut self,
         manifold_point: &mut ManifoldPoint,
-        mut body_a: &'a CollisionObject,
-        mut body_b: &'a CollisionObject,
+        mut body_a: &'a RigidBody,
+        mut body_b: &'a RigidBody,
     ) {
         debug_assert!(body_a.has_contact_response() || body_b.has_contact_response());
 
-        let should_swap = if body_a.user_idx != UserInfoTypes::None
-            && body_b.user_idx != UserInfoTypes::None
-        {
-            body_a.user_idx > body_b.user_idx
-        } else {
-            body_b.user_idx != UserInfoTypes::None
-        };
+        let should_swap =
+            if body_a.user_idx != UserInfoTypes::None && body_b.user_idx != UserInfoTypes::None {
+                body_a.user_idx > body_b.user_idx
+            } else {
+                body_b.user_idx != UserInfoTypes::None
+            };
 
         if should_swap {
             mem::swap(&mut body_a, &mut body_b);

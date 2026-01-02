@@ -1,6 +1,6 @@
 use glam::Vec3A;
 
-use super::{collision_dispatcher::CollisionDispatcher, collision_object::CollisionObject};
+use super::collision_dispatcher::CollisionDispatcher;
 use crate::bullet::{
     collision::{
         broadphase::GridBroadphase,
@@ -37,7 +37,7 @@ impl CollisionWorld {
         filter_mask: u8,
     ) -> usize {
         {
-            let obj = &mut object.co;
+            let obj = &mut object;
             obj.world_array_idx = self.collision_objects.len();
 
             let trans = obj.get_world_trans();
@@ -66,7 +66,7 @@ impl CollisionWorld {
             .enumerate()
             .skip(self.num_skippable_statics)
         {
-            let col_obj = &rb.co;
+            let col_obj = &rb;
             debug_assert_eq!(col_obj.world_array_idx, i);
 
             if prev_is_static && col_obj.is_static_object() {
@@ -120,7 +120,7 @@ impl CollisionWorld {
     pub(crate) fn quad_ray_test<T: RayResultCallback>(
         ray_from: &[Vec3A; 4],
         ray_to: &[Vec3A; 4],
-        co: &CollisionObject,
+        co: &RigidBody,
         object_idx: usize,
         result_callback: &mut T,
     ) {

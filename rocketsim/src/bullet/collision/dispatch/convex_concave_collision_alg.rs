@@ -1,6 +1,7 @@
 use glam::{Affine3A, Vec3A};
 
-use super::collision_object::CollisionObject;
+use crate::bullet::dynamics::rigid_body::RigidBody;
+
 use crate::bullet::{
     collision::{
         broadphase::CollisionAlgorithm,
@@ -16,8 +17,8 @@ use crate::shared::Aabb;
 
 struct ConvexTriangleCallback<'a, T: ContactAddedCallback> {
     pub manifold: PersistentManifold,
-    pub convex_obj: &'a CollisionObject,
-    pub tri_obj: &'a CollisionObject,
+    pub convex_obj: &'a RigidBody,
+    pub tri_obj: &'a RigidBody,
     contact_added_callback: &'a mut T,
     sphere_center: Vec3A,
     sphere_radius: f32,
@@ -25,8 +26,8 @@ struct ConvexTriangleCallback<'a, T: ContactAddedCallback> {
 
 impl<'a, T: ContactAddedCallback> ConvexTriangleCallback<'a, T> {
     pub fn new(
-        convex_obj: &'a CollisionObject,
-        tri_obj: &'a CollisionObject,
+        convex_obj: &'a RigidBody,
+        tri_obj: &'a RigidBody,
         sphere_center: Vec3A,
         sphere_radius: f32,
         is_swapped: bool,
@@ -81,9 +82,9 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
 }
 
 pub struct ConvexConcaveCollisionAlgorithm<'a, T: ContactAddedCallback> {
-    convex_obj: &'a CollisionObject,
+    convex_obj: &'a RigidBody,
     sphere_shape: &'a SphereShape,
-    concave_obj: &'a CollisionObject,
+    concave_obj: &'a RigidBody,
     tri_mesh: &'a BvhTriangleMeshShape,
     is_swapped: bool,
     contact_added_callback: &'a mut T,
@@ -91,9 +92,9 @@ pub struct ConvexConcaveCollisionAlgorithm<'a, T: ContactAddedCallback> {
 
 impl<'a, T: ContactAddedCallback> ConvexConcaveCollisionAlgorithm<'a, T> {
     pub const fn new(
-        convex_obj: &'a CollisionObject,
+        convex_obj: &'a RigidBody,
         sphere_shape: &'a SphereShape,
-        concave_obj: &'a CollisionObject,
+        concave_obj: &'a RigidBody,
         tri_mesh: &'a BvhTriangleMeshShape,
         is_swapped: bool,
         contact_added_callback: &'a mut T,

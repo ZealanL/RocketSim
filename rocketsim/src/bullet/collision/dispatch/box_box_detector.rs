@@ -6,9 +6,9 @@ use std::{
 use arrayvec::ArrayVec;
 use glam::{Affine3A, FloatExt, Mat3A, Vec3A, Vec4};
 
+use crate::bullet::dynamics::rigid_body::RigidBody;
 use crate::bullet::{
     collision::{
-        dispatch::collision_object::CollisionObject,
         narrowphase::persistent_manifold::{
             ContactAddedCallback, MANIFOLD_CACHE_SIZE, PersistentManifold,
         },
@@ -185,9 +185,9 @@ struct Hit {
 
 pub struct BoxBoxDetector<'a, T: ContactAddedCallback> {
     pub box1: &'a BoxShape,
-    pub col1: &'a CollisionObject,
+    pub col1: &'a RigidBody,
     pub box2: &'a BoxShape,
-    pub col2: &'a CollisionObject,
+    pub col2: &'a RigidBody,
     pub contact_added_callback: &'a mut T,
 }
 

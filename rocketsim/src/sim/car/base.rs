@@ -4,6 +4,7 @@ use std::f32::consts::PI;
 use std::ops::{Deref, DerefMut};
 
 // Shorthand using aliases for constants
+use crate::bullet::dynamics::rigid_body::{ActivationState, CollisionFlags};
 use crate::consts::{
     BT_TO_UU, TICK_TIME, UU_TO_BT, bullet_vehicle as vehicle_consts, car as car_consts,
     car::drive as drive_consts, curves,
@@ -14,7 +15,6 @@ use crate::{
     bullet::{
         collision::{
             broadphase::CollisionFilterGroups,
-            dispatch::collision_object::{ActivationState, CollisionFlags},
             shapes::{
                 box_shape::BoxShape, collision_shape::CollisionShapes,
                 compound_shape::CompoundShape,
@@ -77,8 +77,8 @@ impl Car {
         rb_info.local_inertia = local_inertia;
 
         let mut body = RigidBody::new(rb_info);
-        body.co.user_idx = UserInfoTypes::Car;
-        body.co.flags |= CollisionFlags::CustomMaterialCallback as u8;
+        body.user_idx = UserInfoTypes::Car;
+        body.collision_flags |= CollisionFlags::CustomMaterialCallback as u8;
 
         let rigid_body_idx = bullet_world.add_rigid_body(
             body,
@@ -113,7 +113,7 @@ impl Car {
             }
 
             bullet_vehicle.add_wheel(
-                &rb.co,
+                &rb,
                 wheel_ray_start_offset * UU_TO_BT,
                 wheel_direction_cs,
                 wheel_axle_cs,
@@ -198,10 +198,10 @@ impl Car {
     }
 
     pub(crate) fn set_state(&mut self, rb: &mut RigidBody, state: &CarState) {
-        debug_assert_eq!(rb.co.user_idx, UserInfoTypes::Car);
-        debug_assert_eq!(rb.co.world_array_idx, self.rigid_body_idx);
+        debug_assert_eq!(rb.user_idx, UserInfoTypes::Car);
+        debug_assert_eq!(rb.world_array_idx, self.rigid_body_idx);
 
-        rb.co.set_world_trans(Affine3A {
+        rb.set_world_trans(Affine3A {
             matrix3: state.phys.rot_mat,
             translation: state.phys.pos * UU_TO_BT,
         });
@@ -397,7 +397,7 @@ impl Car {
                     * const { Vec3A::new(car_consts::flip::TORQUE_X, car_consts::flip::TORQUE_Y, 0.0) };
 
                 let rb_torque = rb.inv_inertia_tensor_world.bullet_inverse()
-                    * rb.co.get_world_trans().matrix3
+                    * rb.get_world_trans().matrix3
                     * dodge_torque;
                 rb.apply_torque(rb_torque);
             }
@@ -765,12 +765,11 @@ impl Car {
                     self.respawn(rb, rng, game_mode, mutator_config.car_spawn_boost_amount);
                 }
 
-                rb.co
-                    .set_activation_state(ActivationState::DisableSimulation);
-                rb.co.flags |= CollisionFlags::NoContactResponse as u8;
+                rb.set_activation_state(ActivationState::DisableSimulation);
+                rb.collision_flags |= CollisionFlags::NoContactResponse as u8;
             } else {
-                rb.co.force_activate();
-                rb.co.flags &= !(CollisionFlags::NoContactResponse as u8);
+                rb.force_activate();
+                rb.collision_flags &= !(CollisionFlags::NoContactResponse as u8);
             }
 
             if self.state.is_demoed {
@@ -830,12 +829,12 @@ impl Car {
     }
 
     pub(crate) fn post_tick_update(&mut self, rb: &RigidBody) {
-        debug_assert_eq!(rb.co.world_array_idx, self.rigid_body_idx);
+        debug_assert_eq!(rb.world_array_idx, self.rigid_body_idx);
         if self.state.is_demoed {
             return;
         }
 
-        self.state.phys.rot_mat = rb.co.get_world_trans().matrix3;
+        self.state.phys.rot_mat = rb.get_world_trans().matrix3;
 
         let speed_squared = (rb.linear_velocity * BT_TO_UU).length_squared();
         self.state.is_supersonic = speed_squared
@@ -873,7 +872,7 @@ impl Car {
 
     pub(crate) fn finish_physics_tick(&mut self, rb: &mut RigidBody) {
         const MAX_SPEED: f32 = car_consts::MAX_SPEED * UU_TO_BT;
-        debug_assert_eq!(rb.co.world_array_idx, self.rigid_body_idx);
+        debug_assert_eq!(rb.world_array_idx, self.rigid_body_idx);
 
         if self.state.is_demoed {
             return;
@@ -896,7 +895,7 @@ impl Car {
             *ang_vel = ang_vel.normalize() * car_consts::MAX_ANG_SPEED;
         }
 
-        self.state.phys.pos = rb.co.get_world_trans().translation * BT_TO_UU;
+        self.state.phys.pos = rb.get_world_trans().translation * BT_TO_UU;
         self.state.phys.vel = rb.linear_velocity * BT_TO_UU;
         self.state.phys.ang_vel = rb.angular_velocity;
     }
