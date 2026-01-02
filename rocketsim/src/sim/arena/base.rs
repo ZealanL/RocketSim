@@ -1,22 +1,23 @@
+use super::ArenaContactTracker;
 use arrayvec::ArrayVec;
 use fastrand::Rng;
 use glam::{Affine3A, EulerRot, Mat3A, Vec3A};
 use std::{f32::consts::PI, iter::repeat_n, mem};
 
-use super::{Ball, BoostPadConfig, Car, CarBodyConfig, CarState, MutatorConfig, PhysState, Team};
 use crate::consts::TICK_TIME;
+use crate::sim::Ball;
 use crate::{
-    ARENA_COLLISION_SHAPES, ArenaConfig, ArenaMemWeightMode, BoostPadGrid, GameMode,
+    ARENA_COLLISION_SHAPES, ArenaConfig, ArenaMemWeightMode, BoostPadConfig, BoostPadGrid, Car,
+    CarBodyConfig, CarState, GameMode, MutatorConfig, PhysState, Team,
     bullet::{
         collision::{
             broadphase::{GridBroadphase, HashedOverlappingPairCache},
             dispatch::{
                 collision_dispatcher::CollisionDispatcher,
-                collision_object::{ActivationState, CollisionObject},
-                internal_edge_utility::adjust_internal_edge_contacts,
+                collision_object::ActivationState,
             },
             narrowphase::{
-                manifold_point::ManifoldPoint, persistent_manifold::ContactAddedCallback,
+                manifold_point::ManifoldPoint,
             },
             shapes::{collision_shape::CollisionShapes, static_plane_shape::StaticPlaneShape},
         },
@@ -30,96 +31,6 @@ use crate::{
     consts::{BT_TO_UU, UU_TO_BT},
     sim::{BallState, CarContact, DemoMode, UserInfoTypes, collision_masks::CollisionMasks},
 };
-
-// An instance of a collision event
-#[derive(Debug, Copy, Clone)]
-struct CollisionRecord {
-    pub is_swap: bool,
-    pub rb_index_a: usize,
-    pub rb_index_b: usize,
-    pub user_index_a: UserInfoTypes,
-    pub user_index_b: UserInfoTypes,
-    pub manifold_point: ManifoldPoint,
-}
-
-// A struct to be accessed through the bullet contact callbacks
-struct ArenaContactTracker {
-    collision_records: Vec<CollisionRecord>,
-}
-
-impl ArenaContactTracker {
-    pub fn new() -> Self {
-        Self {
-            collision_records: Vec::with_capacity(4), // Rarely exceeded
-        }
-    }
-
-    pub fn drain_records(&mut self) -> Vec<CollisionRecord> {
-        self.collision_records.drain(..).collect()
-    }
-}
-
-impl ContactAddedCallback for ArenaContactTracker {
-    fn callback<'a>(
-        &mut self,
-        manifold_point: &mut ManifoldPoint,
-        mut body_a: &'a CollisionObject,
-        mut body_b: &'a CollisionObject,
-    ) {
-        debug_assert!(body_a.has_contact_response() || body_b.has_contact_response());
-
-        let should_swap = if body_a.user_index != UserInfoTypes::None
-            && body_b.user_index != UserInfoTypes::None
-        {
-            body_a.user_index > body_b.user_index
-        } else {
-            body_b.user_index != UserInfoTypes::None
-        };
-
-        if should_swap {
-            mem::swap(&mut body_a, &mut body_b);
-        }
-
-        let user_index_a = body_a.user_index;
-        let user_index_b = body_b.user_index;
-
-        if user_index_a == UserInfoTypes::Car {
-            let hit_coefs = match user_index_b {
-                UserInfoTypes::Ball => consts::car::HIT_BALL_COEFS,
-                UserInfoTypes::Car => consts::car::HIT_CAR_COEFS,
-                _ => consts::car::HIT_WORLD_COEFS,
-            };
-            manifold_point.combined_friction = hit_coefs.friction;
-            manifold_point.combined_restitution = hit_coefs.restitution;
-        } else if user_index_a == UserInfoTypes::Ball {
-            if user_index_b == UserInfoTypes::DropshotTile {
-                todo!()
-            } else if user_index_b == UserInfoTypes::None {
-                manifold_point.is_special = true;
-            }
-        }
-
-        // NOTE: Push *before* the manifold is mutated by adjust_internal_edge_contacts()
-        self.collision_records.push(CollisionRecord {
-            is_swap: should_swap,
-            rb_index_a: body_a.world_array_index,
-            rb_index_b: body_b.world_array_index,
-            user_index_a,
-            user_index_b,
-            manifold_point: *manifold_point,
-        });
-
-        adjust_internal_edge_contacts(
-            manifold_point,
-            body_a,
-            if should_swap {
-                manifold_point.index_0
-            } else {
-                manifold_point.index_1
-            } as usize,
-        );
-    }
-}
 
 impl Arena {
     fn on_car_ball_collision(

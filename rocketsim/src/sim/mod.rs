@@ -1,5 +1,4 @@
 mod arena;
-mod arena_config;
 mod ball;
 mod boost_pad;
 mod car;
@@ -15,7 +14,6 @@ mod team;
 mod user_info_types;
 
 pub use arena::*;
-pub use arena_config::*;
 pub use ball::*;
 pub use boost_pad::*;
 pub use car::*;

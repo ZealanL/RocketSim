@@ -1,6 +1,5 @@
 use glam::Vec3A;
-
-use super::BoostPadConfig;
+use crate::BoostPadConfig;
 
 #[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq)]
 pub enum ArenaMemWeightMode {
