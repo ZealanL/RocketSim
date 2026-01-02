@@ -34,12 +34,10 @@ fn project_triangle(tri: &TriangleShape, axis: Vec3A) -> (f32, f32) {
     (projections.min_element(), projections.max_element())
 }
 
-/// Project an AABB onto an axis, returning the “radius” (half-projection length)
 pub fn project_box_radius(extent: Vec3A, axis: Vec3A) -> f32 {
     extent.dot(axis.abs())
 }
 
-/// Check SAT between AABB and triangle; if collision, return penetration depth & normal
 fn aabb_triangle_sat(
     extent: Vec3A,
     tri: &TriangleShape,
@@ -64,7 +62,6 @@ fn aabb_triangle_sat(
         let r_obb = project_box_radius(extent, obb_axis);
         let (tri_min, tri_max) = project_triangle(tri, obb_axis);
         if tri_max < -r_obb || tri_min > r_obb {
-            // found separating axis
             return None;
         }
 
@@ -85,19 +82,16 @@ fn aabb_triangle_sat(
         }
     }
 
-    // Edge-edge cross axes: edges of triangle × axes of OBB
     for obb_axis in IDENT_AXES {
         for &tri_edge in &tri.edges {
             axis_index += 1;
             let Some(axis) = obb_axis.cross(tri_edge).try_normalize() else {
-                // Parallel edges — skip this axis
                 continue;
             };
 
             let r_obb = project_box_radius(extent, axis);
             let (tri_min, tri_max) = project_triangle(tri, axis);
             if tri_max < -r_obb || tri_min > r_obb {
-                // found separating axis
                 return None;
             }
 
@@ -119,7 +113,7 @@ fn aabb_triangle_sat(
         }
     }
 
-    // No separating axis found => collision
+    // No separating axis found
     Some(Hit {
         axis_index: min_axis_index,
         depth: min_depth,
@@ -180,15 +174,12 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
 
         let local_triangle = TriangleShape::new(triangle_points_in_obb);
 
-        // check if this is fully on one side of the triangle
-        // check the back side first because we expect that to be the most likely
         let back_dist =
             self.get_triangle_separation(&local_triangle.points, -local_triangle.normal);
         if back_dist > self.manifold.contact_breaking_threshold {
             return;
         }
 
-        // now check the other side
         let front_dist =
             self.get_triangle_separation(&local_triangle.points, local_triangle.normal);
         if front_dist > self.manifold.contact_breaking_threshold {
@@ -220,7 +211,6 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
             return;
         };
 
-        // transform hit.normal back into world space from obb space
         let normal_on_b_in_world = self
             .convex_obj
             .world_transform
@@ -228,7 +218,7 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
 
         let point_in_world = match hit.axis_index {
             0 => {
-                // triangle normal axis
+                // Triangle normal axis
                 let mut closest_pt = triangle.points[0];
                 let mut min_dist_sqr = (closest_pt - obb.center).length_squared();
                 for &pt in &triangle.points[1..] {
@@ -242,7 +232,7 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
                 closest_pt
             }
             1..4 => {
-                // box edge axis
+                // Box edge axis
                 let box_face_verts =
                     obb.get_face_verts(hit.axis_index - 1, if hit.neg_axis { -1.0 } else { 1.0 });
 
@@ -262,7 +252,7 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
                 closest_pt_tri
             }
             mut axis_index => {
-                // edge-edge axis
+                // Edge-edge axis
                 axis_index -= 4;
 
                 closest_point_on_segment(
@@ -360,6 +350,8 @@ impl<T: ContactAddedCallback> CompoundCollisionAlgorithm<'_, T> {
                 self.contact_added_callback,
             )
             .process_collision(),
+
+            // Unimplemented
             _ => todo!(),
         }
     }
