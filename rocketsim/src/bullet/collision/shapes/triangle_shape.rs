@@ -173,4 +173,14 @@ impl TriangleShape {
             depth,
         })
     }
+
+    pub fn get_supporting_vertex(&self, vec: Vec3A) -> Vec3A {
+        let dots = Vec3A::new(
+            self.points[0].dot(vec),
+            self.points[1].dot(vec),
+            self.points[2].dot(vec),
+        );
+
+        self.points[dots.max_position()]
+    }
 }
