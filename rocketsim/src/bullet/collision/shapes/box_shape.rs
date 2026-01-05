@@ -70,6 +70,6 @@ impl BoxShape {
     }
 
     pub fn local_get_supporting_vertex(&self, vec: Vec3A) -> Vec3A {
-        Vec3A::ONE.copysign(vec) * self.get_half_extents()
+        self.get_half_extents() * vec.signum()
     }
 }
