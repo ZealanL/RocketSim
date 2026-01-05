@@ -100,9 +100,9 @@ fn aabb_triangle_sat(
             let overlap_pos = r_obb - tri_min;
             let neg_axis = overlap_neg < overlap_pos;
             let (depth, normal) = if neg_axis {
-                (overlap_neg, -obb_axis)
+                (overlap_neg, axis)
             } else {
-                (overlap_pos, obb_axis)
+                (overlap_pos, -axis)
             };
 
             if depth < min_depth {
@@ -248,10 +248,12 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
                 // Edge-edge axis
                 axis_idx -= 4;
 
+                let tri_edge_idx = axis_idx % 3;
+
                 closest_point_on_segment(
                     obb.center,
-                    triangle.points[axis_idx % 3],
-                    triangle.points[(axis_idx + 1) % 3],
+                    triangle.points[tri_edge_idx % 3],
+                    triangle.points[(tri_edge_idx + 1) % 3],
                 )
             }
         };
