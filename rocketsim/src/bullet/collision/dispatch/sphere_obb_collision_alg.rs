@@ -55,7 +55,7 @@ impl<T: ContactAddedCallback> CollisionAlgorithm for SphereObbCollisionAlgorithm
         let new_child_world_trans = org_trans * child_trans;
 
         let box_shape = &self.obb_shape.child_shape;
-        let box_extents = box_shape.get_half_extents_no_margin();
+        let box_extents = box_shape.get_half_extents();
 
         let sphere_from_local = new_child_world_trans.inv_x_form(sphere_trans.translation);
 

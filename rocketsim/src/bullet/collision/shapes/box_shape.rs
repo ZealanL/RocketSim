@@ -31,16 +31,6 @@ impl BoxShape {
         self.polyhedral_convex_shape
             .convex_internal_shape
             .implicit_shape_dimensions
-            + self
-                .polyhedral_convex_shape
-                .convex_internal_shape
-                .collision_margin
-    }
-
-    pub fn get_half_extents_no_margin(&self) -> Vec3A {
-        self.polyhedral_convex_shape
-            .convex_internal_shape
-            .implicit_shape_dimensions
     }
 
     pub fn get_margin(&self) -> f32 {
