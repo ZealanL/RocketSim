@@ -130,9 +130,7 @@ impl Ball {
             rb.lin_vel = rb.lin_vel.normalize() * ball_max_speed_bt;
         }
 
-        if rb.ang_vel.length_squared()
-            > consts::ball::MAX_ANG_SPEED * consts::ball::MAX_ANG_SPEED
-        {
+        if rb.ang_vel.length_squared() > consts::ball::MAX_ANG_SPEED * consts::ball::MAX_ANG_SPEED {
             rb.ang_vel = rb.ang_vel.normalize() * consts::ball::MAX_ANG_SPEED;
         }
 

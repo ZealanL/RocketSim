@@ -174,6 +174,7 @@ impl TriangleShape {
         })
     }
 
+    #[allow(unused)]
     pub fn get_supporting_vertex(&self, vec: Vec3A) -> Vec3A {
         let dots = Vec3A::new(
             self.points[0].dot(vec),

@@ -303,12 +303,7 @@ impl RigidBody {
         if self.no_rot {
             integrate_trans_no_rot(&mut trans, self.lin_vel, time_step);
         } else {
-            integrate_trans(
-                &mut trans,
-                self.lin_vel,
-                self.ang_vel,
-                time_step,
-            );
+            integrate_trans(&mut trans, self.lin_vel, self.ang_vel, time_step);
         }
 
         trans

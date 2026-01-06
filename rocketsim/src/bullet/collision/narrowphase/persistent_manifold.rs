@@ -236,10 +236,8 @@ impl PersistentManifold {
         let tr_b = body1.get_world_trans();
 
         for manifold_point in &mut self.point_cache {
-            manifold_point.pos_world_on_a =
-                tr_a.transform_point3a(manifold_point.local_point_a);
-            manifold_point.pos_world_on_b =
-                tr_b.transform_point3a(manifold_point.local_point_b);
+            manifold_point.pos_world_on_a = tr_a.transform_point3a(manifold_point.local_point_a);
+            manifold_point.pos_world_on_b = tr_b.transform_point3a(manifold_point.local_point_b);
             manifold_point.distance_1 = (manifold_point.pos_world_on_a
                 - manifold_point.pos_world_on_b)
                 .dot(manifold_point.normal_world_on_b);
@@ -256,8 +254,7 @@ impl PersistentManifold {
                 continue;
             }
 
-            let projected_point =
-                point.pos_world_on_a - point.normal_world_on_b * point.distance_1;
+            let projected_point = point.pos_world_on_a - point.normal_world_on_b * point.distance_1;
             let projected_difference = point.pos_world_on_b - projected_point;
             let distance_2d = projected_difference.dot(projected_difference);
             if distance_2d > contact_breaking_threshold_sq {

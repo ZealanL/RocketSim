@@ -209,9 +209,7 @@ impl SolverConstraint {
             let vel_dot_n = self
                 .contact_normal_1
                 .dot(solver_body_a.lin_vel + solver_body_a.external_force_impulse)
-                + self
-                    .rel_pos1_cross_normal
-                    .dot(solver_body_a.ang_vel);
+                + self.rel_pos1_cross_normal.dot(solver_body_a.ang_vel);
 
             (vel_dot_n, denom)
         });
@@ -227,9 +225,7 @@ impl SolverConstraint {
             let vel_dot_n = self
                 .contact_normal_2
                 .dot(solver_body_b.lin_vel + solver_body_b.external_force_impulse)
-                + self
-                    .rel_pos2_cross_normal
-                    .dot(solver_body_b.ang_vel);
+                + self.rel_pos2_cross_normal.dot(solver_body_b.ang_vel);
 
             (vel_dot_n, denom)
         });

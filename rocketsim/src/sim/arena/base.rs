@@ -567,8 +567,8 @@ impl Arena {
         {
             // Update ball activation
             let ball_rb = &mut self.bullet_world.bodies_mut()[self.ball.rigid_body_idx];
-            let should_sleep = ball_rb.lin_vel.length_squared() == 0.0
-                && ball_rb.ang_vel.length_squared() == 0.0;
+            let should_sleep =
+                ball_rb.lin_vel.length_squared() == 0.0 && ball_rb.ang_vel.length_squared() == 0.0;
 
             ball_rb.set_activation_state(if should_sleep {
                 ActivationState::Sleeping

@@ -664,8 +664,7 @@ impl Car {
             self.state.flip_time += TICK_TIME;
             if self.state.flip_time <= car_consts::flip::TORQUE_TIME
                 && self.state.flip_time >= car_consts::flip::Z_DAMP_START
-                && (rb.lin_vel.z < 0.0
-                    || self.state.flip_time < car_consts::flip::Z_DAMP_END)
+                && (rb.lin_vel.z < 0.0 || self.state.flip_time < car_consts::flip::Z_DAMP_END)
             {
                 rb.lin_vel.z *= 1.0 - car_consts::flip::Z_DAMP_120;
             }

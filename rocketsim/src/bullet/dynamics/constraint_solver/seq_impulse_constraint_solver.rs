@@ -284,8 +284,7 @@ impl SeqImpulseConstraintSolver {
             solver_body_a.external_torque_impulse,
         );
 
-        let rel_vel = contact_normal_1
-            .dot(solver_body_a.lin_vel + external_force_impulse_a)
+        let rel_vel = contact_normal_1.dot(solver_body_a.lin_vel + external_force_impulse_a)
             + rel_pos1_cross_normal.dot(solver_body_a.ang_vel + external_torque_impulse_a);
 
         let positional_error = if penetration > 0.0 {
@@ -351,8 +350,7 @@ impl SeqImpulseConstraintSolver {
         };
         let jac_diag_ab_inv = relaxation / denom;
 
-        let rel_vel = contact_normal_1
-            .dot(solver_body_a.lin_vel + external_force_impulse_a)
+        let rel_vel = contact_normal_1.dot(solver_body_a.lin_vel + external_force_impulse_a)
             + rel_pos1_cross_normal.dot(solver_body_a.ang_vel + external_torque_impulse_a);
 
         let vel_error = -rel_vel;
@@ -476,15 +474,9 @@ impl SeqImpulseConstraintSolver {
             solver.lin_vel += solver.delta_lin_vel;
             solver.ang_vel += solver.delta_ang_vel;
 
-            if solver.push_vel.length_squared() != 0.0
-                || solver.turn_vel.length_squared() != 0.0
-            {
+            if solver.push_vel.length_squared() != 0.0 || solver.turn_vel.length_squared() != 0.0 {
                 if body.no_rot {
-                    integrate_trans_no_rot(
-                        &mut solver.world_trans,
-                        solver.push_vel,
-                        time_step,
-                    );
+                    integrate_trans_no_rot(&mut solver.world_trans, solver.push_vel, time_step);
                 } else {
                     integrate_trans(
                         &mut solver.world_trans,

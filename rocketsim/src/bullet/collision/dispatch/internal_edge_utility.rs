@@ -299,8 +299,7 @@ pub fn adjust_internal_edge_contacts(
                         let new_normal =
                             tri_mesh_col_obj.get_world_trans().matrix3 * clamped_local_normal;
                         cp.normal_world_on_b = new_normal;
-                        cp.pos_world_on_b =
-                            cp.pos_world_on_a - new_normal * cp.distance_1;
+                        cp.pos_world_on_b = cp.pos_world_on_a - new_normal * cp.distance_1;
                         cp.local_point_b = tri_mesh_col_obj
                             .get_world_trans()
                             .inv_x_form(cp.pos_world_on_b);
@@ -346,8 +345,7 @@ pub fn adjust_internal_edge_contacts(
                         let new_normal =
                             tri_mesh_col_obj.get_world_trans().matrix3 * clamped_local_normal;
                         cp.normal_world_on_b = new_normal;
-                        cp.pos_world_on_b =
-                            cp.pos_world_on_a - new_normal * cp.distance_1;
+                        cp.pos_world_on_b = cp.pos_world_on_a - new_normal * cp.distance_1;
                         cp.local_point_b = tri_mesh_col_obj
                             .get_world_trans()
                             .inv_x_form(cp.pos_world_on_b);
@@ -393,8 +391,7 @@ pub fn adjust_internal_edge_contacts(
                         let new_normal =
                             tri_mesh_col_obj.get_world_trans().matrix3 * clamped_local_normal;
                         cp.normal_world_on_b = new_normal;
-                        cp.pos_world_on_b =
-                            cp.pos_world_on_a - new_normal * cp.distance_1;
+                        cp.pos_world_on_b = cp.pos_world_on_a - new_normal * cp.distance_1;
                         cp.local_point_b = tri_mesh_col_obj
                             .get_world_trans()
                             .inv_x_form(cp.pos_world_on_b);
