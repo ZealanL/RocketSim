@@ -11,7 +11,6 @@ pub(crate) struct BoostPadGrid {
 }
 
 impl BoostPadGrid {
-    #[must_use]
     pub fn new(pad_configs: &Vec<BoostPadConfig>, mutator_config: &MutatorConfig) -> Self {
         assert!(!pad_configs.is_empty());
 

@@ -8,12 +8,10 @@ pub enum Team {
 impl Team {
     pub const ALL: [Team; 2] = [Team::Blue, Team::Orange];
 
-    #[must_use]
     pub const fn from_team_y(y: f32) -> Self {
         if y <= 0.0 { Self::Blue } else { Self::Orange }
     }
 
-    #[must_use]
     pub fn get_y_dir(self) -> f32 {
         f32::from(self as i8 * 2 - 1)
     }

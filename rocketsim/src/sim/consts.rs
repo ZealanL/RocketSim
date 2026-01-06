@@ -16,7 +16,7 @@ pub struct CarSpawnPos {
 
 impl CarSpawnPos {
     #[inline]
-    #[must_use]
+
     pub const fn new(x: f32, y: f32, yaw_ang: f32) -> Self {
         Self { x, y, yaw_ang }
     }
@@ -193,7 +193,6 @@ pub mod car {
         pub const REST_Z: f32 = 17.0;
         pub const SPAWN_Z: f32 = 36.0;
 
-        #[must_use]
         pub const fn get_kickoff_spawn_locations(game_mode: GameMode) -> &'static [CarSpawnPos] {
             pub const LOCATIONS_SOCCAR: [CarSpawnPos; 5] = [
                 CarSpawnPos::new(-2048., -2560., FRAC_PI_4 * 1.),
@@ -233,7 +232,6 @@ pub mod car {
 
         pub const RESPAWN_TIME: f32 = 3.0;
 
-        #[must_use]
         pub const fn get_respawn_locations(game_mode: GameMode) -> &'static [CarSpawnPos] {
             const LOCATIONS_SOCCAR: [CarSpawnPos; 4] = [
                 CarSpawnPos::new(-2304., -4608., FRAC_PI_2),
@@ -267,7 +265,6 @@ pub mod ball {
     use super::PhysicsCoefs;
     use crate::GameMode;
 
-    #[must_use]
     pub const fn get_radius(game_mode: GameMode) -> f32 {
         pub const RADIUS_SOCCAR: f32 = 91.25;
         pub const RADIUS_HOOPS: f32 = 96.3831;
@@ -466,7 +463,6 @@ pub mod boost_pads {
     pub const BOOST_AMOUNT_BIG: f32 = 100.0;
     pub const BOOST_AMOUNT_SMALL: f32 = 12.0;
 
-    #[must_use]
     pub const fn get_locations(game_mode: GameMode, is_big: bool) -> &'static [Vec3A] {
         const LOCS_SMALL_SOCCAR: [Vec3A; 28] = [
             Vec3A::new(0., -4240., 70.),

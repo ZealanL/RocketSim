@@ -18,7 +18,6 @@ pub struct StaticPlaneShape {
 }
 
 impl StaticPlaneShape {
-    #[must_use]
     pub fn new(world_trans: Affine3A, plane_normal: Vec3A) -> Self {
         debug_assert!(plane_normal.is_normalized());
 
@@ -50,7 +49,6 @@ impl StaticPlaneShape {
         plane
     }
 
-    #[must_use]
     pub fn get_aabb(&self, t: &Affine3A) -> Aabb {
         let mut min = Vec3A::splat(-LARGE_FLOAT);
         let mut max = Vec3A::splat(LARGE_FLOAT);
@@ -75,7 +73,6 @@ impl StaticPlaneShape {
         Aabb { min, max }
     }
 
-    #[must_use]
     pub const fn get_plane_normal(&self) -> Vec3A {
         self.plane_normal
     }

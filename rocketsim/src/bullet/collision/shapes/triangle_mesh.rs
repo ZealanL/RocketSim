@@ -11,7 +11,6 @@ pub struct TriangleMesh {
 }
 
 impl TriangleMesh {
-    #[must_use]
     pub fn new(verts: &[Vec3A], ids: &[usize]) -> Self {
         debug_assert_eq!(ids.len() % 3, 0);
 

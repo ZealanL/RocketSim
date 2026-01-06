@@ -17,7 +17,7 @@ pub struct SphereShape {
 
 impl SphereShape {
     #[inline]
-    #[must_use]
+
     pub const fn new(radius: f32) -> Self {
         Self {
             convex_internal_shape: ConvexInternalShape {
@@ -28,18 +28,17 @@ impl SphereShape {
     }
 
     #[inline]
-    #[must_use]
+
     pub fn get_radius(&self) -> f32 {
         self.convex_internal_shape.implicit_shape_dimensions.x
     }
 
     #[inline]
-    #[must_use]
+
     pub fn get_margin(&self) -> f32 {
         self.get_radius()
     }
 
-    #[must_use]
     pub fn get_aabb(&self, t: &Affine3A) -> Aabb {
         let center = t.translation;
         let margin = self.get_margin() + SPHERE_RADIUS_MARGIN;
@@ -51,12 +50,10 @@ impl SphereShape {
         }
     }
 
-    #[must_use]
     pub fn calculate_local_inertia(&self, mass: f32) -> Vec3A {
         Vec3A::splat(0.4 * mass * self.get_margin() * self.get_margin())
     }
 
-    #[must_use]
     pub fn local_get_supporting_vertex(&self, vec: Vec3A) -> Vec3A {
         self.get_margin() * vec.try_normalize().unwrap()
     }

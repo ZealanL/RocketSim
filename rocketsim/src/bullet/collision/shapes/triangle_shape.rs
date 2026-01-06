@@ -112,7 +112,6 @@ impl TriangleShape {
         self.points[0] + v * ab + w * ac
     }
 
-    #[must_use]
     /// Check if a sphere intersects the triangle.
     pub fn intersect_sphere(
         &self,

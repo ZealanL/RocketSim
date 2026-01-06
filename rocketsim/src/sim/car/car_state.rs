@@ -119,7 +119,6 @@ impl CarState {
         ball_hit_info: None,
     };
 
-    #[must_use]
     pub const fn has_flip_or_jump(&self) -> bool {
         self.is_on_ground
             || (!self.has_flipped
@@ -127,12 +126,10 @@ impl CarState {
                 && self.air_time_since_jump < crate::sim::consts::car::jump::DOUBLEJUMP_MAX_DELAY)
     }
 
-    #[must_use]
     pub const fn has_flip_reset(&self) -> bool {
         !self.is_on_ground && self.has_flip_or_jump() && !self.has_jumped
     }
 
-    #[must_use]
     pub const fn got_flip_reset(&self) -> bool {
         !self.is_on_ground && !self.has_jumped
     }

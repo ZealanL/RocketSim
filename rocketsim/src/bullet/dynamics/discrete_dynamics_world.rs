@@ -21,7 +21,6 @@ pub struct DiscreteDynamicsWorld {
 }
 
 impl DiscreteDynamicsWorld {
-    #[must_use]
     pub fn new(
         dispatcher: CollisionDispatcher,
         pair_cache: GridBroadphase,

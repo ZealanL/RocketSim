@@ -15,7 +15,6 @@ pub(crate) struct BoostPad {
 }
 
 impl BoostPad {
-    #[must_use]
     pub fn new(config: BoostPadConfig, mutator_config: &MutatorConfig) -> Self {
         let box_radius = if config.is_big {
             boost_pads::BOX_RAD_BIG
@@ -59,12 +58,10 @@ impl BoostPad {
         self.gave_boost_tick_count = None;
     }
 
-    #[must_use]
     pub const fn config(&self) -> &BoostPadConfig {
         &self.config
     }
 
-    #[must_use]
     pub const fn aabb(&self) -> Aabb {
         self.aabb
     }

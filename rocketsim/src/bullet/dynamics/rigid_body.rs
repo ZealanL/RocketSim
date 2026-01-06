@@ -25,7 +25,6 @@ pub struct RigidBodyConstructionInfo {
 }
 
 impl RigidBodyConstructionInfo {
-    #[must_use]
     pub const fn new(mass: f32, collision_shape: CollisionShapes, can_sleep: bool) -> Self {
         Self {
             mass,
@@ -98,7 +97,6 @@ pub struct RigidBody {
 }
 
 impl RigidBody {
-    #[must_use]
     pub fn new(info: RigidBodyConstructionInfo) -> Self {
         let inverse_mass = if info.mass == 0.0 {
             0.0
@@ -167,22 +165,18 @@ impl RigidBody {
         self.world_trans = world_trans;
     }
 
-    #[must_use]
     pub const fn get_world_trans(&self) -> &Affine3A {
         &self.world_trans
     }
 
-    #[must_use]
     pub const fn get_collision_shape(&self) -> &CollisionShapes {
         &self.shape
     }
 
-    #[must_use]
     pub const fn is_static_object(&self) -> bool {
         self.collision_flags & CollisionFlags::StaticObject as u8 != 0
     }
 
-    #[must_use]
     pub const fn is_active(&self) -> bool {
         !matches!(
             self.activation,
@@ -190,13 +184,11 @@ impl RigidBody {
         )
     }
 
-    #[must_use]
     pub const fn has_contact_response(&self) -> bool {
         self.collision_flags & CollisionFlags::NoContactResponse as u8 == 0
     }
 
     #[inline]
-    #[must_use]
     #[allow(unused)]
     pub const fn get_activation_state(&self) -> ActivationState {
         self.activation
@@ -217,12 +209,10 @@ impl RigidBody {
         self.broadphase_handle = Some(handle);
     }
 
-    #[must_use]
     pub const fn get_broadphase_handle(&self) -> Option<usize> {
         self.broadphase_handle
     }
 
-    #[must_use]
     pub const fn get_rb_flags(&self) -> u8 {
         self.rb_flags
     }
@@ -296,7 +286,6 @@ impl RigidBody {
         self.ang_vel *= (1.0 - self.angular_damping).powf(time_step);
     }
 
-    #[must_use]
     pub fn predict_integration_trans(&self, time_step: f32) -> Affine3A {
         let mut trans = *self.get_world_trans();
 
@@ -318,7 +307,6 @@ impl RigidBody {
         self.update_inertia_tensor();
     }
 
-    #[must_use]
     pub fn get_vel_in_local_point(&self, rel_pos: Vec3A) -> Vec3A {
         self.lin_vel + self.ang_vel.cross(rel_pos)
     }

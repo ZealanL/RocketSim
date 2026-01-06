@@ -209,7 +209,6 @@ pub struct GridBroadphase {
 }
 
 impl GridBroadphase {
-    #[must_use]
     pub fn new(
         min_pos: Vec3A,
         max_pos: Vec3A,

@@ -183,12 +183,10 @@ impl Car {
         self.set_state(rb, &new_state);
     }
 
-    #[must_use]
     pub const fn get_state(&self) -> &CarState {
         &self.state
     }
 
-    #[must_use]
     pub const fn get_config(&self) -> &CarBodyConfig {
         &self.info.config
     }

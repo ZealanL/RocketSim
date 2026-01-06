@@ -15,7 +15,7 @@ pub struct LinearPieceCurve<const N: usize> {
 
 impl<const N: usize> LinearPieceCurve<N> {
     /// A mapping of `(x, y)` pairs that make up the continuous linear piecewise function
-    #[must_use]
+
     pub const fn new(value_mappings: [(f32, f32); N]) -> Self {
         let mut curve = [LinearPiece {
             base_x: 0.0,
@@ -52,7 +52,7 @@ impl<const N: usize> LinearPieceCurve<N> {
     /// # Arguments
     ///
     /// * `input` - The input to the curve
-    #[must_use]
+
     pub fn get_output(&self, input: f32) -> f32 {
         debug_assert!(N != 0);
 

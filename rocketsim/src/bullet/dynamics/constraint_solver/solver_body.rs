@@ -57,7 +57,6 @@ impl SolverBody {
         self.delta_ang_vel += angular_component * impulse_magnitude;
     }
 
-    #[must_use]
     pub fn get_vel_in_local_point_no_delta(&self, rel_pos: Vec3A) -> Vec3A {
         self.lin_vel
             + self.external_force_impulse

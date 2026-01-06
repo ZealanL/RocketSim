@@ -29,7 +29,6 @@ impl CarControls {
         handbrake: false,
     };
 
-    #[must_use]
     pub const fn clamp(mut self) -> Self {
         self.throttle = self.throttle.clamp(-1.0, 1.0);
         self.steer = self.steer.clamp(-1.0, 1.0);

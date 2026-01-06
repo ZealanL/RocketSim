@@ -182,7 +182,6 @@ pub struct Arena {
 }
 
 impl Arena {
-    #[must_use]
     pub fn new(game_mode: GameMode) -> Self {
         Self::new_with_config(game_mode, ArenaConfig::DEFAULT)
     }
@@ -266,7 +265,6 @@ impl Arena {
         }
     }
 
-    #[must_use]
     pub const fn get_config(&self) -> &ArenaConfig {
         &self.config
     }
@@ -410,7 +408,6 @@ impl Arena {
         dist_sq - RADIUS_SQ
     }
 
-    #[must_use]
     pub fn is_ball_scored(&self) -> bool {
         let ball_pos = self.bullet_world.bodies()[self.ball.rigid_body_idx]
             .get_world_trans()
@@ -651,19 +648,19 @@ impl Arena {
     }
 
     #[inline]
-    #[must_use]
+
     pub const fn tick_count(&self) -> u64 {
         self.tick_count
     }
 
     #[inline]
-    #[must_use]
+
     pub const fn game_mode(&self) -> GameMode {
         self.game_mode
     }
 
     #[inline]
-    #[must_use]
+
     pub const fn mutator_config(&self) -> &MutatorConfig {
         &self.mutator_config
     }
@@ -680,23 +677,21 @@ impl Arena {
     }
 
     #[inline]
-    #[must_use]
+
     pub const fn cars(&self) -> &Vec<Car> {
         &self.cars
     }
 
     #[inline]
-    #[must_use]
+
     pub const fn num_cars(&self) -> usize {
         self.cars.len()
     }
 
-    #[must_use]
     pub fn get_car(&self, car_idx: usize) -> &Car {
         &self.cars[car_idx]
     }
 
-    #[must_use]
     pub fn get_car_mut(&mut self, car_idx: usize) -> &mut Car {
         &mut self.cars[car_idx]
     }

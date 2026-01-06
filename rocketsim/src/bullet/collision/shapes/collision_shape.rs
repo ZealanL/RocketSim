@@ -30,7 +30,6 @@ fn fast_compare_transs(a: &Affine3A, b: &Affine3A) -> bool {
 }
 
 impl CollisionShapes {
-    #[must_use]
     pub fn get_aabb(&self, t: &Affine3A) -> Aabb {
         match self {
             Self::Sphere(shape) => shape.get_aabb(t),
@@ -80,12 +79,10 @@ impl CollisionShapes {
         disc + center.length()
     }
 
-    #[must_use]
     pub fn get_contact_breaking_threshold(&self, default_contact_threshold: f32) -> f32 {
         self.get_angular_motion_disc() * default_contact_threshold
     }
 
-    #[must_use]
     pub fn local_get_supporting_vertex(&self, vec: Vec3A) -> Vec3A {
         match self {
             Self::Sphere(shape) => shape.local_get_supporting_vertex(vec),

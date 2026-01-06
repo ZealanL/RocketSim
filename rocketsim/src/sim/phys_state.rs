@@ -14,7 +14,6 @@ pub struct PhysState {
 }
 
 impl PhysState {
-    #[must_use]
     pub fn get_inverted_y(mut self) -> Self {
         const INVERT_SCALE: Vec3A = Vec3A::new(-1.0, -1.0, 1.0);
 
@@ -29,15 +28,14 @@ impl PhysState {
         self
     }
 
-    #[must_use]
     pub const fn get_forward_dir(&self) -> Vec3A {
         self.rot_mat.x_axis
     }
-    #[must_use]
+
     pub const fn get_right_dir(&self) -> Vec3A {
         self.rot_mat.y_axis
     }
-    #[must_use]
+
     pub const fn get_up_dir(&self) -> Vec3A {
         self.rot_mat.z_axis
     }

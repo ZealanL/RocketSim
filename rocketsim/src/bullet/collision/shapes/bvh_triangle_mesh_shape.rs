@@ -41,12 +41,10 @@ impl BvhTriangleMeshShape {
         }
     }
 
-    #[must_use]
     pub const fn get_triangle_info_map(&self) -> &TriangleInfoMap {
         &self.triangle_info_map
     }
 
-    #[must_use]
     pub const fn get_mesh_interface(&self) -> &TriangleMesh {
         &self.mesh_interface
     }
