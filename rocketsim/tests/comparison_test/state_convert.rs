@@ -1,3 +1,4 @@
+#![allow(dead_code)] // Don't warn for unused public stuff
 use glam::{Mat3A, Vec3A};
 use rocketsim::{
     BallHitInfo, BallState, CarContact, CarControls, CarState, GameMode, PhysState, Team,
