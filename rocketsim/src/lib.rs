@@ -45,14 +45,14 @@ fn init_from_path(collision_meshes_folder: &Path, silent: bool) -> IoResult<()> 
         [GameMode::Soccar, GameMode::Hoops, GameMode::Dropshot];
 
     if !collision_meshes_folder.exists() {
-        return IoResult::Err(IoError::new(
+        return Err(IoError::new(
             ErrorKind::NotFound,
             format!("{} does not exist", collision_meshes_folder.display()),
         ));
     }
 
     if !collision_meshes_folder.is_dir() {
-        return IoResult::Err(IoError::new(
+        return Err(IoError::new(
             ErrorKind::NotADirectory,
             format!("{} is not a directory", collision_meshes_folder.display()),
         ));
@@ -106,7 +106,7 @@ pub fn init_from_mem(
 
     let start_time = Instant::now();
 
-    // DropshotTiles::Init();
+    // TODO: DropshotTiles::Init();
 
     let mut arena_collision_shapes = AHashMap::new();
 
@@ -125,8 +125,9 @@ pub fn init_from_mem(
             let mesh_file = CollisionMeshFile::read_from_bytes(&entry)?;
             let hash = mesh_file.get_hash();
             let Some(hash_count) = target_hashes.get_mut(&hash) else {
-                error!(
-                    "Collision mesh [{i}] does not match any known {} collision mesh ({hash:#x}), make sure they were dumped form a normal {} arena.",
+                warn!(
+                    "Collision mesh [{i}] does not match any known {} collision mesh ({hash:#x}), \
+                    make sure they were dumped form a normal {} arena.",
                     game_mode.name(),
                     game_mode.name()
                 );
