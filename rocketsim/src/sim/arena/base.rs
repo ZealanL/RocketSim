@@ -3,30 +3,22 @@ use arrayvec::ArrayVec;
 use fastrand::Rng;
 use glam::{Affine3A, EulerRot, Mat3A, Vec3A};
 use std::{f32::consts::PI, iter::repeat_n, mem};
-
 use crate::bullet::dynamics::rigid_body::ActivationState;
 use crate::consts::{TICK_RATE, TICK_TIME};
 use crate::sim::{Ball, BoostPad};
-use crate::{
-    ARENA_COLLISION_SHAPES, ArenaConfig, ArenaMemWeightMode, BoostPadConfig, BoostPadGrid,
-    BoostPadState, Car, CarBodyConfig, CarState, GameMode, MutatorConfig, PhysState, Team,
-    bullet::{
-        collision::{
-            broadphase::{GridBroadphase, HashedOverlappingPairCache},
-            dispatch::collision_dispatcher::CollisionDispatcher,
-            narrowphase::manifold_point::ManifoldPoint,
-            shapes::{collision_shape::CollisionShapes, static_plane_shape::StaticPlaneShape},
-        },
-        dynamics::{
-            constraint_solver::seq_impulse_constraint_solver::SeqImpulseConstraintSolver,
-            discrete_dynamics_world::DiscreteDynamicsWorld,
-            rigid_body::{RigidBody, RigidBodyConstructionInfo},
-        },
+use crate::{ARENA_COLLISION_SHAPES, ArenaConfig, ArenaMemWeightMode, BoostPadConfig, BoostPadGrid, BoostPadState, Car, CarBodyConfig, CarInfo, CarState, GameMode, MutatorConfig, PhysState, Team, bullet::{
+    collision::{
+        broadphase::{GridBroadphase, HashedOverlappingPairCache},
+        dispatch::collision_dispatcher::CollisionDispatcher,
+        narrowphase::manifold_point::ManifoldPoint,
+        shapes::{collision_shape::CollisionShapes, static_plane_shape::StaticPlaneShape},
     },
-    consts,
-    consts::{BT_TO_UU, UU_TO_BT},
-    sim::{BallState, CarContact, DemoMode, UserInfoTypes, collision_masks::CollisionMasks},
-};
+    dynamics::{
+        constraint_solver::seq_impulse_constraint_solver::SeqImpulseConstraintSolver,
+        discrete_dynamics_world::DiscreteDynamicsWorld,
+        rigid_body::{RigidBody, RigidBodyConstructionInfo},
+    },
+}, consts, consts::{BT_TO_UU, UU_TO_BT}, sim::{BallState, CarContact, DemoMode, UserInfoTypes, collision_masks::CollisionMasks}, CarControls};
 
 impl Arena {
     fn on_car_ball_collision(
@@ -683,17 +675,26 @@ impl Arena {
     }
 
     #[inline]
-
     pub const fn num_cars(&self) -> usize {
         self.cars.len()
     }
 
-    pub fn get_car(&self, car_idx: usize) -> &Car {
-        &self.cars[car_idx]
+    pub fn get_car_info(&self, car_idx: usize) -> &CarInfo {
+        &self.cars[car_idx].info
     }
 
-    pub fn get_car_mut(&mut self, car_idx: usize) -> &mut Car {
-        &mut self.cars[car_idx]
+    pub fn get_car_state(&self, car_idx: usize) -> &CarState {
+        self.cars[car_idx].get_state()
+    }
+
+    pub fn get_car_controls(&self, car_idx: usize) -> &CarControls {
+        &self.cars[car_idx].state.controls
+    }
+
+
+    pub fn get_car_info_and_state(&self, car_idx: usize) -> (&CarInfo, &CarState) {
+        let car = &self.cars[car_idx];
+        (&car.info, &car.state)
     }
 
     pub fn set_car_state(&mut self, car_idx: usize, state: CarState) {
@@ -703,6 +704,10 @@ impl Arena {
             &mut self.bullet_world.bodies_mut()[car.rigid_body_idx],
             &state,
         );
+    }
+
+    pub fn set_car_controls(&mut self, car_idx: usize, controls: CarControls) {
+        self.cars[car_idx].state.controls = controls
     }
 
     pub fn respawn_car(&mut self, car_idx: usize) {

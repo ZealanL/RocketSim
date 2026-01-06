@@ -161,8 +161,7 @@ fn main() {
                 const UPDATE_CHANCE: f32 = 0.05; // (120 * 0.05) = Avg of 6 per sec
 
                 let tick_count = arena.tick_count();
-                let car = arena.get_car_mut(idx);
-                let car_state = car.get_state();
+                let car_state = arena.get_car_state(idx);
 
                 if let Some(ball_hit_info) = car_state.ball_hit_info
                     && tick_count == (ball_hit_info.tick_count_when_hit + 1)
@@ -171,7 +170,7 @@ fn main() {
                 }
 
                 if rand_chance(UPDATE_CHANCE) {
-                    car.set_controls(calc_bot_controls(car_state, &ball_state));
+                    arena.set_car_controls(idx, calc_bot_controls(car_state, &ball_state));
                 }
             }
 

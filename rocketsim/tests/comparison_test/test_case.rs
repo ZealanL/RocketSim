@@ -41,9 +41,7 @@ impl TestCase {
                 let start_controls = car_setup.control_seq.get_controls_at_tick(0);
                 {
                     let new_car_idx = new_arena.add_car(car_setup.team, CarBodyConfig::OCTANE);
-                    new_arena
-                        .get_car_mut(new_car_idx)
-                        .set_controls(start_controls);
+                    new_arena.set_car_controls(new_car_idx, start_controls);
                 }
                 {
                     let old_car_idx = old_arena_ptr.pin_mut().add_car(
@@ -117,7 +115,7 @@ impl TestCase {
 
                     let new_car_idx = i;
                     let old_car_idx = (i + 1) as u32;
-                    let new_car_state = new_arena.get_car(new_car_idx).get_state();
+                    let new_car_state = new_arena.get_car_state(new_car_idx);
                     let old_car_state = &old_arena_ptr.pin_mut().get_car(old_car_idx);
                     let old_car_state_conv =
                         &state_convert::conv_to_new_car_state(old_car_state, controls);
@@ -152,7 +150,7 @@ impl TestCase {
 
                 let car_idx_new = i;
                 let car_idx_old = (i + 1) as u32;
-                let new_car_state = *new_arena.get_car(car_idx_new).get_state();
+                let new_car_state = *new_arena.get_car_state(car_idx_new);
                 let old_car_state = old_arena_ptr.pin_mut().get_car(car_idx_old);
 
                 // Set old car's controls to new car's controls
