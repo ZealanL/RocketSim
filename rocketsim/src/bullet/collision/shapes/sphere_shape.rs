@@ -5,9 +5,8 @@ use glam::{Affine3A, Vec3A};
 use super::convex_internal_shape::ConvexInternalShape;
 use crate::bullet::{
     collision::dispatch::ray_callbacks::{BridgeTriangleRaycastPacketCallback, RayResultCallback},
-    linear_math::ray_packet::RayInfo,
 };
-use crate::shared::Aabb;
+use crate::shared::{Aabb, RayPacketInfo};
 
 pub const SPHERE_RADIUS_MARGIN: f32 = 0.08;
 
@@ -61,7 +60,7 @@ impl SphereShape {
     pub fn perform_raycast<T: RayResultCallback>(
         &self,
         result_callback: &mut BridgeTriangleRaycastPacketCallback<T>,
-        ray_info: &RayInfo,
+        ray_info: &RayPacketInfo,
     ) {
         for i in 0..4 {
             self.internal_perform_raycast(

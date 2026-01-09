@@ -2,9 +2,7 @@ use std::iter::repeat_n;
 use std::mem;
 
 use glam::{Vec3A, Vec4};
-
-use crate::bullet::linear_math::{aabb_util_2::intersect_ray_aabb_packet, ray_packet::RayInfo};
-use crate::shared::Aabb;
+use crate::shared::{Aabb, RayPacketInfo};
 
 pub trait ProcessNode {
     fn process_node(&mut self, leaf_idx: usize);
@@ -278,7 +276,7 @@ impl Tree {
     fn walk_stackless_tree_against_ray_packet<T: ProcessRayNode>(
         &self,
         node_callback: &mut T,
-        ray_info: &mut RayInfo,
+        ray_info: &mut RayPacketInfo,
         origins: &[Vec4; 3],
         inv_dir: &[Vec4; 3],
         start_node_idx: usize,
@@ -292,7 +290,7 @@ impl Tree {
             match root_node.node_type {
                 BvhNodeType::Leaf { leaf_idx } => {
                     if overlap {
-                        let mask = intersect_ray_aabb_packet(
+                        let mask = RayPacketInfo::intersect_ray_aabb_packet(
                             origins,
                             inv_dir,
                             &root_node.aabb,
@@ -315,7 +313,7 @@ impl Tree {
     pub fn report_ray_packet_overlapping_node<T: ProcessRayNode>(
         &self,
         node_callback: &mut T,
-        ray_info: &mut RayInfo,
+        ray_info: &mut RayPacketInfo,
     ) {
         if !ray_info.aabb.intersects(&self.aabb) {
             return;

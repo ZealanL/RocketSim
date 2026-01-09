@@ -10,9 +10,8 @@ use crate::bullet::{
         dispatch::internal_edge_utility::generate_internal_edge_info,
         shapes::{optimized_bvh::create_bvh, triangle_callback::ProcessRayTriangle},
     },
-    linear_math::ray_packet::RayInfo,
 };
-use crate::shared::Aabb;
+use crate::shared::{Aabb, RayPacketInfo};
 use crate::shared::bvh::Tree;
 
 pub struct BvhTriangleMeshShape {
@@ -59,7 +58,7 @@ impl BvhTriangleMeshShape {
         self.bvh.check_overlap_with(aabb)
     }
 
-    pub fn perform_raycast<T: ProcessRayTriangle>(&self, callback: &mut T, ray_info: &mut RayInfo) {
+    pub fn perform_raycast<T: ProcessRayTriangle>(&self, callback: &mut T, ray_info: &mut RayPacketInfo) {
         let mut my_node_callback = RayNodeOverlapCallback::new(self.get_mesh_interface(), callback);
         self.bvh
             .report_ray_packet_overlapping_node(&mut my_node_callback, ray_info);

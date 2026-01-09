@@ -1,4 +1,4 @@
-use glam::Vec3A;
+use glam::{Affine3A, Vec3A};
 use std::ops::{Add, AddAssign};
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -35,6 +35,18 @@ impl Aabb {
 
     pub fn combine(&self, rhs: &Self) -> Self {
         Self::new(self.min.min(rhs.min), self.max.max(rhs.max))
+    }
+
+    pub fn from_half_extents_transform(half_extents: Vec3A, margin: f32, t: &Affine3A) -> Aabb {
+        let half_extents_with_margin = half_extents + margin;
+        let abs_b = t.matrix3.abs();
+        let center = t.translation;
+        let extent = abs_b * half_extents_with_margin;
+
+        Aabb {
+            min: center - extent,
+            max: center + extent,
+        }
     }
 }
 

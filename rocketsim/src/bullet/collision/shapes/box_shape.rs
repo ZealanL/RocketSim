@@ -4,7 +4,6 @@ use super::{
     collision_margin::CONVEX_DISTANCE_MARGIN, convex_internal_shape::ConvexInternalShape,
     polyhedral_convex_shape::PolyhedralConvexShape,
 };
-use crate::bullet::linear_math::aabb_util_2::transform_aabb;
 use crate::shared::Aabb;
 
 pub struct BoxShape {
@@ -40,7 +39,7 @@ impl BoxShape {
     }
 
     pub fn get_aabb(&self, t: &Affine3A) -> Aabb {
-        transform_aabb(
+        Aabb::from_half_extents_transform(
             self.polyhedral_convex_shape
                 .convex_internal_shape
                 .implicit_shape_dimensions,
