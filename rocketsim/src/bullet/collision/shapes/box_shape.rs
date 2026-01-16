@@ -1,25 +1,20 @@
 use glam::{Affine3A, Vec3A, Vec3Swizzles};
 
-use super::{
-    collision_margin::CONVEX_DISTANCE_MARGIN, convex_internal_shape::ConvexInternalShape,
-    polyhedral_convex_shape::PolyhedralConvexShape,
-};
+use super::{collision_margin::CONVEX_DISTANCE_MARGIN, convex_internal_shape::ConvexInternalShape};
 use crate::shared::Aabb;
 
 pub struct BoxShape {
-    polyhedral_convex_shape: PolyhedralConvexShape,
+    internal_shape: ConvexInternalShape,
 }
 
 impl BoxShape {
     pub fn new(box_half_extents: Vec3A) -> Self {
         Self {
-            polyhedral_convex_shape: PolyhedralConvexShape {
-                convex_internal_shape: ConvexInternalShape {
-                    implicit_shape_dimensions: box_half_extents - CONVEX_DISTANCE_MARGIN,
-                    collision_margin: {
-                        let safe_margin = 0.1 * box_half_extents.min_element();
-                        safe_margin.min(CONVEX_DISTANCE_MARGIN)
-                    },
+            internal_shape: ConvexInternalShape {
+                implicit_dim: box_half_extents - CONVEX_DISTANCE_MARGIN,
+                margin: {
+                    let safe_margin = 0.1 * box_half_extents.min_element();
+                    safe_margin.min(CONVEX_DISTANCE_MARGIN)
                 },
             },
         }
@@ -27,25 +22,21 @@ impl BoxShape {
 
     #[inline]
     pub fn get_half_extents(&self) -> Vec3A {
-        self.polyhedral_convex_shape
-            .convex_internal_shape
-            .implicit_shape_dimensions
+        self.internal_shape
+            .implicit_dim
     }
 
     pub fn get_margin(&self) -> f32 {
-        self.polyhedral_convex_shape
-            .convex_internal_shape
-            .collision_margin
+        self.internal_shape
+            .margin
     }
 
     pub fn get_aabb(&self, t: &Affine3A) -> Aabb {
         Aabb::from_half_extents_transform(
-            self.polyhedral_convex_shape
-                .convex_internal_shape
-                .implicit_shape_dimensions,
-            self.polyhedral_convex_shape
-                .convex_internal_shape
-                .collision_margin,
+            self.internal_shape
+                .implicit_dim,
+            self.internal_shape
+                .margin,
             t,
         )
     }

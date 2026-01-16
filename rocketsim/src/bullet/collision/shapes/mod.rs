@@ -6,7 +6,6 @@ pub mod compound_shape;
 mod concave_shape;
 mod convex_internal_shape;
 mod optimized_bvh;
-mod polyhedral_convex_shape;
 pub mod sphere_shape;
 pub mod static_plane_shape;
 pub mod triangle_callback;

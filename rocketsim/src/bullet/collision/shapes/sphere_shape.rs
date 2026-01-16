@@ -20,8 +20,8 @@ impl SphereShape {
     pub const fn new(radius: f32) -> Self {
         Self {
             convex_internal_shape: ConvexInternalShape {
-                implicit_shape_dimensions: Vec3A::new(radius, 0.0, 0.0),
-                collision_margin: radius,
+                implicit_dim: Vec3A::new(radius, 0.0, 0.0),
+                margin: radius,
             },
         }
     }
@@ -29,7 +29,7 @@ impl SphereShape {
     #[inline]
 
     pub fn get_radius(&self) -> f32 {
-        self.convex_internal_shape.implicit_shape_dimensions.x
+        self.convex_internal_shape.implicit_dim.x
     }
 
     #[inline]
