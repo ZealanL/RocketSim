@@ -1,7 +1,7 @@
 use glam::{Affine3A, Vec3A};
 
 use crate::bullet::{
-    collision::dispatch::ray_callbacks::{BridgeTriangleRaycastPacketCallback, RayResultCallback},
+    collision::dispatch::ray_packet_callbacks::{BridgeTriangleRaycastPacketCallback, RayResultCallback},
     linear_math::LARGE_FLOAT,
 };
 use crate::shared::{Aabb, RayPacketInfo};

@@ -38,8 +38,8 @@ impl TriangleMesh {
         }
     }
 
-    pub fn get_triangle(&self, index: usize) -> &TriangleShape {
-        &self.triangles[index]
+    pub fn get_triangle(&self, idx: usize) -> &TriangleShape {
+        &self.triangles[idx]
     }
 
     pub fn get_total_num_faces(&self) -> usize {

@@ -37,32 +37,32 @@ impl DiscreteDynamicsWorld {
 
     #[inline]
     pub fn bodies_mut(&mut self) -> &mut [RigidBody] {
-        &mut self.dynamics_world.collision_world.collision_objects
+        &mut self.dynamics_world.collision_world.collision_objs
     }
 
     #[inline]
     pub fn bodies(&self) -> &[RigidBody] {
-        &self.dynamics_world.collision_world.collision_objects
+        &self.dynamics_world.collision_world.collision_objs
     }
 
     pub const fn set_gravity(&mut self, gravity: Vec3A) {
         self.gravity = gravity;
     }
 
-    fn add_collision_object(&mut self, body: RigidBody, group: u8, mask: u8) -> usize {
+    fn add_collision_obj(&mut self, body: RigidBody, group: u8, mask: u8) -> usize {
         self.dynamics_world
             .collision_world
-            .add_collision_object(body, group, mask)
+            .add_collision_obj(body, group, mask)
     }
 
     pub fn add_rigid_body_default(&mut self, mut body: RigidBody) -> usize {
-        if !body.is_static_object()
+        if !body.is_static_obj()
             && body.get_rb_flags() & RigidBodyFlags::DisableWorldGravity as u8 == 0
         {
             body.set_gravity(self.gravity);
         }
 
-        let (group, mask) = if body.is_static_object() {
+        let (group, mask) = if body.is_static_obj() {
             (
                 CollisionFilterGroups::Static as u8,
                 CollisionFilterGroups::All as u8 ^ CollisionFilterGroups::Static as u8,
@@ -74,10 +74,10 @@ impl DiscreteDynamicsWorld {
             )
         };
 
-        let rb_idx = self.add_collision_object(body, group, mask);
+        let rb_idx = self.add_collision_obj(body, group, mask);
 
-        let rb = &mut self.dynamics_world.collision_world.collision_objects[rb_idx];
-        if rb.is_static_object() {
+        let rb = &mut self.dynamics_world.collision_world.collision_objs[rb_idx];
+        if rb.is_static_obj() {
             rb.set_activation_state(ActivationState::Sleeping);
         } else {
             self.non_static_rigid_bodies.push(rb_idx);
@@ -87,16 +87,16 @@ impl DiscreteDynamicsWorld {
     }
 
     pub fn add_rigid_body(&mut self, mut body: RigidBody, group: u8, mask: u8) -> usize {
-        if !body.is_static_object()
+        if !body.is_static_obj()
             && body.get_rb_flags() & RigidBodyFlags::DisableWorldGravity as u8 == 0
         {
             body.set_gravity(self.gravity);
         }
 
-        let rb_idx = self.add_collision_object(body, group, mask);
+        let rb_idx = self.add_collision_obj(body, group, mask);
 
-        let rb = &mut self.dynamics_world.collision_world.collision_objects[rb_idx];
-        if rb.is_static_object() {
+        let rb = &mut self.dynamics_world.collision_world.collision_objs[rb_idx];
+        if rb.is_static_obj() {
             rb.set_activation_state(ActivationState::Sleeping);
         } else {
             self.non_static_rigid_bodies.push(rb_idx);
@@ -107,7 +107,7 @@ impl DiscreteDynamicsWorld {
 
     fn apply_gravity(&mut self) {
         for &body in &self.non_static_rigid_bodies {
-            let body = &mut self.dynamics_world.collision_world.collision_objects[body];
+            let body = &mut self.dynamics_world.collision_world.collision_objs[body];
             if body.is_active() {
                 body.apply_gravity();
             }
@@ -116,8 +116,8 @@ impl DiscreteDynamicsWorld {
 
     fn predict_unconstraint_motion(&mut self, time_step: f32) {
         for &body in &self.non_static_rigid_bodies {
-            let body = &mut self.dynamics_world.collision_world.collision_objects[body];
-            debug_assert!(!body.is_static_object());
+            let body = &mut self.dynamics_world.collision_world.collision_objs[body];
+            debug_assert!(!body.is_static_obj());
 
             body.apply_damping(time_step);
             let predicted_trans = body.predict_integration_trans(time_step);
@@ -127,7 +127,7 @@ impl DiscreteDynamicsWorld {
 
     fn solve_constraints(&mut self, time_step: f32) {
         self.solver.solve_group(
-            &mut self.dynamics_world.collision_world.collision_objects,
+            &mut self.dynamics_world.collision_world.collision_objs,
             &self.non_static_rigid_bodies,
             &mut self.dynamics_world.collision_world.dispatcher1.manifolds,
             time_step,
@@ -136,9 +136,9 @@ impl DiscreteDynamicsWorld {
 
     fn integrate_transs_internal(&mut self, time_step: f32) {
         for &body in &self.non_static_rigid_bodies {
-            let body = &mut self.dynamics_world.collision_world.collision_objects[body];
+            let body = &mut self.dynamics_world.collision_world.collision_objs[body];
 
-            debug_assert!(!body.is_static_object());
+            debug_assert!(!body.is_static_obj());
             if !body.is_active() {
                 continue;
             }
@@ -158,14 +158,14 @@ impl DiscreteDynamicsWorld {
 
     fn update_activation_state(&mut self, time_step: f32) {
         for &body in &self.non_static_rigid_bodies {
-            let body = &mut self.dynamics_world.collision_world.collision_objects[body];
+            let body = &mut self.dynamics_world.collision_world.collision_objs[body];
             body.update_activation_state(time_step);
         }
     }
 
     fn clear_forces(&mut self) {
         for &body in &self.non_static_rigid_bodies {
-            self.dynamics_world.collision_world.collision_objects[body].clear_forces();
+            self.dynamics_world.collision_world.collision_objs[body].clear_forces();
         }
     }
 

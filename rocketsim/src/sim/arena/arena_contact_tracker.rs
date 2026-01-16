@@ -87,9 +87,9 @@ impl ContactAddedCallback for ArenaContactTracker {
             manifold_point,
             body_a,
             if should_swap {
-                manifold_point.index_0
+                manifold_point.idx_0
             } else {
-                manifold_point.index_1
+                manifold_point.idx_1
             } as usize,
         );
     }

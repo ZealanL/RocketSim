@@ -5,7 +5,7 @@ use super::{
 use crate::bullet::collision::{
     broadphase::{CollisionAlgorithm, GridBroadphase, GridBroadphaseProxy},
     dispatch::{
-        collision_object_wrapper::RigidBodyWrapper,
+        collision_obj_wrapper::RigidBodyWrapper,
         compound_collision_alg::CompoundCollisionAlgorithm,
         obb_obb_collision_alg::ObbObbCollisionAlgorithm,
         sphere_obb_collision_alg::SphereObbCollisionAlgorithm,
@@ -81,17 +81,17 @@ impl<'a, T: ContactAddedCallback> Algorithms<'a, T> {
     }
 
     const fn new_obb_obb(
-        compound_0_obj: &'a RigidBody,
-        compound_0_shape: &'a CompoundShape,
-        compound_1_obj: &'a RigidBody,
-        compound_1_shape: &'a CompoundShape,
+        compound_a_obj: &'a RigidBody,
+        compound_a_shape: &'a CompoundShape,
+        compound_b_obj: &'a RigidBody,
+        compound_b_shape: &'a CompoundShape,
         contact_added_callback: &'a mut T,
     ) -> Self {
         Self::ObbObb(ObbObbCollisionAlgorithm::new(
-            compound_0_obj,
-            compound_0_shape,
-            compound_1_obj,
-            compound_1_shape,
+            compound_a_obj,
+            compound_a_shape,
+            compound_b_obj,
+            compound_b_shape,
             contact_added_callback,
         ))
     }
@@ -139,101 +139,101 @@ impl Default for CollisionDispatcher {
 
 impl CollisionDispatcher {
     fn find_alg<'a, T: ContactAddedCallback>(
-        col_obj_0: &'a RigidBody,
-        col_obj_1: &'a RigidBody,
+        col_obj_a: &'a RigidBody,
+        col_obj_b: &'a RigidBody,
         contact_added_callback: &'a mut T,
     ) -> Algorithms<'a, T> {
-        match col_obj_0.get_collision_shape() {
-            CollisionShapes::StaticPlane(plane) => match col_obj_1.get_collision_shape() {
+        match col_obj_a.get_collision_shape() {
+            CollisionShapes::StaticPlane(plane) => match col_obj_b.get_collision_shape() {
                 CollisionShapes::Sphere(_) => Algorithms::new_convex_plane(
                     RigidBodyWrapper {
-                        object: col_obj_1,
-                        world_trans: *col_obj_1.get_world_trans(),
+                        obj: col_obj_b,
+                        world_trans: *col_obj_b.get_world_trans(),
                     },
-                    col_obj_0,
+                    col_obj_a,
                     plane,
                     true,
                     contact_added_callback,
                 ),
                 CollisionShapes::Compound(compound) => Algorithms::new_compound(
-                    col_obj_1,
+                    col_obj_b,
                     compound,
-                    col_obj_0,
+                    col_obj_a,
                     true,
                     contact_added_callback,
                 ),
                 _ => unimplemented!(),
             },
-            CollisionShapes::Sphere(sphere) => match col_obj_1.get_collision_shape() {
+            CollisionShapes::Sphere(sphere) => match col_obj_b.get_collision_shape() {
                 CollisionShapes::StaticPlane(plane) => Algorithms::new_convex_plane(
                     RigidBodyWrapper {
-                        object: col_obj_0,
-                        world_trans: *col_obj_0.get_world_trans(),
+                        obj: col_obj_a,
+                        world_trans: *col_obj_a.get_world_trans(),
                     },
-                    col_obj_1,
+                    col_obj_b,
                     plane,
                     false,
                     contact_added_callback,
                 ),
                 CollisionShapes::TriangleMesh(mesh) => Algorithms::new_convex_concave(
-                    col_obj_0,
+                    col_obj_a,
                     sphere,
-                    col_obj_1,
+                    col_obj_b,
                     mesh,
                     false,
                     contact_added_callback,
                 ),
                 CollisionShapes::Compound(compound) => Algorithms::new_sphere_obb(
-                    col_obj_0,
+                    col_obj_a,
                     sphere,
-                    col_obj_1,
+                    col_obj_b,
                     compound,
                     false,
                     contact_added_callback,
                 ),
                 CollisionShapes::Sphere(_) => unimplemented!(),
             },
-            CollisionShapes::TriangleMesh(mesh) => match col_obj_1.get_collision_shape() {
+            CollisionShapes::TriangleMesh(mesh) => match col_obj_b.get_collision_shape() {
                 CollisionShapes::Sphere(sphere) => Algorithms::new_convex_concave(
-                    col_obj_1,
+                    col_obj_b,
                     sphere,
-                    col_obj_0,
+                    col_obj_a,
                     mesh,
                     true,
                     contact_added_callback,
                 ),
                 CollisionShapes::Compound(compound) => Algorithms::new_compound(
-                    col_obj_1,
+                    col_obj_b,
                     compound,
-                    col_obj_0,
+                    col_obj_a,
                     true,
                     contact_added_callback,
                 ),
                 _ => unimplemented!(),
             },
-            CollisionShapes::Compound(compound_0) => match col_obj_1.get_collision_shape() {
+            CollisionShapes::Compound(compound_a) => match col_obj_b.get_collision_shape() {
                 CollisionShapes::StaticPlane(_) | CollisionShapes::TriangleMesh(_) => {
                     Algorithms::new_compound(
-                        col_obj_0,
-                        compound_0,
-                        col_obj_1,
+                        col_obj_a,
+                        compound_a,
+                        col_obj_b,
                         false,
                         contact_added_callback,
                     )
                 }
                 CollisionShapes::Sphere(sphere) => Algorithms::new_sphere_obb(
-                    col_obj_1,
+                    col_obj_b,
                     sphere,
-                    col_obj_0,
-                    compound_0,
+                    col_obj_a,
+                    compound_a,
                     true,
                     contact_added_callback,
                 ),
-                CollisionShapes::Compound(compound_1) => Algorithms::new_obb_obb(
-                    col_obj_0,
-                    compound_0,
-                    col_obj_1,
-                    compound_1,
+                CollisionShapes::Compound(compound_b) => Algorithms::new_obb_obb(
+                    col_obj_a,
+                    compound_a,
+                    col_obj_b,
+                    compound_b,
                     contact_added_callback,
                 ),
             },
@@ -242,13 +242,13 @@ impl CollisionDispatcher {
 
     pub fn near_callback<T: ContactAddedCallback>(
         &mut self,
-        collision_objects: &[RigidBody],
+        collision_objs: &[RigidBody],
         proxy0: &GridBroadphaseProxy,
         proxy1: &GridBroadphaseProxy,
         contact_added_callback: &mut T,
     ) {
-        let rb0 = &collision_objects[proxy0.client_object_idx];
-        let rb1 = &collision_objects[proxy1.client_object_idx];
+        let rb0 = &collision_objs[proxy0.client_obj_idx];
+        let rb1 = &collision_objs[proxy1.client_obj_idx];
 
         if !rb0.is_active() && !rb1.is_active()
             || !rb0.has_contact_response()
@@ -266,10 +266,10 @@ impl CollisionDispatcher {
 
     pub fn dispatch_all_collision_pairs<T: ContactAddedCallback>(
         &mut self,
-        collision_objects: &[RigidBody],
+        collision_objs: &[RigidBody],
         pair_cache: &mut GridBroadphase,
         contact_added_callback: &mut T,
     ) {
-        pair_cache.process_all_overlapping_pairs(collision_objects, self, contact_added_callback);
+        pair_cache.process_all_overlapping_pairs(collision_objs, self, contact_added_callback);
     }
 }

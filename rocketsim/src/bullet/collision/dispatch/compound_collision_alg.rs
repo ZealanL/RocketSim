@@ -6,7 +6,7 @@ use crate::bullet::{
     collision::{
         broadphase::CollisionAlgorithm,
         dispatch::{
-            collision_object_wrapper::RigidBodyWrapper,
+            collision_obj_wrapper::RigidBodyWrapper,
             convex_plane_collision_alg::ConvexPlaneCollisionAlgorithm,
         },
         narrowphase::persistent_manifold::{ContactAddedCallback, PersistentManifold},
@@ -277,7 +277,7 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
         let normal_world_on_b = -self.convex_obj.world_trans.transform_vector3a(result.axis);
         let distance = -(result.penetration + self.box_shape.get_margin());
         self.manifold.add_contact_point(
-            self.convex_obj.object,
+            self.convex_obj.obj,
             self.tri_obj,
             normal_world_on_b,
             contact_point_world,
@@ -315,7 +315,7 @@ impl<T: ContactAddedCallback> CompoundCollisionAlgorithm<'_, T> {
         }
 
         let compound_obj_wrap = RigidBodyWrapper {
-            object: self.compound_obj,
+            obj: self.compound_obj,
             world_trans: new_child_world_trans,
         };
 

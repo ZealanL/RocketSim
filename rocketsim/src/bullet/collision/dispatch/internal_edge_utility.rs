@@ -25,14 +25,14 @@ fn get_angle(edge_a: Vec3A, normal_a: Vec3A, normal_b: Vec3A) -> f32 {
 }
 
 struct ConnectivityProcessor<'a> {
-    index: usize,
+    idx: usize,
     shape: &'a TriangleShape,
     info_map: &'a mut TriangleInfoMap,
 }
 
 impl ProcessTriangle for ConnectivityProcessor<'_> {
     fn process_triangle(&mut self, tri: &TriangleShape, _tri_aabb: &Aabb, triangle_idx: usize) {
-        if self.index == triangle_idx
+        if self.idx == triangle_idx
             || tri.normal_length < TriangleInfoMap::EQUAL_VERTEX_THRESHOLD
             || self.shape.normal_length < TriangleInfoMap::EQUAL_VERTEX_THRESHOLD
         {
@@ -64,7 +64,7 @@ impl ProcessTriangle for ConnectivityProcessor<'_> {
                 mem::swap(a, b);
             }
 
-            let info = &mut self.info_map[self.index];
+            let info = &mut self.info_map[self.idx];
             let sum_verts_a = shared_verts_a[0] + shared_verts_a[1];
             let other_idx_a = 3 - sum_verts_a;
 
@@ -162,7 +162,7 @@ pub fn generate_internal_edge_info(bvh: &Tree, mesh_interface: &TriangleMesh) ->
     let (tris, aabbs) = mesh_interface.get_tris_aabbs();
     for (i, (triangle_a, aabb)) in tris.iter().zip(aabbs).enumerate() {
         let mut connectivity_processor = ConnectivityProcessor {
-            index: i,
+            idx: i,
             shape: triangle_a,
             info_map: &mut triangle_info_map,
         };
@@ -216,15 +216,15 @@ enum BestEdge {
 pub fn adjust_internal_edge_contacts(
     cp: &mut ManifoldPoint,
     tri_mesh_col_obj: &RigidBody,
-    index: usize,
+    idx: usize,
 ) {
     let CollisionShapes::TriangleMesh(tri_mesh) = tri_mesh_col_obj.get_collision_shape() else {
         return;
     };
 
-    let info = &tri_mesh.get_triangle_info_map()[index];
+    let info = &tri_mesh.get_triangle_info_map()[idx];
 
-    let tri = tri_mesh.get_mesh_interface().get_triangle(index);
+    let tri = tri_mesh.get_mesh_interface().get_triangle(idx);
     let nearest = nearst_point_in_line_segment(cp.local_point_b, tri.points[0], tri.points[1]);
     let contact = cp.local_point_b;
 

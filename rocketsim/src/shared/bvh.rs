@@ -26,8 +26,8 @@ impl ProcessNode for SimpleNodeProcessor {
     }
 }
 
-pub trait ProcessRayNode {
-    fn process_node(&mut self, leaf_idx: usize, active_mask: u8, lambda_max: &mut Vec4);
+pub trait ProcessRayPacketNode {
+    fn process_packet_node(&mut self, leaf_idx: usize, active_mask: u8, lambda_max: &mut Vec4);
 }
 
 #[derive(Debug, Default, Clone)]
@@ -273,7 +273,7 @@ impl Tree {
         }
     }
 
-    fn walk_stackless_tree_against_ray_packet<T: ProcessRayNode>(
+    fn walk_stackless_tree_against_ray_packet<T: ProcessRayPacketNode>(
         &self,
         node_callback: &mut T,
         ray_info: &mut RayPacketInfo,
@@ -298,7 +298,7 @@ impl Tree {
                         );
 
                         if mask != 0 {
-                            node_callback.process_node(leaf_idx, mask, &mut ray_info.lambda_max);
+                            node_callback.process_packet_node(leaf_idx, mask, &mut ray_info.lambda_max);
                         }
                     }
                     cur_idx += 1;
@@ -310,7 +310,7 @@ impl Tree {
         }
     }
 
-    pub fn report_ray_packet_overlapping_node<T: ProcessRayNode>(
+    pub fn report_ray_packet_overlapping_node<T: ProcessRayPacketNode>(
         &self,
         node_callback: &mut T,
         ray_info: &mut RayPacketInfo,

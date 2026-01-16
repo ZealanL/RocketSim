@@ -1,5 +1,5 @@
 use crate::bullet::collision::shapes::{
-    triangle_callback::{ProcessRayTriangle, ProcessTriangle},
+    triangle_callback::{ProcessRayPacketTriangle, ProcessTriangle},
     triangle_mesh::TriangleMesh,
     triangle_shape::TriangleShape,
 };
@@ -35,12 +35,12 @@ impl<T: ProcessTriangle> ProcessNode for NodeOverlapCallback<'_, T> {
     }
 }
 
-pub struct RayNodeOverlapCallback<'a, T: ProcessRayTriangle> {
+pub struct RayPacketNodeOverlapCallback<'a, T: ProcessRayPacketTriangle> {
     tris: &'a [TriangleShape],
     callback: &'a mut T,
 }
 
-impl<'a, T: ProcessRayTriangle> RayNodeOverlapCallback<'a, T> {
+impl<'a, T: ProcessRayPacketTriangle> RayPacketNodeOverlapCallback<'a, T> {
     pub fn new(mesh_interface: &'a TriangleMesh, callback: &'a mut T) -> Self {
         let (tris, _) = mesh_interface.get_tris_aabbs();
 
@@ -48,9 +48,9 @@ impl<'a, T: ProcessRayTriangle> RayNodeOverlapCallback<'a, T> {
     }
 }
 
-impl<T: ProcessRayTriangle> ProcessRayNode for RayNodeOverlapCallback<'_, T> {
-    fn process_node(&mut self, triangle_idx: usize, active_mask: u8, lambda_max: &mut Vec4) {
+impl<T: ProcessRayPacketTriangle> ProcessRayPacketNode for RayPacketNodeOverlapCallback<'_, T> {
+    fn process_packet_node(&mut self, triangle_idx: usize, active_mask: u8, lambda_max: &mut Vec4) {
         self.callback
-            .process_node(&self.tris[triangle_idx], active_mask, lambda_max);
+            .process_packet_node(&self.tris[triangle_idx], active_mask, lambda_max);
     }
 }

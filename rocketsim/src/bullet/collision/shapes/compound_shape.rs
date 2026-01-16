@@ -2,7 +2,7 @@ use glam::{Affine3A, Vec3A};
 
 use super::box_shape::BoxShape;
 use crate::bullet::{
-    collision::dispatch::ray_callbacks::{BridgeTriangleRaycastPacketCallback, RayResultCallback},
+    collision::dispatch::ray_packet_callbacks::{BridgeTriangleRaycastPacketCallback, RayResultCallback},
 };
 use crate::shared::{Aabb, RayPacketInfo};
 

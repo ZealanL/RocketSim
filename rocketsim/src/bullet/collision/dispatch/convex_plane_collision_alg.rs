@@ -2,7 +2,7 @@ use glam::Affine3A;
 
 use crate::bullet::collision::{
     broadphase::CollisionAlgorithm,
-    dispatch::collision_object_wrapper::RigidBodyWrapper,
+    dispatch::collision_obj_wrapper::RigidBodyWrapper,
     narrowphase::persistent_manifold::{ContactAddedCallback, PersistentManifold},
     shapes::static_plane_shape::StaticPlaneShape,
 };
@@ -36,7 +36,7 @@ impl<'a, T: ContactAddedCallback> ConvexPlaneCollisionAlgorithm<'a, T> {
 
 impl<T: ContactAddedCallback> CollisionAlgorithm for ConvexPlaneCollisionAlgorithm<'_, T> {
     fn process_collision(self) -> Option<PersistentManifold> {
-        let col_shape = self.convex_obj.object.get_collision_shape();
+        let col_shape = self.convex_obj.obj.get_collision_shape();
         let convex_aabb = col_shape.get_aabb(&self.convex_obj.world_trans);
         if !convex_aabb.intersects(&self.plane_shape.aabb_cache) {
             return None;
@@ -57,7 +57,7 @@ impl<T: ContactAddedCallback> CollisionAlgorithm for ConvexPlaneCollisionAlgorit
         let distance = plane_normal.dot(vtx_in_plane);
 
         let mut manifold =
-            PersistentManifold::new(self.convex_obj.object, self.plane_obj, self.is_swapped);
+            PersistentManifold::new(self.convex_obj.obj, self.plane_obj, self.is_swapped);
         if distance >= manifold.contact_breaking_threshold {
             return None;
         }
@@ -70,7 +70,7 @@ impl<T: ContactAddedCallback> CollisionAlgorithm for ConvexPlaneCollisionAlgorit
         let normal_on_surface_b = self.plane_obj.get_world_trans().matrix3 * plane_normal;
 
         manifold.add_contact_point(
-            self.convex_obj.object,
+            self.convex_obj.obj,
             self.plane_obj,
             normal_on_surface_b,
             vtx_in_plane_world,
@@ -80,7 +80,7 @@ impl<T: ContactAddedCallback> CollisionAlgorithm for ConvexPlaneCollisionAlgorit
             self.contact_added_callback,
         );
 
-        manifold.refresh_contact_points(self.convex_obj.object, self.plane_obj);
+        manifold.refresh_contact_points(self.convex_obj.obj, self.plane_obj);
         Some(manifold)
     }
 }

@@ -8,7 +8,7 @@ use super::{
 };
 use crate::bullet::{
     collision::{
-        dispatch::ray_callbacks::{BridgeTriangleRaycastPacketCallback, RayResultCallback},
+        dispatch::ray_packet_callbacks::{BridgeTriangleRaycastPacketCallback, RayResultCallback},
         shapes::sphere_shape::SPHERE_RADIUS_MARGIN,
     },
 };
@@ -22,7 +22,7 @@ pub enum CollisionShapes {
 }
 
 #[cfg(debug_assertions)]
-fn fast_compare_transs(a: &Affine3A, b: &Affine3A) -> bool {
+fn fast_compare_trans(a: &Affine3A, b: &Affine3A) -> bool {
     a.translation == b.translation
         && a.matrix3.x_axis == b.matrix3.x_axis
         && a.matrix3.y_axis == b.matrix3.y_axis
@@ -35,12 +35,12 @@ impl CollisionShapes {
             Self::Compound(shape) => shape.get_aabb(t),
             Self::StaticPlane(shape) => {
                 #[cfg(debug_assertions)]
-                debug_assert!(fast_compare_transs(t, &shape.aabb_cache_trans));
+                debug_assert!(fast_compare_trans(t, &shape.aabb_cache_trans));
                 shape.aabb_cache
             }
             Self::TriangleMesh(shape) => {
                 #[cfg(debug_assertions)]
-                debug_assert!(fast_compare_transs(t, &Affine3A::IDENTITY));
+                debug_assert!(fast_compare_trans(t, &Affine3A::IDENTITY));
                 shape.aabb_ident_cache
             }
         }
@@ -106,7 +106,7 @@ impl CollisionShapes {
                 plane.perform_raycast(result_callback, ray_info);
             }
             Self::TriangleMesh(mesh) => {
-                mesh.perform_raycast(result_callback, ray_info);
+                mesh.perform_ray_packet_cast(result_callback, ray_info);
             }
         }
     }

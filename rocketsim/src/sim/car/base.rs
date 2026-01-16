@@ -291,7 +291,7 @@ impl Car {
         let car_ang_vel = rb.ang_vel;
 
         for wheel in &mut self.bullet_vehicle.wheels {
-            if wheel.wheel_info.raycast_info.ground_object.is_none() {
+            if wheel.wheel_info.raycast_info.ground_obj.is_none() {
                 continue;
             }
 

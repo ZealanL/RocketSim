@@ -4,7 +4,7 @@ use super::collision_dispatcher::CollisionDispatcher;
 use crate::bullet::{
     collision::{
         broadphase::GridBroadphase,
-        dispatch::ray_callbacks::{
+        dispatch::ray_packet_callbacks::{
             BridgeTriangleRaycastPacketCallback, QuadRayCallback, RayResultCallback,
         },
         narrowphase::persistent_manifold::{CONTACT_BREAKING_THRESHOLD, ContactAddedCallback},
@@ -15,7 +15,7 @@ use crate::bullet::{
 use crate::shared::RayPacketInfo;
 
 pub struct CollisionWorld {
-    pub collision_objects: Vec<RigidBody>,
+    pub collision_objs: Vec<RigidBody>,
     pub dispatcher1: CollisionDispatcher,
     pub(crate) broadphase_pair_cache: GridBroadphase,
     num_skippable_statics: usize,
@@ -24,22 +24,22 @@ pub struct CollisionWorld {
 impl CollisionWorld {
     pub const fn new(dispatcher: CollisionDispatcher, pair_cache: GridBroadphase) -> Self {
         Self {
-            collision_objects: Vec::new(),
+            collision_objs: Vec::new(),
             dispatcher1: dispatcher,
             broadphase_pair_cache: pair_cache,
             num_skippable_statics: 0,
         }
     }
 
-    pub fn add_collision_object(
+    pub fn add_collision_obj(
         &mut self,
-        mut object: RigidBody,
+        mut obj: RigidBody,
         filter_group: u8,
         filter_mask: u8,
     ) -> usize {
         {
-            let obj = &mut object;
-            obj.world_array_idx = self.collision_objects.len();
+            let obj = &mut obj;
+            obj.world_array_idx = self.collision_objs.len();
 
             let trans = obj.get_world_trans();
             let aabb = obj.get_collision_shape().get_aabb(trans);
@@ -51,10 +51,10 @@ impl CollisionWorld {
             obj.set_broadphase_handle(proxy);
         }
 
-        let index = self.collision_objects.len();
-        self.collision_objects.push(object);
+        let idx = self.collision_objs.len();
+        self.collision_objs.push(obj);
 
-        index
+        idx
     }
 
     fn update_aabbs(&mut self) {
@@ -62,7 +62,7 @@ impl CollisionWorld {
 
         let mut prev_is_static = true;
         for (i, rb) in self
-            .collision_objects
+            .collision_objs
             .iter()
             .enumerate()
             .skip(self.num_skippable_statics)
@@ -70,7 +70,7 @@ impl CollisionWorld {
             let col_obj = &rb;
             debug_assert_eq!(col_obj.world_array_idx, i);
 
-            if prev_is_static && col_obj.is_static_object() {
+            if prev_is_static && col_obj.is_static_obj() {
                 // static objects only need their aabbs set the first time
                 self.num_skippable_statics += 1;
             } else {
@@ -84,7 +84,7 @@ impl CollisionWorld {
             aabb.min -= CBT;
             aabb.max += CBT;
 
-            if !col_obj.is_static_object() {
+            if !col_obj.is_static_obj() {
                 let mut aabb2 = col_obj
                     .get_collision_shape()
                     .get_aabb(&col_obj.interp_world_trans);
@@ -94,7 +94,7 @@ impl CollisionWorld {
             }
 
             debug_assert!(
-                col_obj.is_static_object() || (aabb.max - aabb.min).length_squared() < 1e12
+                col_obj.is_static_obj() || (aabb.max - aabb.min).length_squared() < 1e12
             );
             self.broadphase_pair_cache.set_aabb(
                 col_obj,
@@ -112,7 +112,7 @@ impl CollisionWorld {
 
         self.broadphase_pair_cache.calculate_overlapping_pairs();
         self.dispatcher1.dispatch_all_collision_pairs(
-            &self.collision_objects,
+            &self.collision_objs,
             &mut self.broadphase_pair_cache,
             contact_added_callback,
         );
@@ -122,7 +122,7 @@ impl CollisionWorld {
         ray_from: &[Vec3A; 4],
         ray_to: &[Vec3A; 4],
         co: &RigidBody,
-        object_idx: usize,
+        obj_idx: usize,
         result_callback: &mut T,
     ) {
         let world_to_co = co.get_world_trans().transpose();
@@ -145,8 +145,8 @@ impl CollisionWorld {
             from: &ray_from_local,
             to: &ray_to_local,
             hit_fraction: result_callback.get_base().closest_hit_fraction,
-            collision_object: co,
-            collision_object_idx: object_idx,
+            collision_obj: co,
+            collision_obj_idx: obj_idx,
             result_callback,
         };
 

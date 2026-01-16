@@ -1,12 +1,12 @@
 mod box_box_detector;
 pub mod collision_dispatcher;
-mod collision_object_wrapper;
+mod collision_obj_wrapper;
 pub mod collision_world;
 mod compound_collision_alg;
 mod convex_concave_collision_alg;
 mod convex_plane_collision_alg;
 pub mod internal_edge_utility;
 mod obb_obb_collision_alg;
-pub mod ray_callbacks;
+pub mod ray_packet_callbacks;
 mod sphere_obb_collision_alg;
 pub mod tri_bvh_util;

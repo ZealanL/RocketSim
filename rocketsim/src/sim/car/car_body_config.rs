@@ -86,19 +86,19 @@ impl Default for CarBodyConfig {
 }
 
 impl CarBodyConfig {
-    const fn make_car_config(index: usize, three_wheels: bool) -> Self {
+    const fn make_car_config(idx: usize, three_wheels: bool) -> Self {
         Self {
-            hitbox_size: HITBOX_SIZES[index],
-            hitbox_pos_offset: HITBOX_OFFSETS[index],
+            hitbox_size: HITBOX_SIZES[idx],
+            hitbox_pos_offset: HITBOX_OFFSETS[idx],
             front_wheels: WheelPairConfig {
-                wheel_radius: FRONT_WHEEL_RADS[index],
-                suspension_rest_length: FRONT_WHEEL_SUS_REST[index],
-                connection_point_offset: FRONT_WHEELS_OFFSET[index],
+                wheel_radius: FRONT_WHEEL_RADS[idx],
+                suspension_rest_length: FRONT_WHEEL_SUS_REST[idx],
+                connection_point_offset: FRONT_WHEELS_OFFSET[idx],
             },
             back_wheels: WheelPairConfig {
-                wheel_radius: BACK_WHEEL_RADS[index],
-                suspension_rest_length: BACK_WHEEL_SUS_REST[index],
-                connection_point_offset: BACK_WHEELS_OFFSET[index],
+                wheel_radius: BACK_WHEEL_RADS[idx],
+                suspension_rest_length: BACK_WHEEL_SUS_REST[idx],
+                connection_point_offset: BACK_WHEELS_OFFSET[idx],
             },
             three_wheels,
             dodge_deadzone: 0.5,

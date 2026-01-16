@@ -8,7 +8,7 @@ pub enum CollisionFilterGroups {
 
 pub struct BroadphaseProxy {
     /// The index of the client `RigidBody` in `CollisionWorld`
-    pub client_object_idx: usize,
+    pub client_obj_idx: usize,
     pub collision_filter_group: u8,
     pub collision_filter_mask: u8,
     pub unique_id: u32,

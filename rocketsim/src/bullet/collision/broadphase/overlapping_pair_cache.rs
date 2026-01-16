@@ -93,14 +93,14 @@ impl HashedOverlappingPairCache {
 
     pub fn process_all_overlapping_pairs<T: ContactAddedCallback>(
         &mut self,
-        collision_objects: &[RigidBody],
+        collision_objs: &[RigidBody],
         dispatcher: &mut CollisionDispatcher,
         handles: &[GridBroadphaseProxy],
         contact_added_callback: &mut T,
     ) {
         for pair in &self.overlapping_pair_array {
             dispatcher.near_callback(
-                collision_objects,
+                collision_objs,
                 &handles[pair.proxy0],
                 &handles[pair.proxy1],
                 contact_added_callback,

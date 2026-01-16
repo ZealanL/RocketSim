@@ -91,7 +91,7 @@ impl WheelInfoRL {
         let source = self.wheel_info.raycast_info.hard_point_ws;
         let target = source + (self.wheel_info.raycast_info.wheel_direction_ws * real_ray_length);
         self.wheel_info.raycast_info.contact_point_ws = target;
-        self.wheel_info.raycast_info.ground_object = None;
+        self.wheel_info.raycast_info.ground_obj = None;
 
         (source, target, suspension_travel)
     }
@@ -117,9 +117,9 @@ impl WheelInfoRL {
         self.wheel_info.raycast_info.contact_point_ws = ray_results.hit_point_in_world;
         self.wheel_info.raycast_info.contact_normal_ws = ray_results.hit_normal_in_world;
         self.wheel_info.raycast_info.is_in_contact = true;
-        self.is_in_contact_with_world = co.is_static_object();
+        self.is_in_contact_with_world = co.is_static_obj();
 
-        self.wheel_info.raycast_info.ground_object = Some(co.world_array_idx);
+        self.wheel_info.raycast_info.ground_obj = Some(co.world_array_idx);
 
         let up = chassis.get_world_trans().matrix3.z_axis;
         let wheel_trace_len_sq = (self.wheel_info.raycast_info.hard_point_ws
@@ -184,7 +184,7 @@ impl WheelInfoRL {
         friction_scale: f32,
         time_step: f32,
     ) {
-        let Some(ground_rb_idx) = self.wheel_info.raycast_info.ground_object else {
+        let Some(ground_rb_idx) = self.wheel_info.raycast_info.ground_obj else {
             self.impulse = Vec3A::ZERO;
             return;
         };

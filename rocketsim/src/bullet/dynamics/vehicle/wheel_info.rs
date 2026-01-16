@@ -18,7 +18,7 @@ pub struct RaycastInfo {
     pub wheel_direction_ws: Vec3A,
     pub wheel_axle_ws: Vec3A,
     pub is_in_contact: bool,
-    pub ground_object: Option<usize>,
+    pub ground_obj: Option<usize>,
 }
 
 pub struct WheelInfo {

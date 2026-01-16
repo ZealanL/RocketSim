@@ -13,7 +13,7 @@ use crate::bullet::{
 };
 
 struct SpecialResolveInfo {
-    pub object_idx: usize,
+    pub obj_idx: usize,
     pub num_special_collisions: u16,
     pub total_normal: Vec3A,
     pub total_dist: f32,
@@ -23,7 +23,7 @@ struct SpecialResolveInfo {
 
 impl SpecialResolveInfo {
     pub const DEFAULT: Self = Self {
-        object_idx: 0,
+        obj_idx: 0,
         num_special_collisions: 0,
         total_normal: Vec3A::ZERO,
         total_dist: 0.0,
@@ -40,8 +40,8 @@ impl SpecialResolveInfo {
         rel_pos2: Vec3A,
     ) {
         for (obj, rel_pos) in [(&body0, rel_pos1), (&body1, rel_pos2)] {
-            if !obj.is_static_object() {
-                self.object_idx = obj.world_array_idx;
+            if !obj.is_static_obj() {
+                self.obj_idx = obj.world_array_idx;
                 self.num_special_collisions += 1;
                 self.friction = cp.combined_friction;
                 self.restitution = cp.combined_restitution;
@@ -80,7 +80,7 @@ impl SeqImpulseConstraintSolver {
             return companion_id;
         }
 
-        if !rb.is_static_object() && rb.inverse_mass != 0.0 {
+        if !rb.is_static_obj() && rb.inverse_mass != 0.0 {
             let solver_body_id = self.tmp_solver_body_pool.len();
             rb.companion_id = Some(solver_body_id);
 
@@ -103,31 +103,31 @@ impl SeqImpulseConstraintSolver {
 
     pub fn solve_group(
         &mut self,
-        collision_objects: &mut [RigidBody],
+        collision_objs: &mut [RigidBody],
         non_static_bodies: &[usize],
         manifolds: &mut Vec<PersistentManifold>,
         time_step: f32,
     ) {
-        self.solve_group_setup(collision_objects, non_static_bodies, manifolds, time_step);
+        self.solve_group_setup(collision_objs, non_static_bodies, manifolds, time_step);
         self.solve_group_iterations();
-        self.solve_group_finish(collision_objects, time_step);
+        self.solve_group_finish(collision_objs, time_step);
     }
 
     fn solve_group_setup(
         &mut self,
-        collision_objects: &mut [RigidBody],
+        collision_objs: &mut [RigidBody],
         non_static_bodies: &[usize],
         manifolds: &mut Vec<PersistentManifold>,
         time_step: f32,
     ) {
-        self.setup_solver_bodies(collision_objects, non_static_bodies, time_step);
+        self.setup_solver_bodies(collision_objs, non_static_bodies, time_step);
 
         for manifold in manifolds.iter_mut() {
-            debug_assert!(manifold.body0_idx < collision_objects.len());
-            debug_assert!(manifold.body1_idx < collision_objects.len());
+            debug_assert!(manifold.body0_idx < collision_objs.len());
+            debug_assert!(manifold.body1_idx < collision_objs.len());
             debug_assert_ne!(manifold.body0_idx, manifold.body1_idx);
             let [body0, body1] = unsafe {
-                collision_objects
+                collision_objs
                     .get_disjoint_unchecked_mut([manifold.body0_idx, manifold.body1_idx])
             };
 
@@ -193,7 +193,7 @@ impl SeqImpulseConstraintSolver {
         manifolds.clear();
 
         if self.special_resolve_info.num_special_collisions > 0 {
-            let body = &mut collision_objects[self.special_resolve_info.object_idx];
+            let body = &mut collision_objs[self.special_resolve_info.obj_idx];
             self.convert_contact_special(body, time_step);
             self.special_resolve_info = SpecialResolveInfo::DEFAULT;
         }
@@ -201,7 +201,7 @@ impl SeqImpulseConstraintSolver {
 
     fn setup_solver_bodies(
         &mut self,
-        collision_objects: &mut [RigidBody],
+        collision_objs: &mut [RigidBody],
         non_static_bodies: &[usize],
         time_step: f32,
     ) {
@@ -214,12 +214,12 @@ impl SeqImpulseConstraintSolver {
         self.tmp_solver_contact_friction_constraint_pool
             .reserve(non_static_bodies.len() * 2);
 
-        for rb in &mut *collision_objects {
+        for rb in &mut *collision_objs {
             rb.companion_id = None;
         }
 
         for &rb_idx in non_static_bodies {
-            let rb = &mut collision_objects[rb_idx];
+            let rb = &mut collision_objs[rb_idx];
             debug_assert_ne!(rb.inverse_mass, 0.0);
 
             if !rb.is_active() {
@@ -464,10 +464,10 @@ impl SeqImpulseConstraintSolver {
         }
     }
 
-    fn solve_group_finish(&mut self, collision_objects: &mut [RigidBody], time_step: f32) {
+    fn solve_group_finish(&mut self, collision_objs: &mut [RigidBody], time_step: f32) {
         // writeBackBodies
         for solver in &mut self.tmp_solver_body_pool {
-            let Some(body) = solver.original_body.map(|idx| &mut collision_objects[idx]) else {
+            let Some(body) = solver.original_body.map(|idx| &mut collision_objs[idx]) else {
                 continue;
             };
 

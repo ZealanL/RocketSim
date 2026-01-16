@@ -173,7 +173,7 @@ impl RigidBody {
         &self.shape
     }
 
-    pub const fn is_static_object(&self) -> bool {
+    pub const fn is_static_obj(&self) -> bool {
         self.collision_flags & CollisionFlags::StaticObject as u8 != 0
     }
 
@@ -277,7 +277,7 @@ impl RigidBody {
     }
 
     pub fn apply_gravity(&mut self) {
-        debug_assert!(!self.is_static_object());
+        debug_assert!(!self.is_static_obj());
         self.apply_central_force(self.gravity);
     }
 

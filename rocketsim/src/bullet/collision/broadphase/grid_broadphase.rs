@@ -284,7 +284,7 @@ impl GridBroadphase {
     ) -> usize {
         debug_assert!(aabb.min.cmple(aabb.max).all());
 
-        let is_static = co.is_static_object();
+        let is_static = co.is_static_obj();
         let world_idx = co.world_array_idx;
 
         let new_handle_idx = self.handles.len();
@@ -294,7 +294,7 @@ impl GridBroadphase {
         let new_handle = GridBroadphaseProxy {
             broadphase_proxy: BroadphaseProxy {
                 aabb,
-                client_object_idx: world_idx,
+                client_obj_idx: world_idx,
                 collision_filter_group,
                 collision_filter_mask,
                 is_static,
@@ -372,12 +372,12 @@ impl GridBroadphase {
 
     pub fn process_all_overlapping_pairs<T: ContactAddedCallback>(
         &mut self,
-        collision_objects: &[RigidBody],
+        collision_objs: &[RigidBody],
         dispatcher: &mut CollisionDispatcher,
         contact_added_callback: &mut T,
     ) {
         self.pair_cache.process_all_overlapping_pairs(
-            collision_objects,
+            collision_objs,
             dispatcher,
             &self.handles,
             contact_added_callback,

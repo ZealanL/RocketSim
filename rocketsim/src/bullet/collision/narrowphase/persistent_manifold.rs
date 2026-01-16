@@ -54,7 +54,7 @@ impl PersistentManifold {
     }
 
     fn calculate_combined_friction(body0: &RigidBody, body1: &RigidBody) -> f32 {
-        if body0.is_static_object() || body1.is_static_object() {
+        if body0.is_static_obj() || body1.is_static_obj() {
             body0.friction.min(body1.friction)
         } else {
             body0.friction * body1.friction
@@ -62,7 +62,7 @@ impl PersistentManifold {
     }
 
     fn calculate_combined_restitution(body0: &RigidBody, body1: &RigidBody) -> f32 {
-        if body0.is_static_object() || body1.is_static_object() {
+        if body0.is_static_obj() || body1.is_static_obj() {
             body0.restitution.max(body1.restitution)
         } else {
             body0.restitution * body1.restitution
@@ -165,9 +165,9 @@ impl PersistentManifold {
     fn add_manifold_point(&mut self, contact: ManifoldPoint) -> usize {
         let num_points = self.point_cache.len();
         if num_points == MANIFOLD_CACHE_SIZE {
-            let index = self.sort_cached_points(&contact);
-            self.point_cache[index] = contact;
-            index
+            let idx = self.sort_cached_points(&contact);
+            self.point_cache[idx] = contact;
+            idx
         } else {
             self.point_cache.push(contact);
             num_points
@@ -182,8 +182,8 @@ impl PersistentManifold {
         normal_on_b_in_world: Vec3A,
         point_in_world: Vec3A,
         depth: f32,
-        index_0: i32,
-        index_1: i32,
+        idx_0: i32,
+        idx_1: i32,
         contact_added_callback: &mut T,
     ) {
         if depth > self.contact_breaking_threshold {
@@ -207,11 +207,11 @@ impl PersistentManifold {
             plane_space_2(new_pt.normal_world_on_b);
 
         if self.is_swapped {
-            new_pt.index_0 = index_1;
-            new_pt.index_1 = index_0;
+            new_pt.idx_0 = idx_1;
+            new_pt.idx_1 = idx_0;
         } else {
-            new_pt.index_0 = index_0;
-            new_pt.index_1 = index_1;
+            new_pt.idx_0 = idx_0;
+            new_pt.idx_1 = idx_1;
         }
 
         let insert_idx = self.add_manifold_point(new_pt);
