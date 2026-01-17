@@ -8,5 +8,10 @@ pub trait ProcessTriangle {
 }
 
 pub trait ProcessRayPacketTriangle {
-    fn process_packet_node(&mut self, triangle: &TriangleShape, active_mask: u8, lambda_max: &mut Vec4);
+    fn process_packet_node(
+        &mut self,
+        triangle: &TriangleShape,
+        active_mask: u8,
+        lambda_max: &mut Vec4,
+    );
 }

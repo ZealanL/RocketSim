@@ -223,7 +223,12 @@ impl<T: RayResultCallback> BridgeTriangleRaycastPacketCallback<'_, T> {
 }
 
 impl<T: RayResultCallback> ProcessRayPacketTriangle for BridgeTriangleRaycastPacketCallback<'_, T> {
-    fn process_packet_node(&mut self, triangle: &TriangleShape, active_mask: u8, lambda_max: &mut Vec4) {
+    fn process_packet_node(
+        &mut self,
+        triangle: &TriangleShape,
+        active_mask: u8,
+        lambda_max: &mut Vec4,
+    ) {
         for i in 0..4 {
             if (active_mask & (1 << i)) != 0 {
                 self.process_triangle(triangle, &mut lambda_max[i], i);

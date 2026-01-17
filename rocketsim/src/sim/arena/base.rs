@@ -1,24 +1,32 @@
 use super::ArenaContactTracker;
+use crate::bullet::dynamics::rigid_body::ActivationState;
+use crate::consts::{TICK_RATE, TICK_TIME};
+use crate::sim::{Ball, BoostPad};
+use crate::{
+    ARENA_COLLISION_SHAPES, ArenaConfig, ArenaMemWeightMode, BoostPadConfig, BoostPadGrid,
+    BoostPadState, Car, CarBodyConfig, CarControls, CarInfo, CarState, GameMode, MutatorConfig,
+    PhysState, Team,
+    bullet::{
+        collision::{
+            broadphase::{GridBroadphase, HashedOverlappingPairCache},
+            dispatch::collision_dispatcher::CollisionDispatcher,
+            narrowphase::manifold_point::ManifoldPoint,
+            shapes::{collision_shape::CollisionShapes, static_plane_shape::StaticPlaneShape},
+        },
+        dynamics::{
+            constraint_solver::seq_impulse_constraint_solver::SeqImpulseConstraintSolver,
+            discrete_dynamics_world::DiscreteDynamicsWorld,
+            rigid_body::{RigidBody, RigidBodyConstructionInfo},
+        },
+    },
+    consts,
+    consts::{BT_TO_UU, UU_TO_BT},
+    sim::{BallState, CarContact, DemoMode, UserInfoTypes, collision_masks::CollisionMasks},
+};
 use arrayvec::ArrayVec;
 use fastrand::Rng;
 use glam::{Affine3A, EulerRot, Mat3A, Vec3A};
 use std::{f32::consts::PI, iter::repeat_n, mem};
-use crate::bullet::dynamics::rigid_body::ActivationState;
-use crate::consts::{TICK_RATE, TICK_TIME};
-use crate::sim::{Ball, BoostPad};
-use crate::{ARENA_COLLISION_SHAPES, ArenaConfig, ArenaMemWeightMode, BoostPadConfig, BoostPadGrid, BoostPadState, Car, CarBodyConfig, CarInfo, CarState, GameMode, MutatorConfig, PhysState, Team, bullet::{
-    collision::{
-        broadphase::{GridBroadphase, HashedOverlappingPairCache},
-        dispatch::collision_dispatcher::CollisionDispatcher,
-        narrowphase::manifold_point::ManifoldPoint,
-        shapes::{collision_shape::CollisionShapes, static_plane_shape::StaticPlaneShape},
-    },
-    dynamics::{
-        constraint_solver::seq_impulse_constraint_solver::SeqImpulseConstraintSolver,
-        discrete_dynamics_world::DiscreteDynamicsWorld,
-        rigid_body::{RigidBody, RigidBodyConstructionInfo},
-    },
-}, consts, consts::{BT_TO_UU, UU_TO_BT}, sim::{BallState, CarContact, DemoMode, UserInfoTypes, collision_masks::CollisionMasks}, CarControls};
 
 impl Arena {
     fn on_car_ball_collision(
@@ -690,7 +698,6 @@ impl Arena {
     pub fn get_car_controls(&self, car_idx: usize) -> &CarControls {
         &self.cars[car_idx].state.controls
     }
-
 
     pub fn get_car_info_and_state(&self, car_idx: usize) -> (&CarInfo, &CarState) {
         let car = &self.cars[car_idx];

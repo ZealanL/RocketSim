@@ -22,21 +22,17 @@ impl BoxShape {
 
     #[inline]
     pub fn get_half_extents(&self) -> Vec3A {
-        self.internal_shape
-            .implicit_dim
+        self.internal_shape.implicit_dim
     }
 
     pub fn get_margin(&self) -> f32 {
-        self.internal_shape
-            .margin
+        self.internal_shape.margin
     }
 
     pub fn get_aabb(&self, t: &Affine3A) -> Aabb {
         Aabb::from_half_extents_transform(
-            self.internal_shape
-                .implicit_dim,
-            self.internal_shape
-                .margin,
+            self.internal_shape.implicit_dim,
+            self.internal_shape.margin,
             t,
         )
     }

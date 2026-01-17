@@ -127,8 +127,7 @@ impl SeqImpulseConstraintSolver {
             debug_assert!(manifold.body1_idx < collision_objs.len());
             debug_assert_ne!(manifold.body0_idx, manifold.body1_idx);
             let [body0, body1] = unsafe {
-                collision_objs
-                    .get_disjoint_unchecked_mut([manifold.body0_idx, manifold.body1_idx])
+                collision_objs.get_disjoint_unchecked_mut([manifold.body0_idx, manifold.body1_idx])
             };
 
             let solver_body_id_a = self.get_or_init_solver_body(body0, time_step);

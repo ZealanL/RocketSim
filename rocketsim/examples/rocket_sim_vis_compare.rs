@@ -3,9 +3,7 @@ use serde::Serialize;
 use std::net::UdpSocket;
 use std::time::Duration;
 
-use rocketsim::{
-    Arena, CarBodyConfig, CarControls, GameMode, PhysState, Team, init_from_default,
-};
+use rocketsim::{Arena, CarBodyConfig, CarControls, GameMode, PhysState, Team, init_from_default};
 
 // TODO: Pretty sure this is bad practice
 #[path = "../tests/comparison_test/state_convert.rs"]

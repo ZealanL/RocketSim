@@ -1,8 +1,8 @@
 use std::iter::repeat_n;
 use std::mem;
 
-use glam::{Vec3A, Vec4};
 use crate::shared::{Aabb, RayPacketInfo};
+use glam::{Vec3A, Vec4};
 
 pub trait ProcessNode {
     fn process_node(&mut self, leaf_idx: usize);
@@ -298,7 +298,11 @@ impl Tree {
                         );
 
                         if mask != 0 {
-                            node_callback.process_packet_node(leaf_idx, mask, &mut ray_info.lambda_max);
+                            node_callback.process_packet_node(
+                                leaf_idx,
+                                mask,
+                                &mut ray_info.lambda_max,
+                            );
                         }
                     }
                     cur_idx += 1;

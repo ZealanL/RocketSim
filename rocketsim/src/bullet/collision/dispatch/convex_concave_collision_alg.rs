@@ -4,7 +4,6 @@ use crate::bullet::dynamics::rigid_body::RigidBody;
 
 use crate::bullet::{
     collision::{
-        broadphase::CollisionAlgorithm,
         narrowphase::persistent_manifold::{ContactAddedCallback, PersistentManifold},
         shapes::{
             bvh_triangle_mesh_shape::BvhTriangleMeshShape, sphere_shape::SphereShape,
@@ -81,64 +80,39 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
     }
 }
 
-pub struct ConvexConcaveCollisionAlgorithm<'a, T: ContactAddedCallback> {
-    convex_obj: &'a RigidBody,
-    sphere_shape: &'a SphereShape,
-    concave_obj: &'a RigidBody,
-    tri_mesh: &'a BvhTriangleMeshShape,
+pub fn process_collision<T: ContactAddedCallback>(
+    convex_obj: &RigidBody,
+    sphere_shape: &SphereShape,
+    concave_obj: &RigidBody,
+    tri_mesh: &BvhTriangleMeshShape,
     is_swapped: bool,
-    contact_added_callback: &'a mut T,
-}
+    contact_added_callback: &mut T,
+) -> Option<PersistentManifold> {
+    let xform1 = convex_obj.get_world_trans();
+    let xform2 = concave_obj.get_world_trans().transpose();
+    let convex_in_triangle_space = Affine3A {
+        matrix3: xform2.matrix3 * xform1.matrix3,
+        translation: xform2.transform_point3a(xform1.translation),
+    };
 
-impl<'a, T: ContactAddedCallback> ConvexConcaveCollisionAlgorithm<'a, T> {
-    pub const fn new(
-        convex_obj: &'a RigidBody,
-        sphere_shape: &'a SphereShape,
-        concave_obj: &'a RigidBody,
-        tri_mesh: &'a BvhTriangleMeshShape,
-        is_swapped: bool,
-        contact_added_callback: &'a mut T,
-    ) -> Self {
-        Self {
-            convex_obj,
-            sphere_shape,
-            concave_obj,
-            tri_mesh,
-            is_swapped,
-            contact_added_callback,
-        }
-    }
-}
+    let mut convex_triangle_callback = ConvexTriangleCallback::new(
+        convex_obj,
+        concave_obj,
+        convex_in_triangle_space.translation,
+        sphere_shape.get_radius(),
+        is_swapped,
+        contact_added_callback,
+    );
 
-impl<T: ContactAddedCallback> CollisionAlgorithm for ConvexConcaveCollisionAlgorithm<'_, T> {
-    fn process_collision(self) -> Option<PersistentManifold> {
-        let xform1 = self.convex_obj.get_world_trans();
-        let xform2 = self.concave_obj.get_world_trans().transpose();
-        let convex_in_triangle_space = Affine3A {
-            matrix3: xform2.matrix3 * xform1.matrix3,
-            translation: xform2.transform_point3a(xform1.translation),
-        };
+    let aabb = sphere_shape.get_aabb(&convex_in_triangle_space);
+    tri_mesh.process_all_triangles(&mut convex_triangle_callback, &aabb);
 
-        let mut convex_triangle_callback = ConvexTriangleCallback::new(
-            self.convex_obj,
-            self.concave_obj,
-            convex_in_triangle_space.translation,
-            self.sphere_shape.get_radius(),
-            self.is_swapped,
-            self.contact_added_callback,
-        );
-
-        let aabb = self.sphere_shape.get_aabb(&convex_in_triangle_space);
-        self.tri_mesh
-            .process_all_triangles(&mut convex_triangle_callback, &aabb);
-
-        if convex_triangle_callback.manifold.point_cache.is_empty() {
-            None
-        } else {
-            convex_triangle_callback
-                .manifold
-                .refresh_contact_points(self.convex_obj, self.concave_obj);
-            Some(convex_triangle_callback.manifold)
-        }
+    if convex_triangle_callback.manifold.point_cache.is_empty() {
+        None
+    } else {
+        convex_triangle_callback
+            .manifold
+            .refresh_contact_points(convex_obj, concave_obj);
+        Some(convex_triangle_callback.manifold)
     }
 }

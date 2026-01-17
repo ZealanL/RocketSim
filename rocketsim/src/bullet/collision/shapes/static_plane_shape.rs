@@ -1,7 +1,9 @@
 use glam::{Affine3A, Vec3A};
 
 use crate::bullet::{
-    collision::dispatch::ray_packet_callbacks::{BridgeTriangleRaycastPacketCallback, RayResultCallback},
+    collision::dispatch::ray_packet_callbacks::{
+        BridgeTriangleRaycastPacketCallback, RayResultCallback,
+    },
     linear_math::LARGE_FLOAT,
 };
 use crate::shared::{Aabb, RayPacketInfo};
@@ -88,8 +90,12 @@ impl StaticPlaneShape {
         }
 
         let (origins, inv_dirs) = ray_info.calc_pos_dir();
-        let mask =
-            RayPacketInfo::intersect_ray_aabb_packet(&origins, &inv_dirs, plane, result_callback.hit_fraction);
+        let mask = RayPacketInfo::intersect_ray_aabb_packet(
+            &origins,
+            &inv_dirs,
+            plane,
+            result_callback.hit_fraction,
+        );
 
         for i in 0..4 {
             if (mask & (1 << i)) == 0 {

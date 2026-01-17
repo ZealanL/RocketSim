@@ -1,14 +1,11 @@
 use arrayvec::ArrayVec;
 use glam::{Affine3A, Vec3A};
 
+use crate::bullet::collision::dispatch::convex_plane_collision_alg;
 use crate::bullet::dynamics::rigid_body::RigidBody;
 use crate::bullet::{
     collision::{
-        broadphase::CollisionAlgorithm,
-        dispatch::{
-            collision_obj_wrapper::RigidBodyWrapper,
-            convex_plane_collision_alg::ConvexPlaneCollisionAlgorithm,
-        },
+        dispatch::collision_obj_wrapper::RigidBodyWrapper,
         narrowphase::persistent_manifold::{ContactAddedCallback, PersistentManifold},
         shapes::{
             box_shape::BoxShape, collision_shape::CollisionShapes, compound_shape::CompoundShape,
@@ -48,8 +45,6 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
 
         let half_extents = self.box_shape.get_half_extents();
 
-        // Transform stuff to local space
-        // (because colliding a triangle and an AABB is a *lot* simpler)
         let world_to_box = self.convex_obj.world_trans.inverse();
         let tri_to_world = self.tri_obj.get_world_trans();
         let tri_to_box = world_to_box * tri_to_world;
@@ -61,7 +56,6 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
         ];
 
         let tri_edges_rel = [
-            // This is probably faster than transforming all 3 "triangle.edges[]"
             tri_verts_rel[1] - tri_verts_rel[0],
             tri_verts_rel[2] - tri_verts_rel[1],
             tri_verts_rel[0] - tri_verts_rel[2],
@@ -70,7 +64,6 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
         let mut min_penetration = f32::INFINITY;
         let mut best_result: Option<SatResult> = None;
 
-        // Face normal tests
         for i in 0..3 {
             let tri_min = tri_verts_rel[0][i]
                 .min(tri_verts_rel[1][i])
@@ -103,7 +96,6 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
             }
         }
 
-        // Triangle face normal test
         let tri_normal = tri_edges_rel[0].cross(tri_edges_rel[1]);
         if let Some(norm_axis) = tri_normal.try_normalize() {
             let plane_dist = norm_axis.dot(tri_verts_rel[0]);
@@ -128,7 +120,6 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
             }
         }
 
-        // Edge-edge tests
         for box_axis_idx in 0..3 {
             let mut box_axis = Vec3A::ZERO;
             box_axis[box_axis_idx] = 1.0;
@@ -175,7 +166,6 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
             return;
         };
 
-        // Calculate the actual contact point
         let contact_point_local = match result.axis_type {
             AxisType::TriFace => {
                 let tri_centroid = (tri_verts_rel[0] + tri_verts_rel[1] + tri_verts_rel[2]) / 3.0;
@@ -247,9 +237,7 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
                     }
                     deepest_vert
                 } else {
-                    let mean_contact_point =
-                        contact_points.iter().sum::<Vec3A>() / (contact_points.len() as f32);
-                    mean_contact_point
+                    contact_points.iter().sum::<Vec3A>() / (contact_points.len() as f32)
                 }
             }
 
@@ -289,108 +277,70 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
     }
 }
 
-pub struct CompoundCollisionAlgorithm<'a, T: ContactAddedCallback> {
-    compound_obj: &'a RigidBody,
-    compound_shape: &'a CompoundShape,
-    other_obj: &'a RigidBody,
+pub fn process_collision<T: ContactAddedCallback>(
+    compound_obj: &RigidBody,
+    compound_shape: &CompoundShape,
+    other_obj: &RigidBody,
     is_swapped: bool,
-    contact_added_callback: &'a mut T,
-}
+    contact_added_callback: &mut T,
+) -> Option<PersistentManifold> {
+    let org_trans = *compound_obj.get_world_trans();
+    let child_trans = &compound_shape.child_trans;
+    let new_child_world_trans = org_trans * child_trans;
 
-impl<T: ContactAddedCallback> CompoundCollisionAlgorithm<'_, T> {
-    pub fn process_child_shape(&mut self) -> Option<PersistentManifold> {
-        let org_trans = *self.compound_obj.get_world_trans();
+    let box_shape = &compound_shape.child_shape;
+    let aabb1 = box_shape.get_aabb(&new_child_world_trans);
 
-        let child_trans = &self.compound_shape.child_trans;
-        let new_child_world_trans = org_trans * child_trans;
+    let other_col_shape = other_obj.get_collision_shape();
+    let aabb2 = other_col_shape.get_aabb(other_obj.get_world_trans());
 
-        let box_shape = &self.compound_shape.child_shape;
-        let aabb1 = box_shape.get_aabb(&new_child_world_trans);
+    if !aabb1.intersects(&aabb2) {
+        return None;
+    }
 
-        let other_col_shape = self.other_obj.get_collision_shape();
-        let aabb2 = other_col_shape.get_aabb(self.other_obj.get_world_trans());
+    let compound_obj_wrap = RigidBodyWrapper {
+        obj: compound_obj,
+        world_trans: new_child_world_trans,
+    };
 
-        if !aabb1.intersects(&aabb2) {
-            return None;
-        }
+    match other_col_shape {
+        CollisionShapes::TriangleMesh(tri_mesh) => {
+            let xform1 = other_obj.get_world_trans().transpose();
+            let xform2 = new_child_world_trans;
+            let convex_in_triangle_space = Affine3A {
+                matrix3: xform1.matrix3 * xform2.matrix3,
+                translation: xform1.transform_point3a(xform2.translation),
+            };
+            let aabb_in_triangle = box_shape.get_aabb(&convex_in_triangle_space);
 
-        let compound_obj_wrap = RigidBodyWrapper {
-            obj: self.compound_obj,
-            world_trans: new_child_world_trans,
-        };
+            let mut convex_triangle_callback = ConvexTriangleCallback {
+                manifold: PersistentManifold::new(compound_obj, other_obj, is_swapped),
+                convex_obj: compound_obj_wrap,
+                tri_obj: other_obj,
+                local_convex_aabb: &aabb_in_triangle,
+                box_shape,
+                contact_added_callback,
+            };
 
-        match other_col_shape {
-            CollisionShapes::TriangleMesh(tri_mesh) => {
-                let xform1 = self.other_obj.get_world_trans().transpose();
-                let xform2 = new_child_world_trans;
-                let convex_in_triangle_space = Affine3A {
-                    matrix3: xform1.matrix3 * xform2.matrix3,
-                    translation: xform1.transform_point3a(xform2.translation),
-                };
-                let aabb_in_triangle = box_shape.get_aabb(&convex_in_triangle_space);
+            tri_mesh.process_all_triangles(&mut convex_triangle_callback, &aabb_in_triangle);
 
-                let mut convex_triangle_callback = {
-                    ConvexTriangleCallback {
-                        manifold: PersistentManifold::new(
-                            self.compound_obj,
-                            self.other_obj,
-                            self.is_swapped,
-                        ),
-                        convex_obj: compound_obj_wrap,
-                        tri_obj: self.other_obj,
-                        local_convex_aabb: &aabb_in_triangle,
-                        box_shape,
-                        contact_added_callback: self.contact_added_callback,
-                    }
-                };
+            convex_triangle_callback
+                .manifold
+                .refresh_contact_points(compound_obj, other_obj);
 
-                tri_mesh.process_all_triangles(&mut convex_triangle_callback, &aabb_in_triangle);
-
-                convex_triangle_callback
-                    .manifold
-                    .refresh_contact_points(self.compound_obj, self.other_obj);
-                if convex_triangle_callback.manifold.point_cache.is_empty() {
-                    None
-                } else {
-                    Some(convex_triangle_callback.manifold)
-                }
+            if convex_triangle_callback.manifold.point_cache.is_empty() {
+                None
+            } else {
+                Some(convex_triangle_callback.manifold)
             }
-            CollisionShapes::StaticPlane(plane) => ConvexPlaneCollisionAlgorithm::new(
-                compound_obj_wrap,
-                self.other_obj,
-                plane,
-                self.is_swapped,
-                self.contact_added_callback,
-            )
-            .process_collision(),
-
-            // Unimplemented
-            _ => todo!(),
         }
-    }
-}
-
-impl<'a, T: ContactAddedCallback> CompoundCollisionAlgorithm<'a, T> {
-    pub const fn new(
-        compound_obj: &'a RigidBody,
-        compound_shape: &'a CompoundShape,
-        other_obj: &'a RigidBody,
-        is_swapped: bool,
-        contact_added_callback: &'a mut T,
-    ) -> Self {
-        Self {
-            compound_obj,
-            compound_shape,
-            other_obj,
+        CollisionShapes::StaticPlane(plane) => convex_plane_collision_alg::process_collision(
             is_swapped,
+            compound_obj_wrap,
+            other_obj,
+            plane,
             contact_added_callback,
-        }
-    }
-}
-
-impl<T: ContactAddedCallback> CollisionAlgorithm for CompoundCollisionAlgorithm<'_, T> {
-    fn process_collision(mut self) -> Option<PersistentManifold> {
-        self.process_child_shape()
-            .and_then(|manifold| (!manifold.point_cache.is_empty()).then_some(manifold))
+        ),
+        _ => todo!(),
     }
 }
