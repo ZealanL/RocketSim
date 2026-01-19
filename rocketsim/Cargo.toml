@@ -13,14 +13,30 @@ log = "0.4.29"
 env_logger = "0.11.8"
 glam = { workspace = true }
 
+### OPTIONAL VISUALIZER DEPENDENCIES ###
+miniquad = {version = "0.4.8", optional = true }
+egui = { version = "0.33.3", optional = true }
+egui-miniquad = { version = "0.16.0", optional = true }
+bytemuck = { version = "1.14", features = ["derive"], optional = true }
+raw-window-handle = { version = "0.6.2", optional = true }
+png = { version = "0.18.0", optional = true }
+
+[features]
+default = ["vis"]
+vis = [
+    "dep:miniquad",
+    "dep:egui",
+    "dep:egui-miniquad",
+    "dep:bytemuck",
+    "dep:raw-window-handle",
+    "dep:png"
+]
+
 [dev-dependencies]
 rocketsim_rs = "0.36.0" # For comparing to original C++ RocketSim in tests
 device_query = "4.0.1" # For the RocketSimVis example
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.148"
-
-[features]
-default = []
 
 [lints.clippy]
 all = "warn"

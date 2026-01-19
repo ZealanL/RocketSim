@@ -14,7 +14,7 @@ use crate::bullet::{
     },
     linear_math::AffineExt,
 };
-use crate::shared::Aabb;
+use crate::shared::{geo_math, Aabb};
 
 struct SatResult {
     penetration: f32,
@@ -99,13 +99,13 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
         let tri_normal = tri_edges_rel[0].cross(tri_edges_rel[1]);
         if let Some(norm_axis) = tri_normal.try_normalize() {
             let plane_dist = norm_axis.dot(tri_verts_rel[0]);
-            let projection_radius = half_extents.dot(norm_axis.abs());
+            let proj_radius = half_extents.dot(norm_axis.abs());
 
-            if plane_dist.abs() > projection_radius {
+            if plane_dist.abs() > proj_radius {
                 return;
             }
 
-            let penetration = projection_radius - plane_dist.abs();
+            let penetration = proj_radius - plane_dist.abs();
             if penetration < min_penetration {
                 min_penetration = penetration;
                 best_result = Some(SatResult {
@@ -133,14 +133,14 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
                         norm_axis.dot(tri_verts_rel[2]),
                     );
                     let (tri_min, tri_max) = (p.min_element(), p.max_element());
-                    let projection_radius = half_extents.dot(norm_axis.abs());
+                    let proj_radius = half_extents.dot(norm_axis.abs());
 
-                    if tri_max < -projection_radius || tri_min > projection_radius {
+                    if tri_max < -proj_radius || tri_min > proj_radius {
                         return;
                     }
 
-                    let p_neg = tri_max + projection_radius;
-                    let p_pos = projection_radius - tri_min;
+                    let p_neg = tri_max + proj_radius;
+                    let p_pos = proj_radius - tri_min;
                     let (penetration, axis_dir) = if p_neg < p_pos {
                         (p_neg, -norm_axis)
                     } else {
@@ -248,7 +248,7 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
                 edge_start[box_axis] = half_extents[box_axis];
                 edge_end[box_axis] = -half_extents[box_axis];
 
-                crate::shared::closest_points_between_segments(
+                geo_math::closest_points_between_segments(
                     edge_start,
                     edge_end,
                     tri_verts_rel[tri_edge],

@@ -6,6 +6,8 @@ planus_flat.rs
 *.svg
 /.idea
 heaptrack*
+*.blend
 
 # Anything starting with 3 underscores
 ___*
+*.blend1

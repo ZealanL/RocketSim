@@ -46,8 +46,7 @@ pub const BACK_WHEELS_OFFSET: [Vec3A; 7] = [
     Vec3A::new(-33.75, 29.50, 15.000),
 ];
 
-#[derive(Clone, Copy, Debug)]
-
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct WheelPairConfig {
     /// Radius of both wheels
     pub wheel_radius: f32,
@@ -59,8 +58,7 @@ pub struct WheelPairConfig {
     pub connection_point_offset: Vec3A,
 }
 
-#[derive(Clone, Copy, Debug)]
-
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CarBodyConfig {
     /// Full size of hitbox (NOT the half-size/extent)
     pub hitbox_size: Vec3A,

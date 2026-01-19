@@ -1,5 +1,9 @@
 use glam::Vec3A;
 
+pub fn calc_tri_normal(points: &[Vec3A; 3]) -> Vec3A {
+    (points[1] - points[0]).cross(points[2] - points[0]).normalize()
+}
+
 /// Projects a point onto a line, given two points on said line
 pub fn project_point_on_inf_line(point: Vec3A, line_a: Vec3A, line_b: Vec3A) -> Vec3A {
     let line_vec = line_b - line_a;

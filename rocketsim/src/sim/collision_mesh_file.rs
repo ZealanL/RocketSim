@@ -28,6 +28,7 @@ impl FromCursor for Vec3A {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct CollisionMeshFile {
     indices: Vec<usize>,
     vertices: Vec<Vec3A>,
@@ -107,7 +108,14 @@ impl CollisionMeshFile {
         })
     }
 
-    pub fn make_bullet_mesh(self) -> TriangleMesh {
+    pub fn make_bullet_mesh(&self) -> TriangleMesh {
         TriangleMesh::new(&self.vertices, &self.indices)
+    }
+
+    pub fn get_vertices(&self) -> &Vec<Vec3A> {
+        &self.vertices
+    }
+    pub fn get_indices(&self) -> &Vec<usize> {
+        &self.indices
     }
 }

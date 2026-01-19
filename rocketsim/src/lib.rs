@@ -6,6 +6,9 @@ mod bullet;
 mod logging;
 pub mod shared;
 
+#[cfg(feature = "vis")]
+pub mod vis;
+
 use std::{
     fs,
     io::{Error as IoError, ErrorKind, Result as IoResult},
@@ -17,7 +20,7 @@ use std::{
 use ahash::AHashMap;
 use bullet::collision::shapes::bvh_triangle_mesh_shape::BvhTriangleMeshShape;
 use log::{error, info, warn};
-use sim::collision_meshes::{
+use sim::collision_mesh_file::{
     COLLISION_MESH_BASE_PATH, COLLISION_MESH_FILE_EXTENSION, CollisionMeshFile,
 };
 pub use sim::*;
@@ -26,6 +29,9 @@ static HAS_INITIALIZED_LOCK: OnceLock<()> = OnceLock::new();
 
 pub(crate) static ARENA_COLLISION_SHAPES: RwLock<
     Option<AHashMap<GameMode, Vec<Arc<BvhTriangleMeshShape>>>>,
+> = RwLock::new(None);
+pub(crate) static ARENA_COLLISION_MESH_FILES: RwLock<
+    Option<AHashMap<GameMode, Vec<CollisionMeshFile>>>,
 > = RwLock::new(None);
 
 pub fn is_initialized() -> bool {
@@ -88,7 +94,7 @@ fn init_from_path(collision_meshes_folder: &Path, silent: bool) -> IoResult<()> 
 }
 
 pub fn init_from_mem(
-    mesh_file_map: AHashMap<GameMode, Vec<Vec<u8>>>,
+    byte_mesh_file_map: AHashMap<GameMode, Vec<Vec<u8>>>,
     silent: bool,
 ) -> IoResult<()> {
     if !silent {
@@ -109,19 +115,21 @@ pub fn init_from_mem(
     // TODO: DropshotTiles::Init();
 
     let mut arena_collision_shapes = AHashMap::new();
+    let mut arena_collision_mesh_files = AHashMap::new();
 
-    for (game_mode, mesh_files) in mesh_file_map {
+    for (game_mode, byte_mesh_files) in byte_mesh_file_map {
         info!("Loading arena meshes for {}...", game_mode.name());
 
-        if mesh_files.is_empty() {
+        if byte_mesh_files.is_empty() {
             info!("\tNo meshes, skipping");
             continue;
         }
 
-        let mut meshes = Vec::with_capacity(mesh_files.len());
+        let mut meshes = Vec::with_capacity(byte_mesh_files.len());
+        let mut mesh_files = Vec::with_capacity(byte_mesh_files.len());
         let mut target_hashes = game_mode.get_hashes();
 
-        for (i, entry) in mesh_files.into_iter().enumerate() {
+        for (i, entry) in byte_mesh_files.into_iter().enumerate() {
             let mesh_file = CollisionMeshFile::read_from_bytes(&entry)?;
             let hash = mesh_file.get_hash();
             let Some(hash_count) = target_hashes.get_mut(&hash) else {
@@ -145,9 +153,11 @@ pub fn init_from_mem(
             let tri_mesh = mesh_file.make_bullet_mesh();
             let bvt_mesh = BvhTriangleMeshShape::new(tri_mesh);
             meshes.push(Arc::new(bvt_mesh));
+            mesh_files.push(mesh_file);
         }
 
         arena_collision_shapes.insert(game_mode, meshes);
+        arena_collision_mesh_files.insert(game_mode, mesh_files);
     }
 
     {
@@ -180,11 +190,13 @@ pub fn init_from_mem(
 
     {
         let mut arena_collision_shapes_lock = ARENA_COLLISION_SHAPES.write().unwrap();
+        let mut arena_collision_mesh_files_lock = ARENA_COLLISION_MESH_FILES.write().unwrap();
         assert!(
             arena_collision_shapes_lock.is_none(),
             "RocketSim initialization called twice"
         );
         *arena_collision_shapes_lock = Some(arena_collision_shapes);
+        *arena_collision_mesh_files_lock = Some(arena_collision_mesh_files);
     }
 
     Ok(())

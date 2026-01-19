@@ -37,7 +37,7 @@ impl ArenaConfig {
         min_pos: Vec3A::new(-5600., -6000., 0.),
         max_pos: Vec3A::new(5600., 6000., 2200.),
         max_aabb_len: 370.,
-        no_ball_rot: true,
+        no_ball_rot: false,
         use_custom_boost_pads: false,
         custom_boost_pads: Vec::new(),
         rng_seed: None,

@@ -41,20 +41,34 @@ pub const GRAVITY_Z: f32 = -650.0;
 
 pub mod arena {
     use super::PhysicsCoefs;
+    use crate::GameMode;
+    use crate::shared::Aabb;
+    use glam::Vec3A;
 
-    pub const EXTENT_X: f32 = 4096.0;
-    /// Does not include inner-goal
-    pub const EXTENT_Y: f32 = 5120.0;
-    pub const HEIGHT: f32 = 2048.0;
-    pub const EXTENT_X_HOOPS: f32 = 8900.0 / 3.0;
-    pub const EXTENT_Y_HOOPS: f32 = 3581.0;
-    pub const HEIGHT_HOOPS: f32 = 1820.0;
-    pub const HEIGHT_DROPSHOT: f32 = 2024.0;
-    pub const FLOOR_HEIGHT_DROPSHOT: f32 = 1.5; // TODO: Move?
     pub const BASE_COEFS: PhysicsCoefs = PhysicsCoefs {
         friction: 0.6,
         restitution: 0.3,
     };
+
+    pub const fn get_aabb(game_mode: GameMode) -> Aabb {
+        let (max_x, max_y, max_z) = match game_mode {
+            GameMode::Hoops => (8900.0 / 3.0, 3581.0, 1820.0),
+            GameMode::Dropshot => (5075.0, 4592.0, 2024.0),
+
+            // Soccar arena
+            _ => (4096.0, 5120.0, 2048.0),
+        };
+
+        let floor_height = match game_mode {
+            GameMode::Dropshot => 1.5,
+            _ => 0.0,
+        };
+
+        Aabb::new(
+            Vec3A::new(-max_x, -max_y, floor_height),
+            Vec3A::new(max_x, max_y, max_z),
+        )
+    }
 }
 
 pub mod car {
@@ -317,7 +331,6 @@ pub mod bullet_vehicle {
     pub const SUSPENSION_STIFFNESS: f32 = 500.0;
     pub const WHEELS_DAMPING_COMPRESSION: f32 = 25.0;
     pub const WHEELS_DAMPING_RELAXATION: f32 = 40.0;
-    /// TODO: Are we sure this is the same for all cars?
     pub const MAX_SUSPENSION_TRAVEL: f32 = 12.0;
     pub const SUSPENSION_SUBTRACTION: f32 = 0.05;
 }

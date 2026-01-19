@@ -2,10 +2,11 @@ use super::ArenaContactTracker;
 use crate::bullet::dynamics::rigid_body::ActivationState;
 use crate::consts::{TICK_RATE, TICK_TIME};
 use crate::sim::{Ball, BoostPad};
+use crate::vis::{Model, VisInst};
 use crate::{
-    ARENA_COLLISION_SHAPES, ArenaConfig, ArenaMemWeightMode, BoostPadConfig, BoostPadGrid,
-    BoostPadState, Car, CarBodyConfig, CarControls, CarInfo, CarState, GameMode, MutatorConfig,
-    PhysState, Team,
+    ARENA_COLLISION_MESH_FILES, ARENA_COLLISION_SHAPES, ArenaConfig, ArenaMemWeightMode,
+    ArenaState, BoostPadConfig, BoostPadGrid, BoostPadState, Car, CarBodyConfig, CarControls,
+    CarInfo, CarState, GameMode, MutatorConfig, PhysState, Team,
     bullet::{
         collision::{
             broadphase::{GridBroadphase, HashedOverlappingPairCache},
@@ -179,6 +180,9 @@ pub struct Arena {
     pub(crate) mutator_config: MutatorConfig,
     pub(crate) boost_pad_grid: BoostPadGrid,
     contact_tracker: ArenaContactTracker,
+
+    #[cfg(feature = "vis")]
+    vis_inst: Option<VisInst>,
 }
 
 impl Arena {
@@ -262,6 +266,9 @@ impl Arena {
             cars: Vec::with_capacity(6),
             contact_tracker: ArenaContactTracker::new(),
             bullet_world,
+
+            #[cfg(feature = "vis")]
+            vis_inst: None,
         }
     }
 
@@ -326,19 +333,7 @@ impl Arena {
 
         drop(collision_shapes);
 
-        let (extent_x, floor, height) = match game_mode {
-            GameMode::Hoops => (
-                consts::arena::EXTENT_X_HOOPS,
-                0.0,
-                consts::arena::HEIGHT_HOOPS,
-            ),
-            GameMode::Dropshot => (
-                consts::arena::EXTENT_X,
-                consts::arena::FLOOR_HEIGHT_DROPSHOT,
-                consts::arena::HEIGHT_DROPSHOT,
-            ),
-            _ => (consts::arena::EXTENT_X, 0.0, consts::arena::HEIGHT),
-        };
+        let arena_aabb = consts::arena::get_aabb(game_mode);
 
         let mut add_plane = |pos_uu: Vec3A, normal: Vec3A, mask: u8| {
             debug_assert!(normal.is_normalized());
@@ -366,22 +361,22 @@ impl Arena {
         };
 
         // Floor
-        add_plane(Vec3A::new(0.0, 0.0, floor), Vec3A::Z, floor_mask);
+        add_plane(Vec3A::new(0.0, 0.0, arena_aabb.min.z), Vec3A::Z, floor_mask);
 
         // Ceiling
-        add_plane(Vec3A::new(0.0, 0.0, height), Vec3A::NEG_Z, 0);
+        add_plane(Vec3A::new(0.0, 0.0, arena_aabb.max.z), Vec3A::NEG_Z, 0);
 
         match game_mode {
             GameMode::Hoops => {
                 // Y walls
                 add_plane(
-                    Vec3A::new(0.0, -consts::arena::EXTENT_Y_HOOPS, height / 2.),
+                    Vec3A::new(0.0, arena_aabb.min.y, arena_aabb.center().z),
                     Vec3A::Y,
                     0,
                 );
 
                 add_plane(
-                    Vec3A::new(0.0, consts::arena::EXTENT_Y_HOOPS, height / 2.),
+                    Vec3A::new(0.0, arena_aabb.min.z, arena_aabb.center().z),
                     Vec3A::NEG_Y,
                     0,
                 );
@@ -392,8 +387,8 @@ impl Arena {
             }
             _ => {
                 // Side walls
-                add_plane(Vec3A::new(-extent_x, 0.0, height / 2.), Vec3A::X, 0);
-                add_plane(Vec3A::new(extent_x, 0.0, height / 2.), Vec3A::NEG_X, 0);
+                add_plane(Vec3A::new(arena_aabb.min.x, 0.0, arena_aabb.center().z), Vec3A::X, 0);
+                add_plane(Vec3A::new(arena_aabb.max.x, 0.0, arena_aabb.center().z), Vec3A::NEG_X, 0);
             }
         }
     }
@@ -639,6 +634,15 @@ impl Arena {
         }
 
         self.tick_count += 1;
+
+        #[cfg(feature = "vis")]
+        if self.vis_inst.is_some() {
+            let arena_state = self.get_arena_state();
+            self.vis_inst
+                .as_mut()
+                .unwrap()
+                .update(&arena_state, TICK_TIME);
+        }
     }
 
     pub fn step(&mut self, ticks_to_simulate: u32) {
@@ -771,5 +775,46 @@ impl Arena {
             .into_iter()
             .map(|i| self.get_boost_pad_state(i))
             .collect()
+    }
+
+    pub fn get_all_boost_pad_configs(&self) -> Vec<BoostPadConfig> {
+        (0..self.num_boost_pads())
+            .into_iter()
+            .map(|i| *self.get_boost_pad_config(i))
+            .collect()
+    }
+
+    pub fn get_arena_state(&self) -> ArenaState {
+        let car_infos = self.cars.iter().map(|c| c.info).collect::<Vec<_>>();
+        let car_states = self.cars.iter().map(|c| c.state).collect::<Vec<_>>();
+        let ball_state = *self.get_ball_state();
+        let boost_pad_states = self.get_all_boost_pad_states();
+        let boost_pad_configs = self.get_all_boost_pad_configs();
+        ArenaState {
+            game_mode: self.game_mode,
+            car_infos,
+            car_states,
+            ball_state,
+            boost_pad_states,
+            boost_pad_configs,
+        }
+    }
+
+    pub fn get_vis_enabled(&self) -> bool {
+        self.vis_inst.is_some()
+    }
+
+    pub fn set_vis_enabled(&mut self, vis_enabled: bool) {
+        if vis_enabled && self.vis_inst.is_none() {
+            // Create visualizer
+
+            let collision_mesh_files = ARENA_COLLISION_MESH_FILES.read().unwrap();
+            let game_mode_mesh_files = &collision_mesh_files.as_ref().unwrap()[&self.game_mode];
+
+            self.vis_inst = Some(VisInst::new(self.game_mode, game_mode_mesh_files.as_slice()));
+        } else if !vis_enabled && self.vis_inst.is_some() {
+            unimplemented!(); // TODO: Stop render loop properly
+            self.vis_inst = None;
+        }
     }
 }

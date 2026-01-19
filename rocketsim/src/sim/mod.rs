@@ -4,7 +4,7 @@ mod boost_pad;
 mod car;
 mod collision_masks;
 #[allow(clippy::redundant_pub_crate)]
-pub(crate) mod collision_meshes;
+pub(crate) mod collision_mesh_file;
 pub mod consts;
 mod game_mode;
 mod linear_piece_curve;
