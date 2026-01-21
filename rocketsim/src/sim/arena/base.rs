@@ -502,14 +502,14 @@ impl Arena {
 
                 spawn_state.phys.rot_mat = Mat3A::from_euler(
                     EulerRot::ZYX,
-                    0.0,
-                    0.0,
                     if is_blue {
                         spawn_pos.yaw_ang
                     } else {
                         spawn_state.phys.pos *= Vec3A::new(-1.0, -1.0, 1.0);
                         spawn_pos.yaw_ang + if is_blue { 0.0 } else { PI }
                     },
+                    0.0,
+                    0.0,
                 );
 
                 let car = &mut self.cars[car_idx];

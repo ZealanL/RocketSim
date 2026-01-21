@@ -169,9 +169,9 @@ impl Car {
                 ),
                 rot_mat: Mat3A::from_euler(
                     EulerRot::ZYX,
-                    0.0,
-                    0.0,
                     spawn_pos.yaw_ang + if self.team == Team::Blue { 0.0 } else { PI },
+                    0.0,
+                    0.0,
                 ),
                 vel: Vec3A::ZERO,
                 ang_vel: Vec3A::ZERO,

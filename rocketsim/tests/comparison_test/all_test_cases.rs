@@ -102,7 +102,7 @@ fn make_car_cases() -> Vec<TestCase> {
             car_setups: vec![
                 CarSetup::new(Team::Blue, IVec3::new(pos.0, pos.1, pos.2).as_vec3a())
                     .with_rot(Mat3A::from_euler(
-                        EulerRot::ZYX,
+                        EulerRot::ZYX, // TODO: Wrong? Maybe?
                         euler_rot_ypr.0,
                         euler_rot_ypr.1,
                         euler_rot_ypr.2,
@@ -304,7 +304,7 @@ fn make_car_ball_cases() -> Vec<TestCase> {
                     IVec3::new(car_pos.0, car_pos.1, car_pos.2).as_vec3a(),
                 )
                 .with_rot(Mat3A::from_euler(
-                    EulerRot::ZYX,
+                    EulerRot::ZYX, // TODO: Wrong? Maybe?
                     car_euler_rot_ypr.0,
                     car_euler_rot_ypr.1,
                     car_euler_rot_ypr.2,
@@ -379,7 +379,7 @@ fn make_car_car_cases() -> Vec<TestCase> {
                     IVec3::new(car1_pos.0, car1_pos.1, car1_pos.2).as_vec3a(),
                 )
                 .with_rot(Mat3A::from_euler(
-                    EulerRot::ZYX,
+                    EulerRot::ZYX, // TODO: Wrong? Maybe?
                     car1_euler_rot_ypr.0,
                     car1_euler_rot_ypr.1,
                     car1_euler_rot_ypr.2,
@@ -392,7 +392,7 @@ fn make_car_car_cases() -> Vec<TestCase> {
                     IVec3::new(car2_pos.0, car2_pos.1, car2_pos.2).as_vec3a(),
                 )
                 .with_rot(Mat3A::from_euler(
-                    EulerRot::ZYX,
+                    EulerRot::ZYX, // TODO: Wrong? Maybe?
                     car2_euler_rot_ypr.0,
                     car2_euler_rot_ypr.1,
                     car2_euler_rot_ypr.2,
