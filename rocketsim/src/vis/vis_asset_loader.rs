@@ -56,19 +56,19 @@ pub fn load_models(game_mode: GameMode, arena_meshes: &[CollisionMeshFile]) -> M
         ),
         (
             "pad_big_on", // TODO: Rename these model files, the names are confusing
-            Model::load_obj(include_str!("models/boost_pad_big_1.obj")),
+            Model::load_obj(include_str!("models/boost_pad_big_on.obj")),
         ),
         (
             "pad_big_off",
-            Model::load_obj(include_str!("models/boost_pad_big_0.obj")),
+            Model::load_obj(include_str!("models/boost_pad_big_off.obj")),
         ),
         (
             "pad_small_on",
-            Model::load_obj(include_str!("models/boost_pad_small_1.obj")),
+            Model::load_obj(include_str!("models/boost_pad_small_off.obj")),
         ),
         (
             "pad_small_off",
-            Model::load_obj(include_str!("models/boost_pad_small_0.obj")),
+            Model::load_obj(include_str!("models/boost_pad_small_on.obj")),
         ),
         ("arena", arena_model),
     ];
