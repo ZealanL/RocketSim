@@ -1,9 +1,9 @@
-use crate::vis::{ModelSet, SharedVisRenderState, TextureSet};
+use crate::vis::backend::{ModelSet, ShaderCode, SharedVisRenderState, TextureSet};
 use ahash::AHashMap;
 use glam::{Mat4, Vec2, Vec3};
 use miniquad::{
-    Backend, Bindings, BufferLayout, BufferSource, BufferType, BufferUsage, EventHandler, Pipeline,
-    PipelineParams, PrimitiveType, RawId, RenderingBackend, ShaderMeta, ShaderSource, TextureId,
+    Bindings, BufferLayout, BufferSource, BufferType, BufferUsage, EventHandler, Pipeline,
+    PipelineParams, PrimitiveType, RawId, RenderingBackend, TextureId,
     UniformBlockLayout, UniformDesc, UniformType, UniformsSource, VertexAttribute, VertexFormat,
     conf, window,
 };
@@ -81,6 +81,7 @@ impl VisRenderer {
         models: ModelSet,
         textures: TextureSet,
         shared_render_state: SharedVisRenderState,
+        shader_srcs: Vec<(String, ShaderCode)>,
     ) -> VisRenderer {
         // Set up miniquad stuff
         let mq_stage = {
@@ -106,37 +107,10 @@ impl VisRenderer {
                 images: vec![TextureId::from_raw_id(RawId::OpenGl(0))],
             };
 
-            let main_shader = ctx
-                .new_shader(
-                    match ctx.info().backend {
-                        Backend::OpenGl => ShaderSource::Glsl {
-                            vertex: include_str!("shaders/main_vert.glsl"),
-                            fragment: include_str!("shaders/main_frag.glsl"),
-                        },
-                        Backend::Metal => unimplemented!(),
-                    },
-                    ShaderMeta {
-                        images: vec!["u_texture".to_string()],
-                        uniforms: Uniforms::get_shader_meta_layout(),
-                    },
-                )
-                .unwrap();
-
-            let arena_shader = ctx
-                .new_shader(
-                    match ctx.info().backend {
-                        Backend::OpenGl => ShaderSource::Glsl {
-                            vertex: include_str!("shaders/arena_vert.glsl"),
-                            fragment: include_str!("shaders/arena_frag.glsl"),
-                        },
-                        Backend::Metal => unimplemented!(),
-                    },
-                    ShaderMeta {
-                        images: vec!["u_texture".to_string()],
-                        uniforms: Uniforms::get_shader_meta_layout(),
-                    },
-                )
-                .unwrap();
+            let mut shaders = AHashMap::new();
+            for (shader_name, shader_src) in shader_srcs {
+                shaders.insert(shader_name, shader_src.build(&mut ctx));
+            }
 
             let buffer_layout = [
                 BufferLayout::default(),
@@ -156,15 +130,12 @@ impl VisRenderer {
                 ..Default::default()
             };
 
-            let main_pipeline =
-                ctx.new_pipeline(&buffer_layout, &attributes, main_shader, params.clone());
-            let arena_pipeline =
-                ctx.new_pipeline(&buffer_layout, &attributes, arena_shader, params.clone());
-
-            let pipelines = AHashMap::from([
-                ("main".to_string(), main_pipeline.clone()),
-                ("arena".to_string(), arena_pipeline.clone()),
-            ]);
+            let mut pipelines = AHashMap::new();
+            for (shader_name, shader_id) in shaders {
+                let pipeline =
+                    ctx.new_pipeline(&buffer_layout, &attributes, shader_id, params.clone());
+                pipelines.insert(shader_name, pipeline);
+            }
 
             MiniQuadStage {
                 pipelines,
@@ -198,7 +169,7 @@ impl EventHandler for VisRenderer {
         {
             self.mq_stage
                 .ctx
-                .begin_default_pass(miniquad::PassAction::clear_color(0.1, 0.1, 0.1, 1.0));
+                .begin_default_pass(miniquad::PassAction::clear_color(0.0, 0.0, 0.0, 1.0));
             self.mq_stage.set_pipeline(None);
             self.mq_stage.ctx.apply_bindings(&self.mq_stage.bindings);
         }
@@ -291,14 +262,21 @@ impl EventHandler for VisRenderer {
 
 impl VisRenderer {
     pub fn spawn_new(
+        window_title: &str,
         model_set: ModelSet,
         texture_set: TextureSet,
         shared_render_state: SharedVisRenderState,
+        shader_srcs: Vec<(&str, ShaderCode)>,
     ) -> JoinHandle<()> {
         let mut conf = conf::Conf::default();
-        conf.window_title = "RocketSim Vis".to_string();
+        conf.window_title = window_title.to_string();
         conf.platform.apple_gfx_api = conf::AppleGfxApi::OpenGl; // Apple devices should still use OpenGL
         conf.sample_count = 8; // Heavy MSAA
+
+        let shader_srcs_strings: Vec<(String, ShaderCode)> = shader_srcs
+            .iter()
+            .map(|(name, code)| (name.to_string(), code.clone()))
+            .collect();
 
         std::thread::spawn(|| {
             miniquad::start(conf, move || {
@@ -306,6 +284,7 @@ impl VisRenderer {
                     model_set,
                     texture_set,
                     shared_render_state.clone(),
+                    shader_srcs_strings,
                 ))
             });
         })

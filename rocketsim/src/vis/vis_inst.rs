@@ -1,5 +1,6 @@
 use crate::sim::collision_mesh_file::CollisionMeshFile;
-use crate::vis::{SharedVisRenderState, VisRenderState, VisRenderer, vis_asset_loader};
+use crate::vis::backend::{ShaderCode, SharedVisRenderState, VisRenderState, VisRenderer};
+use crate::vis::vis_asset_loader;
 use crate::{ArenaState, CarBodyConfig, CarInfo, GameMode, Team};
 use glam::{Mat3A, Vec3A};
 use std::sync::RwLock;
@@ -17,7 +18,15 @@ impl VisInst {
         let textures = vis_asset_loader::load_textures();
 
         let shared_state = SharedVisRenderState::new(RwLock::new(VisRenderState::default()));
-        let renderer_handle = VisRenderer::spawn_new(models, textures, shared_state.clone());
+        let shader_srcs = vec![
+            ("main", ShaderCode::new(include_str!("shaders/main_vert.glsl"), include_str!("shaders/main_frag.glsl"))),
+            ("arena", ShaderCode::new(include_str!("shaders/arena_vert.glsl"), include_str!("shaders/arena_frag.glsl"))),
+        ];
+        let renderer_handle = VisRenderer::spawn_new(
+            "RocketSim Visualizer",
+            models, textures, shared_state.clone(),
+            shader_srcs
+        );
 
         Self {
             game_mode,
@@ -60,7 +69,7 @@ impl VisInst {
 
         // Render arena mesh and planes
         {
-            new_render_state.add_obj(
+            new_render_state.add_model_obj(
                 "arena",
                 Some("white"),
                 Some("arena"),
@@ -70,7 +79,7 @@ impl VisInst {
         }
 
         // Render ball
-        new_render_state.add_obj(
+        new_render_state.add_model_obj(
             "ball",
             Some("ball"),
             None,
@@ -88,7 +97,7 @@ impl VisInst {
                 "car_orange"
             };
             let car_model = get_car_model_name(car_info);
-            new_render_state.add_obj(
+            new_render_state.add_model_obj(
                 car_model,
                 Some(car_texture_name),
                 None,
@@ -116,7 +125,7 @@ impl VisInst {
                 }
             };
 
-            new_render_state.add_obj(
+            new_render_state.add_model_obj(
                 pad_model,
                 Some("boost_pad"),
                 None,

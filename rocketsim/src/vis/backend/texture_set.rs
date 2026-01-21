@@ -1,4 +1,4 @@
-use crate::vis::Texture;
+use crate::vis::backend::Texture;
 use ahash::AHashMap;
 use miniquad::{
     RawId, RenderingBackend, TextureAccess, TextureFormat, TextureId, TextureParams, TextureSource,

@@ -1,5 +1,5 @@
 use crate::shared::geo_math;
-use crate::vis::Model;
+use crate::vis::backend::Model;
 use ahash::AHashMap;
 use glam::Vec3;
 use miniquad::{BufferId, BufferSource, BufferType, BufferUsage, RenderingBackend};

@@ -1,5 +1,5 @@
 use crate::sim::collision_mesh_file::CollisionMeshFile;
-use crate::vis::{Model, ModelSet, Texture, TextureSet};
+use crate::vis::backend::{Model, ModelSet, Texture, TextureSet};
 use crate::{GameMode, consts};
 use glam::{EulerRot, Mat3, Vec3};
 use std::f32::consts::PI;
