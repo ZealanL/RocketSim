@@ -1,6 +1,4 @@
 use std::io::Cursor;
-use ahash::AHashMap;
-use miniquad::{RenderingBackend, TextureAccess, TextureFormat, TextureId, TextureParams, TextureSource};
 
 #[derive(Debug, Clone)]
 pub struct Texture {

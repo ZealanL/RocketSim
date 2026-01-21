@@ -1,6 +1,8 @@
 use crate::vis::Texture;
 use ahash::AHashMap;
-use miniquad::{RawId, RenderingBackend, TextureAccess, TextureFormat, TextureId, TextureParams, TextureSource};
+use miniquad::{
+    RawId, RenderingBackend, TextureAccess, TextureFormat, TextureId, TextureParams, TextureSource,
+};
 
 #[derive(Debug, Clone)]
 pub struct TextureSet {
@@ -20,7 +22,10 @@ impl TextureSet {
 
     pub fn build_mq_textures(&self, ctx: &mut Box<dyn RenderingBackend>) -> Vec<TextureId> {
         let mut results: Vec<TextureId> = Vec::new();
-        results.resize(self.num_textures(), TextureId::from_raw_id(RawId::OpenGl(0)));
+        results.resize(
+            self.num_textures(),
+            TextureId::from_raw_id(RawId::OpenGl(0)),
+        );
 
         for (_, (texture, texture_idx)) in &self.map {
             results[*texture_idx] = ctx.new_texture(
@@ -31,7 +36,7 @@ impl TextureSet {
                     height: texture.height,
                     format: TextureFormat::RGBA8,
                     ..Default::default()
-                }
+                },
             );
         }
 

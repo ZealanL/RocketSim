@@ -14,7 +14,7 @@ use crate::bullet::{
     },
     linear_math::AffineExt,
 };
-use crate::shared::{geo_math, Aabb};
+use crate::shared::{Aabb, geo_math};
 
 struct SatResult {
     penetration: f32,

@@ -1,8 +1,13 @@
 use crate::vis::{ModelSet, SharedVisRenderState, TextureSet};
-use glam::{Mat4, Vec2, Vec3};
-use miniquad::{Backend, Bindings, BufferLayout, BufferSource, BufferType, BufferUsage, EventHandler, Pipeline, PipelineParams, RawId, RenderingBackend, ShaderMeta, ShaderSource, TextureId, UniformBlockLayout, UniformDesc, UniformType, UniformsSource, VertexAttribute, VertexFormat, conf, window, PrimitiveType, gl};
-use std::thread::JoinHandle;
 use ahash::AHashMap;
+use glam::{Mat4, Vec2, Vec3};
+use miniquad::{
+    Backend, Bindings, BufferLayout, BufferSource, BufferType, BufferUsage, EventHandler, Pipeline,
+    PipelineParams, PrimitiveType, RawId, RenderingBackend, ShaderMeta, ShaderSource, TextureId,
+    UniformBlockLayout, UniformDesc, UniformType, UniformsSource, VertexAttribute, VertexFormat,
+    conf, window,
+};
+use std::thread::JoinHandle;
 
 #[repr(C)]
 pub struct Uniforms {
@@ -59,7 +64,8 @@ impl MiniQuadStage {
     }
 
     pub fn set_pipeline(&mut self, name: Option<&str>) {
-        self.ctx.apply_pipeline(&self.pipelines[name.unwrap_or("main")]);
+        self.ctx
+            .apply_pipeline(&self.pipelines[name.unwrap_or("main")]);
     }
 }
 
@@ -113,7 +119,8 @@ impl VisRenderer {
                         images: vec!["u_texture".to_string()],
                         uniforms: Uniforms::get_shader_meta_layout(),
                     },
-                ).unwrap();
+                )
+                .unwrap();
 
             let arena_shader = ctx
                 .new_shader(
@@ -128,7 +135,8 @@ impl VisRenderer {
                         images: vec!["u_texture".to_string()],
                         uniforms: Uniforms::get_shader_meta_layout(),
                     },
-                ).unwrap();
+                )
+                .unwrap();
 
             let buffer_layout = [
                 BufferLayout::default(),
@@ -148,15 +156,15 @@ impl VisRenderer {
                 ..Default::default()
             };
 
-            let main_pipeline = ctx.new_pipeline(&buffer_layout, &attributes, main_shader, params.clone());
-            let arena_pipeline = ctx.new_pipeline(&buffer_layout, &attributes, arena_shader, params.clone());
+            let main_pipeline =
+                ctx.new_pipeline(&buffer_layout, &attributes, main_shader, params.clone());
+            let arena_pipeline =
+                ctx.new_pipeline(&buffer_layout, &attributes, arena_shader, params.clone());
 
-            let pipelines = AHashMap::from(
-                [
-                    ("main".to_string(), main_pipeline.clone()),
-                    ("arena".to_string(), arena_pipeline.clone()),
-                ]
-            );
+            let pipelines = AHashMap::from([
+                ("main".to_string(), main_pipeline.clone()),
+                ("arena".to_string(), arena_pipeline.clone()),
+            ]);
 
             MiniQuadStage {
                 pipelines,
@@ -208,12 +216,8 @@ impl EventHandler for VisRenderer {
             const Z_RANGE_NEAR: f32 = 5.0;
             const Z_RANGE_FAR: f32 = 50_000.0;
 
-            let proj = Mat4::perspective_lh(
-                fov_degrees.to_radians(),
-                aspect,
-                Z_RANGE_NEAR,
-                Z_RANGE_FAR,
-            );
+            let proj =
+                Mat4::perspective_lh(fov_degrees.to_radians(), aspect, Z_RANGE_NEAR, Z_RANGE_FAR);
 
             (view, proj)
         }

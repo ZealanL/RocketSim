@@ -2,7 +2,7 @@ use super::ArenaContactTracker;
 use crate::bullet::dynamics::rigid_body::ActivationState;
 use crate::consts::{TICK_RATE, TICK_TIME};
 use crate::sim::{Ball, BoostPad};
-use crate::vis::{Model, VisInst};
+use crate::vis::VisInst;
 use crate::{
     ARENA_COLLISION_MESH_FILES, ARENA_COLLISION_SHAPES, ArenaConfig, ArenaMemWeightMode,
     ArenaState, BoostPadConfig, BoostPadGrid, BoostPadState, Car, CarBodyConfig, CarControls,
@@ -387,8 +387,16 @@ impl Arena {
             }
             _ => {
                 // Side walls
-                add_plane(Vec3A::new(arena_aabb.min.x, 0.0, arena_aabb.center().z), Vec3A::X, 0);
-                add_plane(Vec3A::new(arena_aabb.max.x, 0.0, arena_aabb.center().z), Vec3A::NEG_X, 0);
+                add_plane(
+                    Vec3A::new(arena_aabb.min.x, 0.0, arena_aabb.center().z),
+                    Vec3A::X,
+                    0,
+                );
+                add_plane(
+                    Vec3A::new(arena_aabb.max.x, 0.0, arena_aabb.center().z),
+                    Vec3A::NEG_X,
+                    0,
+                );
             }
         }
     }
@@ -811,10 +819,13 @@ impl Arena {
             let collision_mesh_files = ARENA_COLLISION_MESH_FILES.read().unwrap();
             let game_mode_mesh_files = &collision_mesh_files.as_ref().unwrap()[&self.game_mode];
 
-            self.vis_inst = Some(VisInst::new(self.game_mode, game_mode_mesh_files.as_slice()));
+            self.vis_inst = Some(VisInst::new(
+                self.game_mode,
+                game_mode_mesh_files.as_slice(),
+            ));
         } else if !vis_enabled && self.vis_inst.is_some() {
             unimplemented!(); // TODO: Stop render loop properly
-            self.vis_inst = None;
+            // self.vis_inst = None;
         }
     }
 }

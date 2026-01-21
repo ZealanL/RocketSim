@@ -1,8 +1,8 @@
+use crate::shared::geo_math;
 use crate::vis::Model;
 use ahash::AHashMap;
 use glam::Vec3;
 use miniquad::{BufferId, BufferSource, BufferType, BufferUsage, RenderingBackend};
-use crate::shared::geo_math;
 
 #[derive(Debug, Clone)]
 pub struct ModelSet {
@@ -35,7 +35,11 @@ impl ModelSet {
         let mut results = Vec::with_capacity(self.concat_model.verts.len());
 
         for tri_verts in self.concat_model.verts.chunks(3) {
-            let tri_verts = [tri_verts[0].to_vec3a(), tri_verts[1].to_vec3a(), tri_verts[2].to_vec3a()];
+            let tri_verts = [
+                tri_verts[0].to_vec3a(),
+                tri_verts[1].to_vec3a(),
+                tri_verts[2].to_vec3a(),
+            ];
             let tri_normal = geo_math::calc_tri_normal(&tri_verts);
 
             for _ in 0..3 {

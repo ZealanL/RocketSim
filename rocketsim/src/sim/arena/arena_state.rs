@@ -1,4 +1,3 @@
-use crate::sim::UserInfoTypes::Ball;
 use crate::{BallState, BoostPadConfig, BoostPadState, CarInfo, CarState, GameMode};
 
 #[derive(Debug, Clone)]

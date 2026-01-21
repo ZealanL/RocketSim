@@ -1,6 +1,6 @@
 use crate::sim::collision_mesh_file::CollisionMeshFile;
-use crate::vis::{vis_asset_loader, Model, ModelSet, SharedVisRenderState, Texture, TextureSet, VisRenderState, VisRenderer};
-use crate::{consts, ArenaState, CarBodyConfig, CarInfo, GameMode, Team};
+use crate::vis::{SharedVisRenderState, VisRenderState, VisRenderer, vis_asset_loader};
+use crate::{ArenaState, CarBodyConfig, CarInfo, GameMode, Team};
 use glam::{Mat3A, Vec3A};
 use std::sync::RwLock;
 use std::thread::JoinHandle;
@@ -121,7 +121,7 @@ impl VisInst {
                 Some("boost_pad"),
                 None,
                 pad_config.pos * Vec3A::new(1.0, 1.0, 0.0), // TODO: Temp Z-fix
-                Mat3A::IDENTITY * 2.0 // TODO: Resize pad models
+                Mat3A::IDENTITY * 2.0,                      // TODO: Resize pad models
             );
         }
 

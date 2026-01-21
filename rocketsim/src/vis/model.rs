@@ -31,10 +31,7 @@ impl Model {
             }
         }
 
-        Self {
-            verts,
-            vert_uvs,
-        }
+        Self { verts, vert_uvs }
     }
 
     pub fn load_obj(obj_str: &str) -> Self {
@@ -110,7 +107,7 @@ impl Model {
 
         let mut flat_verts = Vec::new();
         let mut flat_vert_uvs = Vec::new();
-        for (vert_idc, vert_uv_idc, vert_norm_idc) in tris {
+        for (vert_idc, vert_uv_idc, _vert_norm_idc) in tris {
             for i in 0..3 {
                 flat_verts.push(verts[vert_idc[i] as usize]);
                 flat_vert_uvs.push(vert_uvs[vert_uv_idc[i] as usize]);
@@ -127,83 +124,6 @@ impl Model {
 
     pub fn num_verts(&self) -> usize {
         self.verts.len()
-    }
-
-    /// Returns an outer and an inner mesh
-    pub fn make_wireframe_split(&self, width: f32) -> (Self, Self) {
-        assert!(width > 0.0);
-
-        let width_sq = width * width;
-
-        let mut result_outer = Model::empty();
-        let mut result_inner = Model::empty();
-
-        for (tri_verts, tri_vert_uvs) in self.verts.chunks(3).zip(self.vert_uvs.chunks(3)) {
-            let (a, b, c) = (tri_verts[0], tri_verts[1], tri_verts[2]);
-
-            let tri_center = (a + b + c) / 3.0;
-            let center_dists_sq = [
-                a.distance_squared(tri_center),
-                b.distance_squared(tri_center),
-                c.distance_squared(tri_center),
-            ];
-            let min_center_dist_sq = center_dists_sq[0]
-                .min(center_dists_sq[1])
-                .min(center_dists_sq[2]);
-            if min_center_dist_sq <= width_sq {
-                // Too small to be split up
-                // Just add the normal triangle
-                for i in 0..3 {
-                    result_outer.verts.push(tri_verts[i]);
-                    result_outer.vert_uvs.push(tri_vert_uvs[i]);
-                }
-            } else {
-                // The inner tri points are the original 3 points, but moved towards the center
-                //  by a distance equal to the wireframe width.
-                let mut inner_tri_verts = [a, b, c];
-                for i in 0..3 {
-                    let center_dist = center_dists_sq[i].sqrt();
-
-                    // By what fraction/portion (0 to 1) we should move this point towards the center,
-                    //  such that the distance from the original point is equal to the wireframe width.
-                    let centering_frac = width / center_dist;
-                    inner_tri_verts[i] += (tri_center - inner_tri_verts[i]).normalize() * width;
-                }
-
-                // Make the inner triangles
-                for i in 0..3 {
-                    result_inner.verts.push(inner_tri_verts[i]);
-                    result_inner.vert_uvs.push(tri_vert_uvs[i]);
-                }
-
-                // Make the new outer triangles
-                // We gotta make 6 because we need 3 quads for each triangle side
-                for i in 0..3 {
-                    let ni = (i + 1) % 3;
-
-                    // TRIANGLES:
-                    // [i-out, (i+1)-out, i-in]
-                    // [i-in, (i+1)-out, (i+1)-in]
-                    // ^ Clockwise rotating order too :3
-
-                    result_outer.verts.push(tri_verts[i]);
-                    result_outer.verts.push(tri_verts[ni]);
-                    result_outer.verts.push(inner_tri_verts[i]);
-
-                    result_outer.verts.push(inner_tri_verts[i]);
-                    result_outer.verts.push(tri_verts[ni]);
-                    result_outer.verts.push(inner_tri_verts[ni]);
-
-
-                    for _ in 0..6 {
-                        // TODO: Properly interpolate UVs (just pushing zeros for now)
-                        result_outer.vert_uvs.push(Vec2::ZERO);
-                    }
-                }
-            }
-        }
-
-        (result_outer, result_inner)
     }
 
     pub fn concat(models: &[Self]) -> Self {
@@ -223,7 +143,8 @@ impl Model {
                 tri_points[0].to_vec3a(),
                 tri_points[1].to_vec3a(),
                 tri_points[2].to_vec3a(),
-            ]).to_vec3();
+            ])
+            .to_vec3();
 
             for _ in 0..3 {
                 new_vert_normals.push(tri_normal);
@@ -238,7 +159,7 @@ impl Model {
         for vert in &mut result.verts {
             *vert = affine.transform_point3(*vert);
         }
-        
+
         result
     }
 }

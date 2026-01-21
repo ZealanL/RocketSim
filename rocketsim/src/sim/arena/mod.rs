@@ -1,7 +1,7 @@
 mod arena_config;
 mod arena_contact_tracker;
-mod base;
 mod arena_state;
+mod base;
 
 pub use arena_config::*;
 pub use arena_state::*;

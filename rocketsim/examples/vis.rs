@@ -1,7 +1,6 @@
 use device_query::{DeviceQuery, DeviceState, Keycode};
 use rocketsim::{
-    Arena, ArenaConfig, CarBodyConfig, CarControls, GameMode, Team,
-    init_from_default,
+    Arena, ArenaConfig, CarBodyConfig, CarControls, GameMode, Team, init_from_default,
 };
 
 fn determine_controls(device: &DeviceState) -> CarControls {
