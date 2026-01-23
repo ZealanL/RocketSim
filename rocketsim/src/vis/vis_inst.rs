@@ -1,12 +1,16 @@
 use crate::sim::collision_mesh_file::CollisionMeshFile;
-use crate::vis::backend::{ShaderCode, SharedVisRenderState, SharedWindowEvents, VisRenderState, VisRenderer, WindowEvent};
+use crate::vis::backend::{
+    Color, ShaderSrc, ShaderSrcType, SharedVisRenderState, SharedWindowEvents, VisRenderLinePoint,
+    VisRenderState, VisRenderer, WindowEvent,
+};
 use crate::vis::camera::{CameraConfig, CameraMan};
+use crate::vis::ribbon_emitter::{RibbonConfig, RibbonEmitter};
 use crate::vis::vis_asset_loader;
-use crate::{ArenaState, CarBodyConfig, CarInfo, GameMode, Team};
+use crate::{ArenaState, CarBodyConfig, CarInfo, GameMode, Team, consts};
 use glam::{Mat3A, Vec3A};
+use miniquad::KeyCode;
 use std::sync::RwLock;
 use std::thread::JoinHandle;
-use miniquad::{KeyCode, MouseButton};
 
 pub struct VisInst {
     game_mode: GameMode,
@@ -16,6 +20,8 @@ pub struct VisInst {
 
     _renderer_handle: JoinHandle<()>,
     shared_window_events: SharedWindowEvents,
+
+    boost_ribbons: Vec<RibbonEmitter>,
 }
 
 impl VisInst {
@@ -27,16 +33,26 @@ impl VisInst {
         let shader_srcs = vec![
             (
                 "main",
-                ShaderCode::new(
+                ShaderSrc::new(
+                    ShaderSrcType::Model,
                     include_str!("shaders/main_vert.glsl"),
                     include_str!("shaders/main_frag.glsl"),
                 ),
             ),
             (
                 "arena",
-                ShaderCode::new(
+                ShaderSrc::new(
+                    ShaderSrcType::Model,
                     include_str!("shaders/arena_vert.glsl"),
                     include_str!("shaders/arena_frag.glsl"),
+                ),
+            ),
+            (
+                "line",
+                ShaderSrc::new(
+                    ShaderSrcType::Line,
+                    include_str!("shaders/line_vert.glsl"),
+                    include_str!("shaders/line_frag.glsl"),
                 ),
             ),
         ];
@@ -58,6 +74,8 @@ impl VisInst {
 
             _renderer_handle: renderer_handle,
             shared_window_events,
+
+            boost_ribbons: Vec::new(),
         }
     }
 
@@ -77,6 +95,7 @@ impl VisInst {
     pub fn update(&mut self, astate: &ArenaState, dt: f32) {
         assert_eq!(astate.game_mode, self.game_mode);
 
+        let arena_aabb = consts::arena::get_aabb(self.game_mode);
         let mut new_render_state = VisRenderState::default();
 
         self.update_camera(&mut new_render_state, astate, dt);
@@ -117,23 +136,66 @@ impl VisInst {
             astate.ball_state.rot_mat,
         );
 
+        // Render ball-to-ground line
+        new_render_state.add_line_simple(
+            astate.ball_state.pos,
+            Vec3A::new(
+                astate.ball_state.pos.x,
+                astate.ball_state.pos.y,
+                arena_aabb.min.z,
+            ),
+            Color::WHITE.with_alpha(0.15),
+            2.0,
+        );
+
         // Render cars
         for i in 0..astate.num_cars() {
             let car_info = &astate.car_infos[i];
             let car_state = &astate.car_states[i];
-            let car_texture_name = if car_info.team == Team::Blue {
-                "car_blue"
-            } else {
-                "car_orange"
-            };
-            let car_model = get_car_model_name(car_info);
-            new_render_state.add_model_obj(
-                car_model,
-                Some(car_texture_name),
-                None,
-                car_state.pos,
-                car_state.rot_mat,
-            );
+
+            if !car_state.is_demoed {
+                let car_texture_name = if car_info.team == Team::Blue {
+                    "car_blue"
+                } else {
+                    "car_orange"
+                };
+                let car_model = get_car_model_name(car_info);
+                new_render_state.add_model_obj(
+                    car_model,
+                    Some(car_texture_name),
+                    None,
+                    car_state.pos,
+                    car_state.rot_mat,
+                );
+            }
+
+            // Update and boost ribbon
+            {
+                if self.boost_ribbons.len() < (i + 1) {
+                    // TODO: Make this user-configurable
+                    self.boost_ribbons.push(RibbonEmitter::new(RibbonConfig {
+                        emit_rate: 30.0,
+                        emit_lifetime: 0.5,
+
+                        start_width: 20.0,
+                        end_width: 0.0,
+
+                        start_color: Color::new(1.0, 1.0, 0.5, 1.0),
+                        end_color: Color::new(1.0, 0.4, 0.2, 0.0),
+
+                        width_exponent: 0.7,
+                        color_exponent: 1.0,
+                    }))
+                }
+
+                let boost_ribbon = &mut self.boost_ribbons[i];
+                let emit_dir = -car_state.get_forward_dir();
+                let emit_pos = car_state.pos + (emit_dir * 60.0);
+                let emit_vel = emit_dir * 300.0;
+
+                boost_ribbon.update(car_state.is_boosting, emit_pos, emit_vel, dt);
+                boost_ribbon.render(&mut new_render_state, emit_pos);
+            }
         }
 
         // Render boost pads
@@ -160,7 +222,7 @@ impl VisInst {
                 Some("boost_pad"),
                 None,
                 pad_config.pos * Vec3A::new(1.0, 1.0, 0.0), // TODO: Temp Z-fix
-                Mat3A::IDENTITY * 2.0, // TODO: Resize pad models
+                Mat3A::IDENTITY * 2.0,                      // TODO: Resize pad models
             );
         }
 
@@ -169,13 +231,11 @@ impl VisInst {
             let window_events = self.shared_window_events.lock().unwrap().pop_all();
             for event in window_events {
                 match event {
-                    WindowEvent::KeyDown { key } => {
-                        match key {
-                            KeyCode::C => self.camera_man.cycle_target(astate),
-                            KeyCode::Space => self.camera_man.try_toggle_ball_cam(),
-                            _ => {}
-                        }
-                    }
+                    WindowEvent::KeyDown { key } => match key {
+                        KeyCode::C => self.camera_man.cycle_target(astate),
+                        KeyCode::Space => self.camera_man.try_toggle_ball_cam(),
+                        _ => {}
+                    },
                     _ => {}
                 }
             }

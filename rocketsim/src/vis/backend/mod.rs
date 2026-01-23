@@ -1,6 +1,7 @@
+mod color;
 mod model;
 mod model_set;
-mod shader_code;
+mod shader_src;
 mod texture;
 mod texture_set;
 mod vis_render_state;
@@ -8,9 +9,10 @@ mod vis_renderer;
 mod window_event;
 mod window_event_queue;
 
+pub use color::*;
 pub use model::*;
 pub use model_set::*;
-pub use shader_code::*;
+pub use shader_src::*;
 pub use texture::*;
 pub use texture_set::*;
 pub use vis_render_state::*;

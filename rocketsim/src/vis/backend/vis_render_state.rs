@@ -1,5 +1,15 @@
-use glam::{Mat3A, Vec3A};
+use crate::vis::backend::Color;
+use glam::{Mat3A, Vec3, Vec3A};
 use std::sync::{Arc, RwLock};
+
+#[derive(Debug, Copy, Clone)]
+pub struct VisRenderLinePoint {
+    pub pos: Vec3A,
+    pub color: Color,
+    pub width: f32,
+}
+
+pub type VisRenderLine = Vec<VisRenderLinePoint>;
 
 #[derive(Debug, Clone)]
 pub struct VisRenderModelObj {
@@ -19,7 +29,8 @@ pub struct VisRenderState {
     pub camera_look_target: Vec3A,
     pub camera_fov_deg: f32,
 
-    pub render_objects: Vec<VisRenderModelObj>,
+    pub objects: Vec<VisRenderModelObj>,
+    pub lines: Vec<VisRenderLine>,
 }
 
 impl VisRenderState {
@@ -31,13 +42,28 @@ impl VisRenderState {
         pos: Vec3A,
         rot_mat: Mat3A,
     ) {
-        self.render_objects.push(VisRenderModelObj {
+        self.objects.push(VisRenderModelObj {
             model_name: model_name.to_string(),
             texture_name: texture_name.map(|s| s.to_string()),
             pipeline_name: pipeline_name.map(|s| s.to_string()),
             model_pos: pos,
             model_rot_mat: rot_mat,
         })
+    }
+
+    pub fn add_line_simple(&mut self, pos_a: Vec3A, pos_b: Vec3A, color: Color, width: f32) {
+        self.lines.push(vec![
+            VisRenderLinePoint {
+                pos: pos_a,
+                color,
+                width,
+            },
+            VisRenderLinePoint {
+                pos: pos_b,
+                color,
+                width,
+            },
+        ]);
     }
 }
 
@@ -50,7 +76,8 @@ impl Default for VisRenderState {
             camera_look_target: Vec3A::ZERO,
             camera_fov_deg: 60.0,
 
-            render_objects: Vec::new(),
+            objects: Vec::new(),
+            lines: Vec::new(),
         }
     }
 }

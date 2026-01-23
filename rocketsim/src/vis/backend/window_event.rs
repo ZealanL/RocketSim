@@ -5,5 +5,5 @@ pub enum WindowEvent {
     Resize { width: f32, height: f32 },
     MouseButtonDown { button: MouseButton },
     KeyDown { key: KeyCode },
-    Quit
+    Quit,
 }

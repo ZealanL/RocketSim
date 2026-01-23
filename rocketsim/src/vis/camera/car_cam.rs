@@ -58,7 +58,9 @@ impl CarCam {
             f32::min(a, b)
         } else {
             0.0
-        }.max(cam_config.car_cam.tilt_min_height_scale).powf(cam_config.car_cam.tilt_exponent);
+        }
+        .max(cam_config.car_cam.tilt_min_height_scale)
+        .powf(cam_config.car_cam.tilt_exponent);
         let dist_scale = 1.0 - (up_tilt_scale * cam_config.car_cam.tilt_dist_portion);
 
         let base_pos =
@@ -72,7 +74,8 @@ impl CarCam {
         .extend(0.0)
         .to_vec3a();
 
-        *pos = base_pos - (rsmath::to_2d(*dir).normalize() * cam_config.car_cam.distance * dist_scale);
+        *pos =
+            base_pos - (rsmath::to_2d(*dir).normalize() * cam_config.car_cam.distance * dist_scale);
         *dir = if self.face_ball {
             // Recalculate once more to make sure it's exactly correct
             (ball_state.pos - *pos).normalize()

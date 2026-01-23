@@ -1,15 +1,17 @@
+use crate::vis::backend::WindowEvent;
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
-use crate::vis::backend::WindowEvent;
 
 #[derive(Debug, Clone)]
 pub struct WindowEventQueue {
-    queue: VecDeque<WindowEvent>
+    queue: VecDeque<WindowEvent>,
 }
 
 impl WindowEventQueue {
     pub fn new() -> Self {
-        Self { queue: VecDeque::new() }
+        Self {
+            queue: VecDeque::new(),
+        }
     }
 
     pub fn push(&mut self, event: WindowEvent) {
