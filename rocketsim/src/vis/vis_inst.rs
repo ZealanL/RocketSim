@@ -1,15 +1,21 @@
 use crate::sim::collision_mesh_file::CollisionMeshFile;
-use crate::vis::backend::{ShaderCode, SharedVisRenderState, VisRenderState, VisRenderer};
+use crate::vis::backend::{ShaderCode, SharedVisRenderState, SharedWindowEvents, VisRenderState, VisRenderer, WindowEvent};
+use crate::vis::camera::{CameraConfig, CameraMan};
 use crate::vis::vis_asset_loader;
 use crate::{ArenaState, CarBodyConfig, CarInfo, GameMode, Team};
 use glam::{Mat3A, Vec3A};
 use std::sync::RwLock;
 use std::thread::JoinHandle;
+use miniquad::{KeyCode, MouseButton};
 
 pub struct VisInst {
     game_mode: GameMode,
-    renderer_handle: JoinHandle<()>,
     shared_state: SharedVisRenderState,
+    camera_man: CameraMan,
+    total_updates: usize,
+
+    _renderer_handle: JoinHandle<()>,
+    shared_window_events: SharedWindowEvents,
 }
 
 impl VisInst {
@@ -19,19 +25,39 @@ impl VisInst {
 
         let shared_state = SharedVisRenderState::new(RwLock::new(VisRenderState::default()));
         let shader_srcs = vec![
-            ("main", ShaderCode::new(include_str!("shaders/main_vert.glsl"), include_str!("shaders/main_frag.glsl"))),
-            ("arena", ShaderCode::new(include_str!("shaders/arena_vert.glsl"), include_str!("shaders/arena_frag.glsl"))),
+            (
+                "main",
+                ShaderCode::new(
+                    include_str!("shaders/main_vert.glsl"),
+                    include_str!("shaders/main_frag.glsl"),
+                ),
+            ),
+            (
+                "arena",
+                ShaderCode::new(
+                    include_str!("shaders/arena_vert.glsl"),
+                    include_str!("shaders/arena_frag.glsl"),
+                ),
+            ),
         ];
-        let renderer_handle = VisRenderer::spawn_new(
+        let (renderer_handle, shared_window_events) = VisRenderer::spawn_new(
             "RocketSim Visualizer",
-            models, textures, shared_state.clone(),
-            shader_srcs
+            models,
+            textures,
+            shared_state.clone(),
+            shader_srcs,
         );
 
         Self {
             game_mode,
             shared_state,
-            renderer_handle,
+
+            // TODO: Allow user to specify config
+            camera_man: CameraMan::new(game_mode, CameraConfig::default()),
+            total_updates: 0,
+
+            _renderer_handle: renderer_handle,
+            shared_window_events,
         }
     }
 
@@ -41,7 +67,11 @@ impl VisInst {
         arena_state: &ArenaState,
         dt: f32,
     ) {
-        unimplemented!() // TODO: Implement
+        self.camera_man.update(arena_state, dt);
+        new_render_state.camera_pos = self.camera_man.cur_pos();
+        new_render_state.camera_look_target =
+            new_render_state.camera_pos + self.camera_man.cur_dir() * 10.0;
+        new_render_state.camera_fov_deg = self.camera_man.config().fov_degrees;
     }
 
     pub fn update(&mut self, astate: &ArenaState, dt: f32) {
@@ -130,10 +160,28 @@ impl VisInst {
                 Some("boost_pad"),
                 None,
                 pad_config.pos * Vec3A::new(1.0, 1.0, 0.0), // TODO: Temp Z-fix
-                Mat3A::IDENTITY * 2.0,                      // TODO: Resize pad models
+                Mat3A::IDENTITY * 2.0, // TODO: Resize pad models
             );
         }
 
+        // Handle window events
+        {
+            let window_events = self.shared_window_events.lock().unwrap().pop_all();
+            for event in window_events {
+                match event {
+                    WindowEvent::KeyDown { key } => {
+                        match key {
+                            KeyCode::C => self.camera_man.cycle_target(astate),
+                            KeyCode::Space => self.camera_man.try_toggle_ball_cam(),
+                            _ => {}
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+
         *self.shared_state.write().unwrap() = new_render_state;
+        self.total_updates += 1;
     }
 }

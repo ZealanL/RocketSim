@@ -14,7 +14,7 @@ use crate::bullet::{
     },
     linear_math::AffineExt,
 };
-use crate::shared::{Aabb, geo_math};
+use crate::shared::{Aabb, rsmath};
 
 struct SatResult {
     penetration: f32,
@@ -248,7 +248,7 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
                 edge_start[box_axis] = half_extents[box_axis];
                 edge_end[box_axis] = -half_extents[box_axis];
 
-                geo_math::closest_points_between_segments(
+                rsmath::closest_points_between_segments(
                     edge_start,
                     edge_end,
                     tri_verts_rel[tri_edge],

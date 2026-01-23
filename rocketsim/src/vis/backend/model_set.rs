@@ -1,4 +1,4 @@
-use crate::shared::geo_math;
+use crate::shared::rsmath;
 use crate::vis::backend::Model;
 use ahash::AHashMap;
 use glam::Vec3;
@@ -40,7 +40,7 @@ impl ModelSet {
                 tri_verts[1].to_vec3a(),
                 tri_verts[2].to_vec3a(),
             ];
-            let tri_normal = geo_math::calc_tri_normal(&tri_verts);
+            let tri_normal = rsmath::calc_tri_normal(&tri_verts);
 
             for _ in 0..3 {
                 results.push(tri_normal.to_vec3());

@@ -1,6 +1,6 @@
 mod aabb;
 pub(crate) mod bvh;
-pub mod geo_math;
+pub mod rsmath;
 mod ray_packet;
 
 pub use aabb::*;

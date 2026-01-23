@@ -1,12 +1,16 @@
-use crate::vis::backend::{ModelSet, ShaderCode, SharedVisRenderState, TextureSet};
+use crate::vis::backend::{
+    ModelSet, ShaderCode, SharedVisRenderState, SharedWindowEvents, TextureSet, WindowEvent,
+    WindowEventQueue,
+};
 use ahash::AHashMap;
 use glam::{Mat4, Vec2, Vec3};
 use miniquad::{
-    Bindings, BufferLayout, BufferSource, BufferType, BufferUsage, EventHandler, Pipeline,
-    PipelineParams, PrimitiveType, RawId, RenderingBackend, TextureId,
+    Bindings, BufferLayout, BufferSource, BufferType, BufferUsage, EventHandler, KeyCode, KeyMods,
+    MouseButton, Pipeline, PipelineParams, PrimitiveType, RawId, RenderingBackend, TextureId,
     UniformBlockLayout, UniformDesc, UniformType, UniformsSource, VertexAttribute, VertexFormat,
     conf, window,
 };
+use std::sync::Mutex;
 use std::thread::JoinHandle;
 
 #[repr(C)]
@@ -74,6 +78,8 @@ pub struct VisRenderer {
     textures: TextureSet,
     mq_stage: MiniQuadStage,
     shared_render_state: SharedVisRenderState,
+
+    window_event_queue: SharedWindowEvents,
 }
 
 impl VisRenderer {
@@ -82,6 +88,7 @@ impl VisRenderer {
         textures: TextureSet,
         shared_render_state: SharedVisRenderState,
         shader_srcs: Vec<(String, ShaderCode)>,
+        window_event_queue: SharedWindowEvents,
     ) -> VisRenderer {
         // Set up miniquad stuff
         let mq_stage = {
@@ -153,6 +160,7 @@ impl VisRenderer {
             textures,
             mq_stage,
             shared_render_state,
+            window_event_queue,
         }
     }
 }
@@ -162,6 +170,24 @@ impl EventHandler for VisRenderer {
 
     fn resize_event(&mut self, width: f32, height: f32) {
         self.mq_stage.cur_window_size = glam::vec2(width, height);
+        self.window_event_queue
+            .lock()
+            .unwrap()
+            .push(WindowEvent::Resize { width, height })
+    }
+
+    fn mouse_button_down_event(&mut self, _button: MouseButton, _x: f32, _y: f32) {
+        self.window_event_queue
+            .lock()
+            .unwrap()
+            .push(WindowEvent::MouseButtonDown { button: _button })
+    }
+
+    fn key_down_event(&mut self, _keycode: KeyCode, _keymods: KeyMods, _repeat: bool) {
+        self.window_event_queue
+            .lock()
+            .unwrap()
+            .push(WindowEvent::KeyDown { key: _keycode })
     }
 
     fn draw(&mut self) {
@@ -267,7 +293,7 @@ impl VisRenderer {
         texture_set: TextureSet,
         shared_render_state: SharedVisRenderState,
         shader_srcs: Vec<(&str, ShaderCode)>,
-    ) -> JoinHandle<()> {
+    ) -> (JoinHandle<()>, SharedWindowEvents) {
         let mut conf = conf::Conf::default();
         conf.window_title = window_title.to_string();
         conf.platform.apple_gfx_api = conf::AppleGfxApi::OpenGl; // Apple devices should still use OpenGL
@@ -278,15 +304,20 @@ impl VisRenderer {
             .map(|(name, code)| (name.to_string(), code.clone()))
             .collect();
 
-        std::thread::spawn(|| {
+        let shared_window_events = SharedWindowEvents::new(Mutex::new(WindowEventQueue::new()));
+        let shared_window_events_clone = shared_window_events.clone();
+        let handle = std::thread::spawn(|| {
             miniquad::start(conf, move || {
                 Box::new(VisRenderer::new(
                     model_set,
                     texture_set,
                     shared_render_state.clone(),
                     shader_srcs_strings,
+                    shared_window_events_clone,
                 ))
             });
-        })
+        });
+
+        (handle, shared_window_events)
     }
 }

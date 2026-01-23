@@ -21,6 +21,13 @@ fn determine_controls(device: &DeviceState) -> CarControls {
         controls.throttle += 1.0;
     }
 
+    if keys.contains(&Keycode::Q) {
+        controls.roll -= 1.0;
+    }
+    if keys.contains(&Keycode::E) {
+        controls.roll += 1.0;
+    }
+
     controls.handbrake = keys.contains(&Keycode::LShift);
 
     controls.jump = mouse_state.button_pressed[1];
@@ -47,7 +54,7 @@ fn main() {
         },
     );
 
-    let car_idx = arena.add_car(Team::Blue, CarBodyConfig::MERC);
+    let car_idx = arena.add_car(Team::Blue, CarBodyConfig::BREAKOUT);
 
     arena.set_vis_enabled(true);
 
@@ -57,7 +64,7 @@ fn main() {
         let controls = determine_controls(&device_state);
 
         // Reset arena
-        if keys.contains(&Keycode::R) || arena.tick_count() == 0 {
+        if keys.contains(&Keycode::Backspace) || arena.tick_count() == 0 {
             arena.reset_to_random_kickoff();
         }
 
