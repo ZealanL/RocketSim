@@ -22,6 +22,7 @@ pub struct VisInst {
     shared_window_events: SharedWindowEvents,
 
     boost_ribbons: Vec<RibbonEmitter>,
+    ball_ribbon: RibbonEmitter,
 }
 
 impl VisInst {
@@ -76,6 +77,19 @@ impl VisInst {
             shared_window_events,
 
             boost_ribbons: Vec::new(),
+            ball_ribbon: RibbonEmitter::new(RibbonConfig {
+                emit_rate: 30.0,
+                emit_lifetime: 1.0,
+
+                start_color: Color::WHITE.with_alpha(0.3),
+                end_color: Color::WHITE.with_alpha(0.0),
+
+                start_width: 30.0,
+                end_width: 0.0,
+
+                width_exponent: 0.5,
+                color_exponent: 1.0,
+            }),
         }
     }
 
@@ -128,25 +142,33 @@ impl VisInst {
         }
 
         // Render ball
-        new_render_state.add_model_obj(
-            "ball",
-            Some("ball"),
-            None,
-            astate.ball_state.pos,
-            astate.ball_state.rot_mat,
-        );
+        {
+            new_render_state.add_model_obj(
+                "ball",
+                Some("ball"),
+                None,
+                astate.ball_state.pos,
+                astate.ball_state.rot_mat,
+            );
 
-        // Render ball-to-ground line
-        new_render_state.add_line_simple(
-            astate.ball_state.pos,
-            Vec3A::new(
-                astate.ball_state.pos.x,
-                astate.ball_state.pos.y,
-                arena_aabb.min.z,
-            ),
-            Color::WHITE.with_alpha(0.15),
-            2.0,
-        );
+            // Ball trail
+            self.ball_ribbon
+                .update(true, astate.ball_state.pos, Vec3A::ZERO, dt);
+            self.ball_ribbon
+                .render(&mut new_render_state, astate.ball_state.pos);
+
+            // Ball-to-ground line
+            new_render_state.add_line_simple(
+                astate.ball_state.pos,
+                Vec3A::new(
+                    astate.ball_state.pos.x,
+                    astate.ball_state.pos.y,
+                    arena_aabb.min.z,
+                ),
+                Color::WHITE.with_alpha(0.15),
+                2.0,
+            );
+        }
 
         // Render cars
         for i in 0..astate.num_cars() {
@@ -199,31 +221,33 @@ impl VisInst {
         }
 
         // Render boost pads
-        for i in 0..astate.num_boost_pads() {
-            let pad_config = astate.boost_pad_configs[i];
-            let pad_state = astate.boost_pad_states[i];
+        if self.game_mode != GameMode::Heatseeker {
+            for i in 0..astate.num_boost_pads() {
+                let pad_config = astate.boost_pad_configs[i];
+                let pad_state = astate.boost_pad_states[i];
 
-            let pad_model = if pad_config.is_big {
-                if pad_state.is_active() {
-                    "pad_big_on"
+                let pad_model = if pad_config.is_big {
+                    if pad_state.is_active() {
+                        "pad_big_on"
+                    } else {
+                        "pad_big_off"
+                    }
                 } else {
-                    "pad_big_off"
-                }
-            } else {
-                if pad_state.is_active() {
-                    "pad_small_on"
-                } else {
-                    "pad_small_off"
-                }
-            };
+                    if pad_state.is_active() {
+                        "pad_small_on"
+                    } else {
+                        "pad_small_off"
+                    }
+                };
 
-            new_render_state.add_model_obj(
-                pad_model,
-                Some("boost_pad"),
-                None,
-                pad_config.pos * Vec3A::new(1.0, 1.0, 0.0), // TODO: Temp Z-fix
-                Mat3A::IDENTITY * 2.0,                      // TODO: Resize pad models
-            );
+                new_render_state.add_model_obj(
+                    pad_model,
+                    Some("boost_pad"),
+                    None,
+                    pad_config.pos * Vec3A::new(1.0, 1.0, 0.0), // TODO: Temp Z-fix
+                    Mat3A::IDENTITY * 2.0,                      // TODO: Resize pad models
+                );
+            }
         }
 
         // Handle window events

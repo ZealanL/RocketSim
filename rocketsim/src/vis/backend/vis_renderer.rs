@@ -452,7 +452,7 @@ impl EventHandler for VisRenderer {
             self.ctx.apply_pipeline(&self.line_pipeline);
             self.ctx.apply_bindings(&self.line_bindings);
             let mut num_lines = 0;
-            if !state.lines.is_empty(){
+            if !state.lines.is_empty() {
                 let mut pos_set = Vec::new();
                 let mut color_set = Vec::new();
                 let mut width_set = Vec::new();
@@ -520,7 +520,6 @@ impl VisRenderer {
         let shared_window_events_clone = shared_window_events.clone();
         let handle = std::thread::spawn(|| {
             miniquad::start(conf, move || {
-
                 window::show_mouse(false);
 
                 Box::new(VisRenderer::new(
