@@ -507,6 +507,7 @@ impl VisRenderer {
         conf.platform.apple_gfx_api = conf::AppleGfxApi::OpenGl; // Apple devices should still use OpenGL
         conf.sample_count = 8; // Heavy MSAA
 
+
         let shader_srcs_strings: Vec<(String, ShaderSrc)> = shader_srcs
             .iter()
             .map(|(name, code)| (name.to_string(), code.clone()))
@@ -516,6 +517,9 @@ impl VisRenderer {
         let shared_window_events_clone = shared_window_events.clone();
         let handle = std::thread::spawn(|| {
             miniquad::start(conf, move || {
+
+                window::show_mouse(false);
+
                 Box::new(VisRenderer::new(
                     model_set,
                     texture_set,
