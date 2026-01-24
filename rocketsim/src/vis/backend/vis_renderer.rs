@@ -503,10 +503,13 @@ impl VisRenderer {
         shader_srcs: Vec<(&str, ShaderSrc)>,
     ) -> (JoinHandle<()>, SharedWindowEvents) {
         let mut conf = conf::Conf::default();
+
         conf.window_title = window_title.to_string();
+        conf.window_width = 1280;
+        conf.window_height = 720;
+
         conf.platform.apple_gfx_api = conf::AppleGfxApi::OpenGl; // Apple devices should still use OpenGL
         conf.sample_count = 8; // Heavy MSAA
-
 
         let shader_srcs_strings: Vec<(String, ShaderSrc)> = shader_srcs
             .iter()
