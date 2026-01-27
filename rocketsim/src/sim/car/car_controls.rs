@@ -37,4 +37,44 @@ impl CarControls {
         self.roll = self.roll.clamp(-1.0, 1.0);
         self
     }
+
+    pub const fn with_throttle(mut self, val: f32) -> Self {
+        self.throttle = val;
+        self
+    }
+
+    pub const fn with_steer(mut self, val: f32) -> Self {
+        self.steer = val;
+        self
+    }
+
+    pub const fn with_pitch(mut self, val: f32) -> Self {
+        self.pitch = val;
+        self
+    }
+
+    pub const fn with_yaw(mut self, val: f32) -> Self {
+        self.yaw = val;
+        self
+    }
+
+    pub const fn with_roll(mut self, val: f32) -> Self {
+        self.roll = val;
+        self
+    }
+
+    pub const fn with_jump(mut self, val: bool) -> Self {
+        self.jump = val;
+        self
+    }
+
+    pub const fn with_boost(mut self, val: bool) -> Self {
+        self.boost = val;
+        self
+    }
+
+    pub const fn with_handbrake(mut self, val: bool) -> Self {
+        self.handbrake = val;
+        self
+    }
 }
