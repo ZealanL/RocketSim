@@ -321,8 +321,38 @@ pub mod ball {
 }
 
 pub mod goal {
+    use glam::Vec3A;
+    use crate::shared::Aabb;
+    use crate::Team;
+
     pub const SOCCAR_GOAL_SCORE_BASE_THRESHOLD_Y: f32 = 5124.25;
+    pub const SOCCAR_GOAL_HEIGHT: f32 = 642.775; // https://wiki.rlbot.org/v4/botmaking/useful-game-values/
+    pub const SOCCAR_GOAL_HALF_WIDTH: f32 = 892.755; // https://wiki.rlbot.org/v4/botmaking/useful-game-values/
+    pub const SOCCAR_GOAL_DEPTH: f32 = 880.0; // https://wiki.rlbot.org/v4/botmaking/useful-game-values/
+
     pub const HOOPS_GOAL_SCORE_THRESHOLD_Z: f32 = 270.0;
+
+    pub const fn get_goal_aabb(goal_team: Team) -> Aabb {
+        const FRONT_Y: f32 = SOCCAR_GOAL_SCORE_BASE_THRESHOLD_Y;
+        const DEPTH: f32 = SOCCAR_GOAL_DEPTH;
+        let (min_y, max_y) = if goal_team.is_blue() {
+            (-FRONT_Y - DEPTH, -FRONT_Y)
+        } else {
+            (FRONT_Y, FRONT_Y + DEPTH)
+        };
+        Aabb::new(
+            Vec3A::new(-SOCCAR_GOAL_HALF_WIDTH, min_y, 0.0),
+            Vec3A::new( SOCCAR_GOAL_HALF_WIDTH, max_y, SOCCAR_GOAL_HEIGHT),
+        )
+    }
+
+    pub const fn get_goal_face_center(goal_team: Team) -> Vec3A {
+        Vec3A::new(
+            0.0,
+            SOCCAR_GOAL_SCORE_BASE_THRESHOLD_Y * goal_team.get_y_dir(),
+            SOCCAR_GOAL_HEIGHT / 2.0
+        )
+    }
 }
 
 pub mod bullet_vehicle {
