@@ -14,7 +14,7 @@ pub struct PhysState {
 }
 
 impl PhysState {
-    pub fn get_inverted_y(mut self) -> Self {
+    pub fn flip_y(mut self) -> Self {
         const INVERT_SCALE: Vec3A = Vec3A::new(-1.0, -1.0, 1.0);
 
         self.pos *= INVERT_SCALE;
