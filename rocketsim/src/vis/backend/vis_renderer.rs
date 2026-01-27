@@ -3,7 +3,7 @@ use crate::vis::backend::{
     TextureSet, WindowEvent, WindowEventQueue,
 };
 use ahash::AHashMap;
-use glam::{Mat4, Vec2, Vec3, Vec3A, Vec4};
+use glam::{Mat4, Vec2, Vec3, Vec4};
 use miniquad::{
     Bindings, BlendFactor, BlendState, BlendValue, BufferId, BufferLayout, BufferSource,
     BufferType, BufferUsage, Equation, EventHandler, KeyCode, KeyMods, MouseButton, Pipeline,

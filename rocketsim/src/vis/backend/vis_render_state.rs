@@ -1,5 +1,5 @@
 use crate::vis::backend::Color;
-use glam::{Mat3A, Vec3, Vec3A};
+use glam::{Mat3A, Vec3A};
 use std::sync::{Arc, RwLock};
 
 #[derive(Debug, Copy, Clone)]

@@ -66,7 +66,7 @@ impl CameraMan {
         }
     }
 
-    pub fn update(&mut self, arena_state: &ArenaState, dt: f32) {
+    pub fn update(&mut self, arena_state: &ArenaState, _dt: f32) {
         match &self.view_mode {
             CameraViewMode::BirdsEye => {
                 self.cur_pos = self.config.birds_eye_pos;

@@ -1,6 +1,3 @@
-use egui::lerp;
-use glam::FloatExt;
-
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Color {
     pub r: f32,
