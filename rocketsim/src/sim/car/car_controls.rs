@@ -1,3 +1,5 @@
+use glam::Vec3;
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 
 pub struct CarControls {
@@ -38,6 +40,12 @@ impl CarControls {
         self
     }
 
+    pub const fn pyr(self) -> Vec3 {
+        Vec3::new(self.pitch, self.yaw, self.roll)
+    }
+
+    //////////////////////////
+
     pub const fn with_throttle(mut self, val: f32) -> Self {
         self.throttle = val;
         self
@@ -60,6 +68,11 @@ impl CarControls {
 
     pub const fn with_roll(mut self, val: f32) -> Self {
         self.roll = val;
+        self
+    }
+
+    pub const fn with_pyr(mut self, pyr: Vec3) -> Self {
+        (self.pitch, self.yaw, self.roll) = (pyr.x, pyr.y, pyr.z);
         self
     }
 
