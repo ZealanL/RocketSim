@@ -519,13 +519,6 @@ impl Arena {
         self.get_last_step_events()
     }
 
-    /// Steps multiple ticks at once
-    pub fn step_ticks(&mut self, ticks_to_simulate: usize) {
-        for _ in 0..ticks_to_simulate {
-            self.step_tick();
-        }
-    }
-
     #[inline]
 
     pub const fn tick_count(&self) -> u64 {

@@ -128,7 +128,9 @@ fn main() -> std::io::Result<()> {
             .set_car_controls(old_car_idx, conv_to_old_car_controls(controls))
             .unwrap();
 
-        arena.step_ticks(2);
+        for _ in 0..2 {
+            arena.step_tick();
+        }
         old_arena.pin_mut().step(2);
 
         let old_car_state_conv = conv_to_new_car_state(
