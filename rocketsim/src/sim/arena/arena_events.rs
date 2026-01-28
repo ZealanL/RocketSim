@@ -29,11 +29,18 @@ pub struct CarHitWorldEvent {
 }
 
 #[derive(Debug, Copy, Clone)]
+pub struct CarPickupBoostEvent {
+    pub car_idx: usize,
+    pub boost_pad_idx: usize
+}
+
+#[derive(Debug, Copy, Clone)]
 pub enum ArenaEvent {
     BallHitWorld(BallHitWorldEvent),
     CarHitBall(CarHitBallEvent),
     CarHitCar(CarHitCarEvent),
     CarHitWorld(CarHitWorldEvent),
+    CarPickupBoost(CarPickupBoostEvent),
 }
 
 //////////////////////////////////////

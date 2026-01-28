@@ -71,19 +71,19 @@ impl BoostPadGrid {
         }
     }
 
-    /// Returns true if boost was given
+    /// If boost was collected, returns the pad index
     pub(crate) fn maybe_give_car_boost(
         &mut self,
         car_state: &mut CarState,
         mutator_config: &MutatorConfig,
         tick_count: u64,
-    ) {
+    ) -> Option<usize> {
         if car_state.boost >= mutator_config.car_max_boost_amount {
-            return; // Already full on boost
+            return None; // Already full on boost
         }
 
         if car_state.pos.z > self.max_pad_z {
-            return; // Can't possibly overlap with a boost pad
+            return None; // Can't possibly overlap with a boost pad
         }
 
         let car_center_aabb = Aabb::new(car_state.pos, car_state.pos);
@@ -112,8 +112,10 @@ impl BoostPadGrid {
                 car_state.boost =
                     (car_state.boost + pad.boost_amount).min(mutator_config.car_max_boost_amount);
                 pad.gave_boost_tick_count = Some(tick_count);
-                return;
+                return Some(pad_idx);
             }
-        }
+        };
+
+        None
     }
 }

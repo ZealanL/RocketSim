@@ -1,11 +1,12 @@
 use super::ArenaContactTracker;
+use crate::ArenaEvent::{BallHitWorld, CarPickupBoost};
 use crate::bullet::dynamics::rigid_body::ActivationState;
 use crate::consts::{TICK_RATE, TICK_TIME};
 use crate::sim::ArenaEvent::CarHitBall;
 use crate::sim::arena::ArenaEventList;
 use crate::sim::{ArenaEvent, Ball, BoostPad, CarHitBallEvent, CarHitCarEvent, CarHitWorldEvent};
 use crate::vis::VisInst;
-use crate::{ARENA_COLLISION_MESH_FILES, ARENA_COLLISION_SHAPES, ArenaConfig, ArenaMemWeightMode, ArenaState, BoostPadConfig, BoostPadGrid, BoostPadState, Car, CarBodyConfig, CarControls, CarInfo, CarState, GameMode, MutatorConfig, PhysState, Team, bullet::{
+use crate::{ARENA_COLLISION_MESH_FILES, ARENA_COLLISION_SHAPES, ArenaConfig, ArenaMemWeightMode, ArenaState, BallHitWorldEvent, BoostPadConfig, BoostPadGrid, BoostPadState, Car, CarBodyConfig, CarControls, CarInfo, CarState, GameMode, MutatorConfig, PhysState, Team, bullet::{
     collision::{
         broadphase::{GridBroadphase, HashedOverlappingPairCache},
         dispatch::collision_dispatcher::CollisionDispatcher,
@@ -17,12 +18,11 @@ use crate::{ARENA_COLLISION_MESH_FILES, ARENA_COLLISION_SHAPES, ArenaConfig, Are
         discrete_dynamics_world::DiscreteDynamicsWorld,
         rigid_body::{RigidBody, RigidBodyConstructionInfo},
     },
-}, consts, consts::{BT_TO_UU, UU_TO_BT}, sim::{BallState, DemoMode, UserInfoTypes, collision_masks::CollisionMasks}, BallHitWorldEvent};
+}, consts, consts::{BT_TO_UU, UU_TO_BT}, sim::{BallState, DemoMode, UserInfoTypes, collision_masks::CollisionMasks}, CarPickupBoostEvent};
 use arrayvec::ArrayVec;
 use fastrand::Rng;
 use glam::{Affine3A, EulerRot, Mat3A, Vec3A};
 use std::{f32::consts::PI, iter::repeat_n, mem};
-use crate::ArenaEvent::BallHitWorld;
 
 pub struct Arena {
     pub(crate) bullet_world: DiscreteDynamicsWorld,
@@ -491,11 +491,18 @@ impl Arena {
             car.post_tick_update(rb);
             car.finish_physics_tick(rb);
 
-            self.boost_pad_grid.maybe_give_car_boost(
+            let collected_pad_op = self.boost_pad_grid.maybe_give_car_boost(
                 &mut car.state,
                 &self.mutator_config,
                 self.tick_count,
             );
+
+            if let Some(collected_pad_idx) = collected_pad_op {
+                self.events.push(CarPickupBoost(CarPickupBoostEvent {
+                    car_idx: car.idx,
+                    boost_pad_idx: collected_pad_idx,
+                }));
+            }
         }
 
         let ball_rb = &mut self.bullet_world.bodies_mut()[self.ball.rigid_body_idx];
