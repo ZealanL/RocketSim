@@ -108,10 +108,11 @@ pub fn map_car_err(a: &CarState, b: &CarState) -> StateErrSet {
         calc_time_err(a.air_time_since_jump, b.air_time_since_jump),
     ));
 
-    err_set.push((
-        "has_hit_ball".to_string(),
-        calc_bool_err(a.ball_hit_info.is_some(), b.ball_hit_info.is_some()),
-    ));
+    // TODO: Reimplement
+    //err_set.push((
+    //    "has_hit_ball".to_string(),
+    //    calc_bool_err(a.ball_hit_info.is_some(), b.ball_hit_info.is_some()),
+    //));
 
     // NOTE: Have to do these by hand because the strings must all be static
     err_set.push((

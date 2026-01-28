@@ -1,7 +1,7 @@
 use crate::sim::collision_mesh_file::CollisionMeshFile;
 use crate::vis::backend::{
-    Color, ShaderSrc, ShaderSrcType, SharedVisRenderState, SharedWindowEvents,
-    VisRenderState, VisRenderer, WindowEvent,
+    Color, ShaderSrc, ShaderSrcType, SharedVisRenderState, SharedWindowEvents, VisRenderState,
+    VisRenderer, WindowEvent,
 };
 use crate::vis::camera::{CameraConfig, CameraMan};
 use crate::vis::ribbon_emitter::{RibbonConfig, RibbonEmitter};

@@ -1,6 +1,6 @@
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, ItemStruct};
+use syn::{ItemStruct, parse_macro_input};
 
 /// Macro for implementing fast-hashing of a data struct with `zerocopy` and `derive_fast_hash`
 ///

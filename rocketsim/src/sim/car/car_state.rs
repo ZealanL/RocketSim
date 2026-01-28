@@ -2,13 +2,7 @@ use std::ops::{Deref, DerefMut};
 
 use glam::{Mat3A, Vec3A};
 
-use crate::{BallHitInfo, CarControls, PhysState};
-
-#[derive(Clone, Copy, Debug, Default)]
-pub struct CarContact {
-    pub other_car_idx: usize,
-    pub cooldown_timer: f32,
-}
+use crate::{CarControls, PhysState};
 
 #[derive(Clone, Copy, Debug)]
 pub struct CarState {
@@ -67,11 +61,11 @@ pub struct CarState {
     /// Counts down when auto-flipping
     pub auto_flip_timer: f32,
     pub auto_flip_torque_scale: f32,
+    pub bump_cooldown_timer: f32,
+    /// If in contact with a static mesh/body, this is the collision normal of that contact on said body
     pub world_contact_normal: Option<Vec3A>,
-    pub car_contact: Option<CarContact>,
     pub is_demoed: bool,
     pub demo_respawn_timer: f32,
-    pub ball_hit_info: Option<BallHitInfo>,
 }
 
 impl Default for CarState {
@@ -110,13 +104,12 @@ impl CarState {
         supersonic_time: 0.0,
         handbrake_val: 0.0,
         is_auto_flipping: false,
+        world_contact_normal: None,
+        bump_cooldown_timer: 0.0,
         auto_flip_timer: 0.0,
         auto_flip_torque_scale: 0.0,
-        world_contact_normal: None,
-        car_contact: None,
         is_demoed: false,
         demo_respawn_timer: 0.0,
-        ball_hit_info: None,
     };
 
     pub const fn has_flip_or_jump(&self) -> bool {

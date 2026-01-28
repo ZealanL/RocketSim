@@ -38,7 +38,11 @@ impl Aabb {
     }
 
     /// (For internal use)
-    pub(crate) fn from_half_extents_transform(half_extents: Vec3A, margin: f32, t: &Affine3A) -> Aabb {
+    pub(crate) fn from_half_extents_transform(
+        half_extents: Vec3A,
+        margin: f32,
+        t: &Affine3A,
+    ) -> Aabb {
         let half_extents_with_margin = half_extents + margin;
         let abs_b = t.matrix3.abs();
         let center = t.translation;

@@ -1,8 +1,6 @@
 #![allow(dead_code)] // Don't warn for unused public stuff
 use glam::{Mat3A, Vec3A};
-use rocketsim::{
-    BallHitInfo, BallState, CarContact, CarControls, CarState, GameMode, PhysState, Team,
-};
+use rocketsim::{BallState, CarControls, CarState, GameMode, PhysState, Team};
 use rocketsim_rs::cxx::UniquePtr;
 
 pub type OldArena = rocketsim_rs::sim::Arena;
@@ -105,33 +103,12 @@ pub fn conv_to_old_car_state(state: &CarState) -> OldCarState {
             contact_normal: vec3_to_old(state.world_contact_normal.unwrap_or_default()),
         },
         car_contact: OldCarContact {
-            other_car_id: state
-                .car_contact
-                .map_or(0, |c| (c.other_car_idx + 1) as u32),
-            cooldown_timer: state.car_contact.map_or(0.0, |c| c.cooldown_timer),
+            other_car_id: 0,
+            cooldown_timer: 0.0,
         },
         is_demoed: state.is_demoed,
         demo_respawn_timer: state.demo_respawn_timer,
-        ball_hit_info: OldBallHitInfo {
-            is_valid: state.ball_hit_info.is_some(),
-            relative_pos_on_ball: vec3_to_old(
-                state
-                    .ball_hit_info
-                    .map(|h| h.relative_pos_on_ball)
-                    .unwrap_or_default(),
-            ),
-            ball_pos: vec3_to_old(state.ball_hit_info.map(|h| h.ball_pos).unwrap_or_default()),
-            extra_hit_vel: vec3_to_old(
-                state
-                    .ball_hit_info
-                    .map(|h| h.extra_hit_vel)
-                    .unwrap_or_default(),
-            ),
-            tick_count_when_hit: state.ball_hit_info.map_or(0, |h| h.tick_count_when_hit),
-            tick_count_when_extra_impulse_applied: state
-                .ball_hit_info
-                .map_or(0, |h| h.tick_count_when_extra_impulse_applied),
-        },
+        ball_hit_info: OldBallHitInfo::default(),
         last_controls: conv_to_old_car_controls(state.prev_controls),
     }
 }
@@ -173,28 +150,13 @@ pub fn conv_to_new_car_state(old: &OldCarState, controls: CarControls) -> CarSta
         } else {
             None
         },
-        car_contact: if old.car_contact.other_car_id != 0 || old.car_contact.cooldown_timer > 0.0 {
-            Some(CarContact {
-                other_car_idx: (old.car_contact.other_car_id - 1) as usize,
-                cooldown_timer: old.car_contact.cooldown_timer,
-            })
-        } else {
-            None
-        },
         is_demoed: old.is_demoed,
         demo_respawn_timer: old.demo_respawn_timer,
-        ball_hit_info: if old.ball_hit_info.is_valid {
-            Some(BallHitInfo {
-                relative_pos_on_ball: vec3_to_new(old.ball_hit_info.relative_pos_on_ball),
-                ball_pos: vec3_to_new(old.ball_hit_info.ball_pos),
-                extra_hit_vel: vec3_to_new(old.ball_hit_info.extra_hit_vel),
-                tick_count_when_hit: old.ball_hit_info.tick_count_when_hit,
-                tick_count_when_extra_impulse_applied: old
-                    .ball_hit_info
-                    .tick_count_when_extra_impulse_applied,
-            })
+
+        bump_cooldown_timer: if old.car_contact.other_car_id != 0 {
+            old.car_contact.cooldown_timer
         } else {
-            None
+            0.0
         },
     }
 }
@@ -226,6 +188,7 @@ pub fn conv_to_new_ball_state(ball_state: &OldBallState) -> BallState {
         // TODO: Implement
         hs_info: Default::default(),
         ds_info: Default::default(),
+        hit_last_tick: false,
     }
 }
 

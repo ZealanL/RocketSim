@@ -2,8 +2,8 @@ use std::time::Instant;
 
 use glam::Vec3A;
 use rocketsim::{
-    Arena, ArenaConfig, BallState, CarBodyConfig, CarControls, CarState, GameMode, Team, consts,
-    init_from_default,
+    Arena, ArenaConfig, ArenaEvent, BallState, CarBodyConfig, CarControls, CarState, GameMode,
+    Team, consts, init_from_default,
 };
 
 const NUM_CARS: u8 = 6;
@@ -160,14 +160,7 @@ fn main() {
             for &idx in &ids {
                 const UPDATE_CHANCE: f32 = 0.05; // (120 * 0.05) = Avg of 6 per sec
 
-                let tick_count = arena.tick_count();
                 let car_state = arena.get_car_state(idx);
-
-                if let Some(ball_hit_info) = car_state.ball_hit_info
-                    && tick_count == (ball_hit_info.tick_count_when_hit + 1)
-                {
-                    total_ball_touches += 1;
-                }
 
                 if rand_chance(UPDATE_CHANCE) {
                     arena.set_car_controls(idx, calc_bot_controls(car_state, &ball_state));
@@ -175,6 +168,11 @@ fn main() {
             }
 
             arena.step(1);
+            for event in arena.get_step_events() {
+                if let ArenaEvent::CarHitBall(_car_hit_ball_event) = event {
+                    total_ball_touches += 1;
+                }
+            }
         }
     }
 

@@ -66,6 +66,8 @@ pub struct BallState {
     pub phys: PhysState,
     pub hs_info: HeatseekerInfo,
     pub ds_info: DropshotInfo,
+
+    pub hit_last_tick: bool,
 }
 
 impl Default for BallState {
@@ -84,6 +86,7 @@ impl BallState {
         },
         hs_info: HeatseekerInfo::DEFAULT,
         ds_info: DropshotInfo::DEFAULT,
+        hit_last_tick: false,
     };
 }
 

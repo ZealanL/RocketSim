@@ -852,18 +852,7 @@ impl Car {
             self.state.supersonic_time = 0.0;
         }
 
-        if let Some(car_contact) = &mut self.state.car_contact {
-            car_contact.cooldown_timer -= TICK_TIME;
-        }
-
-        if self
-            .state
-            .car_contact
-            .is_some_and(|car_contact| car_contact.cooldown_timer <= 0.0)
-        {
-            self.state.car_contact = None;
-        }
-
+        self.state.bump_cooldown_timer = (self.state.bump_cooldown_timer - TICK_TIME).max(0.0);
         self.state.prev_controls = self.state.controls;
     }
 

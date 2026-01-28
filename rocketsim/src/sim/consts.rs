@@ -321,9 +321,9 @@ pub mod ball {
 }
 
 pub mod goal {
-    use glam::Vec3A;
-    use crate::shared::Aabb;
     use crate::Team;
+    use crate::shared::Aabb;
+    use glam::Vec3A;
 
     pub const SOCCAR_GOAL_SCORE_BASE_THRESHOLD_Y: f32 = 5124.25;
     pub const SOCCAR_GOAL_HEIGHT: f32 = 642.775; // https://wiki.rlbot.org/v4/botmaking/useful-game-values/
@@ -342,7 +342,7 @@ pub mod goal {
         };
         Aabb::new(
             Vec3A::new(-SOCCAR_GOAL_HALF_WIDTH, min_y, 0.0),
-            Vec3A::new( SOCCAR_GOAL_HALF_WIDTH, max_y, SOCCAR_GOAL_HEIGHT),
+            Vec3A::new(SOCCAR_GOAL_HALF_WIDTH, max_y, SOCCAR_GOAL_HEIGHT),
         )
     }
 
@@ -350,7 +350,7 @@ pub mod goal {
         Vec3A::new(
             0.0,
             SOCCAR_GOAL_SCORE_BASE_THRESHOLD_Y * goal_team.get_y_dir(),
-            SOCCAR_GOAL_HEIGHT / 2.0
+            SOCCAR_GOAL_HEIGHT / 2.0,
         )
     }
 }

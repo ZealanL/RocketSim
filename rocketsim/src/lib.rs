@@ -2,12 +2,12 @@
 
 mod base;
 mod bullet;
+mod glam_inc;
 mod logging;
 pub mod shared;
 mod sim;
 #[cfg(feature = "vis")]
 pub mod vis;
-mod glam_inc;
 ///////////
 
 pub use crate::sim::*;

@@ -3,7 +3,7 @@ use glam::{Affine3A, Vec3A};
 use crate::bullet::dynamics::rigid_body::{ActivationState, CollisionFlags};
 use crate::consts::{UU_TO_BT, dropshot, heatseeker};
 use crate::{
-    BallHitInfo, BallState, Car, GameMode, MutatorConfig, Team,
+    BallState, Car, GameMode, MutatorConfig, Team,
     bullet::{
         collision::{
             broadphase::CollisionFilterGroups,
@@ -140,39 +140,16 @@ impl Ball {
         let trans = *rb.get_world_trans();
         self.state.phys.pos = trans.translation * consts::BT_TO_UU;
         self.state.phys.rot_mat = trans.matrix3;
+
+        self.state.hit_last_tick = false;
     }
 
     pub(crate) fn on_hit(
         &mut self,
         car: &mut Car,
-        rel_pos: Vec3A,
-        tick_count: u64,
         game_mode: GameMode,
         mutator_config: &MutatorConfig,
     ) {
-        let mut ball_hit_info = BallHitInfo {
-            relative_pos_on_ball: rel_pos,
-            tick_count_when_hit: tick_count,
-            ball_pos: self.state.pos,
-            extra_hit_vel: Vec3A::ZERO,
-            tick_count_when_extra_impulse_applied: 0,
-        };
-
-        if let Some(old_bhi) = car.state.ball_hit_info {
-            ball_hit_info.tick_count_when_extra_impulse_applied =
-                old_bhi.tick_count_when_extra_impulse_applied;
-
-            // Once we do an extra car-ball impulse, we need to wait at least 1 tick to do it again
-            if tick_count <= old_bhi.tick_count_when_extra_impulse_applied + 1
-                && old_bhi.tick_count_when_extra_impulse_applied <= tick_count
-            {
-                car.state.ball_hit_info = Some(ball_hit_info);
-                return;
-            }
-        }
-
-        ball_hit_info.tick_count_when_extra_impulse_applied = tick_count;
-
         let car_forward = car.state.phys.rot_mat.x_axis;
         let rel_pos = self.state.phys.pos - car.state.phys.pos;
         let rel_vel = self.state.phys.vel - car.state.phys.vel;
@@ -180,7 +157,7 @@ impl Ball {
         let rel_speed = rel_vel
             .length()
             .min(consts::ball::car_hit_impulse::MAX_DELTA_VEL_UU);
-        if rel_speed > 0.0 {
+        if rel_speed > 0.0 && self.state.hit_last_tick {
             let extra_z_scale = game_mode == GameMode::Hoops
                 && car.state.is_on_ground
                 && car.state.phys.rot_mat.z_axis.z
@@ -201,12 +178,8 @@ impl Ball {
                 * rel_speed
                 * consts::curves::BALL_CAR_EXTRA_IMPULSE_FACTOR.get_output(rel_speed)
                 * mutator_config.ball_hit_extra_force_scale;
-            ball_hit_info.extra_hit_vel = added_vel;
-
             self.vel_impulse_cache += added_vel;
         }
-
-        car.state.ball_hit_info = Some(ball_hit_info);
 
         match game_mode {
             GameMode::Heatseeker => {
@@ -248,6 +221,6 @@ impl Ball {
                 }
             }
             _ => {}
-        }
+        };
     }
 }

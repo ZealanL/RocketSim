@@ -37,9 +37,9 @@ impl PhysState {
         self.vel *= FLIP_SCALES;
 
         // Thanks Rolv, JPK, and Kaiyo!
-        self.rot_mat.x_axis *=  FLIP_SCALES;
+        self.rot_mat.x_axis *= FLIP_SCALES;
         self.rot_mat.y_axis *= -FLIP_SCALES;
-        self.rot_mat.z_axis *=  FLIP_SCALES;
+        self.rot_mat.z_axis *= FLIP_SCALES;
 
         self.ang_vel *= -FLIP_SCALES;
 
@@ -53,9 +53,9 @@ impl PhysState {
         self.pos *= FLIP_SCALES;
         self.vel *= FLIP_SCALES;
 
-        self.rot_mat.x_axis *=  FLIP_SCALES;
+        self.rot_mat.x_axis *= FLIP_SCALES;
         self.rot_mat.y_axis *= -FLIP_SCALES;
-        self.rot_mat.z_axis *=  FLIP_SCALES;
+        self.rot_mat.z_axis *= FLIP_SCALES;
 
         self.ang_vel *= -FLIP_SCALES;
 

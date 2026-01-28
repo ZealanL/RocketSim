@@ -66,12 +66,6 @@ impl Display for TestResultState {
                 glam::BVec4::from_array(csn.wheels_with_contact),
                 glam::BVec4::from_array(cso.wheels_with_contact),
             )?;
-            show_diff(
-                f,
-                "\n\t\thas_hit_ball",
-                csn.ball_hit_info.is_some(),
-                cso.ball_hit_info.is_some(),
-            )?;
 
             f.write_str("\n\t}")?;
         }
