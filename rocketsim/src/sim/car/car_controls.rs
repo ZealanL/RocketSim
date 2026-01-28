@@ -1,7 +1,7 @@
 use glam::Vec3;
 
 #[rocketsim_derive::fast_hash_struct]
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy)]
 pub struct CarControls {
     pub throttle: f32,
     pub steer: f32,
@@ -12,6 +12,21 @@ pub struct CarControls {
     pub boost: bool,
     pub handbrake: bool,
 }
+
+impl PartialEq for CarControls {
+    fn eq(&self, other: &Self) -> bool {
+        self.throttle == other.throttle
+            && self.steer == other.steer
+            && self.pitch == other.pitch
+            && self.yaw == other.yaw
+            && self.roll == other.roll
+            && self.jump == other.jump
+            && self.boost == other.boost
+            && self.handbrake == other.handbrake
+    }
+}
+
+impl Eq for CarControls {}
 
 impl Default for CarControls {
     fn default() -> Self {
