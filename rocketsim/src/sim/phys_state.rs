@@ -14,6 +14,7 @@ pub struct PhysState {
 }
 
 impl PhysState {
+    /// Flip Y axis (aka rotate 180 degrees around Z axis)
     pub fn flip_y(mut self) -> Self {
         const INVERT_SCALE: Vec3A = Vec3A::new(-1.0, -1.0, 1.0);
 
@@ -24,6 +25,39 @@ impl PhysState {
         for i in 0..3 {
             *self.rot_mat.col_mut(i) *= INVERT_SCALE;
         }
+
+        self
+    }
+
+    /// Mirror along X axis (Reflection across the YZ plane)
+    pub fn mirror_x(mut self) -> Self {
+        const FLIP_SCALES: Vec3A = Vec3A::new(-1.0, 1.0, 1.0);
+
+        self.pos *= FLIP_SCALES;
+        self.vel *= FLIP_SCALES;
+
+        // Thanks Rolv, JPK, and Kaiyo!
+        self.rot_mat.x_axis *=  FLIP_SCALES;
+        self.rot_mat.y_axis *= -FLIP_SCALES;
+        self.rot_mat.z_axis *=  FLIP_SCALES;
+
+        self.ang_vel *= -FLIP_SCALES;
+
+        self
+    }
+
+    /// Mirror along Y axis (Reflection across the XZ plane)
+    pub fn mirror_y(mut self) -> Self {
+        const FLIP_SCALES: Vec3A = Vec3A::new(1.0, -1.0, 1.0);
+
+        self.pos *= FLIP_SCALES;
+        self.vel *= FLIP_SCALES;
+
+        self.rot_mat.x_axis *=  FLIP_SCALES;
+        self.rot_mat.y_axis *= -FLIP_SCALES;
+        self.rot_mat.z_axis *=  FLIP_SCALES;
+
+        self.ang_vel *= -FLIP_SCALES;
 
         self
     }
