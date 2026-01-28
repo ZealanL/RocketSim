@@ -1,6 +1,12 @@
 use glam::Vec3A;
 
 #[derive(Debug, Copy, Clone)]
+pub struct BallHitWorldEvent {
+    pub contact_point: Vec3A,
+    pub contact_normal: Vec3A,
+}
+
+#[derive(Debug, Copy, Clone)]
 pub struct CarHitBallEvent {
     pub car_idx: usize,
     pub contact_point: Vec3A,
@@ -24,6 +30,7 @@ pub struct CarHitWorldEvent {
 
 #[derive(Debug, Copy, Clone)]
 pub enum ArenaEvent {
+    BallHitWorld(BallHitWorldEvent),
     CarHitBall(CarHitBallEvent),
     CarHitCar(CarHitCarEvent),
     CarHitWorld(CarHitWorldEvent),

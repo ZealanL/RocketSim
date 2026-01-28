@@ -5,31 +5,24 @@ use crate::sim::ArenaEvent::CarHitBall;
 use crate::sim::arena::ArenaEventList;
 use crate::sim::{ArenaEvent, Ball, BoostPad, CarHitBallEvent, CarHitCarEvent, CarHitWorldEvent};
 use crate::vis::VisInst;
-use crate::{
-    ARENA_COLLISION_MESH_FILES, ARENA_COLLISION_SHAPES, ArenaConfig, ArenaMemWeightMode,
-    ArenaState, BoostPadConfig, BoostPadGrid, BoostPadState, Car, CarBodyConfig, CarControls,
-    CarInfo, CarState, GameMode, MutatorConfig, PhysState, Team,
-    bullet::{
-        collision::{
-            broadphase::{GridBroadphase, HashedOverlappingPairCache},
-            dispatch::collision_dispatcher::CollisionDispatcher,
-            narrowphase::manifold_point::ManifoldPoint,
-            shapes::{collision_shape::CollisionShapes, static_plane_shape::StaticPlaneShape},
-        },
-        dynamics::{
-            constraint_solver::seq_impulse_constraint_solver::SeqImpulseConstraintSolver,
-            discrete_dynamics_world::DiscreteDynamicsWorld,
-            rigid_body::{RigidBody, RigidBodyConstructionInfo},
-        },
+use crate::{ARENA_COLLISION_MESH_FILES, ARENA_COLLISION_SHAPES, ArenaConfig, ArenaMemWeightMode, ArenaState, BoostPadConfig, BoostPadGrid, BoostPadState, Car, CarBodyConfig, CarControls, CarInfo, CarState, GameMode, MutatorConfig, PhysState, Team, bullet::{
+    collision::{
+        broadphase::{GridBroadphase, HashedOverlappingPairCache},
+        dispatch::collision_dispatcher::CollisionDispatcher,
+        narrowphase::manifold_point::ManifoldPoint,
+        shapes::{collision_shape::CollisionShapes, static_plane_shape::StaticPlaneShape},
     },
-    consts,
-    consts::{BT_TO_UU, UU_TO_BT},
-    sim::{BallState, DemoMode, UserInfoTypes, collision_masks::CollisionMasks},
-};
+    dynamics::{
+        constraint_solver::seq_impulse_constraint_solver::SeqImpulseConstraintSolver,
+        discrete_dynamics_world::DiscreteDynamicsWorld,
+        rigid_body::{RigidBody, RigidBodyConstructionInfo},
+    },
+}, consts, consts::{BT_TO_UU, UU_TO_BT}, sim::{BallState, DemoMode, UserInfoTypes, collision_masks::CollisionMasks}, BallHitWorldEvent};
 use arrayvec::ArrayVec;
 use fastrand::Rng;
 use glam::{Affine3A, EulerRot, Mat3A, Vec3A};
 use std::{f32::consts::PI, iter::repeat_n, mem};
+use crate::ArenaEvent::BallHitWorld;
 
 pub struct Arena {
     pub(crate) bullet_world: DiscreteDynamicsWorld,
@@ -487,6 +480,8 @@ impl Arena {
                     }
                     _ => self.on_car_world_collision(user_pointer_a, &contact.manifold_point),
                 }
+            } else if contact.user_idx_a == UserInfoTypes::Ball {
+                self.on_ball_world_collision(&contact.manifold_point);
             }
         }
 
@@ -704,6 +699,16 @@ impl Arena {
 }
 
 impl Arena {
+    fn on_ball_world_collision(&mut self, manifold_point: &ManifoldPoint) {
+        let contact_point = manifold_point.pos_world_on_b * BT_TO_UU;
+        let contact_normal = manifold_point.normal_world_on_b;
+
+        self.events.push(BallHitWorld(BallHitWorldEvent {
+            contact_point,
+            contact_normal,
+        }))
+    }
+
     fn on_car_ball_collision(
         &mut self,
         car_idx: usize,
@@ -717,10 +722,10 @@ impl Arena {
         );
 
         let contact_point = if ball_is_body_a {
-            manifold_point.pos_world_on_a * BT_TO_UU
+            manifold_point.pos_world_on_a
         } else {
-            manifold_point.pos_world_on_b * BT_TO_UU
-        };
+            manifold_point.pos_world_on_b
+        } * BT_TO_UU;
 
         // TODO: Somewhat hacky
         let extra_hit_vel = self.ball.vel_impulse_cache;
@@ -738,6 +743,7 @@ impl Arena {
             contact_point: manifold_point.pos_world_on_b * BT_TO_UU,
             contact_normal: manifold_point.normal_world_on_b,
         }));
+        self.cars[car_idx].state.world_contact_normal = Some(manifold_point.normal_world_on_b);
     }
 
     fn on_car_car_collision(
