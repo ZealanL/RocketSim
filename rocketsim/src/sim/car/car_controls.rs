@@ -1,7 +1,7 @@
 use glam::Vec3;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-
+#[rocketsim_derive::fast_hash_struct]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CarControls {
     pub throttle: f32,
     pub steer: f32,
