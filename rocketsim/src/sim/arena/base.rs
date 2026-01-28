@@ -653,7 +653,7 @@ impl Arena {
         }
     }
 
-    pub fn step(&mut self, ticks_to_simulate: u32) {
+    pub fn step(&mut self, ticks_to_simulate: usize) {
         for _ in 0..ticks_to_simulate {
             self.internal_step();
         }
