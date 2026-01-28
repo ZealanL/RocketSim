@@ -422,7 +422,8 @@ impl Arena {
         idx
     }
 
-    fn internal_step(&mut self) {
+    /// Steps the arena for 1 tick, returning the events produced during that tick
+    pub fn step_tick(&mut self) -> &[ArenaEvent] {
         self.events.clear();
 
         // Update ball activation
@@ -513,12 +514,15 @@ impl Arena {
                 .as_mut()
                 .unwrap()
                 .update(&arena_state, TICK_TIME);
-        }
+        };
+
+        self.get_last_step_events()
     }
 
-    pub fn step(&mut self, ticks_to_simulate: usize) {
+    /// Steps multiple ticks at once
+    pub fn step_ticks(&mut self, ticks_to_simulate: usize) {
         for _ in 0..ticks_to_simulate {
-            self.internal_step();
+            self.step_tick();
         }
     }
 
@@ -672,7 +676,7 @@ impl Arena {
     }
 
     /// Returns the events generated during the last stepped tick
-    pub fn get_step_events(&self) -> &[ArenaEvent] {
+    pub fn get_last_step_events(&self) -> &[ArenaEvent] {
         self.events.events()
     }
 

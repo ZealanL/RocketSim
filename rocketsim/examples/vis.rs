@@ -70,7 +70,8 @@ fn main() {
 
         arena.set_car_controls(car_idx, controls);
 
-        arena.step(1);
+        arena.step_tick();
+
         std::thread::sleep(std::time::Duration::from_millis(8));
     }
 }

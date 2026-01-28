@@ -103,7 +103,7 @@ impl TestCase {
 
         let (mut new_arena, mut old_arena_ptr) = self.make_new_old_arenas();
         for tick_count in 0..self.duration_ticks {
-            new_arena.step(1);
+            new_arena.step_tick();
             old_arena_ptr.pin_mut().step(1);
 
             let comparison = {

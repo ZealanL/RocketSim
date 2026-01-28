@@ -167,8 +167,8 @@ fn main() {
                 }
             }
 
-            arena.step(1);
-            for event in arena.get_step_events() {
+            arena.step_tick();
+            for event in arena.get_last_step_events() {
                 if let ArenaEvent::CarHitBall(_car_hit_ball_event) = event {
                     total_ball_touches += 1;
                 }
