@@ -114,7 +114,7 @@ impl BoostPadGrid {
                 pad.gave_boost_tick_count = Some(tick_count);
                 return Some(pad_idx);
             }
-        };
+        }
 
         None
     }

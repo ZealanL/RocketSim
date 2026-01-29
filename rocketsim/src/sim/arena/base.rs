@@ -6,19 +6,27 @@ use crate::sim::ArenaEvent::CarHitBall;
 use crate::sim::arena::ArenaEventList;
 use crate::sim::{ArenaEvent, Ball, BoostPad, CarHitBallEvent, CarHitCarEvent, CarHitWorldEvent};
 use crate::vis::VisInst;
-use crate::{ARENA_COLLISION_MESH_FILES, ARENA_COLLISION_SHAPES, ArenaConfig, ArenaMemWeightMode, ArenaState, BallHitWorldEvent, BoostPadConfig, BoostPadGrid, BoostPadState, Car, CarBodyConfig, CarControls, CarInfo, CarState, GameMode, MutatorConfig, PhysState, Team, bullet::{
-    collision::{
-        broadphase::{GridBroadphase, HashedOverlappingPairCache},
-        dispatch::collision_dispatcher::CollisionDispatcher,
-        narrowphase::manifold_point::ManifoldPoint,
-        shapes::{collision_shape::CollisionShapes, static_plane_shape::StaticPlaneShape},
+use crate::{
+    ARENA_COLLISION_MESH_FILES, ARENA_COLLISION_SHAPES, ArenaConfig, ArenaMemWeightMode,
+    ArenaState, BallHitWorldEvent, BoostPadConfig, BoostPadGrid, BoostPadState, Car, CarBodyConfig,
+    CarControls, CarInfo, CarPickupBoostEvent, CarState, GameMode, MutatorConfig, PhysState, Team,
+    bullet::{
+        collision::{
+            broadphase::{GridBroadphase, HashedOverlappingPairCache},
+            dispatch::collision_dispatcher::CollisionDispatcher,
+            narrowphase::manifold_point::ManifoldPoint,
+            shapes::{collision_shape::CollisionShapes, static_plane_shape::StaticPlaneShape},
+        },
+        dynamics::{
+            constraint_solver::seq_impulse_constraint_solver::SeqImpulseConstraintSolver,
+            discrete_dynamics_world::DiscreteDynamicsWorld,
+            rigid_body::{RigidBody, RigidBodyConstructionInfo},
+        },
     },
-    dynamics::{
-        constraint_solver::seq_impulse_constraint_solver::SeqImpulseConstraintSolver,
-        discrete_dynamics_world::DiscreteDynamicsWorld,
-        rigid_body::{RigidBody, RigidBodyConstructionInfo},
-    },
-}, consts, consts::{BT_TO_UU, UU_TO_BT}, sim::{BallState, DemoMode, UserInfoTypes, collision_masks::CollisionMasks}, CarPickupBoostEvent};
+    consts,
+    consts::{BT_TO_UU, UU_TO_BT},
+    sim::{BallState, DemoMode, UserInfoTypes, collision_masks::CollisionMasks},
+};
 use arrayvec::ArrayVec;
 use fastrand::Rng;
 use glam::{Affine3A, EulerRot, Mat3A, Vec3A};
@@ -723,7 +731,7 @@ impl Arena {
             &mut self.cars[car_idx],
             self.game_mode,
             &self.mutator_config,
-            self.tick_count
+            self.tick_count,
         );
 
         let contact_point = if ball_is_body_a {
