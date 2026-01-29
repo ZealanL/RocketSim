@@ -53,7 +53,12 @@ impl CarCam {
 
         let up_tilt_scale = if self.face_ball {
             let delta_z = ball_state.pos.z - car_state.pos.z;
-            let a = (delta_z / cam_config.car_cam.tilt_ball_height).clamp(0.0, 1.0);
+
+            let cam_height_range =
+                cam_config.car_cam.tilt_ball_max_height - cam_config.car_cam.tilt_ball_min_height;
+            assert!(cam_height_range > 0.0);
+            let a = ((delta_z - cam_config.car_cam.tilt_ball_min_height) / cam_height_range)
+                .clamp(0.0, 1.0);
             let b = car_ball_dir.z.clamp(0.0, 1.0);
             f32::min(a, b)
         } else {
