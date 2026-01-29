@@ -140,8 +140,6 @@ impl Ball {
         let trans = *rb.get_world_trans();
         self.state.phys.pos = trans.translation * consts::BT_TO_UU;
         self.state.phys.rot_mat = trans.matrix3;
-
-        self.state.hit_last_tick = false;
     }
 
     pub(crate) fn on_hit(
@@ -149,6 +147,7 @@ impl Ball {
         car: &mut Car,
         game_mode: GameMode,
         mutator_config: &MutatorConfig,
+        tick_count: u64,
     ) {
         let car_forward = car.state.phys.rot_mat.x_axis;
         let rel_pos = self.state.phys.pos - car.state.phys.pos;
@@ -157,7 +156,15 @@ impl Ball {
         let rel_speed = rel_vel
             .length()
             .min(consts::ball::car_hit_impulse::MAX_DELTA_VEL_UU);
-        if rel_speed > 0.0 && self.state.hit_last_tick {
+
+        // Prevent repeated extra impulses
+        let can_accel = if let Some(last_hit_tick) = self.state.last_extra_hit_tick {
+            last_hit_tick < tick_count - 1
+        } else {
+            true
+        };
+
+        if rel_speed > 0.0 && can_accel {
             let extra_z_scale = game_mode == GameMode::Hoops
                 && car.state.is_on_ground
                 && car.state.phys.rot_mat.z_axis.z
@@ -179,6 +186,7 @@ impl Ball {
                 * consts::curves::BALL_CAR_EXTRA_IMPULSE_FACTOR.get_output(rel_speed)
                 * mutator_config.ball_hit_extra_force_scale;
             self.vel_impulse_cache += added_vel;
+            self.state.last_extra_hit_tick = Some(tick_count);
         }
 
         match game_mode {

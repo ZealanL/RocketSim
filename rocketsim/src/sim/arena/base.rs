@@ -723,6 +723,7 @@ impl Arena {
             &mut self.cars[car_idx],
             self.game_mode,
             &self.mutator_config,
+            self.tick_count
         );
 
         let contact_point = if ball_is_body_a {

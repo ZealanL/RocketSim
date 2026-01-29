@@ -188,7 +188,9 @@ pub fn conv_to_new_ball_state(ball_state: &OldBallState) -> BallState {
         // TODO: Implement
         hs_info: Default::default(),
         ds_info: Default::default(),
-        hit_last_tick: false,
+
+        // TODO: Implement
+        last_extra_hit_tick: None,
     }
 }
 
