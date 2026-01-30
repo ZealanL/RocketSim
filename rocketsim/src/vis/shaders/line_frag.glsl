@@ -20,16 +20,12 @@ float point_segment_dist(vec3 p, vec3 a, vec3 b) {
 }
 
 void main() {
-   if (fs_line_pos_a == fs_line_pos_b) {
-      // Cap support
-      // TODO: Needs antialiasing
-      float dist_to_line = point_segment_dist(fs_pos, fs_line_pos_a, fs_line_pos_b);
-      if (dist_to_line < fs_line_width / 2) {
-         out_frag_color = fs_line_color;
-      } else {
-         out_frag_color = vec4(fs_line_color.rgb, 0.0);
-      }
-   } else {
+   // Cap support
+   // TODO: Needs antialiasing
+   float dist_to_line = point_segment_dist(fs_pos, fs_line_pos_a, fs_line_pos_b);
+   if (dist_to_line < fs_line_width / 2) {
       out_frag_color = fs_line_color;
+   } else {
+      discard;
    }
 }

@@ -51,10 +51,7 @@ void main() {
     }
 
     // Add additional padding for the end-caps if this is a 0-length line
-    vec3 pad_end_cap = vec3(0);
-    if (vs_line_pos_a == vs_line_pos_b) {
-        pad_end_cap = line_dir * along * clamped_line_width;
-    }
+    vec3 pad_end_cap = line_dir * along * clamped_line_width;
 
     // NOTE: Wider than it would normally be by the "min_world_width", for antialiasing
     vec3 world_pos = axis_pos + pad_end_cap + world_perp_dir * (side * (clamped_line_width + min_world_width) * 0.5);

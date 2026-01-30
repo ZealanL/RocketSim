@@ -346,29 +346,6 @@ impl VisRenderer {
 impl EventHandler for VisRenderer {
     fn update(&mut self) {}
 
-    fn resize_event(&mut self, width: f32, height: f32) {
-        self.cur_window_size = glam::vec2(width, height);
-        self.cur_uniforms.u_screen_size = self.cur_window_size;
-        self.window_event_queue
-            .lock()
-            .unwrap()
-            .push(WindowEvent::Resize { width, height })
-    }
-
-    fn mouse_button_down_event(&mut self, _button: MouseButton, _x: f32, _y: f32) {
-        self.window_event_queue
-            .lock()
-            .unwrap()
-            .push(WindowEvent::MouseButtonDown { button: _button })
-    }
-
-    fn key_down_event(&mut self, _keycode: KeyCode, _keymods: KeyMods, _repeat: bool) {
-        self.window_event_queue
-            .lock()
-            .unwrap()
-            .push(WindowEvent::KeyDown { key: _keycode })
-    }
-
     fn draw(&mut self) {
         // Begin frame in macroquad
         {
@@ -489,6 +466,29 @@ impl EventHandler for VisRenderer {
             self.ctx.end_render_pass();
             self.ctx.commit_frame();
         }
+    }
+
+    fn resize_event(&mut self, width: f32, height: f32) {
+        self.cur_window_size = glam::vec2(width, height);
+        self.cur_uniforms.u_screen_size = self.cur_window_size;
+        self.window_event_queue
+            .lock()
+            .unwrap()
+            .push(WindowEvent::Resize { width, height })
+    }
+
+    fn mouse_button_down_event(&mut self, _button: MouseButton, _x: f32, _y: f32) {
+        self.window_event_queue
+            .lock()
+            .unwrap()
+            .push(WindowEvent::MouseButtonDown { button: _button })
+    }
+
+    fn key_down_event(&mut self, _keycode: KeyCode, _keymods: KeyMods, _repeat: bool) {
+        self.window_event_queue
+            .lock()
+            .unwrap()
+            .push(WindowEvent::KeyDown { key: _keycode })
     }
 }
 
