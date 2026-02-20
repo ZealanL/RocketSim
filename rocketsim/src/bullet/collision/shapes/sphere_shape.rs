@@ -16,7 +16,6 @@ pub struct SphereShape {
 
 impl SphereShape {
     #[inline]
-
     pub const fn new(radius: f32) -> Self {
         Self {
             convex_internal_shape: ConvexInternalShape {
@@ -27,13 +26,11 @@ impl SphereShape {
     }
 
     #[inline]
-
     pub fn get_radius(&self) -> f32 {
         self.convex_internal_shape.implicit_dim.x
     }
 
     #[inline]
-
     pub fn get_margin(&self) -> f32 {
         self.get_radius()
     }

@@ -162,7 +162,7 @@ impl VisRenderer {
             };
         }
 
-        assert!(line_shaders.len() > 0, "Missing line shaders");
+        assert!(!line_shaders.is_empty(), "Missing line shaders");
         assert!(line_shaders.len() < 2, "Cannot have multiple line shaders");
 
         let color_blend = Some(BlendState::new(
@@ -502,14 +502,15 @@ impl VisRenderer {
         shared_render_state: SharedVisRenderState,
         shader_srcs: Vec<(&str, ShaderSrc)>,
     ) -> (JoinHandle<()>, SharedWindowEvents) {
-        let mut conf = conf::Conf::default();
-
-        conf.window_title = window_title.to_string();
-        conf.window_width = 1280;
-        conf.window_height = 720;
+        let mut conf = conf::Conf {
+            window_title: window_title.to_string(),
+            window_width: 1280,
+            window_height: 720,
+            sample_count: 8, // Heavy MSAA
+            ..Default::default()
+        };
 
         conf.platform.apple_gfx_api = conf::AppleGfxApi::OpenGl; // Apple devices should still use OpenGL
-        conf.sample_count = 8; // Heavy MSAA
 
         let shader_srcs_strings: Vec<(String, ShaderSrc)> = shader_srcs
             .iter()

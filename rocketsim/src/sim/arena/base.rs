@@ -5,7 +5,6 @@ use crate::consts::{TICK_RATE, TICK_TIME};
 use crate::sim::ArenaEvent::CarHitBall;
 use crate::sim::arena::ArenaEventList;
 use crate::sim::{ArenaEvent, Ball, BoostPad, CarHitBallEvent, CarHitCarEvent, CarHitWorldEvent};
-use crate::vis::VisInst;
 use crate::{
     ARENA_COLLISION_MESH_FILES, ARENA_COLLISION_SHAPES, ArenaConfig, ArenaMemWeightMode,
     ArenaState, BallHitWorldEvent, BoostPadConfig, BoostPadGrid, BoostPadState, Car, CarBodyConfig,
@@ -31,6 +30,9 @@ use arrayvec::ArrayVec;
 use fastrand::Rng;
 use glam::{Affine3A, EulerRot, Mat3A, Vec3A};
 use std::{f32::consts::PI, iter::repeat_n, mem};
+
+#[cfg(feature = "vis")]
+use crate::vis::VisInst;
 
 pub struct Arena {
     pub(crate) bullet_world: DiscreteDynamicsWorld,
@@ -354,34 +356,37 @@ impl Arena {
             for cur_team in Team::ALL {
                 let is_blue = cur_team == Team::Blue;
 
-                let mut team_car_indices = Vec::with_capacity(self.cars.len());
+                let mut team_car_count = 0;
+                let mut car_idx = None;
+
                 for car in &self.cars {
                     if car.team == cur_team {
-                        team_car_indices.push(car.idx);
+                        team_car_count += 1;
+
+                        if team_car_count == i + 1 {
+                            car_idx = Some(car.idx);
+                            break;
+                        }
                     }
                 }
 
-                if team_car_indices.len() <= i {
-                    continue;
+                if let Some(car_idx) = car_idx {
+                    spawn_state.phys.rot_mat = Mat3A::from_euler(
+                        EulerRot::ZYX,
+                        if is_blue {
+                            spawn_pos.yaw_ang
+                        } else {
+                            spawn_state.phys.pos *= Vec3A::new(-1.0, -1.0, 1.0);
+                            spawn_pos.yaw_ang + if is_blue { 0.0 } else { PI }
+                        },
+                        0.0,
+                        0.0,
+                    );
+
+                    let car = &mut self.cars[car_idx];
+                    let rb = &mut self.bullet_world.bodies_mut()[car.rigid_body_idx];
+                    car.set_state(rb, &spawn_state);
                 }
-
-                let car_idx = team_car_indices[i];
-
-                spawn_state.phys.rot_mat = Mat3A::from_euler(
-                    EulerRot::ZYX,
-                    if is_blue {
-                        spawn_pos.yaw_ang
-                    } else {
-                        spawn_state.phys.pos *= Vec3A::new(-1.0, -1.0, 1.0);
-                        spawn_pos.yaw_ang + if is_blue { 0.0 } else { PI }
-                    },
-                    0.0,
-                    0.0,
-                );
-
-                let car = &mut self.cars[car_idx];
-                let rb = &mut self.bullet_world.bodies_mut()[car.rigid_body_idx];
-                car.set_state(rb, &spawn_state);
             }
         }
 
@@ -460,13 +465,15 @@ impl Arena {
 
         self.bullet_world
             .step_simulation(TICK_TIME, &mut self.contact_tracker);
-        for contact in self.contact_tracker.drain_records() {
-            let (body_a, body_b) = self
+
+        let contact_count = self.contact_tracker.num_records();
+        for idx in 0..contact_count {
+            let contact = *self.contact_tracker.get_record(idx);
+            let [body_a, body_b] = self
                 .bullet_world
                 .bodies_mut()
                 .get_disjoint_mut([contact.rb_idx_a, contact.rb_idx_b])
-                .unwrap()
-                .into();
+                .unwrap();
 
             let user_pointer_a = body_a.user_pointer;
             let user_pointer_b = body_b.user_pointer;
@@ -493,6 +500,8 @@ impl Arena {
                 self.on_ball_world_collision(&contact.manifold_point);
             }
         }
+
+        self.contact_tracker.clear_records();
 
         for car in &mut self.cars {
             let rb = &mut self.bullet_world.bodies_mut()[car.rigid_body_idx];
@@ -535,19 +544,16 @@ impl Arena {
     }
 
     #[inline]
-
     pub const fn tick_count(&self) -> u64 {
         self.tick_count
     }
 
     #[inline]
-
     pub const fn game_mode(&self) -> GameMode {
         self.game_mode
     }
 
     #[inline]
-
     pub const fn mutator_config(&self) -> &MutatorConfig {
         &self.mutator_config
     }
@@ -564,7 +570,6 @@ impl Arena {
     }
 
     #[inline]
-
     pub const fn cars(&self) -> &Vec<Car> {
         &self.cars
     }
@@ -655,14 +660,12 @@ impl Arena {
 
     pub fn get_all_boost_pad_states(&self) -> Vec<BoostPadState> {
         (0..self.num_boost_pads())
-            .into_iter()
             .map(|i| self.get_boost_pad_state(i))
             .collect()
     }
 
     pub fn get_all_boost_pad_configs(&self) -> Vec<BoostPadConfig> {
         (0..self.num_boost_pads())
-            .into_iter()
             .map(|i| *self.get_boost_pad_config(i))
             .collect()
     }
@@ -688,10 +691,12 @@ impl Arena {
         self.events.events()
     }
 
+    #[cfg(feature = "vis")]
     pub fn get_vis_enabled(&self) -> bool {
         self.vis_inst.is_some()
     }
 
+    #[cfg(feature = "vis")]
     pub fn set_vis_enabled(&mut self, vis_enabled: bool) {
         if vis_enabled && self.vis_inst.is_none() {
             // Create visualizer

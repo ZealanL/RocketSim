@@ -1,5 +1,4 @@
 use device_query::{DeviceQuery, DeviceState, Keycode};
-use egui::Key;
 use glam::Vec3A;
 use rocketsim::{
     Arena, ArenaConfig, CarBodyConfig, CarControls, GameMode, Team, init_from_default,
@@ -65,10 +64,10 @@ fn main() {
     loop {
         let held_keys = device_state.get_keys();
 
-        let mut pressed_keys: Vec<Keycode> = held_keys
+        let pressed_keys: Vec<Keycode> = held_keys
             .iter()
-            .cloned()
-            .filter(|key| !prev_keys.contains(key))
+            .filter(|&key| !prev_keys.contains(key))
+            .copied()
             .collect();
 
         let controls = determine_controls(&device_state);

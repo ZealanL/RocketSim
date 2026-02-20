@@ -113,7 +113,7 @@ impl Car {
             }
 
             bullet_vehicle.add_wheel(
-                &rb,
+                rb,
                 wheel_ray_start_offset * UU_TO_BT,
                 wheel_direction_cs,
                 wheel_axle_cs,

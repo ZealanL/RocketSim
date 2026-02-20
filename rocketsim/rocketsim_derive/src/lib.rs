@@ -11,7 +11,7 @@ pub fn fast_hash_struct(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let name = &input.ident;
 
     let expanded = quote! {
-        #[repr(packed)]
+        #[repr(Rust, packed)]
         #[derive(zerocopy::Immutable, zerocopy::IntoBytes)]
         #input
         derive_hash_fast::derive_hash_fast_zerocopy!(#name);

@@ -1,7 +1,45 @@
 use crate::consts::TICK_TIME;
-use crate::shared::bvh::SimpleNodeProcessor;
 use crate::shared::{Aabb, bvh};
 use crate::{BoostPad, BoostPadConfig, CarState, MutatorConfig, consts::boost_pads};
+
+pub struct BoostPadProcessor<'a> {
+    all_pads: &'a mut [BoostPad],
+    car_state: &'a mut CarState,
+    mutator_config: &'a MutatorConfig,
+    tick_count: u64,
+    pad_idx: Option<usize>,
+}
+
+impl<'a> bvh::ProcessNode for BoostPadProcessor<'a> {
+    fn process_node(&mut self, pad_idx: usize) {
+        if self.pad_idx.is_some() {
+            return; // Already found a pad to give boost from, no need to check more
+        }
+
+        let pad = &mut self.all_pads[pad_idx];
+
+        if let Some(last_give_tick_count) = pad.gave_boost_tick_count
+            && ((self.tick_count - last_give_tick_count) as f32 * TICK_TIME) < pad.max_cooldown
+        {
+            return;
+        }
+
+        // Check if car origin is inside the cylinder hitbox
+        let pad_pos = pad.config().pos;
+        let dist_sq_2d = pad_pos
+            .truncate()
+            .distance_squared(self.car_state.pos.truncate());
+        let overlapping = dist_sq_2d < pad.cyl_radius.powi(2)
+            && (self.car_state.pos.z - pad_pos.z).abs() <= boost_pads::CYL_HEIGHT;
+        if overlapping {
+            // Give boost
+            self.car_state.boost = (self.car_state.boost + pad.boost_amount)
+                .min(self.mutator_config.car_max_boost_amount);
+            pad.gave_boost_tick_count = Some(self.tick_count);
+            self.pad_idx = Some(pad_idx);
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub(crate) struct BoostPadGrid {
@@ -11,13 +49,12 @@ pub(crate) struct BoostPadGrid {
 }
 
 impl BoostPadGrid {
-    pub fn new(pad_configs: &Vec<BoostPadConfig>, mutator_config: &MutatorConfig) -> Self {
+    pub fn new(pad_configs: &[BoostPadConfig], mutator_config: &MutatorConfig) -> Self {
         assert!(!pad_configs.is_empty());
 
         let mut all_pads: Vec<BoostPad> = pad_configs
-            .clone()
-            .into_iter()
-            .map(|pad_config| BoostPad::new(pad_config, mutator_config))
+            .iter()
+            .map(|&pad_config| BoostPad::new(pad_config, mutator_config))
             .collect();
 
         // Sort them to match RLBot/RLGym ordering
@@ -87,35 +124,17 @@ impl BoostPadGrid {
         }
 
         let car_center_aabb = Aabb::new(car_state.pos, car_state.pos);
-        let mut node_processor = SimpleNodeProcessor::new();
+
+        let mut pad_processor = BoostPadProcessor {
+            all_pads: &mut self.all_pads,
+            car_state,
+            mutator_config,
+            tick_count,
+            pad_idx: None,
+        };
         self.bvh_tree
-            .report_aabb_overlapping_node(&mut node_processor, &car_center_aabb);
+            .report_aabb_overlapping_node(&mut pad_processor, &car_center_aabb);
 
-        for pad_idx in node_processor.leaf_indices {
-            let pad = &mut self.all_pads[pad_idx];
-
-            if let Some(last_give_tick_count) = pad.gave_boost_tick_count
-                && ((tick_count - last_give_tick_count) as f32 * TICK_TIME) < pad.max_cooldown
-            {
-                continue;
-            }
-
-            // Check if car origin is inside the cylinder hitbox
-            let pad_pos = pad.config().pos;
-            let dist_sq_2d = pad_pos
-                .truncate()
-                .distance_squared(car_state.pos.truncate());
-            let overlapping = dist_sq_2d < pad.cyl_radius.powi(2)
-                && (car_state.pos.z - pad_pos.z).abs() <= boost_pads::CYL_HEIGHT;
-            if overlapping {
-                // Give boost
-                car_state.boost =
-                    (car_state.boost + pad.boost_amount).min(mutator_config.car_max_boost_amount);
-                pad.gave_boost_tick_count = Some(tick_count);
-                return Some(pad_idx);
-            }
-        }
-
-        None
+        pad_processor.pad_idx
     }
 }

@@ -29,8 +29,16 @@ impl ArenaContactTracker {
         }
     }
 
-    pub fn drain_records(&mut self) -> Vec<ContactRecord> {
-        self.collision_records.drain(..).collect()
+    pub fn num_records(&self) -> usize {
+        self.collision_records.len()
+    }
+
+    pub fn get_record(&self, idx: usize) -> &ContactRecord {
+        &self.collision_records[idx]
+    }
+
+    pub fn clear_records(&mut self) {
+        self.collision_records.clear();
     }
 }
 
