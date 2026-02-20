@@ -11,13 +11,12 @@ pub(crate) struct BoostPadGrid {
 }
 
 impl BoostPadGrid {
-    pub fn new(pad_configs: &Vec<BoostPadConfig>, mutator_config: &MutatorConfig) -> Self {
+    pub fn new(pad_configs: &[BoostPadConfig], mutator_config: &MutatorConfig) -> Self {
         assert!(!pad_configs.is_empty());
 
         let mut all_pads: Vec<BoostPad> = pad_configs
-            .clone()
-            .into_iter()
-            .map(|pad_config| BoostPad::new(pad_config, mutator_config))
+            .iter()
+            .map(|&pad_config| BoostPad::new(pad_config, mutator_config))
             .collect();
 
         // Sort them to match RLBot/RLGym ordering

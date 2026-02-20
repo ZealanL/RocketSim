@@ -138,7 +138,7 @@ impl<T: RayResultCallback> BroadphaseAabbCallback for QuadRayCallback<'_, T> {
             CollisionWorld::quad_ray_test(
                 self.ray_from_world,
                 self.ray_to_world,
-                &rb,
+                rb,
                 obj_idx,
                 self.result_callback,
             );

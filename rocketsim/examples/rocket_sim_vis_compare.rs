@@ -16,7 +16,7 @@ use crate::state_convert::{
 
 /////////////////
 
-const ROCKET_SIM_VIS_ADDRESS: &'static str = "127.0.0.1:9273";
+const ROCKET_SIM_VIS_ADDRESS: &str = "127.0.0.1:9273";
 
 #[derive(Serialize)]
 struct PhysStateView {

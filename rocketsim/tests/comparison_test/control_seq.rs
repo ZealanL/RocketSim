@@ -24,7 +24,7 @@ impl ControlSeq {
         }
 
         if let Some(car_controls) = self.car_controls.get(tick as usize) {
-            car_controls.clone()
+            *car_controls
         } else {
             *self.car_controls.last().unwrap()
         }
@@ -33,7 +33,7 @@ impl ControlSeq {
     pub fn add(mut self, controls: CarControls, duration: u64) -> Self {
         assert!(duration > 0);
         for _ in 0..duration {
-            self.car_controls.push(controls.clone());
+            self.car_controls.push(controls);
         }
         self
     }

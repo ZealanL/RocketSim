@@ -5,7 +5,6 @@ use crate::consts::{TICK_RATE, TICK_TIME};
 use crate::sim::ArenaEvent::CarHitBall;
 use crate::sim::arena::ArenaEventList;
 use crate::sim::{ArenaEvent, Ball, BoostPad, CarHitBallEvent, CarHitCarEvent, CarHitWorldEvent};
-use crate::vis::VisInst;
 use crate::{
     ARENA_COLLISION_MESH_FILES, ARENA_COLLISION_SHAPES, ArenaConfig, ArenaMemWeightMode,
     ArenaState, BallHitWorldEvent, BoostPadConfig, BoostPadGrid, BoostPadState, Car, CarBodyConfig,
@@ -31,6 +30,9 @@ use arrayvec::ArrayVec;
 use fastrand::Rng;
 use glam::{Affine3A, EulerRot, Mat3A, Vec3A};
 use std::{f32::consts::PI, iter::repeat_n, mem};
+
+#[cfg(feature = "vis")]
+use crate::vis::VisInst;
 
 pub struct Arena {
     pub(crate) bullet_world: DiscreteDynamicsWorld,
@@ -535,19 +537,16 @@ impl Arena {
     }
 
     #[inline]
-
     pub const fn tick_count(&self) -> u64 {
         self.tick_count
     }
 
     #[inline]
-
     pub const fn game_mode(&self) -> GameMode {
         self.game_mode
     }
 
     #[inline]
-
     pub const fn mutator_config(&self) -> &MutatorConfig {
         &self.mutator_config
     }
@@ -564,7 +563,6 @@ impl Arena {
     }
 
     #[inline]
-
     pub const fn cars(&self) -> &Vec<Car> {
         &self.cars
     }
@@ -655,14 +653,12 @@ impl Arena {
 
     pub fn get_all_boost_pad_states(&self) -> Vec<BoostPadState> {
         (0..self.num_boost_pads())
-            .into_iter()
             .map(|i| self.get_boost_pad_state(i))
             .collect()
     }
 
     pub fn get_all_boost_pad_configs(&self) -> Vec<BoostPadConfig> {
         (0..self.num_boost_pads())
-            .into_iter()
             .map(|i| *self.get_boost_pad_config(i))
             .collect()
     }
@@ -688,10 +684,12 @@ impl Arena {
         self.events.events()
     }
 
+    #[cfg(feature = "vis")]
     pub fn get_vis_enabled(&self) -> bool {
         self.vis_inst.is_some()
     }
 
+    #[cfg(feature = "vis")]
     pub fn set_vis_enabled(&mut self, vis_enabled: bool) {
         if vis_enabled && self.vis_inst.is_none() {
             // Create visualizer

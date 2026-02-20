@@ -24,8 +24,8 @@ impl Model {
             let m_verts = mesh.get_vertices();
             for tri in mesh.get_indices().chunks(3) {
                 let tri_verts = [m_verts[tri[0]], m_verts[tri[1]], m_verts[tri[2]]];
-                for i in 0..3 {
-                    verts.push(tri_verts[i].to_vec3() * BT_TO_UU);
+                for vert in tri_verts {
+                    verts.push(vert.to_vec3() * BT_TO_UU);
                     vert_uvs.push(Vec2::splat(0.5)); // Middle UVs
                 }
             }

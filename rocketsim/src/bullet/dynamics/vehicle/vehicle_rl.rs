@@ -368,7 +368,7 @@ impl VehicleRL {
 
         let friction_scale = chassis.get_mass() / 3.0;
         for wheel in &mut self.wheels {
-            wheel.update_wheel_trans(&chassis);
+            wheel.update_wheel_trans(chassis);
         }
 
         let mut sources = [Vec3A::ZERO; 4];
@@ -381,7 +381,7 @@ impl VehicleRL {
 
         let ray_results = self
             .raycaster
-            .cast_rays(collision_world, &sources, &targets, &chassis);
+            .cast_rays(collision_world, &sources, &targets, chassis);
 
         for (i, wheel) in self.wheels.iter_mut().enumerate() {
             if let Some(ray_result) = ray_results[i] {

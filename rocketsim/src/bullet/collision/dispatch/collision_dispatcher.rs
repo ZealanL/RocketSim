@@ -146,7 +146,7 @@ impl CollisionDispatcher {
             return;
         }
 
-        if let Some(manifold) = Self::process_collision(&rb0, &rb1, contact_added_callback) {
+        if let Some(manifold) = Self::process_collision(rb0, rb1, contact_added_callback) {
             self.manifolds.push(manifold);
         }
     }

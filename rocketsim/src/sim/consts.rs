@@ -16,7 +16,6 @@ pub struct CarSpawnPos {
 
 impl CarSpawnPos {
     #[inline]
-
     pub const fn new(x: f32, y: f32, yaw_ang: f32) -> Self {
         Self { x, y, yaw_ang }
     }

@@ -116,7 +116,7 @@ impl RibbonEmitter {
     }
 
     pub fn reset(&mut self) {
-        *self = RibbonEmitter::new(self.config.clone());
+        *self = RibbonEmitter::new(self.config);
     }
 
     pub fn render(&mut self, render_state: &mut VisRenderState, emit_pos: Vec3A) {
