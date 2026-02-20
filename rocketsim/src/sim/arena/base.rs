@@ -356,34 +356,37 @@ impl Arena {
             for cur_team in Team::ALL {
                 let is_blue = cur_team == Team::Blue;
 
-                let mut team_car_indices = Vec::with_capacity(self.cars.len());
+                let mut team_car_count = 0;
+                let mut car_idx = None;
+
                 for car in &self.cars {
                     if car.team == cur_team {
-                        team_car_indices.push(car.idx);
+                        team_car_count += 1;
+
+                        if team_car_count == i + 1 {
+                            car_idx = Some(car.idx);
+                            break;
+                        }
                     }
                 }
 
-                if team_car_indices.len() <= i {
-                    continue;
+                if let Some(car_idx) = car_idx {
+                    spawn_state.phys.rot_mat = Mat3A::from_euler(
+                        EulerRot::ZYX,
+                        if is_blue {
+                            spawn_pos.yaw_ang
+                        } else {
+                            spawn_state.phys.pos *= Vec3A::new(-1.0, -1.0, 1.0);
+                            spawn_pos.yaw_ang + if is_blue { 0.0 } else { PI }
+                        },
+                        0.0,
+                        0.0,
+                    );
+
+                    let car = &mut self.cars[car_idx];
+                    let rb = &mut self.bullet_world.bodies_mut()[car.rigid_body_idx];
+                    car.set_state(rb, &spawn_state);
                 }
-
-                let car_idx = team_car_indices[i];
-
-                spawn_state.phys.rot_mat = Mat3A::from_euler(
-                    EulerRot::ZYX,
-                    if is_blue {
-                        spawn_pos.yaw_ang
-                    } else {
-                        spawn_state.phys.pos *= Vec3A::new(-1.0, -1.0, 1.0);
-                        spawn_pos.yaw_ang + if is_blue { 0.0 } else { PI }
-                    },
-                    0.0,
-                    0.0,
-                );
-
-                let car = &mut self.cars[car_idx];
-                let rb = &mut self.bullet_world.bodies_mut()[car.rigid_body_idx];
-                car.set_state(rb, &spawn_state);
             }
         }
 
