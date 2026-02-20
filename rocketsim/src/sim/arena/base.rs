@@ -462,13 +462,15 @@ impl Arena {
 
         self.bullet_world
             .step_simulation(TICK_TIME, &mut self.contact_tracker);
-        for contact in self.contact_tracker.drain_records() {
-            let (body_a, body_b) = self
+
+        let contact_count = self.contact_tracker.num_records();
+        for idx in 0..contact_count {
+            let contact = *self.contact_tracker.get_record(idx);
+            let [body_a, body_b] = self
                 .bullet_world
                 .bodies_mut()
                 .get_disjoint_mut([contact.rb_idx_a, contact.rb_idx_b])
-                .unwrap()
-                .into();
+                .unwrap();
 
             let user_pointer_a = body_a.user_pointer;
             let user_pointer_b = body_b.user_pointer;
@@ -495,6 +497,8 @@ impl Arena {
                 self.on_ball_world_collision(&contact.manifold_point);
             }
         }
+
+        self.contact_tracker.clear_records();
 
         for car in &mut self.cars {
             let rb = &mut self.bullet_world.bodies_mut()[car.rigid_body_idx];
