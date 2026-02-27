@@ -44,7 +44,7 @@ pub struct Arena {
     pub(crate) tick_count: u64,
     pub(crate) game_mode: GameMode,
     pub(crate) mutator_config: MutatorConfig,
-    pub(crate) boost_pad_grid: BoostPadGrid,
+    pub(crate) boost_pad_grid: Option<BoostPadGrid>,
     pub(crate) contact_tracker: ArenaContactTracker,
     pub(crate) events: ArenaEventList,
 
@@ -92,33 +92,34 @@ impl Arena {
             config.no_ball_rot,
         );
 
-        let boost_pad_grid = {
+        let mut boost_pad_grid = None;
+        if game_mode != GameMode::TheVoid && game_mode != GameMode::Dropshot {
             let mut boost_pad_configs = Vec::new();
-            if game_mode != GameMode::TheVoid && game_mode != GameMode::Dropshot {
-                if config.use_custom_boost_pads {
-                    boost_pad_configs.extend_from_slice(&config.custom_boost_pads);
-                } else {
-                    let small_pad_locs = consts::boost_pads::get_locations(game_mode, false);
-                    let big_pad_locs = consts::boost_pads::get_locations(game_mode, true);
-                    boost_pad_configs.reserve(small_pad_locs.len() + big_pad_locs.len());
 
-                    for small_pos in small_pad_locs {
-                        boost_pad_configs.push(BoostPadConfig {
-                            pos: *small_pos,
-                            is_big: false,
-                        });
-                    }
-                    for big_pos in big_pad_locs {
-                        boost_pad_configs.push(BoostPadConfig {
-                            pos: *big_pos,
-                            is_big: true,
-                        });
-                    }
+            if let Some(custom_boost_pads) = config.custom_boost_pads.as_ref() {
+                boost_pad_configs.extend_from_slice(custom_boost_pads);
+            } else {
+                let small_pad_locs = consts::boost_pads::get_locations(game_mode, false);
+                let big_pad_locs = consts::boost_pads::get_locations(game_mode, true);
+                boost_pad_configs.reserve(small_pad_locs.len() + big_pad_locs.len());
+
+                for small_pos in small_pad_locs {
+                    boost_pad_configs.push(BoostPadConfig {
+                        pos: *small_pos,
+                        is_big: false,
+                    });
+                }
+
+                for big_pos in big_pad_locs {
+                    boost_pad_configs.push(BoostPadConfig {
+                        pos: *big_pos,
+                        is_big: true,
+                    });
                 }
             }
 
-            BoostPadGrid::new(&boost_pad_configs, &mutator_config)
-        };
+            boost_pad_grid = Some(BoostPadGrid::new(&boost_pad_configs, &mutator_config));
+        }
 
         let rng = config.rng_seed.map_or_else(Rng::new, Rng::with_seed);
 
@@ -407,7 +408,9 @@ impl Arena {
 
         self.set_ball_state(ball_state);
 
-        self.boost_pad_grid.reset();
+        if let Some(boost_pad_grid) = self.boost_pad_grid.as_mut() {
+            boost_pad_grid.reset();
+        }
 
         // TODO: Reset tile states
     }
@@ -508,17 +511,19 @@ impl Arena {
             car.post_tick_update(rb);
             car.finish_physics_tick(rb);
 
-            let collected_pad_op = self.boost_pad_grid.maybe_give_car_boost(
-                &mut car.state,
-                &self.mutator_config,
-                self.tick_count,
-            );
+            if let Some(boost_pad_grid) = self.boost_pad_grid.as_mut() {
+                let collected_pad_op = boost_pad_grid.maybe_give_car_boost(
+                    &mut car.state,
+                    &self.mutator_config,
+                    self.tick_count,
+                );
 
-            if let Some(collected_pad_idx) = collected_pad_op {
-                self.events.push(CarPickupBoost(CarPickupBoostEvent {
-                    car_idx: car.idx,
-                    boost_pad_idx: collected_pad_idx,
-                }));
+                if let Some(collected_pad_idx) = collected_pad_op {
+                    self.events.push(CarPickupBoost(CarPickupBoostEvent {
+                        car_idx: car.idx,
+                        boost_pad_idx: collected_pad_idx,
+                    }));
+                }
             }
         }
 
@@ -635,14 +640,15 @@ impl Arena {
     }
 
     pub fn set_boost_pad_state(&mut self, idx: usize, state: BoostPadState) {
+        let boost_pad_grid = self.boost_pad_grid.as_mut().unwrap();
         let tick_count = self.tick_count;
-        let pad = &mut self.boost_pad_grid.all_pads[idx];
+        let pad = &mut boost_pad_grid.all_pads[idx];
         if state.cooldown > 0.0 {
             let time_since_pickup = (pad.max_cooldown - state.cooldown).max(0.0);
             let ticks_since_pickup = (time_since_pickup * TICK_RATE).round() as u64;
             pad.gave_boost_tick_count = Some(tick_count - ticks_since_pickup);
         } else {
-            self.boost_pad_grid.all_pads[idx].gave_boost_tick_count = None;
+            boost_pad_grid.all_pads[idx].gave_boost_tick_count = None;
         }
     }
 
@@ -651,7 +657,7 @@ impl Arena {
     }
 
     pub(crate) fn boost_pads(&self) -> &[BoostPad] {
-        &self.boost_pad_grid.all_pads
+        &self.boost_pad_grid.as_ref().unwrap().all_pads
     }
 
     pub fn num_boost_pads(&self) -> usize {
