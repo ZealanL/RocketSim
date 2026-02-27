@@ -244,21 +244,24 @@ pub mod car {
         }
 
         pub const RESPAWN_TIME: f32 = 3.0;
+        pub const NUM_RESPAWN_LOCATIONS: usize = 4;
 
-        pub const fn get_respawn_locations(game_mode: GameMode) -> &'static [CarSpawnPos] {
-            const LOCATIONS_SOCCAR: [CarSpawnPos; 4] = [
+        pub const fn get_respawn_locations(
+            game_mode: GameMode,
+        ) -> &'static [CarSpawnPos; NUM_RESPAWN_LOCATIONS] {
+            const LOCATIONS_SOCCAR: [CarSpawnPos; NUM_RESPAWN_LOCATIONS] = [
                 CarSpawnPos::new(-2304., -4608., FRAC_PI_2),
                 CarSpawnPos::new(-2688., -4608., FRAC_PI_2),
                 CarSpawnPos::new(2304., -4608., FRAC_PI_2),
                 CarSpawnPos::new(2688., -4608., FRAC_PI_2),
             ];
-            const LOCATIONS_HOOPS: [CarSpawnPos; 4] = [
+            const LOCATIONS_HOOPS: [CarSpawnPos; NUM_RESPAWN_LOCATIONS] = [
                 CarSpawnPos::new(-1920., -3072., FRAC_PI_2),
                 CarSpawnPos::new(-1152., -3072., FRAC_PI_2),
                 CarSpawnPos::new(1920., -3072., FRAC_PI_2),
                 CarSpawnPos::new(1152., -3072., FRAC_PI_2),
             ];
-            const LOCATIONS_DROPSHOT: [CarSpawnPos; 4] = [
+            const LOCATIONS_DROPSHOT: [CarSpawnPos; NUM_RESPAWN_LOCATIONS] = [
                 CarSpawnPos::new(-2176., -3410., FRAC_PI_2),
                 CarSpawnPos::new(-1152., -3100., FRAC_PI_2),
                 CarSpawnPos::new(2176., -3410., FRAC_PI_2),

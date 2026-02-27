@@ -60,7 +60,3 @@ pub fn closest_points_between_segments(
 
     (point_on_ab_closest_to_cd + point_on_cd_closest_to_ab) / 2.0
 }
-
-pub fn to_2d(v: Vec3A) -> Vec3A {
-    v.truncate().extend(0.0).to_vec3a()
-}

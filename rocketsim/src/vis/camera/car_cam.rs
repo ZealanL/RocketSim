@@ -1,4 +1,3 @@
-use crate::shared::rsmath;
 use crate::vis::camera::CameraConfig;
 use crate::{ArenaState, CarState};
 use glam::{Vec2, Vec3A};
@@ -79,8 +78,7 @@ impl CarCam {
         .extend(0.0)
         .to_vec3a();
 
-        *pos =
-            base_pos - (rsmath::to_2d(*dir).normalize() * cam_config.car_cam.distance * dist_scale);
+        *pos = base_pos - (dir.with_z(0.0).normalize() * cam_config.car_cam.distance * dist_scale);
         *dir = if self.face_ball {
             // Recalculate once more to make sure it's exactly correct
             (ball_state.pos - *pos).normalize()

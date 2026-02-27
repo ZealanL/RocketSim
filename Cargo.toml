@@ -1,11 +1,9 @@
 [workspace]
-members = ["rocketsim", "rocketsim/rocketsim_derive"]
+members = ["rocketsim", "rocketsim_derive"]
 resolver = "3"
+package.edition = "2024"
 package.license-file = "LICENSE"
 package.version = "0.2.0"
-
-[workspace.dependencies]
-glam = "0.32.0"
 
 [profile.release]
 debug = true

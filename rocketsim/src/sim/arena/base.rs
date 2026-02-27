@@ -29,7 +29,7 @@ use crate::{
 use arrayvec::ArrayVec;
 use fastrand::Rng;
 use glam::{Affine3A, EulerRot, Mat3A, Vec3A};
-use std::{f32::consts::PI, iter::repeat_n, mem};
+use std::{f32::consts::PI, mem};
 
 #[cfg(feature = "vis")]
 use crate::vis::VisInst;
@@ -305,9 +305,11 @@ impl Arena {
     }
 
     pub fn reset_to_random_kickoff(&mut self) {
+        use consts::car::spawn;
+
         let game_mode = self.game_mode;
-        let kickoff_locs = consts::car::spawn::get_kickoff_spawn_locations(game_mode);
-        let respawn_locs = consts::car::spawn::get_respawn_locations(game_mode);
+        let kickoff_locs = spawn::get_kickoff_spawn_locations(game_mode);
+        let respawn_locs = spawn::get_respawn_locations(game_mode);
 
         let mut kickoff_order_perm = ArrayVec::<usize, 5>::new();
         kickoff_order_perm.extend(0..kickoff_locs.len());
@@ -324,8 +326,7 @@ impl Arena {
             }
         }
 
-        let mut num_cars_at_respawn_pos = ArrayVec::<usize, 4>::new();
-        num_cars_at_respawn_pos.extend(repeat_n(0, 4));
+        let mut num_cars_at_respawn_pos = [0usize; spawn::NUM_RESPAWN_LOCATIONS];
 
         let kickoff_pos_amount = num_blue_cars.max(num_orange_cars);
         for i in 0..kickoff_pos_amount {
@@ -344,7 +345,7 @@ impl Arena {
 
             let mut spawn_state = CarState {
                 phys: PhysState {
-                    pos: Vec3A::new(spawn_pos.x, spawn_pos.y, consts::car::spawn::SPAWN_Z),
+                    pos: Vec3A::new(spawn_pos.x, spawn_pos.y, spawn::SPAWN_Z),
                     rot_mat: Mat3A::IDENTITY,
                     vel: Vec3A::ZERO,
                     ang_vel: Vec3A::ZERO,
@@ -372,12 +373,14 @@ impl Arena {
                 }
 
                 if let Some(car_idx) = car_idx {
+                    const INV_SPAWN_POS: Vec3A = Vec3A::new(-1.0, -1.0, 1.0);
+
                     spawn_state.phys.rot_mat = Mat3A::from_euler(
                         EulerRot::ZYX,
                         if is_blue {
                             spawn_pos.yaw_ang
                         } else {
-                            spawn_state.phys.pos *= Vec3A::new(-1.0, -1.0, 1.0);
+                            spawn_state.phys.pos *= INV_SPAWN_POS;
                             spawn_pos.yaw_ang + if is_blue { 0.0 } else { PI }
                         },
                         0.0,
@@ -715,9 +718,23 @@ impl Arena {
                 game_mode_mesh_files.as_slice(),
             ));
         } else if !vis_enabled && self.vis_inst.is_some() {
-            unimplemented!(); // TODO: Stop render loop properly
+            todo!("Stop render loop properly");
             // self.vis_inst = None;
         }
+    }
+
+    #[cfg(feature = "vis")]
+    /// Takes the visualizer instance from another arena,
+    /// allowing it to be reused (e.g. when resetting the arena state)
+    ///
+    /// Currently limited to only taking from an arena with the same game mode.
+    pub fn take_vis_from(&mut self, other: &mut Arena) {
+        assert_eq!(
+            self.game_mode, other.game_mode,
+            "Can only take visualizer from an arena with the same game mode"
+        );
+
+        self.vis_inst = other.vis_inst.take();
     }
 }
 
