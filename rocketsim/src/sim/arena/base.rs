@@ -304,14 +304,18 @@ impl Arena {
         }
     }
 
-    pub fn reset_to_random_kickoff(&mut self) {
+    pub fn reset_to_random_kickoff(&mut self, rng_seed: Option<u64>) {
         let game_mode = self.game_mode;
         let kickoff_locs = consts::car::spawn::get_kickoff_spawn_locations(game_mode);
         let respawn_locs = consts::car::spawn::get_respawn_locations(game_mode);
 
         let mut kickoff_order_perm = ArrayVec::<usize, 5>::new();
         kickoff_order_perm.extend(0..kickoff_locs.len());
-        self.rng.shuffle(&mut kickoff_order_perm);
+        if let Some(seed) = rng_seed {
+            Rng::with_seed(seed).shuffle(&mut kickoff_order_perm);
+        } else {
+            self.rng.shuffle(&mut kickoff_order_perm);
+        }
 
         let mut num_blue_cars = 0;
         let mut num_orange_cars = 0;
