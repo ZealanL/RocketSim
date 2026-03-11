@@ -13,6 +13,35 @@ pub struct CarControls {
     pub handbrake: bool,
 }
 
+impl Ord for CarControls {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        // TODO: Surely there is a better way to do this
+        macro_rules! cmp_field {
+            ($field:ident) => {{
+                // Explicitly copying because otherwise Rust yells at me
+                let a = self.$field;
+                let b = other.$field;
+                a.total_cmp(&b)
+            }};
+        }
+
+        cmp_field!(throttle)
+            .then_with(|| cmp_field!(steer))
+            .then_with(|| cmp_field!(pitch))
+            .then_with(|| cmp_field!(yaw))
+            .then_with(|| cmp_field!(roll))
+            .then_with(|| self.jump.cmp(&other.jump))
+            .then_with(|| self.boost.cmp(&other.boost))
+            .then_with(|| self.handbrake.cmp(&other.handbrake))
+    }
+}
+
+impl PartialOrd for CarControls {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 impl PartialEq for CarControls {
     fn eq(&self, other: &Self) -> bool {
         self.throttle == other.throttle
