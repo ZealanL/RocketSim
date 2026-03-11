@@ -348,7 +348,7 @@ impl Arena {
 
             let mut spawn_state = CarState {
                 phys: PhysState {
-                    pos: Vec3A::new(spawn_pos.x, spawn_pos.y, consts::car::spawn::SPAWN_Z),
+                    pos: Vec3A::new(spawn_pos.x, spawn_pos.y, consts::car::spawn::REST_Z),
                     rot_mat: Mat3A::IDENTITY,
                     vel: Vec3A::ZERO,
                     ang_vel: Vec3A::ZERO,
