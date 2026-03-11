@@ -127,11 +127,11 @@ impl Ball {
 
         let ball_max_speed_bt = mutator_config.ball_max_speed * UU_TO_BT;
         if rb.lin_vel.length_squared() > ball_max_speed_bt * ball_max_speed_bt {
-            rb.lin_vel = rb.lin_vel.normalize() * ball_max_speed_bt;
+            rb.lin_vel = rb.lin_vel.normalize_or_zero() * ball_max_speed_bt;
         }
 
         if rb.ang_vel.length_squared() > consts::ball::MAX_ANG_SPEED * consts::ball::MAX_ANG_SPEED {
-            rb.ang_vel = rb.ang_vel.normalize() * consts::ball::MAX_ANG_SPEED;
+            rb.ang_vel = rb.ang_vel.normalize_or_zero() * consts::ball::MAX_ANG_SPEED;
         }
 
         self.state.phys.vel = rb.lin_vel * consts::BT_TO_UU;
@@ -175,11 +175,11 @@ impl Ball {
                 consts::ball::car_hit_impulse::Z_SCALE_NORMAL
             };
 
-            let mut hit_dir = rel_pos * Vec3A::new(1.0, 1.0, z_scale).normalize();
+            let mut hit_dir = rel_pos * Vec3A::new(1.0, 1.0, z_scale).normalize_or_zero();
             let forward_dir_adjustment = car_forward
                 * hit_dir.dot(car_forward)
                 * const { 1.0 - consts::ball::car_hit_impulse::FORWARD_SCALE };
-            hit_dir = (hit_dir - forward_dir_adjustment).normalize();
+            hit_dir = (hit_dir - forward_dir_adjustment).normalize_or_zero();
 
             let added_vel = hit_dir
                 * rel_speed
@@ -210,7 +210,7 @@ impl Ball {
                 let accumulated_hit_force = &mut self.state.ds_info.accumulated_hit_force;
                 let charge_level = &mut self.state.ds_info.charge_level;
 
-                let dir_from_car = (self.state.phys.pos - car.state.phys.pos).normalize();
+                let dir_from_car = (self.state.phys.pos - car.state.phys.pos).normalize_or_zero();
                 let rel_vel_from_car = car.state.phys.vel - self.state.phys.vel;
                 let vel_info_ball = dir_from_car.dot(rel_vel_from_car);
 

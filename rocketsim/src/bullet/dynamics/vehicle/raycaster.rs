@@ -46,7 +46,7 @@ impl VehicleRaycaster {
                     *result = Some(VehicleRaycasterResult {
                         rigid_body: rb,
                         hit_point_in_world: ray_callback.hit_point_world[i],
-                        hit_normal_in_world: ray_callback.hit_normal_world[i].normalize(),
+                        hit_normal_in_world: ray_callback.hit_normal_world[i].normalize_or_zero(),
                     });
                 }
             }

@@ -72,18 +72,18 @@ impl CarCam {
             car_state.pos + Vec3A::new(0.0, 0.0, cam_config.car_cam.height * (1.0 - up_tilt_scale));
 
         let flat_dir = if self.face_ball {
-            (ball_state.pos - base_pos).truncate().normalize()
+            (ball_state.pos - base_pos).truncate().normalize_or_zero()
         } else {
-            self.calc_car_cam_dir_2d(car_state, cam_config, dir.truncate().normalize())
+            self.calc_car_cam_dir_2d(car_state, cam_config, dir.truncate().normalize_or_zero())
         }
         .extend(0.0)
         .to_vec3a();
 
         *pos =
-            base_pos - (rsmath::to_2d(*dir).normalize() * cam_config.car_cam.distance * dist_scale);
+            base_pos - (rsmath::to_2d(*dir).normalize_or_zero() * cam_config.car_cam.distance * dist_scale);
         *dir = if self.face_ball {
             // Recalculate once more to make sure it's exactly correct
-            (ball_state.pos - *pos).normalize()
+            (ball_state.pos - *pos).normalize_or_zero()
         } else {
             dir.lerp(flat_dir, 0.1)
         };

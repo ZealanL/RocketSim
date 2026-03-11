@@ -817,7 +817,7 @@ impl Arena {
             }
 
             let vel_dir = attacker_state.phys.vel.normalize_or_zero();
-            let dir_to_victim = delta_pos.normalize();
+            let dir_to_victim = delta_pos.normalize_or_zero();
 
             let speed_towards_other_car = attacker_state.phys.vel.dot(dir_to_victim);
             let other_car_away_speed = victim_state.phys.vel.dot(vel_dir);

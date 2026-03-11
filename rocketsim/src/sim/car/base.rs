@@ -603,7 +603,7 @@ impl Car {
                     if dodge_dir.x.abs() < 0.1 && dodge_dir.y.abs() < 0.1 {
                         dodge_dir = Vec3A::ZERO;
                     } else {
-                        dodge_dir = dodge_dir.normalize();
+                        dodge_dir = dodge_dir.normalize_or_zero();
                     }
 
                     self.state.flip_rel_torque = Vec3A::new(-dodge_dir.y, dodge_dir.x, 0.0);
@@ -640,7 +640,7 @@ impl Car {
                             initial_dodge_vel.x *= car_consts::flip::BACKWARD_IMPULSE_SCALE_X;
                         }
 
-                        let forward_dir_2d = self.state.get_forward_dir().with_z(0.0).normalize();
+                        let forward_dir_2d = self.state.get_forward_dir().with_z(0.0).normalize_or_zero();
                         let right_dir_2d = Vec3A::new(-forward_dir_2d.y, forward_dir_2d.x, 0.0);
                         let final_delta_vel = initial_dodge_vel.x * forward_dir_2d
                             + initial_dodge_vel.y * right_dir_2d;
@@ -871,14 +871,14 @@ impl Car {
 
         let vel = &mut rb.lin_vel;
         if vel.length_squared() > const { MAX_SPEED * MAX_SPEED } {
-            *vel = vel.normalize() * MAX_SPEED;
+            *vel = vel.normalize_or_zero() * MAX_SPEED;
         }
 
         let ang_vel = &mut rb.ang_vel;
         if ang_vel.length_squared()
             > const { car_consts::MAX_ANG_SPEED * car_consts::MAX_ANG_SPEED }
         {
-            *ang_vel = ang_vel.normalize() * car_consts::MAX_ANG_SPEED;
+            *ang_vel = ang_vel.normalize_or_zero() * car_consts::MAX_ANG_SPEED;
         }
 
         self.state.phys.pos = rb.get_world_trans().translation * BT_TO_UU;
