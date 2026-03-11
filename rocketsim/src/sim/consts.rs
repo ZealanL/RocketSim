@@ -204,7 +204,7 @@ pub mod car {
         use crate::{GameMode, consts::CarSpawnPos};
 
         pub const REST_Z: f32 = 17.0;
-        pub const SPAWN_Z: f32 = 36.0;
+        pub const RESPAWN_Z: f32 = 36.0;
 
         pub const fn get_kickoff_spawn_locations(game_mode: GameMode) -> &'static [CarSpawnPos] {
             pub const LOCATIONS_SOCCAR: [CarSpawnPos; 5] = [

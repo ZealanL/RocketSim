@@ -165,7 +165,7 @@ impl Car {
                 pos: Vec3A::new(
                     spawn_pos.x,
                     spawn_pos.y * -self.team.get_y_dir(),
-                    car_consts::spawn::SPAWN_Z,
+                    car_consts::spawn::RESPAWN_Z,
                 ),
                 rot_mat: Mat3A::from_euler(
                     EulerRot::ZYX,
