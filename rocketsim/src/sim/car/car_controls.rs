@@ -59,6 +59,19 @@ impl CarControls {
         Vec3::new(self.pitch, self.yaw, self.roll)
     }
 
+    pub const fn to_floats(&self) -> [f32; 8] {
+        [
+            self.throttle,
+            self.steer,
+            self.pitch,
+            self.yaw,
+            self.roll,
+            self.jump as u8 as f32,
+            self.boost as u8 as f32,
+            self.handbrake as u8 as f32,
+        ]
+    }
+
     //////////////////////////
 
     pub const fn with_throttle(mut self, val: f32) -> Self {
