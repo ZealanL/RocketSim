@@ -640,7 +640,8 @@ impl Car {
                             initial_dodge_vel.x *= car_consts::flip::BACKWARD_IMPULSE_SCALE_X;
                         }
 
-                        let forward_dir_2d = self.state.get_forward_dir().with_z(0.0).normalize_or_zero();
+                        let forward_dir_2d =
+                            self.state.get_forward_dir().with_z(0.0).normalize_or_zero();
                         let right_dir_2d = Vec3A::new(-forward_dir_2d.y, forward_dir_2d.x, 0.0);
                         let final_delta_vel = initial_dodge_vel.x * forward_dir_2d
                             + initial_dodge_vel.y * right_dir_2d;

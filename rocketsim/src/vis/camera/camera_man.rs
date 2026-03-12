@@ -70,7 +70,8 @@ impl CameraMan {
         match &self.view_mode {
             CameraViewMode::BirdsEye => {
                 self.cur_pos = self.config.birds_eye_pos;
-                self.cur_dir = (arena_state.ball_state.pos - self.config.birds_eye_pos).normalize_or_zero();
+                self.cur_dir =
+                    (arena_state.ball_state.pos - self.config.birds_eye_pos).normalize_or_zero();
             }
             CameraViewMode::CarCam(car_cam) => {
                 car_cam.update_car_cam_pos_dir(

@@ -1,8 +1,8 @@
 #![allow(dead_code)]
 
-use std::f32::consts::PI;
-use glam::{Mat3A, Quat, Vec3A};
 use crate::shared::Aabb;
+use glam::{Mat3A, Quat, Vec3A};
+use std::f32::consts::PI;
 
 /// Returns a random number from 0.0 to 1.0
 pub fn rand_frac() -> f32 {
@@ -14,7 +14,10 @@ pub fn rand_f32(min: f32, max: f32) -> f32 {
 }
 
 pub fn rand_vec(min: Vec3A, max: Vec3A) -> Vec3A {
-    assert!(min.cmple(max).all(), "Minimum vector {min} must be <= maximum vector {max}");
+    assert!(
+        min.cmple(max).all(),
+        "Minimum vector {min} must be <= maximum vector {max}"
+    );
     Vec3A::new(
         rand_f32(min[0], max[0]),
         rand_f32(min[1], max[1]),
@@ -37,7 +40,8 @@ pub fn rand_unit_cube_vec() -> Vec3A {
 
 /// NOTE: Uniformly distributed over all possible directions (without cube bias)
 pub fn rand_norm_vec() -> Vec3A {
-    loop { // TODO: This will fail about 50% of the time, is generating guassian numbers better?
+    loop {
+        // TODO: This will fail about 50% of the time, is generating guassian numbers better?
         let v = rand_unit_cube_vec();
         const EPS: f32 = 1e-3;
         let sq_len = v.length_squared();
