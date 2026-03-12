@@ -27,6 +27,14 @@ impl GameMode {
         Self::NAMES[self as usize]
     }
 
+    pub const fn has_soccar_arena(self) -> bool {
+        use GameMode::*;
+        match self {
+            Soccar | Heatseeker | Snowday => true,
+            Hoops | Dropshot | TheVoid => false,
+        }
+    }
+
     pub(crate) fn get_hashes(self) -> AHashMap<u32, u32> {
         macro_rules! zero_iter {
             ($($i:literal),+) => {
