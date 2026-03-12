@@ -74,7 +74,7 @@ fn main() {
 
         // Reset arena
         if pressed_keys.contains(&Keycode::Backspace) || arena.tick_count() == 0 {
-            arena.reset_to_random_kickoff();
+            arena.reset_to_random_kickoff(None);
         }
 
         if pressed_keys.contains(&Keycode::Key2) {

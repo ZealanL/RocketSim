@@ -146,7 +146,7 @@ fn main() {
 
             // Set up new episode
             // Reset to kickoff
-            arena.reset_to_random_kickoff();
+            arena.reset_to_random_kickoff(None);
 
             // Accelerate the ball randomly
             let mut ball_state = *arena.get_ball_state();
