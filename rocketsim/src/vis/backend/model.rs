@@ -1,7 +1,7 @@
 use crate::consts::BT_TO_UU;
 use crate::shared::rsmath;
 use crate::sim::collision_mesh_file::CollisionMeshFile;
-use glam::{Affine3A, Mat3, UVec3, Vec2, Vec3};
+use glam::{Affine3A, Mat3, UVec3, Vec2, Vec3, Vec3A};
 
 #[derive(Debug, Clone)]
 pub struct Model {
@@ -139,11 +139,12 @@ impl Model {
     pub fn recompute_normals(&mut self) {
         let mut new_vert_normals = Vec::with_capacity(self.verts.len());
         for tri_points in self.verts.chunks(3) {
-            let tri_normal = rsmath::calc_tri_normal(&[
+            let tri_normal = rsmath::try_calc_tri_normal(&[
                 tri_points[0].to_vec3a(),
                 tri_points[1].to_vec3a(),
                 tri_points[2].to_vec3a(),
             ])
+            .unwrap_or(Vec3A::ZERO)
             .to_vec3();
 
             for _ in 0..3 {

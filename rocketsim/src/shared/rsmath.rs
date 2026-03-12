@@ -1,10 +1,9 @@
 use glam::Vec3A;
 
-pub fn calc_tri_normal(points: &[Vec3A; 3]) -> Vec3A {
+pub fn try_calc_tri_normal(points: &[Vec3A; 3]) -> Option<Vec3A> {
     (points[1] - points[0])
         .cross(points[2] - points[0])
         .try_normalize()
-        .unwrap()
 }
 
 /// Projects a point onto a line, given two points on said line

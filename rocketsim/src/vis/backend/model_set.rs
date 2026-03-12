@@ -1,7 +1,7 @@
 use crate::shared::rsmath;
 use crate::vis::backend::Model;
 use ahash::AHashMap;
-use glam::Vec3;
+use glam::{Vec3, Vec3A};
 use miniquad::{BufferId, BufferSource, BufferType, BufferUsage, RenderingBackend};
 
 #[derive(Debug, Clone)]
@@ -40,7 +40,7 @@ impl ModelSet {
                 tri_verts[1].to_vec3a(),
                 tri_verts[2].to_vec3a(),
             ];
-            let tri_normal = rsmath::calc_tri_normal(&tri_verts);
+            let tri_normal = rsmath::try_calc_tri_normal(&tri_verts).unwrap_or(Vec3A::ZERO);
 
             for _ in 0..3 {
                 results.push(tri_normal.to_vec3());
