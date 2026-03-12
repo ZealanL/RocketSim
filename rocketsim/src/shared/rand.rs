@@ -2,6 +2,7 @@
 
 use std::f32::consts::PI;
 use glam::{Mat3A, Quat, Vec3A};
+use crate::shared::Aabb;
 
 /// Returns a random number from 0.0 to 1.0
 pub fn rand_frac() -> f32 {
@@ -19,6 +20,10 @@ pub fn rand_vec(min: Vec3A, max: Vec3A) -> Vec3A {
         rand_f32(min[1], max[1]),
         rand_f32(min[2], max[2]),
     )
+}
+
+pub fn rand_in_aabb(aabb: &Aabb) -> Vec3A {
+    rand_vec(aabb.min, aabb.max)
 }
 
 /// Returns a random Vec3A with each component uniformly distributed from -1.0 to 1.0
