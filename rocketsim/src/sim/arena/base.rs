@@ -744,6 +744,8 @@ impl Arena {
         let contact_point = manifold_point.pos_world_on_b * BT_TO_UU;
         let contact_normal = manifold_point.normal_world_on_b;
 
+        self.ball.on_world_hit(contact_normal, self.game_mode);
+
         self.events.push(BallHitWorld(BallHitWorldEvent {
             contact_point,
             contact_normal,

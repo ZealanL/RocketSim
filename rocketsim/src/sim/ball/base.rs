@@ -321,4 +321,43 @@ impl Ball {
             _ => {}
         };
     }
+
+    pub fn on_world_hit(&mut self, normal: Vec3A, game_mode: GameMode) {
+        match game_mode {
+            GameMode::Heatseeker => {
+                const ARENA_EXTENT: Vec3A = consts::arena::get_aabb(GameMode::Soccar).max;
+                if self.state.hs_info.y_target_dir == 0 {
+                    return;
+                }
+
+                let y_target_dir = f32::from(self.state.hs_info.y_target_dir);
+                let rel_normal_y = normal.y * y_target_dir;
+                let rel_y = self.state.phys.pos.y * y_target_dir;
+                if rel_normal_y <= -heatseeker::WALL_BOUNCE_CHANGE_Y_NORMAL
+                    && rel_y >= ARENA_EXTENT.y - heatseeker::WALL_BOUNCE_CHANGE_Y_THRESH
+                {
+                    // We hit far enough to change direction
+                    self.state.hs_info.y_target_dir *= -1;
+
+                    let goal_target_pos = Vec3A::new(
+                        0.0,
+                        heatseeker::TARGET_Y * y_target_dir,
+                        heatseeker::TARGET_Z,
+                    );
+
+                    // Add wall bounce impulse
+                    let dir_to_goal = (goal_target_pos - self.state.phys.pos).normalize_or_zero();
+
+                    let bounce_dir = dir_to_goal * (1.0 - heatseeker::WALL_BOUNCE_UP_FRAC)
+                        + Vec3A::Z * heatseeker::WALL_BOUNCE_UP_FRAC;
+                    let bounce_impulse = bounce_dir
+                        * self.state.phys.vel.length()
+                        * heatseeker::WALL_BOUNCE_FORCE_SCALE;
+                    self.vel_impulse_cache += bounce_impulse * UU_TO_BT;
+                }
+            }
+            GameMode::Snowday => todo!(),
+            _ => {}
+        }
+    }
 }
