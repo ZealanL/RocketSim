@@ -13,12 +13,11 @@ pub enum GameMode {
 }
 
 impl GameMode {
-    const NAMES: [&'static str; 7] = [
+    const NAMES: [&'static str; 6] = [
         "soccar",
         "hoops",
         "heatseeker",
         "snowday",
-        "dropshot",
         "dropshot",
         "void",
     ];
