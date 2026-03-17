@@ -58,14 +58,14 @@ pub fn resolve_single_bilateral(
     let vel = vel1 - vel2;
 
     let jac_body_a = JacbobianBody {
-        world: &body1_comt.matrix3.transpose(),
+        world: &body1_comt.matrix3,
         rel_pos: rel_pos1,
         inertia_inv: body1.inv_inertia_local,
         mass_inv: body1.inverse_mass,
     };
 
     let jac_body_b = JacbobianBody {
-        world: &body2_comt.matrix3.transpose(),
+        world: &body2_comt.matrix3,
         rel_pos: rel_pos2,
         inertia_inv: body2.inv_inertia_local,
         mass_inv: body2.inverse_mass,

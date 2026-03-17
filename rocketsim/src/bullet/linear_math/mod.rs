@@ -23,7 +23,7 @@ impl AffineExt for Affine3A {
     }
 
     fn inv_x_form(&self, in_vec: Vec3A) -> Vec3A {
-        self.matrix3.transpose() * (in_vec - self.translation)
+        self.matrix3.mul_transpose_vec3a(in_vec - self.translation)
     }
 }
 

@@ -11,7 +11,7 @@ byteorder = "1.5.0"
 fastrand = "2.3.0"
 log = "0.4.29"
 env_logger = "0.11.8"
-glam = { workspace = true }
+glam = "0.32.0"
 derive_hash_fast = "0.2.3"
 zerocopy = { version = "0.8.34", features = ["derive"] }
 rocketsim_derive = { path = "./rocketsim_derive" }
