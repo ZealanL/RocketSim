@@ -19,7 +19,7 @@ rocketsim_derive = { path = "./rocketsim_derive" }
 ### OPTIONAL VISUALIZER DEPENDENCIES ###
 miniquad = { version = "0.4.8", optional = true }
 egui = { version = "0.33.3", optional = true }
-egui-miniquad = { version = "0.16.0", optional = true }
+egui-miniquad = { git = "https://github.com/not-fl3/egui-miniquad.git", rev = "62c7d23", optional = true }
 raw-window-handle = { version = "0.6.2", optional = true }
 png = { version = "0.18.0", optional = true }
 
