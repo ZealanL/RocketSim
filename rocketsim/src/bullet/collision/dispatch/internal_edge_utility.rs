@@ -228,8 +228,10 @@ pub fn adjust_internal_edge_contacts(
     let nearest = nearst_point_in_line_segment(cp.local_point_b, tri.points[0], tri.points[1]);
     let contact = cp.local_point_b;
 
-    let local_contact_normal_on_b =
-        tri_mesh_col_obj.get_world_trans().matrix3.transpose() * cp.normal_world_on_b;
+    let local_contact_normal_on_b = tri_mesh_col_obj
+        .get_world_trans()
+        .matrix3
+        .mul_transpose_vec3a(cp.normal_world_on_b);
     debug_assert!(local_contact_normal_on_b.is_normalized());
 
     let mut best_edge = BestEdge::None;

@@ -62,8 +62,6 @@ pub struct RigidBody {
     rb_flags: u8,
 
     pub interp_world_trans: Affine3A,
-    pub interp_lin_vel: Vec3A,
-    pub interp_ang_vel: Vec3A,
     pub contact_processing_threshold: f32,
     broadphase_handle: Option<usize>,
 
@@ -79,7 +77,6 @@ pub struct RigidBody {
     pub user_pointer: usize,
     pub user_idx: UserInfoTypes,
 
-    pub inertia_tensor_world: Mat3A,
     pub inv_inertia_tensor_world: Mat3A,
     pub lin_vel: Vec3A,
     pub ang_vel: Vec3A,
@@ -121,8 +118,6 @@ impl RigidBody {
         Self {
             world_trans: info.start_world_trans,
             interp_world_trans: info.start_world_trans,
-            interp_lin_vel: Vec3A::ZERO,
-            interp_ang_vel: Vec3A::ZERO,
             contact_processing_threshold: f32::MAX,
             broadphase_handle: None,
             shape: info.collision_shape,
@@ -143,7 +138,6 @@ impl RigidBody {
             can_sleep: info.can_sleep,
 
             inv_inertia_tensor_world,
-            inertia_tensor_world: inv_inertia_tensor_world.transpose(),
             lin_vel: Vec3A::ZERO,
             ang_vel: Vec3A::ZERO,
             inverse_mass,
@@ -247,7 +241,6 @@ impl RigidBody {
     pub fn update_inertia_tensor(&mut self) {
         self.inv_inertia_tensor_world =
             Self::get_inertia_tensor(self.get_world_trans().matrix3, self.inv_inertia_local);
-        self.inertia_tensor_world = self.inv_inertia_tensor_world.transpose();
     }
 
     pub fn apply_torque_impulse(&mut self, torque: Vec3A) {
@@ -300,8 +293,6 @@ impl RigidBody {
 
     pub fn set_center_of_mass_trans(&mut self, xform: Affine3A) {
         self.interp_world_trans = xform;
-        self.interp_lin_vel = self.lin_vel;
-        self.interp_ang_vel = self.ang_vel;
         self.set_world_trans(xform);
 
         self.update_inertia_tensor();
@@ -345,7 +336,10 @@ impl RigidBody {
     pub fn compute_impulse_denominator(&self, pos: Vec3A, normal: Vec3A) -> f32 {
         let r0 = pos - self.get_world_trans().translation;
         let c0 = r0.cross(normal);
-        let vec = (self.inv_inertia_tensor_world.transpose() * c0).cross(r0);
+        let vec = self
+            .inv_inertia_tensor_world
+            .mul_transpose_vec3a(c0)
+            .cross(r0);
 
         self.inverse_mass + normal.dot(vec)
     }

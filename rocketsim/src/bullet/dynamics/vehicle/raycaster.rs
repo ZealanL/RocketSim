@@ -30,10 +30,7 @@ impl VehicleRaycaster {
     ) -> [Option<VehicleRaycasterResult<'a>>; 4] {
         let mut ray_callback = ClosestRayResultCallback::new(from, to, ignore_obj);
         ray_callback.base.collision_filter_group |= self.added_filter_mask;
-        collision_world
-            .dynamics_world
-            .collision_world
-            .ray_test(from, to, &mut ray_callback);
+        collision_world.ray_test(from, to, &mut ray_callback);
 
         let mut results = [None; 4];
 

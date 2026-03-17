@@ -115,7 +115,7 @@ impl SolverConstraint {
 
         let (denom0, vel0, vel_1_dot_n) = rb0.map_or((0.0, Vec3A::ZERO, 0.0), |rb| {
             let torque_axis = rel_pos1.cross(cp.normal_world_on_b);
-            self.angular_component_a = rb.inertia_tensor_world * torque_axis;
+            self.angular_component_a = rb.inv_inertia_tensor_world.mul_transpose_vec3a(torque_axis);
             let vec = self.angular_component_a.cross(rel_pos1);
             let denom = rb.inverse_mass + cp.normal_world_on_b.dot(vec);
             let vel = rb.get_vel_in_local_point(rel_pos1);
@@ -141,7 +141,9 @@ impl SolverConstraint {
 
         let (denom1, vel1, vel_2_dot_n) = rb1.map_or((0.0, Vec3A::ZERO, 0.0), |rb| {
             let torque_axis = rel_pos2.cross(cp.normal_world_on_b);
-            self.angular_component_b = rb.inertia_tensor_world * -torque_axis;
+            self.angular_component_b = rb
+                .inv_inertia_tensor_world
+                .mul_transpose_vec3a(-torque_axis);
             let vec = (-self.angular_component_b).cross(rel_pos2);
             let denom = rb.inverse_mass + cp.normal_world_on_b.dot(vec);
             let vel = rb.get_vel_in_local_point(rel_pos2);
@@ -201,7 +203,9 @@ impl SolverConstraint {
         let (vel_1_dot_n, denom1) = rb0.map_or((0.0, 0.0), |rb| {
             self.contact_normal_1 = normal_axis;
             self.rel_pos1_cross_normal = rel_pos1.cross(self.contact_normal_1);
-            self.angular_component_a = rb.inertia_tensor_world * self.rel_pos1_cross_normal;
+            self.angular_component_a = rb
+                .inv_inertia_tensor_world
+                .mul_transpose_vec3a(self.rel_pos1_cross_normal);
 
             let vec = self.angular_component_a.cross(rel_pos1);
             let denom = rb.inverse_mass + normal_axis.dot(vec);
@@ -217,7 +221,9 @@ impl SolverConstraint {
         let (vel_2_dot_n, denom2) = rb1.map_or((0.0, 0.0), |rb| {
             self.contact_normal_2 = -normal_axis;
             self.rel_pos2_cross_normal = rel_pos2.cross(self.contact_normal_2);
-            self.angular_component_b = rb.inertia_tensor_world * self.rel_pos2_cross_normal;
+            self.angular_component_b = rb
+                .inv_inertia_tensor_world
+                .mul_transpose_vec3a(self.rel_pos2_cross_normal);
 
             let vec = (-self.angular_component_b).cross(rel_pos2);
             let denom = rb.inverse_mass + normal_axis.dot(vec);

@@ -261,7 +261,9 @@ impl SeqImpulseConstraintSolver {
         let erp = contact_solver_info::ERP_2;
 
         let torque_axis_0 = rel_pos1.cross(normal_world_on_b);
-        let angular_component_a = body.inertia_tensor_world * torque_axis_0;
+        let angular_component_a = body
+            .inv_inertia_tensor_world
+            .mul_transpose_vec3a(torque_axis_0);
 
         let denom = {
             let vec = angular_component_a.cross(rel_pos1);
