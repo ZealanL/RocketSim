@@ -186,7 +186,7 @@ impl Arena {
         for mesh in collision_meshes {
             let is_hoops_net = if game_mode == GameMode::Hoops {
                 // Detect net mesh and disable car collision
-                mesh.get_mesh_interface().get_total_num_faces() == 505
+                mesh.get_mesh_interface().get_total_num_faces() == 798
             } else {
                 false
             };
