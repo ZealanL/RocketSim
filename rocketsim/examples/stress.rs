@@ -1,5 +1,6 @@
 use std::time::Instant;
 
+use clap::{Parser, ValueEnum};
 use glam::Vec3A;
 use rocketsim::{
     Arena, ArenaConfig, ArenaEvent, BallState, CarBodyConfig, CarControls, CarState, GameMode,
@@ -120,10 +121,45 @@ fn calc_bot_controls(car_state: &CarState, ball_state: &BallState) -> CarControl
     controls.clamp()
 }
 
+#[derive(Clone, Copy, Debug, ValueEnum)]
+#[clap(rename_all = "kebab-case")]
+enum GameModeArg {
+    Soccar,
+    Hoops,
+    Heatseeker,
+    Snowday,
+    Dropshot,
+    #[clap(name = "void")]
+    TheVoid,
+}
+
+impl From<GameModeArg> for GameMode {
+    fn from(value: GameModeArg) -> Self {
+        match value {
+            GameModeArg::Soccar => Self::Soccar,
+            GameModeArg::Hoops => Self::Hoops,
+            GameModeArg::Heatseeker => Self::Heatseeker,
+            GameModeArg::Snowday => Self::Snowday,
+            GameModeArg::Dropshot => Self::Dropshot,
+            GameModeArg::TheVoid => Self::TheVoid,
+        }
+    }
+}
+
+#[derive(Parser)]
+struct Args {
+    #[arg(short, long, default_value_t = NUM_CARS)]
+    num_cars: u8,
+    #[arg(short, long, value_enum, default_value_t = GameModeArg::Soccar)]
+    game_mode: GameModeArg,
+}
+
 fn main() {
+    let cli = Args::parse();
+
     init_from_default(true).unwrap();
     let mut arena = Arena::new_with_config(
-        GameMode::Soccar,
+        cli.game_mode.into(),
         ArenaConfig {
             rng_seed: Some(0),
             ..Default::default()
@@ -132,8 +168,8 @@ fn main() {
 
     fastrand::seed(0);
 
-    let mut ids = Vec::new();
-    for i in 0..NUM_CARS {
+    let mut ids = Vec::with_capacity(cli.num_cars as usize);
+    for i in 0..cli.num_cars {
         let id = arena.add_car(Team::try_from(i % 2).unwrap(), CarBodyConfig::OCTANE);
         ids.push(id);
     }

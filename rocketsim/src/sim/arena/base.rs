@@ -169,11 +169,15 @@ impl Arena {
     fn setup_arena_collision_shapes(bullet_world: &mut DiscreteDynamicsWorld, game_mode: GameMode) {
         debug_assert!(game_mode != GameMode::TheVoid);
 
+        let mesh_game_mode = match game_mode {
+            GameMode::Heatseeker | GameMode::Snowday => GameMode::Soccar,
+            _ => game_mode,
+        };
         let collision_shapes = ARENA_COLLISION_SHAPES.read().unwrap();
         let collision_meshes = &collision_shapes
             .as_ref()
             .expect("Arena collision shapes are uninitialized - please call init(..) first.")
-            [&game_mode];
+            [&mesh_game_mode];
         assert!(
             !collision_meshes.is_empty(),
             "No arena meshes found for the game mode {game_mode:?}"
@@ -181,7 +185,8 @@ impl Arena {
 
         for mesh in collision_meshes {
             let is_hoops_net = if game_mode == GameMode::Hoops {
-                todo!()
+                // Detect net mesh and disable car collision
+                mesh.get_mesh_interface().get_total_num_faces() == 505
             } else {
                 false
             };
@@ -468,7 +473,10 @@ impl Arena {
             );
         }
 
-        self.ball.pre_tick_update(self.game_mode);
+        self.ball.pre_tick_update(
+            &mut self.bullet_world.bodies_mut()[self.ball.rigid_body_idx],
+            self.game_mode,
+        );
 
         self.bullet_world
             .step_simulation(TICK_TIME, &mut self.contact_tracker);

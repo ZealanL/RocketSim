@@ -1,9 +1,12 @@
-use glam::{Affine3A, Vec3A};
+use std::f32::consts::TAU;
+
+use glam::{Affine3A, Vec2, Vec3A};
 
 use crate::bullet::dynamics::rigid_body::{ActivationState, CollisionFlags};
+use crate::bullet::linear_math::angle::Angle;
 use crate::consts::{UU_TO_BT, dropshot, heatseeker};
 use crate::{
-    BallState, Car, GameMode, MutatorConfig, Team,
+    BallState, Car, GameMode, MutatorConfig,
     bullet::{
         collision::{
             broadphase::CollisionFilterGroups,
@@ -103,13 +106,97 @@ impl Ball {
         self.state = state;
     }
 
-    pub(crate) fn pre_tick_update(&mut self, game_mode: GameMode) {
+    pub(crate) fn pre_tick_update(&mut self, rb: &mut RigidBody, game_mode: GameMode) {
         match game_mode {
-            GameMode::Heatseeker => todo!(),
+            GameMode::Heatseeker => {
+                if self.state.hs_info.y_target_dir == 0 {
+                    return;
+                }
+
+                let vel_angle = Angle::from(self.state.vel);
+
+                // Determine angle to goal
+                let goal_target_pos = Vec3A::new(
+                    0.0,
+                    heatseeker::TARGET_Y * f32::from(self.state.hs_info.y_target_dir),
+                    heatseeker::TARGET_Z,
+                );
+                let angle_to_goal = Angle::from(goal_target_pos - self.state.phys.pos);
+
+                // Find difference between target angle and current angle
+                let delta_angle = angle_to_goal - vel_angle;
+
+                // Determine speed ratio
+                let cur_speed = self.state.phys.vel.length();
+                let speed_ratio = cur_speed / heatseeker::MAX_SPEED;
+
+                let mut new_angle = vel_angle;
+                let base_interp_factor = speed_ratio * consts::TICK_TIME;
+                new_angle.yaw +=
+                    delta_angle.yaw * base_interp_factor * heatseeker::HORIZONTAL_BLEND;
+                new_angle.pitch +=
+                    delta_angle.pitch * base_interp_factor * heatseeker::VERTICAL_BLEND;
+                new_angle.yaw = new_angle.yaw.rem_euclid(TAU);
+                new_angle.pitch = new_angle
+                    .pitch
+                    .clamp(-heatseeker::MAX_TURN_PITCH, heatseeker::MAX_TURN_PITCH);
+                new_angle.normalize_fix();
+
+                // Limit pitch
+                new_angle.pitch = new_angle
+                    .pitch
+                    .clamp(-heatseeker::MAX_TURN_PITCH, heatseeker::MAX_TURN_PITCH);
+
+                // Apply aggressive UE3 rotator rounding
+                // (This is suprisingly important for accuracy)
+                new_angle = new_angle.round_ue3();
+
+                // Determine new interpolated speed
+                let new_speed = cur_speed
+                    + (self.state.hs_info.cur_target_speed - cur_speed) * heatseeker::SPEED_BLEND;
+
+                // Update velocity
+                let new_dir = new_angle.get_forward_vec();
+                let new_vel = new_dir * new_speed;
+                rb.set_lin_vel(new_vel * UU_TO_BT);
+
+                self.state.hs_info.time_since_hit += consts::TICK_TIME;
+            }
             GameMode::Snowday => self.ground_stick_applied = false,
             GameMode::Dropshot | GameMode::Hoops => {
-                // launch ball after a short delay on kickoff
-                todo!()
+                // Launch ball after a short delay on kickoff
+                let is_dropshot = game_mode == GameMode::Dropshot;
+
+                let launch_delay = if is_dropshot {
+                    dropshot::BALL_LAUNCH_DELAY
+                } else {
+                    consts::ball::HOOPS_LAUNCH_DELAY
+                };
+
+                let cur_kickoff_time =
+                    self.state.tick_count_since_kickoff as f32 * consts::TICK_TIME;
+                let prev_kickoff_time = cur_kickoff_time - consts::TICK_TIME;
+
+                if prev_kickoff_time < launch_delay && cur_kickoff_time >= launch_delay {
+                    // Launch triggered
+                    // Make sure the ball is frozen at the kickoff X and Y
+                    if self.state.phys.vel == Vec3A::ZERO
+                        && self.state.phys.ang_vel == Vec3A::ZERO
+                        && self.state.phys.pos.truncate() == Vec2::ZERO
+                    {
+                        // Apply the force
+                        let launch_vel_z = if is_dropshot {
+                            dropshot::BALL_LAUNCH_Z_VEL
+                        } else {
+                            consts::ball::HOOPS_LAUNCH_Z_VEL
+                        };
+
+                        rb.apply_central_impulse(
+                            Vec3A::new(0.0, 0.0, launch_vel_z) * rb.get_mass() * UU_TO_BT,
+                        );
+                        rb.set_activation_state(ActivationState::Active);
+                    }
+                }
             }
             _ => {}
         }
@@ -140,6 +227,8 @@ impl Ball {
         let trans = *rb.get_world_trans();
         self.state.phys.pos = trans.translation * consts::BT_TO_UU;
         self.state.phys.rot_mat = trans.matrix3;
+
+        self.state.tick_count_since_kickoff += 1;
     }
 
     pub(crate) fn on_hit(
@@ -193,18 +282,18 @@ impl Ball {
             GameMode::Heatseeker => {
                 let can_increase = self.state.hs_info.time_since_hit
                     > heatseeker::MIN_SPEEDUP_INTERVAL
-                    || self.state.hs_info.y_target_dir == 0.0;
-                self.state.hs_info.y_target_dir = f32::from(car.team == Team::Blue) * 2.0 - 1.0;
+                    || self.state.hs_info.y_target_dir == 0;
 
-                #[allow(clippy::eq_op)]
-                if can_increase
-                    && self.state.hs_info.y_target_dir != self.state.hs_info.y_target_dir
-                {
+                // Blue -> 1, Orange -> -1
+                let new_target_dir = car.team as i8 * -2 + 1;
+                if can_increase && new_target_dir != self.state.hs_info.y_target_dir {
                     self.state.hs_info.time_since_hit = 0.0;
                     self.state.hs_info.cur_target_speed = heatseeker::MAX_SPEED.min(
                         self.state.hs_info.cur_target_speed + heatseeker::TARGET_SPEED_INCREMENT,
                     );
                 }
+
+                self.state.hs_info.y_target_dir = new_target_dir;
             }
             GameMode::Dropshot => {
                 let accumulated_hit_force = &mut self.state.ds_info.accumulated_hit_force;
@@ -225,7 +314,8 @@ impl Ball {
                 }
 
                 if *charge_level > 1 {
-                    self.state.ds_info.y_target_dir = f32::from(car.team == Team::Blue) * 2.0 - 1.0;
+                    // Blue -> 1, Orange -> -1
+                    self.state.ds_info.y_target_dir = car.team as i8 * -2 + 1;
                 }
             }
             _ => {}
