@@ -191,6 +191,7 @@ pub fn conv_to_new_ball_state(ball_state: &OldBallState) -> BallState {
 
         // TODO: Implement
         last_extra_hit_tick: None,
+        tick_count_since_kickoff: 0,
     }
 }
 
