@@ -241,6 +241,20 @@ impl Arena {
         // Ceiling
         add_plane(Vec3A::new(0.0, 0.0, arena_aabb.max.z), Vec3A::NEG_Z, 0);
 
+        if game_mode != GameMode::Dropshot {
+            // Side walls
+            add_plane(
+                Vec3A::new(arena_aabb.min.x, 0.0, arena_aabb.center().z),
+                Vec3A::X,
+                0,
+            );
+            add_plane(
+                Vec3A::new(arena_aabb.max.x, 0.0, arena_aabb.center().z),
+                Vec3A::NEG_X,
+                0,
+            );
+        }
+
         match game_mode {
             GameMode::Hoops => {
                 // Y walls
@@ -260,19 +274,7 @@ impl Arena {
                 // Add tiles
                 todo!()
             }
-            _ => {
-                // Side walls
-                add_plane(
-                    Vec3A::new(arena_aabb.min.x, 0.0, arena_aabb.center().z),
-                    Vec3A::X,
-                    0,
-                );
-                add_plane(
-                    Vec3A::new(arena_aabb.max.x, 0.0, arena_aabb.center().z),
-                    Vec3A::NEG_X,
-                    0,
-                );
-            }
+            _ => {}
         }
     }
 
