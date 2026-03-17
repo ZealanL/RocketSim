@@ -721,8 +721,12 @@ impl Arena {
         if vis_enabled && self.vis_inst.is_none() {
             // Create visualizer
 
+            let mesh_game_mode = match self.game_mode {
+                GameMode::Heatseeker | GameMode::Snowday => GameMode::Soccar,
+                _ => self.game_mode,
+            };
             let collision_mesh_files = ARENA_COLLISION_MESH_FILES.read().unwrap();
-            let game_mode_mesh_files = &collision_mesh_files.as_ref().unwrap()[&self.game_mode];
+            let game_mode_mesh_files = &collision_mesh_files.as_ref().unwrap()[&mesh_game_mode];
 
             self.vis_inst = Some(VisInst::new(
                 self.game_mode,
