@@ -46,5 +46,9 @@ all = "warn"
 # pedantic = "warn"
 
 [[example]]
+name = "rocket_sim_vis_compare"
+required-features = ["vis"]
+
+[[example]]
 name = "vis"
 required-features = ["vis"]
