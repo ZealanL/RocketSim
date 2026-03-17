@@ -68,12 +68,15 @@ impl MutatorConfig {
             jump_immediate_force: consts::car::jump::IMMEDIATE_FORCE,
             boost_accel_ground: consts::car::boost::ACCEL_GROUND,
             boost_accel_air: consts::car::boost::ACCEL_AIR,
-            boost_used_per_second: consts::car::boost::USED_PER_SECOND,
+            boost_used_per_second: match game_mode {
+                GameMode::Heatseeker => 0.0,
+                _ => consts::car::boost::USED_PER_SECOND,
+            },
             respawn_delay: consts::car::spawn::RESPAWN_TIME,
             bump_cooldown_time: consts::car::bump::COOLDOWN_TIME,
             car_max_boost_amount: consts::car::boost::MAX,
             car_spawn_boost_amount: match game_mode {
-                GameMode::Dropshot => 100.,
+                GameMode::Heatseeker | GameMode::Dropshot => 100.,
                 _ => consts::car::boost::SPAWN_AMOUNT,
             },
             boost_pad_amount_big: consts::boost_pads::BOOST_AMOUNT_BIG,
