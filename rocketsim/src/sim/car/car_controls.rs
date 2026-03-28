@@ -75,6 +75,8 @@ impl CarControls {
         handbrake: false,
     };
 
+    pub const NUM_VALS: usize = 8;
+
     pub const fn clamp(mut self) -> Self {
         self.throttle = self.throttle.clamp(-1.0, 1.0);
         self.steer = self.steer.clamp(-1.0, 1.0);
@@ -88,7 +90,7 @@ impl CarControls {
         Vec3::new(self.pitch, self.yaw, self.roll)
     }
 
-    pub const fn to_floats(&self) -> [f32; 8] {
+    pub const fn to_floats(&self) -> [f32; Self::NUM_VALS] {
         [
             self.throttle,
             self.steer,
@@ -99,6 +101,21 @@ impl CarControls {
             self.boost as u8 as f32,
             self.handbrake as u8 as f32,
         ]
+    }
+
+    /// `boolean_thresh`: Floats over this value will trigger boolean controls (jump, boost, handbrake)
+    pub const fn from_floats(floats: [f32; Self::NUM_VALS], boolean_tresh: f32) -> Self {
+        Self {
+            throttle: floats[0],
+            steer: floats[1],
+            pitch: floats[2],
+            yaw: floats[3],
+            roll: floats[4],
+
+            jump: floats[5] > boolean_tresh,
+            boost: floats[6] > boolean_tresh,
+            handbrake: floats[7] > boolean_tresh,
+        }
     }
 
     //////////////////////////
