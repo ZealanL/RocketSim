@@ -758,7 +758,7 @@ impl Car {
         let forward_speed_uu = {
             let rb = &mut collision_world.bodies_mut()[self.rigid_body_idx];
             if self.state.is_demoed {
-                self.state.demo_respawn_timer = (self.state.demo_respawn_timer).max(0.0);
+                self.state.demo_respawn_timer = (self.state.demo_respawn_timer - TICK_TIME).max(0.0);
                 if self.state.demo_respawn_timer == 0.0 {
                     self.respawn(rb, rng, game_mode, mutator_config.car_spawn_boost_amount);
                 }
