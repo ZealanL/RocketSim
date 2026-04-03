@@ -93,7 +93,7 @@ impl ContactAddedCallback for ArenaContactTracker {
 
         adjust_internal_edge_contacts(
             manifold_point,
-            body_a,
+            body_b,
             if should_swap {
                 manifold_point.idx_0
             } else {
