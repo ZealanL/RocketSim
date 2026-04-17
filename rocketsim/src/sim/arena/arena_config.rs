@@ -1,4 +1,4 @@
-use crate::BoostPadConfig;
+use crate::{BoostPadConfig, GameMode, MutatorConfig};
 use glam::Vec3A;
 
 #[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq)]
@@ -10,6 +10,8 @@ pub enum ArenaMemWeightMode {
 
 #[derive(Clone, Debug)]
 pub struct ArenaConfig {
+    pub game_mode: GameMode,
+    pub mutators: MutatorConfig,
     pub mem_weight_mode: ArenaMemWeightMode,
     pub min_pos: Vec3A,
     pub max_pos: Vec3A,
@@ -31,6 +33,8 @@ impl Default for ArenaConfig {
 
 impl ArenaConfig {
     pub const DEFAULT: Self = Self {
+        game_mode: GameMode::Soccar,
+        mutators: MutatorConfig::new(GameMode::Soccar),
         mem_weight_mode: ArenaMemWeightMode::Heavy,
         min_pos: Vec3A::new(-5600., -6000., 0.),
         max_pos: Vec3A::new(5600., 6000., 2200.),
@@ -39,4 +43,12 @@ impl ArenaConfig {
         custom_boost_pads: None,
         rng_seed: None,
     };
+
+    pub fn new(game_mode: GameMode) -> Self {
+        Self {
+            game_mode,
+            mutators: MutatorConfig::new(game_mode),
+            ..Self::DEFAULT
+        }
+    }
 }

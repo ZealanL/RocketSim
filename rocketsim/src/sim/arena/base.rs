@@ -6,9 +6,9 @@ use crate::sim::ArenaEvent::CarHitBall;
 use crate::sim::arena::ArenaEventList;
 use crate::sim::{ArenaEvent, Ball, BoostPad, CarHitBallEvent, CarHitCarEvent, CarHitWorldEvent};
 use crate::{
-    ARENA_COLLISION_MESH_FILES, ARENA_COLLISION_SHAPES, ArenaConfig, ArenaMemWeightMode,
-    ArenaState, BallHitWorldEvent, BoostPadConfig, BoostPadGrid, BoostPadState, Car, CarBodyConfig,
-    CarControls, CarInfo, CarPickupBoostEvent, CarState, GameMode, MutatorConfig, PhysState, Team,
+    ARENA_COLLISION_SHAPES, ArenaConfig, ArenaMemWeightMode, ArenaState, BallHitWorldEvent,
+    BoostPadConfig, BoostPadGrid, BoostPadState, Car, CarBodyConfig, CarControls, CarInfo,
+    CarPickupBoostEvent, CarState, GameMode, MutatorConfig, PhysState, Team,
     bullet::{
         collision::{
             broadphase::{GridBroadphase, HashedOverlappingPairCache},
@@ -42,8 +42,6 @@ pub struct Arena {
     pub(crate) ball: Ball,
     pub(crate) cars: Vec<Car>,
     pub(crate) tick_count: u64,
-    pub(crate) game_mode: GameMode,
-    pub(crate) mutator_config: MutatorConfig,
     pub(crate) boost_pad_grid: Option<BoostPadGrid>,
     pub(crate) contact_tracker: ArenaContactTracker,
     pub(crate) events: ArenaEventList,
@@ -54,12 +52,10 @@ pub struct Arena {
 
 impl Arena {
     pub fn new(game_mode: GameMode) -> Self {
-        Self::new_with_config(game_mode, ArenaConfig::DEFAULT)
+        Self::new_with_config(ArenaConfig::new(game_mode))
     }
 
-    pub fn new_with_config(game_mode: GameMode, config: ArenaConfig) -> Self {
-        let mutator_config = MutatorConfig::new(game_mode);
-
+    pub fn new_with_config(config: ArenaConfig) -> Self {
         let collision_dispatcher = CollisionDispatcher::default();
         let constraint_solver = SeqImpulseConstraintSolver::default();
         let overlapping_pair_cache = HashedOverlappingPairCache::default();
@@ -79,28 +75,28 @@ impl Arena {
 
         let mut bullet_world =
             DiscreteDynamicsWorld::new(collision_dispatcher, broadphase, constraint_solver);
-        bullet_world.set_gravity(mutator_config.gravity * UU_TO_BT);
+        bullet_world.set_gravity(config.mutators.gravity * UU_TO_BT);
 
-        if game_mode != GameMode::TheVoid {
-            Self::setup_arena_collision_shapes(&mut bullet_world, game_mode);
+        if config.game_mode != GameMode::TheVoid {
+            Self::setup_arena_collision_shapes(&mut bullet_world, config.game_mode);
         }
 
         let ball = Ball::new(
-            game_mode,
+            config.game_mode,
             &mut bullet_world,
-            &mutator_config,
+            &config.mutators,
             config.no_ball_rot,
         );
 
         let mut boost_pad_grid = None;
-        if game_mode != GameMode::TheVoid && game_mode != GameMode::Dropshot {
+        if config.game_mode != GameMode::TheVoid && config.game_mode != GameMode::Dropshot {
             let mut boost_pad_configs = Vec::new();
 
             if let Some(custom_boost_pads) = config.custom_boost_pads.as_ref() {
                 boost_pad_configs.extend_from_slice(custom_boost_pads);
             } else {
-                let small_pad_locs = consts::boost_pads::get_locations(game_mode, false);
-                let big_pad_locs = consts::boost_pads::get_locations(game_mode, true);
+                let small_pad_locs = consts::boost_pads::get_locations(config.game_mode, false);
+                let big_pad_locs = consts::boost_pads::get_locations(config.game_mode, true);
                 boost_pad_configs.reserve(small_pad_locs.len() + big_pad_locs.len());
 
                 for small_pos in small_pad_locs {
@@ -118,7 +114,7 @@ impl Arena {
                 }
             }
 
-            boost_pad_grid = Some(BoostPadGrid::new(&boost_pad_configs, &mutator_config));
+            boost_pad_grid = Some(BoostPadGrid::new(&boost_pad_configs, &config.mutators));
         }
 
         let rng = config.rng_seed.map_or_else(Rng::new, Rng::with_seed);
@@ -127,9 +123,7 @@ impl Arena {
             rng,
             config,
             ball,
-            game_mode,
             boost_pad_grid,
-            mutator_config,
             tick_count: 0,
             cars: Vec::with_capacity(6),
             bullet_world,
@@ -294,10 +288,10 @@ impl Arena {
             .translation
             * BT_TO_UU;
 
-        match self.game_mode {
+        match self.config.game_mode {
             GameMode::Soccar | GameMode::Heatseeker | GameMode::Snowday => {
                 ball_pos.y.abs()
-                    > self.mutator_config.goal_base_threshold_y + self.mutator_config.ball_radius
+                    > self.config.mutators.goal_base_threshold_y + self.config.mutators.ball_radius
             }
             GameMode::Hoops => {
                 if ball_pos.z < consts::goal::HOOPS_GOAL_SCORE_THRESHOLD_Z {
@@ -306,15 +300,14 @@ impl Arena {
                     false
                 }
             }
-            GameMode::Dropshot => ball_pos.z < -self.mutator_config.ball_radius * 1.75,
+            GameMode::Dropshot => ball_pos.z < -self.config.mutators.ball_radius * 1.75,
             GameMode::TheVoid => false,
         }
     }
 
     pub fn reset_to_random_kickoff(&mut self, rng_seed: Option<u64>) {
-        let game_mode = self.game_mode;
-        let kickoff_locs = consts::car::spawn::get_kickoff_spawn_locations(game_mode);
-        let respawn_locs = consts::car::spawn::get_respawn_locations(game_mode);
+        let kickoff_locs = consts::car::spawn::get_kickoff_spawn_locations(self.config.game_mode);
+        let respawn_locs = consts::car::spawn::get_respawn_locations(self.config.game_mode);
 
         let mut kickoff_order_perm = ArrayVec::<usize, 5>::new();
         kickoff_order_perm.extend(0..kickoff_locs.len());
@@ -360,7 +353,7 @@ impl Arena {
                     vel: Vec3A::ZERO,
                     ang_vel: Vec3A::ZERO,
                 },
-                boost: self.mutator_config.car_spawn_boost_amount,
+                boost: self.config.mutators.car_spawn_boost_amount,
                 is_on_ground: true,
                 ..Default::default()
             };
@@ -403,7 +396,7 @@ impl Arena {
         }
 
         let mut ball_state = BallState::DEFAULT;
-        match self.game_mode {
+        match self.config.game_mode {
             GameMode::Heatseeker => {
                 let next_rand = self.rng.bool();
                 let y_sign = f32::from(i8::from(next_rand) * 2 - 1);
@@ -434,14 +427,14 @@ impl Arena {
             idx,
             team,
             &mut self.bullet_world,
-            &self.mutator_config,
+            &self.config.mutators,
             config,
         );
         car.respawn(
             &mut self.bullet_world.bodies_mut()[car.rigid_body_idx],
             &mut self.rng,
-            self.game_mode,
-            self.mutator_config.car_spawn_boost_amount,
+            self.config.game_mode,
+            self.config.mutators.car_spawn_boost_amount,
         );
 
         self.bullet_world.bodies_mut()[car.rigid_body_idx].user_pointer = idx;
@@ -470,14 +463,14 @@ impl Arena {
             car.pre_tick_update(
                 &mut self.bullet_world,
                 &mut self.rng,
-                self.game_mode,
-                &self.mutator_config,
+                self.config.game_mode,
+                &self.config.mutators,
             );
         }
 
         self.ball.pre_tick_update(
             &mut self.bullet_world.bodies_mut()[self.ball.rigid_body_idx],
-            self.game_mode,
+            self.config.game_mode,
         );
 
         self.bullet_world
@@ -528,7 +521,7 @@ impl Arena {
             if let Some(boost_pad_grid) = self.boost_pad_grid.as_mut() {
                 let collected_pad_op = boost_pad_grid.maybe_give_car_boost(
                     &mut car.state,
-                    &self.mutator_config,
+                    &self.config.mutators,
                     self.tick_count,
                 );
 
@@ -542,9 +535,10 @@ impl Arena {
         }
 
         let ball_rb = &mut self.bullet_world.bodies_mut()[self.ball.rigid_body_idx];
-        self.ball.finish_physics_tick(ball_rb, &self.mutator_config);
+        self.ball
+            .finish_physics_tick(ball_rb, &self.config.mutators);
 
-        if self.game_mode == GameMode::Dropshot {
+        if self.config.game_mode == GameMode::Dropshot {
             todo!("Dropshot tile state sync")
         }
 
@@ -569,12 +563,12 @@ impl Arena {
 
     #[inline]
     pub const fn game_mode(&self) -> GameMode {
-        self.game_mode
+        self.config.game_mode
     }
 
     #[inline]
     pub const fn mutator_config(&self) -> &MutatorConfig {
-        &self.mutator_config
+        &self.config.mutators
     }
 
     pub fn set_ball_state(&mut self, ball_state: BallState) {
@@ -634,8 +628,8 @@ impl Arena {
         car.respawn(
             &mut self.bullet_world.bodies_mut()[car.rigid_body_idx],
             &mut self.rng,
-            self.game_mode,
-            self.mutator_config.car_spawn_boost_amount,
+            self.config.game_mode,
+            self.config.mutators.car_spawn_boost_amount,
         );
     }
 
@@ -696,8 +690,9 @@ impl Arena {
         let ball_state = *self.get_ball_state();
         let boost_pad_states = self.get_all_boost_pad_states();
         let boost_pad_configs = self.get_all_boost_pad_configs();
+
         ArenaState {
-            game_mode: self.game_mode,
+            game_mode: self.config.game_mode,
             car_infos,
             car_states,
             ball_state,
@@ -721,15 +716,15 @@ impl Arena {
         if vis_enabled && self.vis_inst.is_none() {
             // Create visualizer
 
-            let mesh_game_mode = match self.game_mode {
+            let mesh_game_mode = match self.config.game_mode {
                 GameMode::Heatseeker | GameMode::Snowday => GameMode::Soccar,
-                _ => self.game_mode,
+                _ => self.config.game_mode,
             };
-            let collision_mesh_files = ARENA_COLLISION_MESH_FILES.read().unwrap();
+            let collision_mesh_files = crate::ARENA_COLLISION_MESH_FILES.read().unwrap();
             let game_mode_mesh_files = &collision_mesh_files.as_ref().unwrap()[&mesh_game_mode];
 
             self.vis_inst = Some(VisInst::new(
-                self.game_mode,
+                self.config.game_mode,
                 game_mode_mesh_files.as_slice(),
             ));
         } else if !vis_enabled && self.vis_inst.is_some() {
@@ -744,7 +739,8 @@ impl Arena {
         let contact_point = manifold_point.pos_world_on_b * BT_TO_UU;
         let contact_normal = manifold_point.normal_world_on_b;
 
-        self.ball.on_world_hit(contact_normal, self.game_mode);
+        self.ball
+            .on_world_hit(contact_normal, self.config.game_mode);
 
         self.events.push(BallHitWorld(BallHitWorldEvent {
             contact_point,
@@ -760,8 +756,8 @@ impl Arena {
     ) {
         self.ball.on_hit(
             &mut self.cars[car_idx],
-            self.game_mode,
-            &self.mutator_config,
+            self.config.game_mode,
+            &self.config.mutators,
             self.tick_count,
         );
 
@@ -842,7 +838,7 @@ impl Arena {
                 continue;
             }
 
-            if self.mutator_config.bump_requires_front_hit {
+            if self.config.mutators.bump_requires_front_hit {
                 let local_point_x = if is_swapped {
                     manifold_point.local_point_b
                 } else {
@@ -857,17 +853,17 @@ impl Arena {
                 }
             }
 
-            let mut is_demo = match self.mutator_config.demo_mode {
+            let mut is_demo = match self.config.mutators.demo_mode {
                 DemoMode::OnContact => true,
                 DemoMode::Disabled => false,
                 DemoMode::Normal => attacker_state.is_supersonic,
             };
-            if is_demo && !self.mutator_config.enable_team_demos {
+            if is_demo && !self.config.mutators.enable_team_demos {
                 is_demo = attacker.team != victim.team;
             }
 
             if is_demo {
-                victim.demolish(self.mutator_config.respawn_delay);
+                victim.demolish(self.config.mutators.respawn_delay);
             } else {
                 let ground_hit = victim_state.is_on_ground;
                 let base_scale = if ground_hit {
@@ -885,7 +881,7 @@ impl Arena {
 
                 let upward_vel_curve = &consts::curves::BUMP_UPWARD_VEL_AMOUNT;
                 let upward_force = upward_vel_curve.get_output(speed_towards_other_car)
-                    * self.mutator_config.bump_force_scale;
+                    * self.config.mutators.bump_force_scale;
                 let bump_impulse = (vel_dir * base_scale) + (hit_up_dir * upward_force);
 
                 victim.vel_impulse_cache += bump_impulse;

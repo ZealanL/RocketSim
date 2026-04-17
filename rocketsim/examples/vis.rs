@@ -47,13 +47,10 @@ fn determine_controls(device: &DeviceState) -> CarControls {
 
 fn main() {
     init_from_default(true).unwrap();
-    let mut arena = Arena::new_with_config(
-        GameMode::Soccar,
-        ArenaConfig {
-            rng_seed: Some(0),
-            ..Default::default()
-        },
-    );
+    let mut arena = Arena::new_with_config(ArenaConfig {
+        rng_seed: Some(0),
+        ..ArenaConfig::new(GameMode::Soccar)
+    });
 
     let car_idx = arena.add_car(Team::Blue, CarBodyConfig::BREAKOUT);
 
