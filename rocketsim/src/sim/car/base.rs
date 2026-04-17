@@ -60,7 +60,7 @@ impl Car {
         config: CarBodyConfig,
     ) -> Self {
         let child_hitbox_shape = BoxShape::new(config.hitbox_size * UU_TO_BT * 0.5);
-        let local_inertia = child_hitbox_shape.calculate_local_intertia(car_consts::MASS_BT);
+        let local_inertia = child_hitbox_shape.calculate_local_intertia(mutator_config.car_mass);
 
         let hitbox_offset = Affine3A {
             matrix3: Mat3A::IDENTITY,
@@ -70,7 +70,7 @@ impl Car {
 
         let collision_shape = CollisionShapes::Compound(compound_shape);
         let mut rb_info =
-            RigidBodyConstructionInfo::new(car_consts::MASS_BT, collision_shape, false);
+            RigidBodyConstructionInfo::new(mutator_config.car_mass, collision_shape, false);
         rb_info.friction = car_consts::BASE_COEFS.friction;
         rb_info.restitution = car_consts::BASE_COEFS.restitution;
         rb_info.start_world_trans = Affine3A::IDENTITY;
@@ -758,7 +758,8 @@ impl Car {
         let forward_speed_uu = {
             let rb = &mut collision_world.bodies_mut()[self.rigid_body_idx];
             if self.state.is_demoed {
-                self.state.demo_respawn_timer = (self.state.demo_respawn_timer - TICK_TIME).max(0.0);
+                self.state.demo_respawn_timer =
+                    (self.state.demo_respawn_timer - TICK_TIME).max(0.0);
                 if self.state.demo_respawn_timer == 0.0 {
                     self.respawn(rb, rng, game_mode, mutator_config.car_spawn_boost_amount);
                 }
