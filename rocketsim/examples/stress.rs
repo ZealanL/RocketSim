@@ -1,6 +1,7 @@
 use std::time::Instant;
 
 use clap::{Parser, ValueEnum};
+use fastrand::Rng;
 use glam::Vec3A;
 use rocketsim::{
     Arena, ArenaConfig, ArenaEvent, BallState, CarBodyConfig, CarControls, CarState, GameMode,
@@ -12,19 +13,15 @@ const NUM_EPISODE_TICKS: usize = 10_000;
 const NUM_EPISODE: usize = 100;
 const TOTAL_TICKS: usize = NUM_EPISODE * NUM_EPISODE_TICKS;
 
-fn rand() -> f32 {
-    fastrand::f32()
+fn rand_axis_val(rng: &mut Rng) -> f32 {
+    rng.f32() * 2.0 - 1.0
 }
 
-fn rand_axis_val() -> f32 {
-    rand() * 2.0 - 1.0
+fn rand_chance(rng: &mut Rng, thresh: f32) -> bool {
+    rng.f32() < thresh
 }
 
-fn rand_chance(thresh: f32) -> bool {
-    rand() < thresh
-}
-
-fn calc_bot_controls(car_state: &CarState, ball_state: &BallState) -> CarControls {
+fn calc_bot_controls(rng: &mut Rng, car_state: &CarState, ball_state: &BallState) -> CarControls {
     let ball_delta = ball_state.phys.pos - car_state.phys.pos;
 
     let min_reach_time = ball_delta.length() / consts::car::MAX_SPEED;
@@ -46,7 +43,7 @@ fn calc_bot_controls(car_state: &CarState, ball_state: &BallState) -> CarControl
         if (ball_forward_align < 0.0) && // Ball is somewhat behind
             (car_state.phys.ang_vel.z.abs() >= 1.0) && // We are turning
             (car_state.phys.pos.z < 300.0) && // We are somewhat grounded
-            rand_chance(0.8)
+            rand_chance(rng, 0.8)
         {
             controls.handbrake = true;
         }
@@ -64,30 +61,30 @@ fn calc_bot_controls(car_state: &CarState, ball_state: &BallState) -> CarControl
 
     {
         // Jump/air control
-        controls.yaw = rand_axis_val();
-        controls.pitch = rand_axis_val();
-        controls.roll = rand_axis_val() * rand();
+        controls.yaw = rand_axis_val(rng);
+        controls.pitch = rand_axis_val(rng);
+        controls.roll = rand_axis_val(rng) * rng.f32();
 
         if car_state.is_on_ground {
-            controls.jump = rand_chance(0.04);
+            controls.jump = rand_chance(rng, 0.04);
         } else {
             if car_state.is_jumping {
                 // Keep holding jump sometimes
-                controls.jump = rand_chance(0.5);
+                controls.jump = rand_chance(rng, 0.5);
             } else {
                 // Flip chance when in air
-                controls.jump = rand_chance(0.1);
+                controls.jump = rand_chance(rng, 0.1);
             }
 
             if !car_state.is_jumping && car_state.has_flip_or_jump() && controls.jump {
-                if rand_chance(0.5) {
+                if rand_chance(rng, 0.5) {
                     // Align direction towards ball
-                    let align_frac = rand().sqrt();
+                    let align_frac = rng.f32().sqrt();
                     controls.pitch *= 1.0 - align_frac;
                     controls.yaw *= 1.0 - align_frac;
                     controls.pitch += -ball_forward_align * align_frac;
                     controls.yaw += ball_right_align * align_frac;
-                } else if rand_chance(0.2) {
+                } else if rand_chance(rng, 0.2) {
                     // Double-jump
                     controls.yaw = 0.0;
                     controls.pitch = 0.0;
@@ -99,21 +96,21 @@ fn calc_bot_controls(car_state: &CarState, ball_state: &BallState) -> CarControl
 
     {
         // Add some randomization to everything
-        controls.throttle += rand_axis_val() * rand().powi(3);
-        controls.steer += rand_axis_val() * rand().powi(3);
-        controls.yaw += rand_axis_val() * rand();
-        controls.pitch += rand_axis_val() * rand();
-        controls.roll += rand_axis_val() * rand();
+        controls.throttle += rand_axis_val(rng) * rng.f32().powi(3);
+        controls.steer += rand_axis_val(rng) * rng.f32().powi(3);
+        controls.yaw += rand_axis_val(rng) * rng.f32();
+        controls.pitch += rand_axis_val(rng) * rng.f32();
+        controls.roll += rand_axis_val(rng) * rng.f32();
 
-        if rand_chance(0.2) {
+        if rand_chance(rng, 0.2) {
             controls.jump = !controls.jump;
         }
 
-        if rand_chance(0.2) {
+        if rand_chance(rng, 0.2) {
             controls.boost = !controls.boost;
         }
 
-        if rand_chance(0.2) {
+        if rand_chance(rng, 0.2) {
             controls.handbrake = !controls.handbrake;
         }
     }
@@ -163,7 +160,7 @@ fn main() {
         ..ArenaConfig::new(cli.game_mode.into())
     });
 
-    fastrand::seed(0);
+    let mut rng = Rng::with_seed(0);
 
     let mut ids = Vec::with_capacity(cli.num_cars as usize);
     for i in 0..cli.num_cars {
@@ -183,8 +180,11 @@ fn main() {
 
             // Accelerate the ball randomly
             let mut ball_state = *arena.get_ball_state();
-            ball_state.phys.vel +=
-                Vec3A::new(rand_axis_val(), rand_axis_val(), rand_axis_val()) * VEL_ADD_MAG;
+            ball_state.phys.vel += Vec3A::new(
+                rand_axis_val(&mut rng),
+                rand_axis_val(&mut rng),
+                rand_axis_val(&mut rng),
+            ) * VEL_ADD_MAG;
             arena.set_ball_state(ball_state);
         }
 
@@ -195,8 +195,9 @@ fn main() {
 
                 let car_state = arena.get_car_state(idx);
 
-                if rand_chance(UPDATE_CHANCE) {
-                    arena.set_car_controls(idx, calc_bot_controls(car_state, &ball_state));
+                if rand_chance(&mut rng, UPDATE_CHANCE) {
+                    arena
+                        .set_car_controls(idx, calc_bot_controls(&mut rng, car_state, &ball_state));
                 }
             }
 
