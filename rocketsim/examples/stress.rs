@@ -158,13 +158,10 @@ fn main() {
     let cli = Args::parse();
 
     init_from_default(true).unwrap();
-    let mut arena = Arena::new_with_config(
-        cli.game_mode.into(),
-        ArenaConfig {
-            rng_seed: Some(0),
-            ..Default::default()
-        },
-    );
+    let mut arena = Arena::new_with_config(ArenaConfig {
+        rng_seed: Some(0),
+        ..ArenaConfig::new(cli.game_mode.into())
+    });
 
     fastrand::seed(0);
 
