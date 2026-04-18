@@ -7,7 +7,10 @@ use crate::{
     bullet::{
         collision::{
             broadphase::CollisionFilterGroups,
-            shapes::{collision_shape::CollisionShapes, sphere_shape::SphereShape},
+            shapes::{
+                collision_shape::CollisionShapes, convex_hull_shape::ConvexHullShape,
+                sphere_shape::SphereShape,
+            },
         },
         dynamics::{
             discrete_dynamics_world::DiscreteDynamicsWorld,
@@ -15,7 +18,7 @@ use crate::{
         },
         linear_math::angle::Angle,
     },
-    consts::{UU_TO_BT, dropshot, heatseeker},
+    consts::{UU_TO_BT, dropshot, heatseeker, snowday},
     sim::{UserInfoTypes, collision_masks::CollisionMasks, consts},
 };
 
@@ -32,7 +35,28 @@ impl Ball {
         mutator_config: &MutatorConfig,
     ) -> (CollisionShapes, Vec3A) {
         if game_mode == GameMode::Snowday {
-            todo!()
+            let ang_step = TAU / f32::from(snowday::PUCK_CIRCLE_POINT_AMOUNT);
+            let mut cur_ang = 0f32;
+            let points = (0..snowday::PUCK_CIRCLE_POINT_AMOUNT)
+                .flat_map(|_| {
+                    const NEG_Z: Vec3A = Vec3A::new(1.0, 1.0, -1.0);
+
+                    let point = Vec3A::new(
+                        cur_ang.cos() * mutator_config.ball_radius,
+                        cur_ang.sin() * mutator_config.ball_radius,
+                        snowday::PUCK_HEIGHT / 2.0,
+                    ) * UU_TO_BT;
+
+                    cur_ang += ang_step;
+
+                    [point, point * NEG_Z]
+                })
+                .collect();
+
+            let shape = ConvexHullShape::new(points);
+            let local_inertia = shape.calculate_local_intertia(mutator_config.ball_mass);
+
+            (CollisionShapes::ConvexHull(shape), local_inertia)
         } else {
             let shape = SphereShape::new(mutator_config.ball_radius * UU_TO_BT);
             let local_inertia = shape.calculate_local_inertia(mutator_config.ball_mass);

@@ -276,7 +276,7 @@ pub mod car {
 
 pub mod ball {
     use super::PhysicsCoefs;
-    use crate::GameMode;
+    use crate::{GameMode, consts::snowday};
 
     pub const fn get_radius(game_mode: GameMode) -> f32 {
         pub const RADIUS_SOCCAR: f32 = 91.25;
@@ -285,7 +285,7 @@ pub mod ball {
         match game_mode {
             GameMode::Hoops => RADIUS_HOOPS,
             GameMode::Dropshot => RADIUS_DROPSHOT,
-            GameMode::Snowday => f32::NAN,
+            GameMode::Snowday => snowday::PUCK_RADIUS,
             _ => RADIUS_SOCCAR,
         }
     }
@@ -444,7 +444,7 @@ pub mod snowday {
     pub const PUCK_RADIUS: f32 = 114.25;
     pub const PUCK_HEIGHT: f32 = 62.5;
     /// Number of points on each circle of the cylinder
-    pub const PUCK_CIRCLE_POINT_AMOUNT: f32 = 20.0;
+    pub const PUCK_CIRCLE_POINT_AMOUNT: u8 = 20;
     pub const PUCK_MASS_BT: f32 = 50.0;
     pub const PUCK_GROUND_STICK_FORCE: f32 = 70.0;
     pub const PUCK_COEFS: PhysicsCoefs = PhysicsCoefs {
