@@ -49,6 +49,7 @@ impl CollisionDispatcher {
                     true,
                     contact_added_callback,
                 ),
+                CollisionShapes::ConvexHull(_) => todo!(),
                 _ => unimplemented!(),
             },
             CollisionShapes::Sphere(sphere) => match col_obj_b.get_collision_shape() {
@@ -82,6 +83,7 @@ impl CollisionDispatcher {
                     false,
                     contact_added_callback,
                 ),
+                CollisionShapes::ConvexHull(_) => todo!(),
                 CollisionShapes::Sphere(_) => unimplemented!(),
             },
             CollisionShapes::TriangleMesh(mesh) => match col_obj_b.get_collision_shape() {
@@ -100,6 +102,7 @@ impl CollisionDispatcher {
                     true,
                     contact_added_callback,
                 ),
+                CollisionShapes::ConvexHull(_) => todo!(),
                 _ => unimplemented!(),
             },
             CollisionShapes::Compound(compound_a) => match col_obj_b.get_collision_shape() {
@@ -127,7 +130,9 @@ impl CollisionDispatcher {
                     compound_b,
                     contact_added_callback,
                 ),
+                CollisionShapes::ConvexHull(_) => todo!(),
             },
+            CollisionShapes::ConvexHull(_) => todo!(),
         }
     }
 

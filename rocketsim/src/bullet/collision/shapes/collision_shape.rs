@@ -9,7 +9,7 @@ use super::{
 use crate::{
     bullet::collision::{
         dispatch::ray_packet_callbacks::{BridgeTriangleRaycastPacketCallback, RayResultCallback},
-        shapes::sphere_shape::SPHERE_RADIUS_MARGIN,
+        shapes::{convex_hull_shape::ConvexHullShape, sphere_shape::SPHERE_RADIUS_MARGIN},
     },
     shared::{Aabb, RayPacketInfo},
 };
@@ -17,6 +17,7 @@ use crate::{
 pub enum CollisionShapes {
     Compound(CompoundShape),
     Sphere(SphereShape),
+    ConvexHull(ConvexHullShape),
     StaticPlane(StaticPlaneShape),
     TriangleMesh(Arc<BvhTriangleMeshShape>),
 }
@@ -43,6 +44,7 @@ impl CollisionShapes {
                 debug_assert!(fast_compare_trans(t, &Affine3A::IDENTITY));
                 shape.aabb_ident_cache
             }
+            Self::ConvexHull(_) => todo!(),
         }
     }
 
@@ -70,6 +72,7 @@ impl CollisionShapes {
 
                 (center, radius)
             }
+            Self::ConvexHull(_) => todo!(),
         }
     }
 
@@ -108,6 +111,7 @@ impl CollisionShapes {
             Self::TriangleMesh(mesh) => {
                 mesh.perform_ray_packet_cast(result_callback, ray_info);
             }
+            Self::ConvexHull(_) => todo!(),
         }
     }
 }
