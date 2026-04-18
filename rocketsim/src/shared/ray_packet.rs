@@ -1,7 +1,6 @@
 use glam::{Vec3A, Vec4};
 
-use crate::bullet::linear_math::LARGE_FLOAT;
-use crate::shared::Aabb;
+use crate::{bullet::linear_math::LARGE_FLOAT, shared::Aabb};
 
 pub struct RayPacketInfo<'a> {
     pub ray_sources: &'a [Vec3A; 4],

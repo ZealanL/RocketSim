@@ -2,23 +2,24 @@ use std::{f32::consts::PI, mem};
 
 use glam::{Quat, Vec3, Vec3A};
 
-use crate::bullet::collision::dispatch::tri_bvh_util::*;
-use crate::bullet::dynamics::rigid_body::RigidBody;
-use crate::bullet::{
-    collision::{
-        narrowphase::manifold_point::ManifoldPoint,
-        shapes::{
-            collision_shape::CollisionShapes,
-            triangle_callback::ProcessTriangle,
-            triangle_info_map::{TriInfoFlag, TriangleInfoMap},
-            triangle_mesh::TriangleMesh,
-            triangle_shape::TriangleShape,
+use crate::{
+    bullet::{
+        collision::{
+            dispatch::tri_bvh_util::*,
+            narrowphase::manifold_point::ManifoldPoint,
+            shapes::{
+                collision_shape::CollisionShapes,
+                triangle_callback::ProcessTriangle,
+                triangle_info_map::{TriInfoFlag, TriangleInfoMap},
+                triangle_mesh::TriangleMesh,
+                triangle_shape::TriangleShape,
+            },
         },
+        dynamics::rigid_body::RigidBody,
+        linear_math::{AffineExt, QuatExt},
     },
-    linear_math::{AffineExt, QuatExt},
+    shared::{Aabb, bvh::Tree},
 };
-use crate::shared::Aabb;
-use crate::shared::bvh::Tree;
 
 fn get_angle(edge_a: Vec3A, normal_a: Vec3A, normal_b: Vec3A) -> f32 {
     normal_b.dot(edge_a).atan2(normal_b.dot(normal_a))

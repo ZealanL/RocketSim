@@ -1,20 +1,22 @@
 use arrayvec::ArrayVec;
 use glam::{Affine3A, Vec3A};
 
-use crate::bullet::collision::dispatch::convex_plane_collision_alg;
-use crate::bullet::dynamics::rigid_body::RigidBody;
-use crate::bullet::{
-    collision::{
-        dispatch::collision_obj_wrapper::RigidBodyWrapper,
-        narrowphase::persistent_manifold::{ContactAddedCallback, PersistentManifold},
-        shapes::{
-            box_shape::BoxShape, collision_shape::CollisionShapes, compound_shape::CompoundShape,
-            triangle_callback::ProcessTriangle, triangle_shape::TriangleShape,
+use crate::{
+    bullet::{
+        collision::{
+            dispatch::{collision_obj_wrapper::RigidBodyWrapper, convex_plane_collision_alg},
+            narrowphase::persistent_manifold::{ContactAddedCallback, PersistentManifold},
+            shapes::{
+                box_shape::BoxShape, collision_shape::CollisionShapes,
+                compound_shape::CompoundShape, triangle_callback::ProcessTriangle,
+                triangle_shape::TriangleShape,
+            },
         },
+        dynamics::rigid_body::RigidBody,
+        linear_math::AffineExt,
     },
-    linear_math::AffineExt,
+    shared::{Aabb, rsmath},
 };
-use crate::shared::{Aabb, rsmath};
 
 struct SatResult {
     penetration: f32,

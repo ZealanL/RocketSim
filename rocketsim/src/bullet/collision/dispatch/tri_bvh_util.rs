@@ -1,11 +1,13 @@
-use crate::bullet::collision::shapes::{
-    triangle_callback::{ProcessRayPacketTriangle, ProcessTriangle},
-    triangle_mesh::TriangleMesh,
-    triangle_shape::TriangleShape,
-};
-use crate::shared::Aabb;
-use crate::shared::bvh::*;
 use glam::Vec4;
+
+use crate::{
+    bullet::collision::shapes::{
+        triangle_callback::{ProcessRayPacketTriangle, ProcessTriangle},
+        triangle_mesh::TriangleMesh,
+        triangle_shape::TriangleShape,
+    },
+    shared::{Aabb, bvh::*},
+};
 
 pub struct NodeOverlapCallback<'a, T: ProcessTriangle> {
     tris: &'a [TriangleShape],

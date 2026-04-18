@@ -10,6 +10,7 @@ mod sim;
 pub mod vis;
 ///////////
 
-pub use crate::sim::*;
 pub use base::*;
 pub use glam_inc::*;
+
+pub use crate::sim::*;

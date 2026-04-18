@@ -4,13 +4,13 @@ use super::{
     triangle_callback::ProcessTriangle, triangle_info_map::TriangleInfoMap,
     triangle_mesh::TriangleMesh, triangle_mesh_shape::TriangleMeshShape,
 };
-use crate::bullet::collision::dispatch::tri_bvh_util::*;
-use crate::bullet::collision::{
-    dispatch::internal_edge_utility::generate_internal_edge_info,
-    shapes::{optimized_bvh::create_bvh, triangle_callback::ProcessRayPacketTriangle},
+use crate::{
+    bullet::collision::{
+        dispatch::{internal_edge_utility::generate_internal_edge_info, tri_bvh_util::*},
+        shapes::{optimized_bvh::create_bvh, triangle_callback::ProcessRayPacketTriangle},
+    },
+    shared::{Aabb, RayPacketInfo, bvh::Tree},
 };
-use crate::shared::bvh::Tree;
-use crate::shared::{Aabb, RayPacketInfo};
 
 pub struct BvhTriangleMeshShape {
     bvh: Tree,

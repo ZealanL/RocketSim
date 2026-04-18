@@ -2,9 +2,6 @@ use std::f32::consts::TAU;
 
 use glam::{Affine3A, Vec2, Vec3A};
 
-use crate::bullet::dynamics::rigid_body::{ActivationState, CollisionFlags};
-use crate::bullet::linear_math::angle::Angle;
-use crate::consts::{UU_TO_BT, dropshot, heatseeker};
 use crate::{
     BallState, Car, GameMode, MutatorConfig,
     bullet::{
@@ -14,9 +11,11 @@ use crate::{
         },
         dynamics::{
             discrete_dynamics_world::DiscreteDynamicsWorld,
-            rigid_body::{RigidBody, RigidBodyConstructionInfo},
+            rigid_body::{ActivationState, CollisionFlags, RigidBody, RigidBodyConstructionInfo},
         },
+        linear_math::angle::Angle,
     },
+    consts::{UU_TO_BT, dropshot, heatseeker},
     sim::{UserInfoTypes, collision_masks::CollisionMasks, consts},
 };
 

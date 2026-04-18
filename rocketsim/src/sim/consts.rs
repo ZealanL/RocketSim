@@ -39,10 +39,10 @@ pub const TICK_TIME: f32 = 1.0 / TICK_RATE;
 pub const GRAVITY_Z: f32 = -650.0;
 
 pub mod arena {
-    use super::PhysicsCoefs;
-    use crate::GameMode;
-    use crate::shared::Aabb;
     use glam::Vec3A;
+
+    use super::PhysicsCoefs;
+    use crate::{GameMode, shared::Aabb};
 
     pub const BASE_COEFS: PhysicsCoefs = PhysicsCoefs {
         friction: 0.6,
@@ -320,9 +320,9 @@ pub mod ball {
 }
 
 pub mod goal {
-    use crate::Team;
-    use crate::shared::Aabb;
     use glam::Vec3A;
+
+    use crate::{Team, shared::Aabb};
 
     pub const SOCCAR_GOAL_SCORE_BASE_THRESHOLD_Y: f32 = 5124.25;
     pub const SOCCAR_GOAL_HEIGHT: f32 = 642.775; // https://wiki.rlbot.org/v4/botmaking/useful-game-values/

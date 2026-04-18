@@ -1,8 +1,10 @@
 use glam::{EulerRot, IVec3, Mat3A};
 use rocketsim::{CarControls, GameMode, Team};
 
-use crate::comparison_test::quick_controls::{quick_air, quick_drive};
-use crate::comparison_test::{BallSetup, CarSetup, ControlSeq, TestCase};
+use crate::comparison_test::{
+    BallSetup, CarSetup, ControlSeq, TestCase,
+    quick_controls::{quick_air, quick_drive},
+};
 
 fn make_ball_cases() -> Vec<TestCase> {
     let simple_ball_case = |name: &'static str,

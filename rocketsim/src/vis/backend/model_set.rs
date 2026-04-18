@@ -1,8 +1,8 @@
-use crate::shared::rsmath;
-use crate::vis::backend::Model;
 use ahash::AHashMap;
 use glam::{Vec3, Vec3A};
 use miniquad::{BufferId, BufferSource, BufferType, BufferUsage, RenderingBackend};
+
+use crate::{shared::rsmath, vis::backend::Model};
 
 #[derive(Debug, Clone)]
 pub struct ModelSet {

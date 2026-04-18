@@ -6,11 +6,13 @@ use super::{
     bvh_triangle_mesh_shape::BvhTriangleMeshShape, compound_shape::CompoundShape,
     sphere_shape::SphereShape, static_plane_shape::StaticPlaneShape,
 };
-use crate::bullet::collision::{
-    dispatch::ray_packet_callbacks::{BridgeTriangleRaycastPacketCallback, RayResultCallback},
-    shapes::sphere_shape::SPHERE_RADIUS_MARGIN,
+use crate::{
+    bullet::collision::{
+        dispatch::ray_packet_callbacks::{BridgeTriangleRaycastPacketCallback, RayResultCallback},
+        shapes::sphere_shape::SPHERE_RADIUS_MARGIN,
+    },
+    shared::{Aabb, RayPacketInfo},
 };
-use crate::shared::{Aabb, RayPacketInfo};
 
 pub enum CollisionShapes {
     Compound(CompoundShape),

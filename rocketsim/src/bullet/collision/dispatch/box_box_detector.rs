@@ -6,7 +6,6 @@ use std::{
 use arrayvec::ArrayVec;
 use glam::{Affine3A, FloatExt, Mat3A, Vec3A, Vec4};
 
-use crate::bullet::dynamics::rigid_body::RigidBody;
 use crate::bullet::{
     collision::{
         narrowphase::persistent_manifold::{
@@ -14,6 +13,7 @@ use crate::bullet::{
         },
         shapes::box_shape::BoxShape,
     },
+    dynamics::rigid_body::RigidBody,
     linear_math::obb::Obb,
 };
 

@@ -1,6 +1,9 @@
+use std::{
+    collections::VecDeque,
+    sync::{Arc, Mutex},
+};
+
 use crate::vis::backend::WindowEvent;
-use std::collections::VecDeque;
-use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Clone)]
 pub struct WindowEventQueue {

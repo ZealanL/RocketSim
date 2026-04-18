@@ -1,8 +1,10 @@
 #![allow(dead_code)]
 
-use crate::shared::Aabb;
-use glam::{Mat3A, Quat, Vec3A};
 use std::f32::consts::PI;
+
+use glam::{Mat3A, Quat, Vec3A};
+
+use crate::shared::Aabb;
 
 /// Returns a random number from 0.0 to 1.0
 pub fn rand_frac() -> f32 {

@@ -1,7 +1,6 @@
-use crate::consts::boost_pads;
-use crate::shared::Aabb;
-use crate::{BoostPadConfig, MutatorConfig};
 use glam::Vec3A;
+
+use crate::{BoostPadConfig, MutatorConfig, consts::boost_pads, shared::Aabb};
 
 #[derive(Debug, Copy, Clone)]
 pub(crate) struct BoostPad {

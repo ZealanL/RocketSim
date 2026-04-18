@@ -1,5 +1,6 @@
-use crate::vis::backend::Uniforms;
 use miniquad::{Backend, RenderingBackend, ShaderId, ShaderMeta, ShaderSource};
+
+use crate::vis::backend::Uniforms;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum ShaderSrcType {

@@ -2,13 +2,15 @@ use super::{
     compound_collision_alg, convex_concave_collision_alg, convex_plane_collision_alg,
     obb_obb_collision_alg, sphere_obb_collision_alg,
 };
-use crate::bullet::collision::{
-    broadphase::{GridBroadphase, GridBroadphaseProxy},
-    dispatch::collision_obj_wrapper::RigidBodyWrapper,
-    narrowphase::persistent_manifold::{ContactAddedCallback, PersistentManifold},
-    shapes::collision_shape::CollisionShapes,
+use crate::bullet::{
+    collision::{
+        broadphase::{GridBroadphase, GridBroadphaseProxy},
+        dispatch::collision_obj_wrapper::RigidBodyWrapper,
+        narrowphase::persistent_manifold::{ContactAddedCallback, PersistentManifold},
+        shapes::collision_shape::CollisionShapes,
+    },
+    dynamics::rigid_body::RigidBody,
 };
-use crate::bullet::dynamics::rigid_body::RigidBody;
 
 pub struct CollisionDispatcher {
     pub manifolds: Vec<PersistentManifold>,

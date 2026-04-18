@@ -1,6 +1,9 @@
-use crate::vis::camera::{CameraConfig, CarCam};
-use crate::{ArenaState, GameMode};
 use glam::Vec3A;
+
+use crate::{
+    ArenaState, GameMode,
+    vis::camera::{CameraConfig, CarCam},
+};
 
 enum CameraViewMode {
     BirdsEye,

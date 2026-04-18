@@ -1,16 +1,21 @@
-use crate::sim::collision_mesh_file::CollisionMeshFile;
-use crate::vis::backend::{
-    Color, ShaderSrc, ShaderSrcType, SharedVisRenderState, SharedWindowEvents, VisRenderState,
-    VisRenderer, WindowEvent,
-};
-use crate::vis::camera::{CameraConfig, CameraMan};
-use crate::vis::ribbon_emitter::{RibbonConfig, RibbonEmitter};
-use crate::vis::vis_asset_loader;
-use crate::{ArenaState, CarBodyConfig, CarInfo, GameMode, Team, consts};
+use std::{sync::RwLock, thread::JoinHandle};
+
 use glam::{Mat3A, Vec3A};
 use miniquad::KeyCode;
-use std::sync::RwLock;
-use std::thread::JoinHandle;
+
+use crate::{
+    ArenaState, CarBodyConfig, CarInfo, GameMode, Team, consts,
+    sim::collision_mesh_file::CollisionMeshFile,
+    vis::{
+        backend::{
+            Color, ShaderSrc, ShaderSrcType, SharedVisRenderState, SharedWindowEvents,
+            VisRenderState, VisRenderer, WindowEvent,
+        },
+        camera::{CameraConfig, CameraMan},
+        ribbon_emitter::{RibbonConfig, RibbonEmitter},
+        vis_asset_loader,
+    },
+};
 
 pub struct VisInst {
     game_mode: GameMode,

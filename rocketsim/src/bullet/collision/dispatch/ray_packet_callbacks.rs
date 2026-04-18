@@ -1,12 +1,12 @@
 use glam::{Vec3A, Vec4};
 
-use crate::bullet::dynamics::rigid_body::RigidBody;
 use crate::bullet::{
     collision::{
         broadphase::{BroadphaseAabbCallback, BroadphaseProxy, CollisionFilterGroups},
         dispatch::collision_world::CollisionWorld,
         shapes::{triangle_callback::ProcessRayPacketTriangle, triangle_shape::TriangleShape},
     },
+    dynamics::rigid_body::RigidBody,
     linear_math::interpolate_3,
 };
 

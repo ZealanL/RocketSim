@@ -1,12 +1,14 @@
 use glam::{Affine3A, Vec3A};
 
-use crate::bullet::{
-    collision::dispatch::ray_packet_callbacks::{
-        BridgeTriangleRaycastPacketCallback, RayResultCallback,
+use crate::{
+    bullet::{
+        collision::dispatch::ray_packet_callbacks::{
+            BridgeTriangleRaycastPacketCallback, RayResultCallback,
+        },
+        linear_math::LARGE_FLOAT,
     },
-    linear_math::LARGE_FLOAT,
+    shared::{Aabb, RayPacketInfo},
 };
-use crate::shared::{Aabb, RayPacketInfo};
 
 pub struct StaticPlaneShape {
     plane_normal: Vec3A,

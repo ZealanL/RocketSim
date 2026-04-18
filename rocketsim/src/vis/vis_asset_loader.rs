@@ -1,8 +1,12 @@
-use crate::sim::collision_mesh_file::CollisionMeshFile;
-use crate::vis::backend::{Model, ModelSet, Texture, TextureSet};
-use crate::{GameMode, consts};
-use glam::{EulerRot, Mat3, Vec3};
 use std::f32::consts::PI;
+
+use glam::{EulerRot, Mat3, Vec3};
+
+use crate::{
+    GameMode, consts,
+    sim::collision_mesh_file::CollisionMeshFile,
+    vis::backend::{Model, ModelSet, Texture, TextureSet},
+};
 
 pub fn load_models(game_mode: GameMode, arena_meshes: &[CollisionMeshFile]) -> ModelSet {
     // Make arena model, combining the meshes and the AABB planes

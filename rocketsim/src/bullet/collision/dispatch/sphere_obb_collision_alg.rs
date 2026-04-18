@@ -1,11 +1,11 @@
 use glam::Vec3A;
 
-use crate::bullet::dynamics::rigid_body::RigidBody;
 use crate::bullet::{
     collision::{
         narrowphase::persistent_manifold::{ContactAddedCallback, PersistentManifold},
         shapes::{compound_shape::CompoundShape, sphere_shape::SphereShape},
     },
+    dynamics::rigid_body::RigidBody,
     linear_math::AffineExt,
 };
 

@@ -3,10 +3,12 @@ use std::mem;
 use glam::{Affine3A, Vec3A};
 
 use super::convex_internal_shape::ConvexInternalShape;
-use crate::bullet::collision::dispatch::ray_packet_callbacks::{
-    BridgeTriangleRaycastPacketCallback, RayResultCallback,
+use crate::{
+    bullet::collision::dispatch::ray_packet_callbacks::{
+        BridgeTriangleRaycastPacketCallback, RayResultCallback,
+    },
+    shared::{Aabb, RayPacketInfo},
 };
-use crate::shared::{Aabb, RayPacketInfo};
 
 pub const SPHERE_RADIUS_MARGIN: f32 = 0.08;
 

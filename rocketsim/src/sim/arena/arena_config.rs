@@ -1,5 +1,6 @@
-use crate::{BoostPadConfig, GameMode, MutatorConfig};
 use glam::Vec3A;
+
+use crate::{BoostPadConfig, GameMode, MutatorConfig};
 
 #[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq)]
 pub enum ArenaMemWeightMode {

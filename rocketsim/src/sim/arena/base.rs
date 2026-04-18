@@ -1,14 +1,18 @@
+use std::{f32::consts::PI, iter::repeat_n, mem};
+
+use arrayvec::ArrayVec;
+use fastrand::Rng;
+use glam::{Affine3A, EulerRot, Mat3A, Vec3A};
+
 use super::ArenaContactTracker;
-use crate::ArenaEvent::{BallHitWorld, CarPickupBoost};
-use crate::bullet::dynamics::rigid_body::ActivationState;
-use crate::consts::{TICK_RATE, TICK_TIME};
-use crate::sim::ArenaEvent::CarHitBall;
-use crate::sim::arena::ArenaEventList;
-use crate::sim::{ArenaEvent, Ball, BoostPad, CarHitBallEvent, CarHitCarEvent, CarHitWorldEvent};
+#[cfg(feature = "vis")]
+use crate::vis::VisInst;
 use crate::{
-    ARENA_COLLISION_SHAPES, ArenaConfig, ArenaMemWeightMode, ArenaState, BallHitWorldEvent,
-    BoostPadConfig, BoostPadGrid, BoostPadState, Car, CarBodyConfig, CarControls, CarInfo,
-    CarPickupBoostEvent, CarState, GameMode, MutatorConfig, PhysState, Team,
+    ARENA_COLLISION_SHAPES, ArenaConfig,
+    ArenaEvent::{BallHitWorld, CarPickupBoost},
+    ArenaMemWeightMode, ArenaState, BallHitWorldEvent, BoostPadConfig, BoostPadGrid, BoostPadState,
+    Car, CarBodyConfig, CarControls, CarInfo, CarPickupBoostEvent, CarState, GameMode,
+    MutatorConfig, PhysState, Team,
     bullet::{
         collision::{
             broadphase::{GridBroadphase, HashedOverlappingPairCache},
@@ -19,20 +23,17 @@ use crate::{
         dynamics::{
             constraint_solver::seq_impulse_constraint_solver::SeqImpulseConstraintSolver,
             discrete_dynamics_world::DiscreteDynamicsWorld,
-            rigid_body::{RigidBody, RigidBodyConstructionInfo},
+            rigid_body::{ActivationState, RigidBody, RigidBodyConstructionInfo},
         },
     },
     consts,
-    consts::{BT_TO_UU, UU_TO_BT},
-    sim::{BallState, DemoMode, UserInfoTypes, collision_masks::CollisionMasks},
+    consts::{BT_TO_UU, TICK_RATE, TICK_TIME, UU_TO_BT},
+    sim::{
+        ArenaEvent, ArenaEvent::CarHitBall, Ball, BallState, BoostPad, CarHitBallEvent,
+        CarHitCarEvent, CarHitWorldEvent, DemoMode, UserInfoTypes, arena::ArenaEventList,
+        collision_masks::CollisionMasks,
+    },
 };
-use arrayvec::ArrayVec;
-use fastrand::Rng;
-use glam::{Affine3A, EulerRot, Mat3A, Vec3A};
-use std::{f32::consts::PI, iter::repeat_n, mem};
-
-#[cfg(feature = "vis")]
-use crate::vis::VisInst;
 
 pub struct Arena {
     pub(crate) bullet_world: DiscreteDynamicsWorld,

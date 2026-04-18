@@ -1,7 +1,5 @@
-use crate::vis::backend::{
-    Color, ModelSet, ShaderSrc, ShaderSrcType, SharedVisRenderState, SharedWindowEvents,
-    TextureSet, WindowEvent, WindowEventQueue,
-};
+use std::{sync::Mutex, thread::JoinHandle};
+
 use ahash::AHashMap;
 use glam::{Mat4, Vec2, Vec3, Vec4};
 use miniquad::{
@@ -11,8 +9,11 @@ use miniquad::{
     UniformDesc, UniformType, UniformsSource, VertexAttribute, VertexFormat, VertexStep, conf,
     window,
 };
-use std::sync::Mutex;
-use std::thread::JoinHandle;
+
+use crate::vis::backend::{
+    Color, ModelSet, ShaderSrc, ShaderSrcType, SharedVisRenderState, SharedWindowEvents,
+    TextureSet, WindowEvent, WindowEventQueue,
+};
 
 #[repr(C)]
 pub struct Uniforms {

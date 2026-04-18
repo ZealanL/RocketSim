@@ -1,15 +1,13 @@
+use std::{
+    f32::consts::PI,
+    ops::{Deref, DerefMut},
+};
+
 use fastrand::Rng;
 use glam::{Affine3A, EulerRot, Mat3A, Vec3A};
-use std::f32::consts::PI;
-use std::ops::{Deref, DerefMut};
 
 // Shorthand using aliases for constants
 use crate::bullet::dynamics::rigid_body::{ActivationState, CollisionFlags};
-use crate::consts::{
-    BT_TO_UU, TICK_TIME, UU_TO_BT, bullet_vehicle as vehicle_consts, car as car_consts,
-    car::drive as drive_consts, curves,
-};
-use crate::sim::car::car_info::CarInfo;
 use crate::{
     CarBodyConfig, CarControls, CarState, CollisionMasks, GameMode, MutatorConfig, PhysState, Team,
     bullet::{
@@ -28,7 +26,11 @@ use crate::{
         linear_math::Mat3AExt,
     },
     consts,
-    sim::UserInfoTypes,
+    consts::{
+        BT_TO_UU, TICK_TIME, UU_TO_BT, bullet_vehicle as vehicle_consts, car as car_consts,
+        car::drive as drive_consts, curves,
+    },
+    sim::{UserInfoTypes, car::car_info::CarInfo},
 };
 
 pub struct Car {
