@@ -1,8 +1,11 @@
 use glam::{Affine3A, Vec3A};
 
 use crate::{
-    bullet::collision::shapes::polyhedral_convex_shape::PolyhedralConvexAabbCachingShape,
-    shared::Aabb,
+    bullet::collision::{
+        dispatch::ray_packet_callbacks::{BridgeTriangleRaycastPacketCallback, RayResultCallback},
+        shapes::polyhedral_convex_shape::PolyhedralConvexAabbCachingShape,
+    },
+    shared::{Aabb, RayPacketInfo},
 };
 
 pub struct ConvexHullShape {
@@ -66,8 +69,8 @@ impl ConvexHullShape {
     }
 
     #[inline]
-    pub fn get_aabb_ident(&self) -> &Aabb {
-        self.polyhedral_convex_aabb_caching_shape.get_aabb_ident()
+    pub fn get_ident_aabb(&self) -> &Aabb {
+        self.polyhedral_convex_aabb_caching_shape.get_ident_aabb()
     }
 
     #[inline]
@@ -86,5 +89,38 @@ impl ConvexHullShape {
         let scaled_mass = mass * 0.08333333;
 
         scaled_mass * Vec3A::new(l2.y + l2.z, l2.x + l2.z, l2.x + l2.y)
+    }
+
+    pub fn perform_raycast<T: RayResultCallback>(
+        &self,
+        result_callback: &mut BridgeTriangleRaycastPacketCallback<'_, T>,
+        ray_info: &mut RayPacketInfo<'_>,
+    ) {
+        let box_aabb = self.get_ident_aabb();
+        if !ray_info.aabb.intersects(box_aabb) {
+            return;
+        }
+
+        let (origins, inv_dirs) = ray_info.calc_pos_dir();
+        let mask = RayPacketInfo::intersect_ray_aabb_packet(
+            &origins,
+            &inv_dirs,
+            box_aabb,
+            result_callback.hit_fraction,
+        );
+
+        for i in 0..4 {
+            if (mask & (1 << i)) == 0 {
+                continue;
+            }
+
+            todo!()
+            // self.internal_perform_raycast(
+            //     result_callback,
+            //     ray_info.ray_sources[i],
+            //     ray_info.ray_targets[i],
+            //     i,
+            // );
+        }
     }
 }

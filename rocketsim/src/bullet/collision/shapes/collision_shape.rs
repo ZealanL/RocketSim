@@ -73,7 +73,7 @@ impl CollisionShapes {
                 (center, radius)
             }
             Self::ConvexHull(shape) => {
-                let aabb = shape.get_aabb_ident();
+                let aabb = shape.get_ident_aabb();
                 let center = (aabb.min + aabb.max) * 0.5;
                 let radius = (aabb.max - aabb.min).length() * 0.5;
 
@@ -116,9 +116,11 @@ impl CollisionShapes {
                 plane.perform_raycast(result_callback, ray_info);
             }
             Self::TriangleMesh(mesh) => {
-                mesh.perform_ray_packet_cast(result_callback, ray_info);
+                mesh.perform_raycast(result_callback, ray_info);
             }
-            Self::ConvexHull(_) => todo!(),
+            Self::ConvexHull(hull) => {
+                hull.perform_raycast(result_callback, ray_info);
+            }
         }
     }
 }
