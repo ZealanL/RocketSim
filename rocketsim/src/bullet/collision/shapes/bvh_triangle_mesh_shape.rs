@@ -56,7 +56,7 @@ impl BvhTriangleMeshShape {
         self.bvh.check_overlap_with(aabb)
     }
 
-    pub fn perform_ray_packet_cast<T: ProcessRayPacketTriangle>(
+    pub fn perform_raycast<T: ProcessRayPacketTriangle>(
         &self,
         callback: &mut T,
         ray_info: &mut RayPacketInfo,

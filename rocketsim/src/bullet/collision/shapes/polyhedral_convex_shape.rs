@@ -88,7 +88,7 @@ impl PolyhedralConvexAabbCachingShape {
     }
 
     #[inline]
-    pub fn get_aabb_ident(&self) -> &Aabb {
+    pub fn get_ident_aabb(&self) -> &Aabb {
         &self.local_aabb
     }
 
