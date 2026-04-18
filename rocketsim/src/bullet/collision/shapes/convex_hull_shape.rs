@@ -43,7 +43,7 @@ impl ConvexHullShape {
         sup_vertex
     }
 
-    fn get_aabb(&self, trans: &Affine3A) -> Aabb {
+    fn get_aabb_slow(&self, trans: &Affine3A) -> Aabb {
         let margin = self.polyhedral_convex_aabb_caching_shape.get_margin();
 
         let mut aabb = Aabb::ZERO;
@@ -65,10 +65,15 @@ impl ConvexHullShape {
         aabb
     }
 
+    #[inline]
+    pub fn get_aabb(&self, trans: &Affine3A) -> Aabb {
+        self.polyhedral_convex_aabb_caching_shape.get_aabb(trans)
+    }
+
     pub fn calculate_local_intertia(&self, mass: f32) -> Vec3A {
         let margin = self.polyhedral_convex_aabb_caching_shape.get_margin();
 
-        let aabb = self.get_aabb(&Affine3A::IDENTITY);
+        let aabb = self.get_aabb_slow(&Affine3A::IDENTITY);
         let half_extents = (aabb.max - aabb.min) * 0.5;
 
         let l = 2.0 * (half_extents + margin);
