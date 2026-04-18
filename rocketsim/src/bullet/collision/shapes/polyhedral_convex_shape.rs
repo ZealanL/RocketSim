@@ -1,4 +1,4 @@
-use glam::Vec3A;
+use glam::{Affine3A, Vec3A};
 
 use crate::{
     bullet::collision::shapes::{
@@ -13,7 +13,7 @@ fn unit_vector_get_supporting_vertex_without_margin(
     points: &[Vec3A],
 ) {
     for (&direction, support_vertex) in directions.iter().zip(support_vertices_out) {
-        let mut max_dot = -f32::NEG_INFINITY;
+        let mut max_dot = f32::NEG_INFINITY;
         for &point in points {
             let dot = direction.dot(point);
             if dot > max_dot {
@@ -85,5 +85,10 @@ impl PolyhedralConvexAabbCachingShape {
     #[inline]
     pub fn get_margin(&self) -> f32 {
         self.polyhedral_convex_shape.convex_internal_shape.margin
+    }
+
+    #[inline]
+    pub fn get_aabb(&self, trans: &Affine3A) -> Aabb {
+        self.local_aabb.transform(trans, self.get_margin())
     }
 }

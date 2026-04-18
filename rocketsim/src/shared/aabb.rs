@@ -38,7 +38,12 @@ impl Aabb {
         Self::new(self.min.min(rhs.min), self.max.max(rhs.max))
     }
 
-    /// (For internal use)
+    /// Finds the point inside the AABB nearest to the given point
+    #[inline]
+    pub fn clamp(&self, point: Vec3A) -> Vec3A {
+        point.clamp(self.min, self.max)
+    }
+
     pub(crate) fn from_half_extents_transform(
         half_extents: Vec3A,
         margin: f32,
@@ -55,10 +60,18 @@ impl Aabb {
         }
     }
 
-    /// Finds the point inside the AABB nearest to the given point
-    #[inline]
-    pub fn clamp(&self, point: Vec3A) -> Vec3A {
-        point.clamp(self.min, self.max)
+    pub(crate) fn transform(&self, trans: &Affine3A, margin: f32) -> Self {
+        let local_half_extents = 0.5 * (self.max - self.min) + margin;
+
+        let local_center = self.center();
+        let abs_b = trans.matrix3.abs();
+        let center = trans.transform_point3a(local_center);
+        let extent = abs_b * local_half_extents;
+
+        Aabb {
+            min: center - extent,
+            max: center + extent,
+        }
     }
 }
 

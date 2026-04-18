@@ -44,7 +44,7 @@ impl CollisionShapes {
                 debug_assert!(fast_compare_trans(t, &Affine3A::IDENTITY));
                 shape.aabb_ident_cache
             }
-            Self::ConvexHull(_) => todo!(),
+            Self::ConvexHull(shape) => shape.get_aabb(t),
         }
     }
 
