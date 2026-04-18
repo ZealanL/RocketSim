@@ -480,14 +480,10 @@ impl Arena {
         let contact_count = self.contact_tracker.num_records();
         for idx in 0..contact_count {
             let contact = *self.contact_tracker.get_record(idx);
-            let [body_a, body_b] = self
-                .bullet_world
-                .bodies_mut()
-                .get_disjoint_mut([contact.rb_idx_a, contact.rb_idx_b])
-                .unwrap();
 
-            let user_pointer_a = body_a.user_pointer;
-            let user_pointer_b = body_b.user_pointer;
+            let bodies = self.bullet_world.bodies();
+            let user_pointer_a = bodies[contact.rb_idx_a].user_pointer;
+            let user_pointer_b = bodies[contact.rb_idx_b].user_pointer;
 
             if contact.user_idx_a == UserInfoTypes::Car {
                 match contact.user_idx_b {
@@ -508,7 +504,7 @@ impl Arena {
                     _ => self.on_car_world_collision(user_pointer_a, &contact.manifold_point),
                 }
             } else if contact.user_idx_a == UserInfoTypes::Ball {
-                self.on_ball_world_collision(&contact.manifold_point);
+                self.on_ball_world_collision(&contact.manifold_point, contact.rb_idx_a);
             }
         }
 
@@ -736,12 +732,13 @@ impl Arena {
 }
 
 impl Arena {
-    fn on_ball_world_collision(&mut self, manifold_point: &ManifoldPoint) {
+    fn on_ball_world_collision(&mut self, manifold_point: &ManifoldPoint, rb_index: usize) {
         let contact_point = manifold_point.pos_world_on_b * BT_TO_UU;
         let contact_normal = manifold_point.normal_world_on_b;
 
+        let rb = &mut self.bullet_world.bodies_mut()[rb_index];
         self.ball
-            .on_world_hit(contact_normal, self.config.game_mode);
+            .on_world_hit(rb, self.config.game_mode, contact_normal);
 
         self.events.push(BallHitWorld(BallHitWorldEvent {
             contact_point,

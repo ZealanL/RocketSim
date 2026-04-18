@@ -49,7 +49,16 @@ impl CollisionDispatcher {
                     true,
                     contact_added_callback,
                 ),
-                CollisionShapes::ConvexHull(_) => todo!(),
+                CollisionShapes::ConvexHull(_) => convex_plane_collision_alg::process_collision(
+                    true,
+                    RigidBodyWrapper {
+                        obj: col_obj_b,
+                        world_trans: *col_obj_b.get_world_trans(),
+                    },
+                    col_obj_a,
+                    plane,
+                    contact_added_callback,
+                ),
                 _ => unimplemented!(),
             },
             CollisionShapes::Sphere(sphere) => match col_obj_b.get_collision_shape() {
@@ -83,8 +92,7 @@ impl CollisionDispatcher {
                     false,
                     contact_added_callback,
                 ),
-                CollisionShapes::ConvexHull(_) => todo!(),
-                CollisionShapes::Sphere(_) => unimplemented!(),
+                _ => unimplemented!(),
             },
             CollisionShapes::TriangleMesh(mesh) => match col_obj_b.get_collision_shape() {
                 CollisionShapes::Sphere(sphere) => convex_concave_collision_alg::process_collision(
@@ -130,9 +138,37 @@ impl CollisionDispatcher {
                     compound_b,
                     contact_added_callback,
                 ),
-                CollisionShapes::ConvexHull(_) => todo!(),
+                CollisionShapes::ConvexHull(_) => compound_collision_alg::process_collision(
+                    col_obj_a,
+                    compound_a,
+                    col_obj_b,
+                    false,
+                    contact_added_callback,
+                ),
             },
-            CollisionShapes::ConvexHull(_) => todo!(),
+            CollisionShapes::ConvexHull(_) => match col_obj_b.get_collision_shape() {
+                CollisionShapes::StaticPlane(plane) => {
+                    convex_plane_collision_alg::process_collision(
+                        false,
+                        RigidBodyWrapper {
+                            obj: col_obj_a,
+                            world_trans: *col_obj_a.get_world_trans(),
+                        },
+                        col_obj_b,
+                        plane,
+                        contact_added_callback,
+                    )
+                }
+                CollisionShapes::Compound(compound) => compound_collision_alg::process_collision(
+                    col_obj_b,
+                    compound,
+                    col_obj_a,
+                    true,
+                    contact_added_callback,
+                ),
+                CollisionShapes::TriangleMesh(_) => todo!(),
+                _ => unimplemented!(),
+            },
         }
     }
 

@@ -33,7 +33,7 @@ impl ConvexHullShape {
         sup_vec
     }
 
-    fn local_get_supporting_vertex(&self, vec: Vec3A) -> Vec3A {
+    pub fn local_get_supporting_vertex(&self, vec: Vec3A) -> Vec3A {
         let mut sup_vertex = self.local_get_supporting_vertex_without_margin(vec);
 
         debug_assert_ne!(self.polyhedral_convex_aabb_caching_shape.get_margin(), 0.0);
@@ -63,6 +63,11 @@ impl ConvexHullShape {
         }
 
         aabb
+    }
+
+    #[inline]
+    pub fn get_aabb_ident(&self) -> &Aabb {
+        self.polyhedral_convex_aabb_caching_shape.get_aabb_ident()
     }
 
     #[inline]
