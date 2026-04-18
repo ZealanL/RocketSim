@@ -1,10 +1,12 @@
 use glam::{Affine3A, Vec3A};
 
 use super::box_shape::BoxShape;
-use crate::bullet::collision::dispatch::ray_packet_callbacks::{
-    BridgeTriangleRaycastPacketCallback, RayResultCallback,
+use crate::{
+    bullet::collision::dispatch::ray_packet_callbacks::{
+        BridgeTriangleRaycastPacketCallback, RayResultCallback,
+    },
+    shared::{Aabb, RayPacketInfo},
 };
-use crate::shared::{Aabb, RayPacketInfo};
 
 pub struct CompoundShape {
     pub child_shape: BoxShape,

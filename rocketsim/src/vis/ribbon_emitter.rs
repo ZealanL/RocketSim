@@ -1,8 +1,10 @@
 #![allow(dead_code)]
 
-use crate::vis::backend::{Color, VisRenderLinePoint, VisRenderState};
-use glam::{FloatExt, Vec3A};
 use std::collections::VecDeque;
+
+use glam::{FloatExt, Vec3A};
+
+use crate::vis::backend::{Color, VisRenderLinePoint, VisRenderState};
 
 #[derive(Debug, Copy, Clone)]
 struct RibbonPoint {

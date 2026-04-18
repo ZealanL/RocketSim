@@ -1,11 +1,13 @@
 use glam::Affine3A;
 
-use crate::bullet::collision::{
-    dispatch::collision_obj_wrapper::RigidBodyWrapper,
-    narrowphase::persistent_manifold::{ContactAddedCallback, PersistentManifold},
-    shapes::static_plane_shape::StaticPlaneShape,
+use crate::bullet::{
+    collision::{
+        dispatch::collision_obj_wrapper::RigidBodyWrapper,
+        narrowphase::persistent_manifold::{ContactAddedCallback, PersistentManifold},
+        shapes::static_plane_shape::StaticPlaneShape,
+    },
+    dynamics::rigid_body::RigidBody,
 };
-use crate::bullet::dynamics::rigid_body::RigidBody;
 
 pub fn process_collision<T: ContactAddedCallback>(
     is_swapped: bool,

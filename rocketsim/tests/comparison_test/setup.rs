@@ -1,7 +1,8 @@
-use crate::comparison_test::ControlSeq;
 use glam::{Mat3A, Vec3A};
 use rocketsim::{BallState, CarControls, CarState, Team};
 use rocketsim_rs::consts;
+
+use crate::comparison_test::ControlSeq;
 
 #[derive(Debug, Clone)]
 pub struct CarSetup {

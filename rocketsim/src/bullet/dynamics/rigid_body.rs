@@ -1,10 +1,12 @@
 use glam::{Affine3A, Mat3A, Vec3A};
 
-use crate::bullet::{
-    collision::shapes::collision_shape::CollisionShapes,
-    linear_math::transform_util::{integrate_trans, integrate_trans_no_rot},
+use crate::{
+    bullet::{
+        collision::shapes::collision_shape::CollisionShapes,
+        linear_math::transform_util::{integrate_trans, integrate_trans_no_rot},
+    },
+    sim::UserInfoTypes,
 };
-use crate::sim::UserInfoTypes;
 
 pub enum RigidBodyFlags {
     DisableWorldGravity = 1,

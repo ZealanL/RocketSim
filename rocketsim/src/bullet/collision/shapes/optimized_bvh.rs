@@ -1,8 +1,10 @@
 use glam::Vec3A;
 
 use super::triangle_mesh::TriangleMesh;
-use crate::shared::Aabb;
-use crate::shared::bvh::{BvhNodeType, Node, Tree};
+use crate::shared::{
+    Aabb,
+    bvh::{BvhNodeType, Node, Tree},
+};
 
 fn update_triangle_aabb(mut aabb: Aabb) -> Aabb {
     const MIN_AABB_DIMENSION: f32 = 0.002;

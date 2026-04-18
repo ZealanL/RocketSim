@@ -1,10 +1,18 @@
-use crate::bullet::collision::dispatch::internal_edge_utility::adjust_internal_edge_contacts;
-use crate::bullet::collision::narrowphase::manifold_point::ManifoldPoint;
-use crate::bullet::collision::narrowphase::persistent_manifold::ContactAddedCallback;
-use crate::bullet::dynamics::rigid_body::RigidBody;
-use crate::consts;
-use crate::sim::UserInfoTypes;
 use std::mem;
+
+use crate::{
+    bullet::{
+        collision::{
+            dispatch::internal_edge_utility::adjust_internal_edge_contacts,
+            narrowphase::{
+                manifold_point::ManifoldPoint, persistent_manifold::ContactAddedCallback,
+            },
+        },
+        dynamics::rigid_body::RigidBody,
+    },
+    consts,
+    sim::UserInfoTypes,
+};
 
 // An instance of a contact event
 #[derive(Debug, Copy, Clone)]

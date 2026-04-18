@@ -4,8 +4,10 @@ use arrayvec::ArrayVec;
 use glam::{Vec3A, Vec4};
 
 use super::manifold_point::ManifoldPoint;
-use crate::bullet::dynamics::rigid_body::{CollisionFlags, RigidBody};
-use crate::bullet::linear_math::{AffineExt, plane_space_2};
+use crate::bullet::{
+    dynamics::rigid_body::{CollisionFlags, RigidBody},
+    linear_math::{AffineExt, plane_space_2},
+};
 
 pub trait ContactAddedCallback {
     fn callback(

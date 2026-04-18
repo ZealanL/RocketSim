@@ -1,9 +1,11 @@
-use crate::bullet::collision::{
-    dispatch::box_box_detector::BoxBoxDetector,
-    narrowphase::persistent_manifold::{ContactAddedCallback, PersistentManifold},
-    shapes::compound_shape::CompoundShape,
+use crate::bullet::{
+    collision::{
+        dispatch::box_box_detector::BoxBoxDetector,
+        narrowphase::persistent_manifold::{ContactAddedCallback, PersistentManifold},
+        shapes::compound_shape::CompoundShape,
+    },
+    dynamics::rigid_body::RigidBody,
 };
-use crate::bullet::dynamics::rigid_body::RigidBody;
 
 pub fn process_collision<T: ContactAddedCallback>(
     compound_a_obj: &RigidBody,

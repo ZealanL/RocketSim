@@ -1,7 +1,6 @@
-use crate::shared::rsmath;
-use crate::vis::camera::CameraConfig;
-use crate::{ArenaState, CarState};
 use glam::{Vec2, Vec3A};
+
+use crate::{ArenaState, CarState, shared::rsmath, vis::camera::CameraConfig};
 
 pub struct CarCam {
     pub car_idx: usize,

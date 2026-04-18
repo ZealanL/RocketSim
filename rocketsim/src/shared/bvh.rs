@@ -1,8 +1,8 @@
-use std::iter::repeat_n;
-use std::mem;
+use std::{iter::repeat_n, mem};
+
+use glam::{Vec3A, Vec4};
 
 use crate::shared::{Aabb, RayPacketInfo};
-use glam::{Vec3A, Vec4};
 
 pub trait ProcessNode {
     fn process_node(&mut self, leaf_idx: usize);

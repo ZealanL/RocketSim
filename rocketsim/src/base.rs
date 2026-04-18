@@ -6,14 +6,19 @@ use std::{
     time::Instant,
 };
 
-use crate::bullet::collision::shapes::bvh_triangle_mesh_shape::BvhTriangleMeshShape;
-use crate::logging;
-use crate::sim::GameMode;
-use crate::sim::collision_mesh_file::{
-    COLLISION_MESH_BASE_PATH, COLLISION_MESH_FILE_EXTENSION, CollisionMeshFile,
-};
 use ahash::AHashMap;
 use log::{error, info, warn};
+
+use crate::{
+    bullet::collision::shapes::bvh_triangle_mesh_shape::BvhTriangleMeshShape,
+    logging,
+    sim::{
+        GameMode,
+        collision_mesh_file::{
+            COLLISION_MESH_BASE_PATH, COLLISION_MESH_FILE_EXTENSION, CollisionMeshFile,
+        },
+    },
+};
 
 static HAS_INITIALIZED_LOCK: OnceLock<()> = OnceLock::new();
 

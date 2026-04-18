@@ -1,6 +1,8 @@
-use crate::consts::TICK_TIME;
-use crate::shared::{Aabb, bvh};
-use crate::{BoostPad, BoostPadConfig, CarState, MutatorConfig, consts::boost_pads};
+use crate::{
+    BoostPad, BoostPadConfig, CarState, MutatorConfig,
+    consts::{TICK_TIME, boost_pads},
+    shared::{Aabb, bvh},
+};
 
 pub struct BoostPadProcessor<'a> {
     all_pads: &'a mut [BoostPad],

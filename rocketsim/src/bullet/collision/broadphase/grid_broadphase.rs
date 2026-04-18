@@ -6,16 +6,18 @@ use glam::{USizeVec3, Vec3A};
 use super::{
     broadphase_proxy::BroadphaseProxy, overlapping_pair_cache::HashedOverlappingPairCache,
 };
-use crate::bullet::{
-    collision::{
-        broadphase::broadphase_proxy::BroadphaseAabbCallback,
-        dispatch::collision_dispatcher::CollisionDispatcher,
-        narrowphase::persistent_manifold::ContactAddedCallback,
-        shapes::collision_shape::CollisionShapes,
+use crate::{
+    bullet::{
+        collision::{
+            broadphase::broadphase_proxy::BroadphaseAabbCallback,
+            dispatch::collision_dispatcher::CollisionDispatcher,
+            narrowphase::persistent_manifold::ContactAddedCallback,
+            shapes::collision_shape::CollisionShapes,
+        },
+        dynamics::rigid_body::RigidBody,
     },
-    dynamics::rigid_body::RigidBody,
+    shared::Aabb,
 };
-use crate::shared::Aabb;
 
 pub struct GridBroadphaseProxy {
     broadphase_proxy: BroadphaseProxy,

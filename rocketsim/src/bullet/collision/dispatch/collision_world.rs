@@ -1,18 +1,20 @@
 use glam::Vec3A;
 
 use super::collision_dispatcher::CollisionDispatcher;
-use crate::bullet::{
-    collision::{
-        broadphase::GridBroadphase,
-        dispatch::ray_packet_callbacks::{
-            BridgeTriangleRaycastPacketCallback, QuadRayCallback, RayResultCallback,
+use crate::{
+    bullet::{
+        collision::{
+            broadphase::GridBroadphase,
+            dispatch::ray_packet_callbacks::{
+                BridgeTriangleRaycastPacketCallback, QuadRayCallback, RayResultCallback,
+            },
+            narrowphase::persistent_manifold::{CONTACT_BREAKING_THRESHOLD, ContactAddedCallback},
         },
-        narrowphase::persistent_manifold::{CONTACT_BREAKING_THRESHOLD, ContactAddedCallback},
+        dynamics::rigid_body::RigidBody,
+        linear_math::AffineExt,
     },
-    dynamics::rigid_body::RigidBody,
-    linear_math::AffineExt,
+    shared::RayPacketInfo,
 };
-use crate::shared::RayPacketInfo;
 
 pub struct CollisionWorld {
     pub collision_objs: Vec<RigidBody>,

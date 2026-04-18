@@ -1,18 +1,19 @@
 use glam::{Affine3A, Vec3A};
 
-use crate::bullet::dynamics::rigid_body::RigidBody;
-
-use crate::bullet::{
-    collision::{
-        narrowphase::persistent_manifold::{ContactAddedCallback, PersistentManifold},
-        shapes::{
-            bvh_triangle_mesh_shape::BvhTriangleMeshShape, sphere_shape::SphereShape,
-            triangle_callback::ProcessTriangle, triangle_shape::TriangleShape,
+use crate::{
+    bullet::{
+        collision::{
+            narrowphase::persistent_manifold::{ContactAddedCallback, PersistentManifold},
+            shapes::{
+                bvh_triangle_mesh_shape::BvhTriangleMeshShape, sphere_shape::SphereShape,
+                triangle_callback::ProcessTriangle, triangle_shape::TriangleShape,
+            },
         },
+        dynamics::rigid_body::RigidBody,
+        linear_math::AffineExt,
     },
-    linear_math::AffineExt,
+    shared::Aabb,
 };
-use crate::shared::Aabb;
 
 struct ConvexTriangleCallback<'a, T: ContactAddedCallback> {
     pub manifold: PersistentManifold,

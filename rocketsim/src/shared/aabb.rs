@@ -1,5 +1,6 @@
-use glam::{Affine3A, Vec3A};
 use std::ops::{Add, AddAssign};
+
+use glam::{Affine3A, Vec3A};
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Aabb {

@@ -1,9 +1,8 @@
-use device_query::{DeviceQuery, DeviceState, Keycode};
-use serde::Serialize;
-use std::net::UdpSocket;
-use std::time::Duration;
+use std::{net::UdpSocket, time::Duration};
 
+use device_query::{DeviceQuery, DeviceState, Keycode};
 use rocketsim::{Arena, CarBodyConfig, CarControls, GameMode, PhysState, Team, init_from_default};
+use serde::Serialize;
 
 // TODO: Pretty sure this is bad practice
 #[path = "../tests/comparison_test/state_convert.rs"]
