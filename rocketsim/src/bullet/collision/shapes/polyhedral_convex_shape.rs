@@ -88,6 +88,11 @@ impl PolyhedralConvexAabbCachingShape {
     }
 
     #[inline]
+    pub fn get_aabb_ident(&self) -> &Aabb {
+        &self.local_aabb
+    }
+
+    #[inline]
     pub fn get_aabb(&self, trans: &Affine3A) -> Aabb {
         self.local_aabb.transform(trans, self.get_margin())
     }

@@ -345,7 +345,7 @@ impl Ball {
         };
     }
 
-    pub fn on_world_hit(&mut self, normal: Vec3A, game_mode: GameMode) {
+    pub fn on_world_hit(&mut self, rb: &mut RigidBody, game_mode: GameMode, normal: Vec3A) {
         match game_mode {
             GameMode::Heatseeker => {
                 const ARENA_EXTENT: Vec3A = consts::arena::get_aabb(GameMode::Soccar).max;
@@ -379,7 +379,10 @@ impl Ball {
                     self.vel_impulse_cache += bounce_impulse * UU_TO_BT;
                 }
             }
-            GameMode::Snowday => todo!(),
+            GameMode::Snowday if !self.ground_stick_applied => {
+                rb.apply_central_force(-normal * snowday::PUCK_GROUND_STICK_FORCE);
+                self.ground_stick_applied = true;
+            }
             _ => {}
         }
     }

@@ -34,6 +34,7 @@ impl CollisionShapes {
         match self {
             Self::Sphere(shape) => shape.get_aabb(t),
             Self::Compound(shape) => shape.get_aabb(t),
+            Self::ConvexHull(shape) => shape.get_aabb(t),
             Self::StaticPlane(shape) => {
                 #[cfg(debug_assertions)]
                 debug_assert!(fast_compare_trans(t, &shape.aabb_cache_trans));
@@ -44,7 +45,6 @@ impl CollisionShapes {
                 debug_assert!(fast_compare_trans(t, &Affine3A::IDENTITY));
                 shape.aabb_ident_cache
             }
-            Self::ConvexHull(shape) => shape.get_aabb(t),
         }
     }
 
@@ -72,7 +72,13 @@ impl CollisionShapes {
 
                 (center, radius)
             }
-            Self::ConvexHull(_) => todo!(),
+            Self::ConvexHull(shape) => {
+                let aabb = shape.get_aabb_ident();
+                let center = (aabb.min + aabb.max) * 0.5;
+                let radius = (aabb.max - aabb.min).length() * 0.5;
+
+                (center, radius)
+            }
         }
     }
 
@@ -89,6 +95,7 @@ impl CollisionShapes {
         match self {
             Self::Sphere(shape) => shape.local_get_supporting_vertex(vec),
             Self::Compound(shape) => shape.child_shape.local_get_supporting_vertex(vec),
+            Self::ConvexHull(shape) => shape.local_get_supporting_vertex(vec),
             _ => todo!(),
         }
     }
