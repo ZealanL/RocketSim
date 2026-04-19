@@ -1,4 +1,4 @@
-![RocketSim logo](https://user-images.githubusercontent.com/36944229/219303954-7267bce1-b7c5-4f15-881c-b9545512e65b.png)
+![RocketSim logo](https://media.discordapp.net/attachments/1433039739996344424/1495335804711735416/rocketsim.png?ex=69e5df7d&is=69e48dfd&hm=65a46e4438a241d07f97c257ad0e5ef41ae0019e9e13d5f12d5c5a09cf7dc9d6&=&format=webp&quality=lossless&width=1765&height=524)
 
 **A Rust library for simulating Rocket League games at maximum efficiency**
 
