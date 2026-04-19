@@ -7,8 +7,32 @@ This is an optimized port of RocketSim to Rust, by ZealanL and VirxEC.
 ## What is this?
 
 This branch is an attempt and simplifying and optimizing RocketSim.<br>
-It does not care for Bullet compatibility, and removes as many abstractions as possible.
+It is based off of Virx's rebuild of Bullet in Rust.<br>
 
 > [!CAUTION]
 > This project is currently a massive WIP, and highly experimental.<br>
 > Many features found in RocketSim are currently missing.
+
+## How accurate is it?
+
+This version of RocketSim is **not** as accurate in its current state as the version on the *main* branch.<br>
+To see a list of use cases that RocketSim is suitable for, see that branch.
+
+## What's done?
+
+Only the **Soccar** gamemode is close to completion, with no other gamemodes at the moment.<br>
+There is a built-in visualizer implemented for viewing the simulation as it runs, unlike the C++ versions which require you to get a visualizer yourself.
+
+## OK, but how *fast* is it?
+
+Right now, it roughly mirrors the speed of the *main* branch, although this can change and fluctuate depending on car count and other parameters.
+
+## How do I use it?
+
+Right now, this version of RocketSim is **not** for typical usage. Things are changing all the time, and almost nothing is actually done.<br>
+I recommend you just stick to Virx's Rust bindings (https://github.com/VirxEC/rocketsim-rs) for now if you really want to use Rust.<br><br>
+
+> [!IMPORTANT]
+> **This is a legal notice directed at Epic Games / Psyonix.**<BR>
+> RocketSim was written to replicate Rocket League's game logic, but does not actually contain any code from the game.<br>
+> If there is an issue with this, let me (@zealanl) know on Discord and we can resolve it.
