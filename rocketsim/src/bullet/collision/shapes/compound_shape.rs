@@ -44,6 +44,11 @@ impl CompoundShape {
         &self.local_aabb
     }
 
+    #[inline]
+    pub fn get_margin(&self) -> f32 {
+        self.child_shape.get_margin()
+    }
+
     pub fn perform_raycast<T: RayResultCallback>(
         &self,
         result_callback: &mut BridgeTriangleRaycastPacketCallback<T>,

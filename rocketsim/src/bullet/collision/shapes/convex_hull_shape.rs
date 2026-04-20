@@ -21,7 +21,7 @@ impl ConvexHullShape {
         }
     }
 
-    fn local_get_supporting_vertex_without_margin(&self, vec: Vec3A) -> Vec3A {
+    pub fn local_get_supporting_vertex_without_margin(&self, vec: Vec3A) -> Vec3A {
         let mut sup_vec = Vec3A::ZERO;
         let mut max_dot = -f32::INFINITY;
 
@@ -44,6 +44,11 @@ impl ConvexHullShape {
         sup_vertex += self.polyhedral_convex_aabb_caching_shape.get_margin() * vec_norm;
 
         sup_vertex
+    }
+
+    #[inline]
+    pub fn get_margin(&self) -> f32 {
+        self.polyhedral_convex_aabb_caching_shape.get_margin()
     }
 
     fn get_aabb_slow(&self, trans: &Affine3A) -> Aabb {
