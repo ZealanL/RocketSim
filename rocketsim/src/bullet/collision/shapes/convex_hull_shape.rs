@@ -3,27 +3,27 @@ use glam::{Affine3A, Vec3A};
 use crate::{
     bullet::collision::{
         dispatch::ray_packet_callbacks::{BridgeTriangleRaycastPacketCallback, RayResultCallback},
-        shapes::polyhedral_convex_shape::PolyhedralConvexAabbCachingShape,
+        shapes::polyhedral_convex_shape::PolyhedralConvexShape,
     },
     shared::{Aabb, RayPacketInfo},
 };
 
 pub struct ConvexHullShape {
-    polyhedral_convex_aabb_caching_shape: PolyhedralConvexAabbCachingShape,
+    polyhedral_convex_aabb_caching_shape: PolyhedralConvexShape,
     unscaled_points: Vec<Vec3A>,
 }
 
 impl ConvexHullShape {
     pub fn new(points: Vec<Vec3A>) -> Self {
         Self {
-            polyhedral_convex_aabb_caching_shape: PolyhedralConvexAabbCachingShape::new(&points),
+            polyhedral_convex_aabb_caching_shape: PolyhedralConvexShape::new(&points),
             unscaled_points: points,
         }
     }
 
     pub fn local_get_supporting_vertex_without_margin(&self, vec: Vec3A) -> Vec3A {
         let mut sup_vec = Vec3A::ZERO;
-        let mut max_dot = -f32::INFINITY;
+        let mut max_dot = f32::NEG_INFINITY;
 
         for &point in &self.unscaled_points {
             let dot = vec.dot(point);
