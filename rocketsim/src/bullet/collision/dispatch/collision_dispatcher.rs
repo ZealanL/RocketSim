@@ -59,7 +59,7 @@ impl CollisionDispatcher {
                     plane,
                     contact_added_callback,
                 ),
-                _ => unimplemented!(),
+                _ => unreachable!(),
             },
             CollisionShapes::Sphere(sphere) => match col_obj_b.get_collision_shape() {
                 CollisionShapes::StaticPlane(plane) => {
@@ -92,7 +92,7 @@ impl CollisionDispatcher {
                     false,
                     contact_added_callback,
                 ),
-                _ => unimplemented!(),
+                _ => unreachable!(),
             },
             CollisionShapes::TriangleMesh(mesh) => match col_obj_b.get_collision_shape() {
                 CollisionShapes::Sphere(sphere) => convex_concave_collision_alg::process_collision(
@@ -111,7 +111,7 @@ impl CollisionDispatcher {
                     contact_added_callback,
                 ),
                 CollisionShapes::ConvexHull(_) => todo!(),
-                _ => unimplemented!(),
+                _ => unreachable!(),
             },
             CollisionShapes::Compound(compound_a) => match col_obj_b.get_collision_shape() {
                 CollisionShapes::StaticPlane(_) | CollisionShapes::TriangleMesh(_) => {
@@ -167,7 +167,7 @@ impl CollisionDispatcher {
                     contact_added_callback,
                 ),
                 CollisionShapes::TriangleMesh(_) => todo!(),
-                _ => unimplemented!(),
+                _ => unreachable!(),
             },
         }
     }

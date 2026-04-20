@@ -4,7 +4,10 @@ use glam::{Affine3A, Vec3A};
 use crate::{
     bullet::{
         collision::{
-            dispatch::{collision_obj_wrapper::RigidBodyWrapper, convex_plane_collision_alg},
+            dispatch::{
+                collision_obj_wrapper::RigidBodyWrapper, convex_convex_collision_alg,
+                convex_plane_collision_alg,
+            },
             narrowphase::persistent_manifold::{ContactAddedCallback, PersistentManifold},
             shapes::{
                 box_shape::BoxShape, collision_shape::CollisionShapes,
@@ -343,6 +346,11 @@ pub fn process_collision<T: ContactAddedCallback>(
             plane,
             contact_added_callback,
         ),
-        _ => todo!(),
+        CollisionShapes::ConvexHull(_) => convex_convex_collision_alg::process_collision(
+            compound_obj_wrap,
+            other_obj,
+            contact_added_callback,
+        ),
+        _ => unimplemented!(),
     }
 }

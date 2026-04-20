@@ -91,11 +91,33 @@ impl CollisionShapes {
         self.get_angular_motion_disc() * default_contact_threshold
     }
 
+    pub fn get_margin(&self) -> f32 {
+        match self {
+            Self::Sphere(shape) => shape.get_margin(),
+            Self::Compound(shape) => shape.get_margin(),
+            Self::ConvexHull(shape) => shape.get_margin(),
+            Self::StaticPlane(_) => 0.0,
+            Self::TriangleMesh(_) => unreachable!(),
+        }
+    }
+
     pub fn local_get_supporting_vertex(&self, vec: Vec3A) -> Vec3A {
         match self {
             Self::Sphere(shape) => shape.local_get_supporting_vertex(vec),
             Self::Compound(shape) => shape.child_shape.local_get_supporting_vertex(vec),
             Self::ConvexHull(shape) => shape.local_get_supporting_vertex(vec),
+            _ => todo!(),
+        }
+    }
+
+    pub fn local_get_support_vertex_without_margin(&self, vec: Vec3A) -> Vec3A {
+        match self {
+            Self::Sphere(_) => Vec3A::ZERO,
+            Self::Compound(shape) => {
+                let half_extents = shape.child_shape.get_half_extents();
+                half_extents * Vec3A::ONE.copysign(vec)
+            }
+            Self::ConvexHull(shape) => shape.local_get_supporting_vertex_without_margin(vec),
             _ => todo!(),
         }
     }
