@@ -1,11 +1,11 @@
 use super::{
-    compound_collision_alg, convex_plane_collision_alg, obb_obb_collision_alg,
-    sphere_concave_collision_alg, sphere_obb_collision_alg,
+    collision_obj_wrapper::RigidBodyWrapper, compound_collision_alg, convex_concave_collision_alg,
+    convex_plane_collision_alg, obb_obb_collision_alg, sphere_concave_collision_alg,
+    sphere_obb_collision_alg,
 };
 use crate::bullet::{
     collision::{
         broadphase::{GridBroadphase, GridBroadphaseProxy},
-        dispatch::collision_obj_wrapper::RigidBodyWrapper,
         narrowphase::persistent_manifold::{ContactAddedCallback, PersistentManifold},
         shapes::collision_shape::CollisionShapes,
     },
@@ -102,7 +102,12 @@ impl CollisionDispatcher {
                     col_obj_a,
                     contact_added_callback,
                 ),
-                CollisionShapes::ConvexHull(_) => todo!(),
+                CollisionShapes::ConvexHull(_) => convex_concave_collision_alg::process_collision(
+                    col_obj_b,
+                    col_obj_a,
+                    mesh,
+                    contact_added_callback,
+                ),
                 _ => unreachable!(),
             },
             CollisionShapes::Compound(compound_a) => match col_obj_b.get_collision_shape() {
@@ -134,6 +139,7 @@ impl CollisionDispatcher {
                     col_obj_b,
                     contact_added_callback,
                 ),
+                CollisionShapes::Triangle(_) => unreachable!(),
             },
             CollisionShapes::ConvexHull(_) => match col_obj_b.get_collision_shape() {
                 CollisionShapes::StaticPlane(plane) => {
@@ -153,9 +159,17 @@ impl CollisionDispatcher {
                     col_obj_a,
                     contact_added_callback,
                 ),
-                CollisionShapes::TriangleMesh(_) => todo!(),
+                CollisionShapes::TriangleMesh(mesh) => {
+                    convex_concave_collision_alg::process_collision(
+                        col_obj_a,
+                        col_obj_b,
+                        mesh,
+                        contact_added_callback,
+                    )
+                }
                 _ => unreachable!(),
             },
+            CollisionShapes::Triangle(_) => unreachable!(),
         }
     }
 

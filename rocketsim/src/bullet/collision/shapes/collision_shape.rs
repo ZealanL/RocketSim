@@ -8,6 +8,7 @@ use super::{
     convex_hull_shape::ConvexHullShape,
     sphere_shape::{SPHERE_RADIUS_MARGIN, SphereShape},
     static_plane_shape::StaticPlaneShape,
+    triangle_shape::TriangleShape,
 };
 use crate::{
     bullet::collision::dispatch::ray_packet_callbacks::{
@@ -22,6 +23,7 @@ pub enum CollisionShapes {
     ConvexHull(ConvexHullShape),
     StaticPlane(StaticPlaneShape),
     TriangleMesh(Arc<BvhTriangleMeshShape>),
+    Triangle(TriangleShape),
 }
 
 #[cfg(debug_assertions)]
@@ -47,41 +49,28 @@ impl CollisionShapes {
                 debug_assert!(fast_compare_trans(t, &Affine3A::IDENTITY));
                 shape.aabb_ident_cache
             }
+            Self::Triangle(shape) => {
+                shape.aabb
+            }
         }
     }
 
     fn get_bounding_sphere(&self) -> (Vec3A, f32) {
-        match self {
-            Self::Sphere(sphere) => (Vec3A::ZERO, sphere.get_radius() + SPHERE_RADIUS_MARGIN),
-            Self::Compound(compound) => {
-                let aabb = compound.get_ident_aabb();
-                let center = (aabb.min + aabb.max) * 0.5;
-                let radius = (aabb.max - aabb.min).length() * 0.5;
-
-                (center, radius)
+        let aabb = match self {
+            Self::Sphere(sphere) => {
+                return (Vec3A::ZERO, sphere.get_radius() + SPHERE_RADIUS_MARGIN);
             }
-            Self::StaticPlane(shape) => {
-                let aabb = &shape.aabb_ident_cache;
-                let center = (aabb.min + aabb.max) * 0.5;
-                let radius = (aabb.max - aabb.min).length() * 0.5;
+            Self::Compound(compound) => compound.get_ident_aabb(),
+            Self::StaticPlane(shape) => &shape.aabb_ident_cache,
+            Self::TriangleMesh(shape) => &shape.aabb_ident_cache,
+            Self::ConvexHull(shape) => shape.get_ident_aabb(),
+            Self::Triangle(shape) => &shape.aabb,
+        };
 
-                (center, radius)
-            }
-            Self::TriangleMesh(shape) => {
-                let aabb = &shape.aabb_ident_cache;
-                let center = (aabb.min + aabb.max) * 0.5;
-                let radius = (aabb.max - aabb.min).length() * 0.5;
+        let center = (aabb.min + aabb.max) * 0.5;
+        let radius = (aabb.max - aabb.min).length() * 0.5;
 
-                (center, radius)
-            }
-            Self::ConvexHull(shape) => {
-                let aabb = shape.get_ident_aabb();
-                let center = (aabb.min + aabb.max) * 0.5;
-                let radius = (aabb.max - aabb.min).length() * 0.5;
-
-                (center, radius)
-            }
-        }
+        (center, radius)
     }
 
     fn get_angular_motion_disc(&self) -> f32 {
@@ -100,6 +89,7 @@ impl CollisionShapes {
             Self::ConvexHull(shape) => shape.get_margin(),
             Self::StaticPlane(_) => 0.0,
             Self::TriangleMesh(_) => unreachable!(),
+            Self::Triangle(shape) => shape.get_margin(),
         }
     }
 
@@ -108,7 +98,8 @@ impl CollisionShapes {
             Self::Sphere(shape) => shape.local_get_supporting_vertex(vec),
             Self::Compound(shape) => shape.child_shape.local_get_supporting_vertex(vec),
             Self::ConvexHull(shape) => shape.local_get_supporting_vertex(vec),
-            _ => todo!(),
+            Self::Triangle(shape) => shape.local_get_supporting_vertex(vec),
+            _ => unreachable!(),
         }
     }
 
@@ -120,7 +111,8 @@ impl CollisionShapes {
                 half_extents * Vec3A::ONE.copysign(vec)
             }
             Self::ConvexHull(shape) => shape.local_get_supporting_vertex_without_margin(vec),
-            _ => todo!(),
+            Self::Triangle(shape) => shape.local_get_supporting_vertex_without_margin(vec),
+            _ => unreachable!(),
         }
     }
 
@@ -145,6 +137,7 @@ impl CollisionShapes {
             Self::ConvexHull(hull) => {
                 hull.perform_raycast(result_callback, ray_info);
             }
+            Self::Triangle(_) => unreachable!(),
         }
     }
 }
