@@ -3,7 +3,6 @@ pub mod bvh_triangle_mesh_shape;
 mod collision_margin;
 pub mod collision_shape;
 pub mod compound_shape;
-mod concave_shape;
 pub mod convex_hull_shape;
 mod convex_internal_shape;
 mod optimized_bvh;

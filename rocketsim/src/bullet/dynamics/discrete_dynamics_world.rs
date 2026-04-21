@@ -2,18 +2,15 @@ use glam::Vec3A;
 
 use super::{
     constraint_solver::seq_impulse_constraint_solver::SeqImpulseConstraintSolver,
-    rigid_body::{RigidBody, RigidBodyFlags},
+    rigid_body::{ActivationState, RigidBody, RigidBodyFlags},
 };
-use crate::bullet::{
-    collision::{
-        broadphase::{CollisionFilterGroups, GridBroadphase},
-        dispatch::{
-            collision_dispatcher::CollisionDispatcher, collision_world::CollisionWorld,
-            ray_packet_callbacks::RayResultCallback,
-        },
-        narrowphase::persistent_manifold::ContactAddedCallback,
+use crate::bullet::collision::{
+    broadphase::{CollisionFilterGroups, GridBroadphase},
+    dispatch::{
+        collision_dispatcher::CollisionDispatcher, collision_world::CollisionWorld,
+        ray_packet_callbacks::RayResultCallback,
     },
-    dynamics::rigid_body::ActivationState,
+    narrowphase::persistent_manifold::ContactAddedCallback,
 };
 
 pub struct DiscreteDynamicsWorld {

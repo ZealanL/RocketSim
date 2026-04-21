@@ -2,7 +2,7 @@ use std::f32::consts::FRAC_PI_4;
 
 use glam::{Affine3A, Mat3A, Quat, Vec3A};
 
-use crate::bullet::linear_math::{Mat3AExt, QuatExt};
+use super::{Mat3AExt, QuatExt};
 
 const ANGULAR_MOTION_THRESHOLD: f32 = FRAC_PI_4;
 

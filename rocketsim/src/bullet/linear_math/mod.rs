@@ -196,7 +196,8 @@ pub fn max_dot(points: &[Vec3A], direction: Vec3A) -> Vec3A {
     let dir_y = Vec4::splat(direction.y);
     let dir_z = Vec4::splat(direction.z);
 
-    for pts in points.chunks_exact(4) {
+    let (simd_points, rem_points) = points.as_chunks::<4>();
+    for pts in simd_points {
         let xs = Vec4::new(pts[0].x, pts[1].x, pts[2].x, pts[3].x);
         let ys = Vec4::new(pts[0].y, pts[1].y, pts[2].y, pts[3].y);
         let zs = Vec4::new(pts[0].z, pts[1].z, pts[2].z, pts[3].z);
@@ -210,7 +211,7 @@ pub fn max_dot(points: &[Vec3A], direction: Vec3A) -> Vec3A {
         }
     }
 
-    for &point in &points[points.len() % 4..] {
+    for &point in rem_points {
         let dot = direction.dot(point);
         if dot > max_dot {
             support_vertex = point;

@@ -1,17 +1,17 @@
 use glam::Vec3A;
 
-use super::triangle_mesh::TriangleMesh;
+use super::{triangle_mesh::TriangleMesh, triangle_shape::TriangleShape};
 use crate::shared::{
     Aabb,
     bvh::{BvhNodeType, Node, Tree},
 };
 
-fn update_triangle_aabb(mut aabb: Aabb) -> Aabb {
+fn update_triangle_aabb(triangle: &TriangleShape) -> Aabb {
     const MIN_AABB_DIMENSION: f32 = 0.002;
     const MIN_AABB_HALF_DIMENSION: f32 = MIN_AABB_DIMENSION / 2.0;
 
-    let diff = (aabb.max - aabb.min).cmplt(const { Vec3A::splat(MIN_AABB_DIMENSION) });
-
+    let mut aabb = triangle.aabb;
+    let diff = (aabb.max - aabb.min).cmplt(Vec3A::splat(MIN_AABB_DIMENSION));
     if diff.any() {
         let [x, y, z] = diff.into();
 
@@ -36,10 +36,8 @@ fn update_triangle_aabb(mut aabb: Aabb) -> Aabb {
 
 pub fn create_bvh(triangles: &TriangleMesh, aabb: Aabb) -> Tree {
     let mut leaf_nodes: Vec<_> = triangles
-        .get_tris_aabbs()
-        .1
+        .get_tris()
         .iter()
-        .copied()
         .map(update_triangle_aabb)
         .enumerate()
         .map(|(triangle_idx, aabb)| Node {

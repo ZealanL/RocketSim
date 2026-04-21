@@ -2,10 +2,10 @@ use std::mem;
 
 use ahash::AHashMap;
 
-use super::{broadphase_proxy::BroadphasePair, grid_broadphase::GridBroadphaseProxy};
+use super::{BroadphasePair, BroadphaseProxy, GridBroadphaseProxy};
 use crate::bullet::{
     collision::{
-        broadphase::BroadphaseProxy, dispatch::collision_dispatcher::CollisionDispatcher,
+        dispatch::collision_dispatcher::CollisionDispatcher,
         narrowphase::persistent_manifold::ContactAddedCallback,
     },
     dynamics::rigid_body::RigidBody,

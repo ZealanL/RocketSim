@@ -6,22 +6,18 @@ use crate::{
         triangle_mesh::TriangleMesh,
         triangle_shape::TriangleShape,
     },
-    shared::{Aabb, bvh::*},
+    shared::bvh::*,
 };
 
 pub struct NodeOverlapCallback<'a, T: ProcessTriangle> {
     tris: &'a [TriangleShape],
-    aabbs: &'a [Aabb],
     callback: &'a mut T,
 }
 
 impl<'a, T: ProcessTriangle> NodeOverlapCallback<'a, T> {
     pub fn new(mesh_interface: &'a TriangleMesh, callback: &'a mut T) -> Self {
-        let (tris, aabbs) = mesh_interface.get_tris_aabbs();
-
         Self {
-            tris,
-            aabbs,
+            tris: mesh_interface.get_tris(),
             callback,
         }
     }
@@ -29,11 +25,8 @@ impl<'a, T: ProcessTriangle> NodeOverlapCallback<'a, T> {
 
 impl<T: ProcessTriangle> ProcessNode for NodeOverlapCallback<'_, T> {
     fn process_node(&mut self, node_triangle_idx: usize) {
-        self.callback.process_triangle(
-            &self.tris[node_triangle_idx],
-            &self.aabbs[node_triangle_idx],
-            node_triangle_idx,
-        );
+        self.callback
+            .process_triangle(&self.tris[node_triangle_idx], node_triangle_idx);
     }
 }
 
@@ -44,9 +37,10 @@ pub struct RayPacketNodeOverlapCallback<'a, T: ProcessRayPacketTriangle> {
 
 impl<'a, T: ProcessRayPacketTriangle> RayPacketNodeOverlapCallback<'a, T> {
     pub fn new(mesh_interface: &'a TriangleMesh, callback: &'a mut T) -> Self {
-        let (tris, _) = mesh_interface.get_tris_aabbs();
-
-        Self { tris, callback }
+        Self {
+            tris: mesh_interface.get_tris(),
+            callback,
+        }
     }
 }
 

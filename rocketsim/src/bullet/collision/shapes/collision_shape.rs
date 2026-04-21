@@ -3,13 +3,15 @@ use std::sync::Arc;
 use glam::{Affine3A, Vec3A};
 
 use super::{
-    bvh_triangle_mesh_shape::BvhTriangleMeshShape, compound_shape::CompoundShape,
-    sphere_shape::SphereShape, static_plane_shape::StaticPlaneShape,
+    bvh_triangle_mesh_shape::BvhTriangleMeshShape,
+    compound_shape::CompoundShape,
+    convex_hull_shape::ConvexHullShape,
+    sphere_shape::{SPHERE_RADIUS_MARGIN, SphereShape},
+    static_plane_shape::StaticPlaneShape,
 };
 use crate::{
-    bullet::collision::{
-        dispatch::ray_packet_callbacks::{BridgeTriangleRaycastPacketCallback, RayResultCallback},
-        shapes::{convex_hull_shape::ConvexHullShape, sphere_shape::SPHERE_RADIUS_MARGIN},
+    bullet::collision::dispatch::ray_packet_callbacks::{
+        BridgeTriangleRaycastPacketCallback, RayResultCallback,
     },
     shared::{Aabb, RayPacketInfo},
 };
