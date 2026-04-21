@@ -1,6 +1,6 @@
+use super::box_box_detector::BoxBoxDetector;
 use crate::bullet::{
     collision::{
-        dispatch::box_box_detector::BoxBoxDetector,
         narrowphase::persistent_manifold::{ContactAddedCallback, PersistentManifold},
         shapes::compound_shape::CompoundShape,
     },

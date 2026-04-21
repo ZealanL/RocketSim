@@ -4,7 +4,7 @@ use std::f32::consts::PI;
 
 use glam::{Mat3A, Quat, Vec3A};
 
-use crate::shared::Aabb;
+use super::Aabb;
 
 /// Returns a random number from 0.0 to 1.0
 pub fn rand_frac() -> f32 {

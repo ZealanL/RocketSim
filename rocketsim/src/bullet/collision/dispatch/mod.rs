@@ -3,6 +3,7 @@ pub mod collision_dispatcher;
 mod collision_obj_wrapper;
 pub mod collision_world;
 mod compound_collision_alg;
+mod convex_concave_collision_alg;
 mod convex_convex_collision_alg;
 mod convex_plane_collision_alg;
 pub mod internal_edge_utility;

@@ -1,8 +1,8 @@
 use glam::Affine3A;
 
+use super::collision_obj_wrapper::RigidBodyWrapper;
 use crate::bullet::{
     collision::{
-        dispatch::collision_obj_wrapper::RigidBodyWrapper,
         narrowphase::persistent_manifold::{ContactAddedCallback, PersistentManifold},
         shapes::static_plane_shape::StaticPlaneShape,
     },

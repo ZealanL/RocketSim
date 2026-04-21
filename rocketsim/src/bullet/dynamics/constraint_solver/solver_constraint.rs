@@ -1,9 +1,8 @@
 use glam::Vec3A;
 
-use super::solver_body::SolverBody;
+use super::{contact_solver_info, solver_body::SolverBody};
 use crate::bullet::{
-    collision::narrowphase::manifold_point::ManifoldPoint,
-    dynamics::{constraint_solver::contact_solver_info, rigid_body::RigidBody},
+    collision::narrowphase::manifold_point::ManifoldPoint, dynamics::rigid_body::RigidBody,
 };
 
 fn bullet_dot(vec0: Vec3A, vec1: Vec3A) -> f32 {

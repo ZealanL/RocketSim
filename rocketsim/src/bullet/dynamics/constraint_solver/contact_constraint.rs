@@ -1,12 +1,10 @@
 use glam::Vec3A;
 
-use crate::bullet::dynamics::{
-    constraint_solver::{
-        contact_solver_info,
-        jacobian_entry::{JacbobianBody, get_jacobian_diagonal},
-    },
-    rigid_body::RigidBody,
+use super::{
+    contact_solver_info,
+    jacobian_entry::{JacbobianBody, get_jacobian_diagonal},
 };
+use crate::bullet::dynamics::rigid_body::RigidBody;
 
 pub fn resolve_single_collision(
     body1: &RigidBody,

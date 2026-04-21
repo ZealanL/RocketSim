@@ -1,13 +1,13 @@
 use arrayvec::ArrayVec;
 use glam::{Affine3A, Vec3A};
 
+use super::{
+    collision_obj_wrapper::RigidBodyWrapper, convex_convex_collision_alg,
+    convex_plane_collision_alg,
+};
 use crate::{
     bullet::{
         collision::{
-            dispatch::{
-                collision_obj_wrapper::RigidBodyWrapper, convex_convex_collision_alg,
-                convex_plane_collision_alg,
-            },
             narrowphase::persistent_manifold::{ContactAddedCallback, PersistentManifold},
             shapes::{
                 box_shape::BoxShape, collision_shape::CollisionShapes,
@@ -43,8 +43,8 @@ struct ConvexTriangleCallback<'a, T: ContactAddedCallback> {
 }
 
 impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> {
-    fn process_triangle(&mut self, triangle: &TriangleShape, tri_aabb: &Aabb, triangle_idx: usize) {
-        if !tri_aabb.intersects(self.local_convex_aabb) {
+    fn process_triangle(&mut self, triangle: &TriangleShape, triangle_idx: usize) {
+        if !triangle.aabb.intersects(self.local_convex_aabb) {
             return;
         }
 

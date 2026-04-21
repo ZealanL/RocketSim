@@ -1,9 +1,9 @@
 use glam::{Vec3A, Vec4};
 
+use super::collision_world::CollisionWorld;
 use crate::bullet::{
     collision::{
         broadphase::{BroadphaseAabbCallback, BroadphaseProxy, CollisionFilterGroups},
-        dispatch::collision_world::CollisionWorld,
         shapes::{triangle_callback::ProcessRayPacketTriangle, triangle_shape::TriangleShape},
     },
     dynamics::rigid_body::RigidBody,

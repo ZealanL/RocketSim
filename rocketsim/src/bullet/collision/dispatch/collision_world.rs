@@ -1,13 +1,15 @@
 use glam::Vec3A;
 
-use super::collision_dispatcher::CollisionDispatcher;
+use super::{
+    collision_dispatcher::CollisionDispatcher,
+    ray_packet_callbacks::{
+        BridgeTriangleRaycastPacketCallback, QuadRayCallback, RayResultCallback,
+    },
+};
 use crate::{
     bullet::{
         collision::{
             broadphase::GridBroadphase,
-            dispatch::ray_packet_callbacks::{
-                BridgeTriangleRaycastPacketCallback, QuadRayCallback, RayResultCallback,
-            },
             narrowphase::persistent_manifold::{CONTACT_BREAKING_THRESHOLD, ContactAddedCallback},
         },
         dynamics::rigid_body::RigidBody,

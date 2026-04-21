@@ -1,5 +1,3 @@
-use std::f32;
-
 use glam::Vec3A;
 
 const VORONOI_SIMPLEX_MAX_VERTS: usize = 5;
@@ -170,9 +168,8 @@ impl VoronoiSimplexSolver {
         found
     }
 
-    pub fn compute_points(&mut self, p1: &mut Vec3A, p2: &mut Vec3A) {
+    pub fn compute_points(&mut self, p2: &mut Vec3A) {
         self.update_closest_vector_and_points();
-        *p1 = self.cached_p1;
         *p2 = self.cached_p2;
     }
 

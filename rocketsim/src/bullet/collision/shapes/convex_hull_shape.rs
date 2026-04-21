@@ -1,12 +1,10 @@
 use glam::{Affine3A, Vec3A};
 
+use super::polyhedral_convex_shape::PolyhedralConvexShape;
 use crate::{
     bullet::{
-        collision::{
-            dispatch::ray_packet_callbacks::{
-                BridgeTriangleRaycastPacketCallback, RayResultCallback,
-            },
-            shapes::polyhedral_convex_shape::PolyhedralConvexShape,
+        collision::dispatch::ray_packet_callbacks::{
+            BridgeTriangleRaycastPacketCallback, RayResultCallback,
         },
         linear_math::max_dot,
     },

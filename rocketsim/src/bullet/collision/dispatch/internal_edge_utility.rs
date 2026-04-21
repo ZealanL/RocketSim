@@ -2,10 +2,10 @@ use std::{f32::consts::PI, mem};
 
 use glam::{Quat, Vec3, Vec3A};
 
+use super::tri_bvh_util::NodeOverlapCallback;
 use crate::{
     bullet::{
         collision::{
-            dispatch::tri_bvh_util::*,
             narrowphase::manifold_point::ManifoldPoint,
             shapes::{
                 collision_shape::CollisionShapes,
@@ -18,7 +18,7 @@ use crate::{
         dynamics::rigid_body::RigidBody,
         linear_math::{AffineExt, QuatExt},
     },
-    shared::{Aabb, bvh::Tree},
+    shared::bvh::Tree,
 };
 
 fn get_angle(edge_a: Vec3A, normal_a: Vec3A, normal_b: Vec3A) -> f32 {
@@ -32,7 +32,7 @@ struct ConnectivityProcessor<'a> {
 }
 
 impl ProcessTriangle for ConnectivityProcessor<'_> {
-    fn process_triangle(&mut self, tri: &TriangleShape, _tri_aabb: &Aabb, triangle_idx: usize) {
+    fn process_triangle(&mut self, tri: &TriangleShape, triangle_idx: usize) {
         if self.idx == triangle_idx
             || tri.normal_length < TriangleInfoMap::EQUAL_VERTEX_THRESHOLD
             || self.shape.normal_length < TriangleInfoMap::EQUAL_VERTEX_THRESHOLD
@@ -160,8 +160,7 @@ impl ProcessTriangle for ConnectivityProcessor<'_> {
 pub fn generate_internal_edge_info(bvh: &Tree, mesh_interface: &TriangleMesh) -> TriangleInfoMap {
     let mut triangle_info_map = TriangleInfoMap::new(mesh_interface.get_total_num_faces());
 
-    let (tris, aabbs) = mesh_interface.get_tris_aabbs();
-    for (i, (triangle_a, aabb)) in tris.iter().zip(aabbs).enumerate() {
+    for (i, triangle_a) in mesh_interface.get_tris().iter().enumerate() {
         let mut connectivity_processor = ConnectivityProcessor {
             idx: i,
             shape: triangle_a,
@@ -170,7 +169,7 @@ pub fn generate_internal_edge_info(bvh: &Tree, mesh_interface: &TriangleMesh) ->
 
         let mut my_node_callback =
             NodeOverlapCallback::new(mesh_interface, &mut connectivity_processor);
-        bvh.report_aabb_overlapping_node(&mut my_node_callback, aabb);
+        bvh.report_aabb_overlapping_node(&mut my_node_callback, &triangle_a.aabb);
     }
 
     triangle_info_map

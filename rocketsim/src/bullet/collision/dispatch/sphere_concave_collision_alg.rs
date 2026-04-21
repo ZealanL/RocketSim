@@ -1,18 +1,15 @@
 use glam::{Affine3A, Vec3A};
 
-use crate::{
-    bullet::{
-        collision::{
-            narrowphase::persistent_manifold::{ContactAddedCallback, PersistentManifold},
-            shapes::{
-                bvh_triangle_mesh_shape::BvhTriangleMeshShape, sphere_shape::SphereShape,
-                triangle_callback::ProcessTriangle, triangle_shape::TriangleShape,
-            },
+use crate::bullet::{
+    collision::{
+        narrowphase::persistent_manifold::{ContactAddedCallback, PersistentManifold},
+        shapes::{
+            bvh_triangle_mesh_shape::BvhTriangleMeshShape, sphere_shape::SphereShape,
+            triangle_callback::ProcessTriangle, triangle_shape::TriangleShape,
         },
-        dynamics::rigid_body::RigidBody,
-        linear_math::AffineExt,
     },
-    shared::Aabb,
+    dynamics::rigid_body::RigidBody,
+    linear_math::AffineExt,
 };
 
 struct SphereTriangleCallback<'a, T: ContactAddedCallback> {
@@ -44,12 +41,7 @@ impl<'a, T: ContactAddedCallback> SphereTriangleCallback<'a, T> {
 }
 
 impl<T: ContactAddedCallback> ProcessTriangle for SphereTriangleCallback<'_, T> {
-    fn process_triangle(
-        &mut self,
-        triangle: &TriangleShape,
-        _tri_aabb: &Aabb,
-        triangle_idx: usize,
-    ) {
+    fn process_triangle(&mut self, triangle: &TriangleShape, triangle_idx: usize) {
         let Some(contact_info) = triangle.intersect_sphere(
             self.sphere_center,
             self.sphere_radius,

@@ -1,10 +1,8 @@
+use super::collision_obj_wrapper::RigidBodyWrapper;
 use crate::bullet::{
-    collision::{
-        dispatch::collision_obj_wrapper::RigidBodyWrapper,
-        narrowphase::{
-            gjk::{ClosestPointInput, GjkPairDetector, GjkResult},
-            persistent_manifold::{ContactAddedCallback, PersistentManifold},
-        },
+    collision::narrowphase::{
+        gjk::{ClosestPointInput, GjkPairDetector, GjkResult},
+        persistent_manifold::{ContactAddedCallback, PersistentManifold},
     },
     dynamics::rigid_body::RigidBody,
 };
@@ -46,12 +44,12 @@ pub fn process_collision<T: ContactAddedCallback>(
     let margin_b = convex_obj_b.get_collision_shape().get_margin();
 
     let input = ClosestPointInput::new(
-        convex_obj_a.world_trans,
-        *convex_obj_b.get_world_trans(),
+        &convex_obj_a.world_trans,
+        convex_obj_b.get_world_trans(),
         margin_a + margin_b + manifold.contact_breaking_threshold,
     );
 
-    let mut detector = GjkPairDetector::new(margin_a, margin_b);
+    let detector = GjkPairDetector::new(margin_a, margin_b);
     let mut result = ManifoldResult {
         manifold: &mut manifold,
         body0: convex_obj_a.obj,

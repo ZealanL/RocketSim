@@ -1,5 +1,3 @@
-use glam::Affine3A;
-
 use super::{
     triangle_callback::ProcessTriangle, triangle_info_map::TriangleInfoMap,
     triangle_mesh::TriangleMesh, triangle_mesh_shape::TriangleMeshShape,
@@ -24,8 +22,7 @@ impl BvhTriangleMeshShape {
         let triangle_mesh_shape = TriangleMeshShape::new(&mesh_interface);
 
         // pre-calculate the aabb
-        let trans = Affine3A::IDENTITY;
-        let aabb_ident_cache = triangle_mesh_shape.get_aabb(&trans);
+        let aabb_ident_cache = triangle_mesh_shape.get_ident_aabb();
 
         let bvh = create_bvh(&mesh_interface, triangle_mesh_shape.local_aabb);
         let triangle_info_map = generate_internal_edge_info(&bvh, &mesh_interface);
