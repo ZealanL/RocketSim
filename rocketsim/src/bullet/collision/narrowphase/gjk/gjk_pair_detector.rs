@@ -1,7 +1,8 @@
 use glam::Vec3A;
 
 use super::{
-    closest_point_input::ClosestPointInput, result::GjkResult, simplex::VoronoiSimplexSolver,
+    GjkResult, closest_point_input::ClosestPointInput, penetration::calc_pen_depth,
+    solver::VoronoiSimplexSolver,
 };
 use crate::bullet::collision::shapes::collision_shape::CollisionShapes;
 
@@ -165,18 +166,41 @@ impl GjkPairDetector {
 
         if !is_valid || catch_degenerate_penetration_case {
             self.simplex_solver.reset();
-
             self.cached_separating_axis = Vec3A::ZERO;
 
-            todo!()
+            if let Some(result) = calc_pen_depth(shape_a, shape_b, &local_trans_a, &local_trans_b) {
+                self.cached_separating_axis = result.normal;
+                let [tmp_point_on_a, tmp_point_on_b] = result.witnesses;
+
+                let tmp_normal_in_b = tmp_point_on_b - tmp_point_on_a;
+                let len_sqr = tmp_normal_in_b.length_squared();
+                if len_sqr > f32::EPSILON * f32::EPSILON {
+                    let length = len_sqr.sqrt();
+                    let distance_2 = -length;
+
+                    // only replace valid penetrations when the result is deeper
+                    if !is_valid || distance_2 < distance {
+                        distance = distance_2;
+                        // point_on_a = tmp_point_on_a;
+                        point_on_b = tmp_point_on_b;
+                        normal_in_b = tmp_normal_in_b / length;
+                        is_valid = true;
+                    }
+                }
+            }
         }
 
         if is_valid && distance * distance < input.maximum_distance_squared {
-            let pos_a = shape_a.get_aabb(&local_trans_a).center();
-            let pos_b = shape_b.get_aabb(&local_trans_b).center();
-            let diff = pos_a - pos_b;
-            if diff.dot(diff).is_sign_negative() {
-                normal_in_b *= -1.0;
+            {
+                // in some degenerate cases (usually when the use uses very small margins)
+                // the contact normal is pointing the wrong direction
+                // todo: see if this can be removed :/
+                let pos_a = shape_a.get_aabb(&local_trans_a).center();
+                let pos_b = shape_b.get_aabb(&local_trans_b).center();
+                let diff = pos_a - pos_b;
+                if diff.dot(diff).is_sign_negative() {
+                    normal_in_b *= -1.0;
+                }
             }
 
             self.cached_separating_axis = normal_in_b;

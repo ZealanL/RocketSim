@@ -1,58 +1,53 @@
 use glam::{Affine3A, Vec3A};
 
 use crate::{
-    bullet::collision::{
-        dispatch::ray_packet_callbacks::{BridgeTriangleRaycastPacketCallback, RayResultCallback},
-        shapes::polyhedral_convex_shape::PolyhedralConvexShape,
+    bullet::{
+        collision::{
+            dispatch::ray_packet_callbacks::{
+                BridgeTriangleRaycastPacketCallback, RayResultCallback,
+            },
+            shapes::polyhedral_convex_shape::PolyhedralConvexShape,
+        },
+        linear_math::max_dot,
     },
     shared::{Aabb, RayPacketInfo},
 };
 
 pub struct ConvexHullShape {
-    polyhedral_convex_aabb_caching_shape: PolyhedralConvexShape,
+    polyhedral_convex_shape: PolyhedralConvexShape,
     unscaled_points: Vec<Vec3A>,
 }
 
 impl ConvexHullShape {
     pub fn new(points: Vec<Vec3A>) -> Self {
         Self {
-            polyhedral_convex_aabb_caching_shape: PolyhedralConvexShape::new(&points),
+            polyhedral_convex_shape: PolyhedralConvexShape::new(&points),
             unscaled_points: points,
         }
     }
 
+    #[inline]
     pub fn local_get_supporting_vertex_without_margin(&self, vec: Vec3A) -> Vec3A {
-        let mut sup_vec = Vec3A::ZERO;
-        let mut max_dot = f32::NEG_INFINITY;
-
-        for &point in &self.unscaled_points {
-            let dot = vec.dot(point);
-            if dot > max_dot {
-                sup_vec = point;
-                max_dot = dot;
-            }
-        }
-
-        sup_vec
+        max_dot(&self.unscaled_points, vec)
     }
 
     pub fn local_get_supporting_vertex(&self, vec: Vec3A) -> Vec3A {
         let mut sup_vertex = self.local_get_supporting_vertex_without_margin(vec);
 
-        debug_assert_ne!(self.polyhedral_convex_aabb_caching_shape.get_margin(), 0.0);
+        debug_assert_ne!(self.polyhedral_convex_shape.get_margin(), 0.0);
         let vec_norm = vec.normalize_or(Vec3A::NEG_ONE);
-        sup_vertex += self.polyhedral_convex_aabb_caching_shape.get_margin() * vec_norm;
+        sup_vertex += self.polyhedral_convex_shape.get_margin() * vec_norm;
 
         sup_vertex
     }
 
     #[inline]
     pub fn get_margin(&self) -> f32 {
-        self.polyhedral_convex_aabb_caching_shape.get_margin()
+        self.polyhedral_convex_shape.get_margin()
     }
 
     fn get_aabb_slow(&self, trans: &Affine3A) -> Aabb {
-        let margin = self.polyhedral_convex_aabb_caching_shape.get_margin();
+        let margin = self.polyhedral_convex_shape.get_margin();
 
         let mut aabb = Aabb::ZERO;
 
@@ -75,16 +70,16 @@ impl ConvexHullShape {
 
     #[inline]
     pub fn get_ident_aabb(&self) -> &Aabb {
-        self.polyhedral_convex_aabb_caching_shape.get_ident_aabb()
+        self.polyhedral_convex_shape.get_ident_aabb()
     }
 
     #[inline]
     pub fn get_aabb(&self, trans: &Affine3A) -> Aabb {
-        self.polyhedral_convex_aabb_caching_shape.get_aabb(trans)
+        self.polyhedral_convex_shape.get_aabb(trans)
     }
 
     pub fn calculate_local_intertia(&self, mass: f32) -> Vec3A {
-        let margin = self.polyhedral_convex_aabb_caching_shape.get_margin();
+        let margin = self.polyhedral_convex_shape.get_margin();
 
         let aabb = self.get_aabb_slow(&Affine3A::IDENTITY);
         let half_extents = (aabb.max - aabb.min) * 0.5;
