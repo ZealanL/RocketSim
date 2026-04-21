@@ -29,8 +29,7 @@ impl<'a, T: ContactAddedCallback> GjkResult for ManifoldResult<'a, T> {
             normal_on_b,
             point_on_b_world,
             depth,
-            -1,
-            -1,
+            None,
             self.contact_added_callback,
         );
     }
@@ -41,7 +40,7 @@ pub fn process_collision<T: ContactAddedCallback>(
     convex_obj_b: &RigidBody,
     contact_added_callback: &mut T,
 ) -> Option<PersistentManifold> {
-    let mut manifold = PersistentManifold::new(convex_obj_a.obj, convex_obj_b, false);
+    let mut manifold = PersistentManifold::new(convex_obj_a.obj, convex_obj_b);
 
     let margin_a = convex_obj_a.obj.get_collision_shape().get_margin();
     let margin_b = convex_obj_b.get_collision_shape().get_margin();

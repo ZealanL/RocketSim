@@ -56,6 +56,7 @@ impl ContactAddedCallback for ArenaContactTracker {
         manifold_point: &mut ManifoldPoint,
         mut body_a: &'a RigidBody,
         mut body_b: &'a RigidBody,
+        idx: Option<usize>,
     ) {
         debug_assert!(body_a.has_contact_response() || body_b.has_contact_response());
 
@@ -99,14 +100,8 @@ impl ContactAddedCallback for ArenaContactTracker {
             manifold_point: *manifold_point,
         });
 
-        adjust_internal_edge_contacts(
-            manifold_point,
-            body_b,
-            if should_swap {
-                manifold_point.idx_0
-            } else {
-                manifold_point.idx_1
-            } as usize,
-        );
+        if let Some(idx) = idx {
+            adjust_internal_edge_contacts(manifold_point, body_b, idx);
+        }
     }
 }

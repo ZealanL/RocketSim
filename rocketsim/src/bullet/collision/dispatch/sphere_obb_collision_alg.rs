@@ -14,7 +14,6 @@ pub fn process_collision<T: ContactAddedCallback>(
     sphere_shape: &SphereShape,
     obb_obj: &RigidBody,
     obb_shape: &CompoundShape,
-    is_swapped: bool,
     contact_added_callback: &mut T,
 ) -> Option<PersistentManifold> {
     let sphere_trans = sphere_obj.get_world_trans();
@@ -59,15 +58,14 @@ pub fn process_collision<T: ContactAddedCallback>(
     // This is the official contact point on the box
     let point_on_box_plus_margin = point_on_box + (normal_on_box * box_margin);
 
-    let mut manifold = PersistentManifold::new(sphere_obj, obb_obj, is_swapped);
+    let mut manifold = PersistentManifold::new(sphere_obj, obb_obj);
     manifold.add_contact_point(
         sphere_obj,
         obb_obj,
         normal_on_box,
         point_on_box_plus_margin,
         depth,
-        -1,
-        -1,
+        None,
         contact_added_callback,
     );
     manifold.refresh_contact_points(sphere_obj, obb_obj);

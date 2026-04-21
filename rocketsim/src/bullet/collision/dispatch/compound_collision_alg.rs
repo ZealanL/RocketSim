@@ -275,8 +275,7 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
             normal_world_on_b,
             contact_point_world,
             distance,
-            -1,
-            triangle_idx as i32,
+            Some(triangle_idx),
             self.contact_added_callback,
         );
     }
@@ -286,7 +285,6 @@ pub fn process_collision<T: ContactAddedCallback>(
     compound_obj: &RigidBody,
     compound_shape: &CompoundShape,
     other_obj: &RigidBody,
-    is_swapped: bool,
     contact_added_callback: &mut T,
 ) -> Option<PersistentManifold> {
     let org_trans = *compound_obj.get_world_trans();
@@ -319,7 +317,7 @@ pub fn process_collision<T: ContactAddedCallback>(
             let aabb_in_triangle = box_shape.get_aabb(&convex_in_triangle_space);
 
             let mut convex_triangle_callback = ConvexTriangleCallback {
-                manifold: PersistentManifold::new(compound_obj, other_obj, is_swapped),
+                manifold: PersistentManifold::new(compound_obj, other_obj),
                 convex_obj: compound_obj_wrap,
                 tri_obj: other_obj,
                 local_convex_aabb: &aabb_in_triangle,
@@ -340,7 +338,6 @@ pub fn process_collision<T: ContactAddedCallback>(
             }
         }
         CollisionShapes::StaticPlane(plane) => convex_plane_collision_alg::process_collision(
-            is_swapped,
             compound_obj_wrap,
             other_obj,
             plane,

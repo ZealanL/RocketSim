@@ -33,7 +33,6 @@ impl CollisionDispatcher {
         match col_obj_a.get_collision_shape() {
             CollisionShapes::StaticPlane(plane) => match col_obj_b.get_collision_shape() {
                 CollisionShapes::Sphere(_) => convex_plane_collision_alg::process_collision(
-                    true,
                     RigidBodyWrapper {
                         obj: col_obj_b,
                         world_trans: *col_obj_b.get_world_trans(),
@@ -46,11 +45,9 @@ impl CollisionDispatcher {
                     col_obj_b,
                     compound,
                     col_obj_a,
-                    true,
                     contact_added_callback,
                 ),
                 CollisionShapes::ConvexHull(_) => convex_plane_collision_alg::process_collision(
-                    true,
                     RigidBodyWrapper {
                         obj: col_obj_b,
                         world_trans: *col_obj_b.get_world_trans(),
@@ -64,7 +61,6 @@ impl CollisionDispatcher {
             CollisionShapes::Sphere(sphere) => match col_obj_b.get_collision_shape() {
                 CollisionShapes::StaticPlane(plane) => {
                     convex_plane_collision_alg::process_collision(
-                        false,
                         RigidBodyWrapper {
                             obj: col_obj_a,
                             world_trans: *col_obj_a.get_world_trans(),
@@ -80,7 +76,6 @@ impl CollisionDispatcher {
                         sphere,
                         col_obj_b,
                         mesh,
-                        false,
                         contact_added_callback,
                     )
                 }
@@ -89,7 +84,6 @@ impl CollisionDispatcher {
                     sphere,
                     col_obj_b,
                     compound,
-                    false,
                     contact_added_callback,
                 ),
                 _ => unreachable!(),
@@ -100,14 +94,12 @@ impl CollisionDispatcher {
                     sphere,
                     col_obj_a,
                     mesh,
-                    true,
                     contact_added_callback,
                 ),
                 CollisionShapes::Compound(compound) => compound_collision_alg::process_collision(
                     col_obj_b,
                     compound,
                     col_obj_a,
-                    true,
                     contact_added_callback,
                 ),
                 CollisionShapes::ConvexHull(_) => todo!(),
@@ -119,7 +111,6 @@ impl CollisionDispatcher {
                         col_obj_a,
                         compound_a,
                         col_obj_b,
-                        false,
                         contact_added_callback,
                     )
                 }
@@ -128,7 +119,6 @@ impl CollisionDispatcher {
                     sphere,
                     col_obj_a,
                     compound_a,
-                    true,
                     contact_added_callback,
                 ),
                 CollisionShapes::Compound(compound_b) => obb_obb_collision_alg::process_collision(
@@ -142,14 +132,12 @@ impl CollisionDispatcher {
                     col_obj_a,
                     compound_a,
                     col_obj_b,
-                    false,
                     contact_added_callback,
                 ),
             },
             CollisionShapes::ConvexHull(_) => match col_obj_b.get_collision_shape() {
                 CollisionShapes::StaticPlane(plane) => {
                     convex_plane_collision_alg::process_collision(
-                        false,
                         RigidBodyWrapper {
                             obj: col_obj_a,
                             world_trans: *col_obj_a.get_world_trans(),
@@ -163,7 +151,6 @@ impl CollisionDispatcher {
                     col_obj_b,
                     compound,
                     col_obj_a,
-                    true,
                     contact_added_callback,
                 ),
                 CollisionShapes::TriangleMesh(_) => todo!(),

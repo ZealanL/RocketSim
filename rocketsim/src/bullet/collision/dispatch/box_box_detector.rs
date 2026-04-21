@@ -208,7 +208,7 @@ impl<T: ContactAddedCallback> BoxBoxDetector<'_, T> {
 
         let hit = box_box_sat(&obb1, &transform_a.matrix3, &obb2)?;
 
-        let mut manifold = PersistentManifold::new(self.col1, self.col2, false);
+        let mut manifold = PersistentManifold::new(self.col1, self.col2);
 
         self.compute_contact_points(
             &obb1,
@@ -267,8 +267,7 @@ impl<T: ContactAddedCallback> BoxBoxDetector<'_, T> {
                 -hit.normal,
                 pb + ub * beta,
                 -hit.depth,
-                -1,
-                -1,
+                None,
                 self.contact_added_callback,
             );
 
@@ -402,8 +401,7 @@ impl<T: ContactAddedCallback> BoxBoxDetector<'_, T> {
                         -hit.normal,
                         point + obb1.center,
                         -depth,
-                        -1,
-                        -1,
+                        None,
                         self.contact_added_callback,
                     );
                 }
@@ -415,8 +413,7 @@ impl<T: ContactAddedCallback> BoxBoxDetector<'_, T> {
                         -hit.normal,
                         point + obb1.center - hit.normal * depth,
                         -depth,
-                        -1,
-                        -1,
+                        None,
                         self.contact_added_callback,
                     );
                 }
@@ -446,8 +443,7 @@ impl<T: ContactAddedCallback> BoxBoxDetector<'_, T> {
                     -hit.normal,
                     pos_in_world,
                     -dep[idx],
-                    -1,
-                    -1,
+                    None,
                     self.contact_added_callback,
                 );
             } else {
@@ -457,8 +453,7 @@ impl<T: ContactAddedCallback> BoxBoxDetector<'_, T> {
                     -hit.normal,
                     pos_in_world - hit.normal * dep[idx],
                     -dep[idx],
-                    -1,
-                    -1,
+                    None,
                     self.contact_added_callback,
                 );
             }
