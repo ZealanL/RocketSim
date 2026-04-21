@@ -15,7 +15,7 @@ use crate::{
     shared::Aabb,
 };
 
-struct ConvexTriangleCallback<'a, T: ContactAddedCallback> {
+struct SphereTriangleCallback<'a, T: ContactAddedCallback> {
     pub manifold: PersistentManifold,
     pub convex_obj: &'a RigidBody,
     pub tri_obj: &'a RigidBody,
@@ -24,7 +24,7 @@ struct ConvexTriangleCallback<'a, T: ContactAddedCallback> {
     sphere_radius: f32,
 }
 
-impl<'a, T: ContactAddedCallback> ConvexTriangleCallback<'a, T> {
+impl<'a, T: ContactAddedCallback> SphereTriangleCallback<'a, T> {
     pub fn new(
         convex_obj: &'a RigidBody,
         tri_obj: &'a RigidBody,
@@ -44,7 +44,7 @@ impl<'a, T: ContactAddedCallback> ConvexTriangleCallback<'a, T> {
     }
 }
 
-impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> {
+impl<T: ContactAddedCallback> ProcessTriangle for SphereTriangleCallback<'_, T> {
     fn process_triangle(
         &mut self,
         triangle: &TriangleShape,
@@ -96,7 +96,7 @@ pub fn process_collision<T: ContactAddedCallback>(
         translation: xform2.transform_point3a(xform1.translation),
     };
 
-    let mut convex_triangle_callback = ConvexTriangleCallback::new(
+    let mut convex_triangle_callback = SphereTriangleCallback::new(
         convex_obj,
         concave_obj,
         convex_in_triangle_space.translation,

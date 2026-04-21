@@ -1,6 +1,6 @@
 use super::{
-    compound_collision_alg, convex_concave_collision_alg, convex_plane_collision_alg,
-    obb_obb_collision_alg, sphere_obb_collision_alg,
+    compound_collision_alg, convex_plane_collision_alg, obb_obb_collision_alg,
+    sphere_concave_collision_alg, sphere_obb_collision_alg,
 };
 use crate::bullet::{
     collision::{
@@ -75,7 +75,7 @@ impl CollisionDispatcher {
                     )
                 }
                 CollisionShapes::TriangleMesh(mesh) => {
-                    convex_concave_collision_alg::process_collision(
+                    sphere_concave_collision_alg::process_collision(
                         col_obj_a,
                         sphere,
                         col_obj_b,
@@ -95,7 +95,7 @@ impl CollisionDispatcher {
                 _ => unreachable!(),
             },
             CollisionShapes::TriangleMesh(mesh) => match col_obj_b.get_collision_shape() {
-                CollisionShapes::Sphere(sphere) => convex_concave_collision_alg::process_collision(
+                CollisionShapes::Sphere(sphere) => sphere_concave_collision_alg::process_collision(
                     col_obj_b,
                     sphere,
                     col_obj_a,
