@@ -3,9 +3,10 @@ use glam::{Affine3A, Vec3A};
 use super::solver::{Epa2, EpaStatus, Gjk, GjkStatus, MinkowskiDiff};
 use crate::bullet::collision::shapes::collision_shape::CollisionShapes;
 
-pub struct PenetrationResult {
+pub struct GjkEpa2Result {
     pub witnesses: [Vec3A; 2],
     pub normal: Vec3A,
+    pub penetrating: bool,
 }
 
 fn penetration(
@@ -14,7 +15,7 @@ fn penetration(
     shape_b: &CollisionShapes,
     trans_b: &Affine3A,
     guess: Vec3A,
-) -> Option<PenetrationResult> {
+) -> Option<GjkEpa2Result> {
     let shape = MinkowskiDiff::new(shape_a, *trans_a, shape_b, *trans_b);
 
     let mut gjk = Gjk::new(&shape);
@@ -33,12 +34,52 @@ fn penetration(
         w0 += shape.support0::<true>(epa.sv_store[epa.result.c[i]].d) * epa.result.p[i];
     }
 
-    Some(PenetrationResult {
+    Some(GjkEpa2Result {
         witnesses: [
             trans_a.transform_point3a(w0),
             trans_a.transform_point3a(w0 - epa.normal * epa.depth),
         ],
         normal: -epa.normal,
+        penetrating: true,
+    })
+}
+
+fn distance(
+    shape_a: &CollisionShapes,
+    trans_a: &Affine3A,
+    shape_b: &CollisionShapes,
+    trans_b: &Affine3A,
+    guess: Vec3A,
+) -> Option<GjkEpa2Result> {
+    let shape = MinkowskiDiff::new(shape_a, *trans_a, shape_b, *trans_b);
+
+    let mut gjk = Gjk::new(&shape);
+    match gjk.evaluate::<false>(guess) {
+        GjkStatus::Inside | GjkStatus::Failed => return None,
+        GjkStatus::Valid => {}
+    }
+
+    let simplex = gjk.simplices[gjk.simplex];
+    if simplex.rank == 0 {
+        return None;
+    }
+
+    let mut w0 = Vec3A::ZERO;
+    let mut w1 = Vec3A::ZERO;
+
+    for i in 0..simplex.rank {
+        let sv = gjk.store[simplex.c[i]];
+        let weight = simplex.p[i];
+        if weight != 0.0 {
+            w0 += shape.support0::<false>(sv.d) * weight;
+            w1 += shape.support1::<false>(-sv.d) * weight;
+        }
+    }
+
+    Some(GjkEpa2Result {
+        witnesses: [w0, w1],
+        normal: (w1 - w0).normalize_or_zero(),
+        penetrating: false,
     })
 }
 
@@ -47,7 +88,7 @@ pub fn calc_pen_depth(
     shape_b: &CollisionShapes,
     trans_a: &Affine3A,
     trans_b: &Affine3A,
-) -> Option<PenetrationResult> {
+) -> Option<GjkEpa2Result> {
     let guess_vectors = [
         (trans_b.translation - trans_a.translation).normalize_or_zero(),
         (trans_a.translation - trans_b.translation).normalize_or_zero(),
@@ -66,7 +107,10 @@ pub fn calc_pen_depth(
             return results;
         }
 
-        todo!("gjk/epa distance")
+        let results = distance(shape_a, trans_a, shape_b, trans_b, guess);
+        if results.is_some() {
+            return results;
+        }
     }
 
     None
