@@ -30,11 +30,10 @@ impl<'a, T: ContactAddedCallback> SphereTriangleCallback<'a, T> {
         tri_obj: &'a RigidBody,
         sphere_center: Vec3A,
         sphere_radius: f32,
-        is_swapped: bool,
         contact_added_callback: &'a mut T,
     ) -> Self {
         Self {
-            manifold: PersistentManifold::new(convex_obj, tri_obj, is_swapped),
+            manifold: PersistentManifold::new(convex_obj, tri_obj),
             convex_obj,
             tri_obj,
             sphere_center,
@@ -74,8 +73,7 @@ impl<T: ContactAddedCallback> ProcessTriangle for SphereTriangleCallback<'_, T> 
             normal_on_b,
             point_in_world,
             contact_info.depth,
-            -1,
-            triangle_idx as i32,
+            Some(triangle_idx),
             self.contact_added_callback,
         );
     }
@@ -86,7 +84,6 @@ pub fn process_collision<T: ContactAddedCallback>(
     sphere_shape: &SphereShape,
     concave_obj: &RigidBody,
     tri_mesh: &BvhTriangleMeshShape,
-    is_swapped: bool,
     contact_added_callback: &mut T,
 ) -> Option<PersistentManifold> {
     let xform1 = convex_obj.get_world_trans();
@@ -101,7 +98,6 @@ pub fn process_collision<T: ContactAddedCallback>(
         concave_obj,
         convex_in_triangle_space.translation,
         sphere_shape.get_radius(),
-        is_swapped,
         contact_added_callback,
     );
 

@@ -10,7 +10,6 @@ use crate::bullet::{
 };
 
 pub fn process_collision<T: ContactAddedCallback>(
-    is_swapped: bool,
     convex_obj: RigidBodyWrapper,
     plane_obj: &RigidBody,
     plane_shape: &StaticPlaneShape,
@@ -36,7 +35,7 @@ pub fn process_collision<T: ContactAddedCallback>(
     let vtx_in_plane = convex_in_plane_trans.transform_point3a(vtx);
     let distance = plane_normal.dot(vtx_in_plane);
 
-    let mut manifold = PersistentManifold::new(convex_obj.obj, plane_obj, is_swapped);
+    let mut manifold = PersistentManifold::new(convex_obj.obj, plane_obj);
     if distance >= manifold.contact_breaking_threshold {
         return None;
     }
@@ -53,8 +52,7 @@ pub fn process_collision<T: ContactAddedCallback>(
         normal_on_surface_b,
         vtx_in_plane_world,
         distance,
-        -1,
-        -1,
+        None,
         contact_added_callback,
     );
 

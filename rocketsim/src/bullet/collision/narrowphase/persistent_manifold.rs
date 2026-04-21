@@ -1,5 +1,3 @@
-use std::mem;
-
 use arrayvec::ArrayVec;
 use glam::{Vec3A, Vec4};
 
@@ -15,6 +13,7 @@ pub trait ContactAddedCallback {
         contact_point: &mut ManifoldPoint,
         body_a: &RigidBody,
         body_b: &RigidBody,
+        idx: Option<usize>,
     );
 }
 
@@ -27,11 +26,10 @@ pub struct PersistentManifold {
     pub body1_idx: usize,
     pub contact_breaking_threshold: f32,
     pub contact_processing_threshold: f32,
-    pub is_swapped: bool,
 }
 
 impl PersistentManifold {
-    pub fn new(body0: &RigidBody, body1: &RigidBody, is_swapped: bool) -> Self {
+    pub fn new(body0: &RigidBody, body1: &RigidBody) -> Self {
         debug_assert_ne!(body0.world_array_idx, body1.world_array_idx);
 
         let body0_cbt = body0
@@ -51,7 +49,6 @@ impl PersistentManifold {
             contact_breaking_threshold,
             contact_processing_threshold,
             point_cache: ArrayVec::new(),
-            is_swapped,
         }
     }
 
@@ -177,15 +174,14 @@ impl PersistentManifold {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn add_contact_point<'a, T: ContactAddedCallback>(
+    pub fn add_contact_point<T: ContactAddedCallback>(
         &mut self,
-        mut body0: &'a RigidBody,
-        mut body1: &'a RigidBody,
+        body0: &RigidBody,
+        body1: &RigidBody,
         normal_on_b_in_world: Vec3A,
         point_in_world: Vec3A,
         depth: f32,
-        idx_0: i32,
-        idx_1: i32,
+        idx_1: Option<usize>,
         contact_added_callback: &mut T,
     ) {
         if depth > self.contact_breaking_threshold {
@@ -208,24 +204,12 @@ impl PersistentManifold {
         (new_pt.lateral_friction_dir_1, new_pt.lateral_friction_dir_2) =
             plane_space_2(new_pt.normal_world_on_b);
 
-        if self.is_swapped {
-            new_pt.idx_0 = idx_1;
-            new_pt.idx_1 = idx_0;
-        } else {
-            new_pt.idx_0 = idx_0;
-            new_pt.idx_1 = idx_1;
-        }
-
         let insert_idx = self.add_manifold_point(new_pt);
-
-        if self.is_swapped {
-            mem::swap(&mut body0, &mut body1);
-        }
 
         if body0.collision_flags & CollisionFlags::CustomMaterialCallback as u8 != 0
             || body1.collision_flags & CollisionFlags::CustomMaterialCallback as u8 != 0
         {
-            contact_added_callback.callback(&mut self.point_cache[insert_idx], body0, body1);
+            contact_added_callback.callback(&mut self.point_cache[insert_idx], body0, body1, idx_1);
         }
     }
 

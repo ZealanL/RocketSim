@@ -220,7 +220,7 @@ pub fn adjust_internal_edge_contacts(
     idx: usize,
 ) {
     let CollisionShapes::TriangleMesh(tri_mesh) = tri_mesh_col_obj.get_collision_shape() else {
-        return;
+        unreachable!();
     };
 
     let info = &tri_mesh.get_triangle_info_map()[idx];
