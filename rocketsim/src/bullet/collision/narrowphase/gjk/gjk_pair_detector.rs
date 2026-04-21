@@ -172,18 +172,29 @@ impl GjkPairDetector {
                 self.cached_separating_axis = result.normal;
                 let [tmp_point_on_a, tmp_point_on_b] = result.witnesses;
 
-                let tmp_normal_in_b = tmp_point_on_b - tmp_point_on_a;
-                let len_sqr = tmp_normal_in_b.length_squared();
-                if len_sqr > f32::EPSILON * f32::EPSILON {
-                    let length = len_sqr.sqrt();
-                    let distance_2 = -length;
+                if result.penetrating {
+                    let tmp_normal_in_b = tmp_point_on_b - tmp_point_on_a;
+                    let len_sqr = tmp_normal_in_b.length_squared();
+                    if len_sqr > f32::EPSILON * f32::EPSILON {
+                        let length = len_sqr.sqrt();
+                        let distance_2 = -length;
 
-                    // only replace valid penetrations when the result is deeper
+                        // only replace valid penetrations when the result is deeper
+                        if !is_valid || distance_2 < distance {
+                            distance = distance_2;
+                            // point_on_a = tmp_point_on_a;
+                            point_on_b = tmp_point_on_b;
+                            normal_in_b = tmp_normal_in_b / length;
+                            is_valid = true;
+                        }
+                    }
+                } else {
+                    let distance_2 = (tmp_point_on_a - tmp_point_on_b).length() - margin;
                     if !is_valid || distance_2 < distance {
                         distance = distance_2;
-                        // point_on_a = tmp_point_on_a;
-                        point_on_b = tmp_point_on_b;
-                        normal_in_b = tmp_normal_in_b / length;
+                        // point_on_a = tmp_point_on_a - self.cached_separating_axis * self.margin_a;
+                        point_on_b = tmp_point_on_b + self.cached_separating_axis * self.margin_b;
+                        normal_in_b = self.cached_separating_axis.normalize();
                         is_valid = true;
                     }
                 }
