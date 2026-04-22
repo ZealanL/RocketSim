@@ -3,8 +3,11 @@ use glam::{Affine3A, Vec3A};
 use super::polyhedral_convex_shape::PolyhedralConvexShape;
 use crate::{
     bullet::{
-        collision::dispatch::ray_packet_callbacks::{
-            BridgeTriangleRaycastPacketCallback, RayResultCallback,
+        collision::{
+            dispatch::ray_packet_callbacks::{
+                BridgeTriangleRaycastPacketCallback, RayResultCallback,
+            },
+            narrowphase::gjk::calc_time_of_impact,
         },
         linear_math::max_dot,
     },
@@ -94,8 +97,8 @@ impl ConvexHullShape {
         result_callback: &mut BridgeTriangleRaycastPacketCallback<'_, T>,
         ray_info: &mut RayPacketInfo<'_>,
     ) {
-        let box_aabb = self.get_ident_aabb();
-        if !ray_info.aabb.intersects(box_aabb) {
+        let hull_aabb = self.get_ident_aabb();
+        if !ray_info.aabb.intersects(hull_aabb) {
             return;
         }
 
@@ -103,7 +106,7 @@ impl ConvexHullShape {
         let mask = RayPacketInfo::intersect_ray_aabb_packet(
             &origins,
             &inv_dirs,
-            box_aabb,
+            hull_aabb,
             result_callback.hit_fraction,
         );
 
@@ -112,13 +115,24 @@ impl ConvexHullShape {
                 continue;
             }
 
-            todo!()
-            // self.internal_perform_raycast(
-            //     result_callback,
-            //     ray_info.ray_sources[i],
-            //     ray_info.ray_targets[i],
-            //     i,
-            // );
+            self.internal_perform_raycast(
+                result_callback,
+                ray_info.ray_sources[i],
+                ray_info.ray_targets[i],
+                i,
+            );
+        }
+    }
+
+    fn internal_perform_raycast<T: RayResultCallback>(
+        &self,
+        result_callback: &mut BridgeTriangleRaycastPacketCallback<'_, T>,
+        ray_source: Vec3A,
+        ray_target: Vec3A,
+        ray_idx: usize,
+    ) {
+        if let Some(cast_result) = calc_time_of_impact(self, ray_source, ray_target) {
+            result_callback.report_hit(cast_result.normal, cast_result.fraction, ray_idx);
         }
     }
 }
