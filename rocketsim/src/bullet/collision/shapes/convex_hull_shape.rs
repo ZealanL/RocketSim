@@ -13,11 +13,11 @@ use crate::{
 
 pub struct ConvexHullShape {
     polyhedral_convex_shape: PolyhedralConvexShape,
-    unscaled_points: Vec<Vec3A>,
+    unscaled_points: Box<[Vec3A]>,
 }
 
 impl ConvexHullShape {
-    pub fn new(points: Vec<Vec3A>) -> Self {
+    pub fn new(points: Box<[Vec3A]>) -> Self {
         Self {
             polyhedral_convex_shape: PolyhedralConvexShape::new(&points),
             unscaled_points: points,

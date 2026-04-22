@@ -49,9 +49,7 @@ impl CollisionShapes {
                 debug_assert!(fast_compare_trans(t, &Affine3A::IDENTITY));
                 shape.aabb_ident_cache
             }
-            Self::Triangle(shape) => {
-                shape.aabb
-            }
+            Self::Triangle(shape) => shape.aabb,
         }
     }
 
