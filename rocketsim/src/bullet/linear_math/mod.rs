@@ -188,7 +188,7 @@ pub fn plane_space_1(n: Vec3A) -> Vec3A {
     }
 }
 
-pub fn max_dot(points: &[Vec3A], direction: Vec3A) -> Vec3A {
+pub fn max_dot(simd_points: &[[Vec4; 3]], points: &[Vec3A], direction: Vec3A) -> Vec3A {
     let mut max_dot = f32::NEG_INFINITY;
     let mut support_vertex = Vec3A::ZERO;
 
@@ -196,22 +196,17 @@ pub fn max_dot(points: &[Vec3A], direction: Vec3A) -> Vec3A {
     let dir_y = Vec4::splat(direction.y);
     let dir_z = Vec4::splat(direction.z);
 
-    let (simd_points, rem_points) = points.as_chunks::<4>();
-    for pts in simd_points {
-        let xs = Vec4::new(pts[0].x, pts[1].x, pts[2].x, pts[3].x);
-        let ys = Vec4::new(pts[0].y, pts[1].y, pts[2].y, pts[3].y);
-        let zs = Vec4::new(pts[0].z, pts[1].z, pts[2].z, pts[3].z);
-
-        let dots = xs * dir_x + ys * dir_y + zs * dir_z;
+    for (i, pts) in simd_points.iter().enumerate() {
+        let dots = pts[0] * dir_x + pts[1] * dir_y + pts[2] * dir_z;
 
         let this_max_dot = dots.max_element();
         if this_max_dot > max_dot {
             max_dot = this_max_dot;
-            support_vertex = pts[dots.max_position()];
+            support_vertex = points[i * 4 + dots.max_position()];
         }
     }
 
-    for &point in rem_points {
+    for &point in &points[simd_points.len() * 4..] {
         let dot = direction.dot(point);
         if dot > max_dot {
             support_vertex = point;

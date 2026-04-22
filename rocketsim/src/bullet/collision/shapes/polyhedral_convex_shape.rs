@@ -1,11 +1,11 @@
-use glam::{Affine3A, Vec3A};
+use glam::{Affine3A, Vec3A, Vec4};
 
 use crate::{
     bullet::{collision::shapes::convex_internal_shape::ConvexInternalShape, linear_math::max_dot},
     shared::Aabb,
 };
 
-fn calc_local_aabb(points: &[Vec3A], collision_margin: f32) -> Aabb {
+fn calc_local_aabb(simd_points: &[[Vec4; 3]], points: &[Vec3A], collision_margin: f32) -> Aabb {
     const DIRECTIONS: [Vec3A; 6] = [
         Vec3A::X,
         Vec3A::Y,
@@ -17,7 +17,7 @@ fn calc_local_aabb(points: &[Vec3A], collision_margin: f32) -> Aabb {
 
     let mut supporting = [Vec3A::ZERO; DIRECTIONS.len()];
     for (support_vertex, direction) in supporting.iter_mut().zip(DIRECTIONS) {
-        *support_vertex = max_dot(points, direction);
+        *support_vertex = max_dot(simd_points, points, direction);
     }
 
     let mut local_aabb_max = Vec3A::ZERO;
@@ -40,9 +40,9 @@ pub struct PolyhedralConvexShape {
 }
 
 impl PolyhedralConvexShape {
-    pub fn new(points: &[Vec3A]) -> Self {
+    pub fn new(simd_points: &[[Vec4; 3]], points: &[Vec3A]) -> Self {
         let convex_internal_shape = ConvexInternalShape::default();
-        let local_aabb = calc_local_aabb(points, convex_internal_shape.margin);
+        let local_aabb = calc_local_aabb(simd_points, points, convex_internal_shape.margin);
 
         Self {
             convex_internal_shape,
