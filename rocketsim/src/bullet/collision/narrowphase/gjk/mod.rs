@@ -2,9 +2,11 @@ mod closest_point_input;
 mod gjk_pair_detector;
 mod penetration;
 mod solver;
+mod subsimplex_convex_cast;
 
 pub use closest_point_input::ClosestPointInput;
 pub use gjk_pair_detector::GjkPairDetector;
+pub use subsimplex_convex_cast::calc_time_of_impact;
 
 pub trait GjkResult {
     fn add_contact_point(

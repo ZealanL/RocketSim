@@ -29,7 +29,7 @@ impl SphereShape {
 
     #[inline]
     pub fn get_radius(&self) -> f32 {
-        self.convex_internal_shape.implicit_dim.x
+        self.convex_internal_shape.margin
     }
 
     #[inline]
