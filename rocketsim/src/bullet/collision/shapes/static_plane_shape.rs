@@ -1,4 +1,4 @@
-use glam::{Affine3A, Vec3A};
+use glam::{Affine3A, Vec3A, Vec4};
 
 use crate::{
     bullet::{
@@ -91,51 +91,68 @@ impl StaticPlaneShape {
             return;
         }
 
-        let (origins, inv_dirs) = ray_info.calc_pos_dir();
-        let mask = RayPacketInfo::intersect_ray_aabb_packet(
-            &origins,
-            &inv_dirs,
+        let sources = ray_info.ray_sources;
+        let targets = ray_info.ray_targets;
+
+        let source_x = Vec4::new(sources[0].x, sources[1].x, sources[2].x, sources[3].x);
+        let source_y = Vec4::new(sources[0].y, sources[1].y, sources[2].y, sources[3].y);
+        let source_z = Vec4::new(sources[0].z, sources[1].z, sources[2].z, sources[3].z);
+
+        let target_x = Vec4::new(targets[0].x, targets[1].x, targets[2].x, targets[3].x);
+        let target_y = Vec4::new(targets[0].y, targets[1].y, targets[2].y, targets[3].y);
+        let target_z = Vec4::new(targets[0].z, targets[1].z, targets[2].z, targets[3].z);
+
+        let delta_x = target_x - source_x;
+        let delta_y = target_y - source_y;
+        let delta_z = target_z - source_z;
+
+        let inv_delta_x = Vec4::ONE / delta_x;
+        let inv_delta_y = Vec4::ONE / delta_y;
+        let inv_delta_z = Vec4::ONE / delta_z;
+
+        let ray_mask = RayPacketInfo::intersect_ray_aabb_packet(
+            &[source_x, source_y, source_z],
+            &[inv_delta_x, inv_delta_y, inv_delta_z],
             plane,
             result_callback.hit_fraction,
         );
-
-        for i in 0..4 {
-            if (mask & (1 << i)) == 0 {
-                continue;
-            }
-
-            self.internal_perform_raycast(
-                result_callback,
-                ray_info.ray_sources[i],
-                ray_info.ray_targets[i],
-                i,
-            );
-        }
-    }
-
-    fn internal_perform_raycast<T: RayResultCallback>(
-        &self,
-        result_callback: &mut BridgeTriangleRaycastPacketCallback<T>,
-        ray_source: Vec3A,
-        ray_target: Vec3A,
-        ray_idx: usize,
-    ) {
-        let delta = ray_target - ray_source;
-        let dist = delta.length();
-        let ray_direction = delta / dist;
-
-        let dir_align = self.plane_normal.dot(ray_direction);
-        if dir_align.abs() < f32::EPSILON {
+        if ray_mask == 0 {
             return;
         }
 
-        let normal_start = self.plane_normal.dot(ray_source);
+        let dist = (delta_x * delta_x + delta_y * delta_y + delta_z * delta_z).sqrt();
+        let inv_dist = Vec4::ONE / dist;
+
+        let dir_x = delta_x * inv_dist;
+        let dir_y = delta_y * inv_dist;
+        let dir_z = delta_z * inv_dist;
+
+        let dir_align =
+            dir_x * self.plane_normal.x + dir_y * self.plane_normal.y + dir_z * self.plane_normal.z;
+        let dir_align_mask = dir_align.abs().cmpge(Vec4::splat(f32::EPSILON));
+        if !dir_align_mask.any() {
+            return;
+        }
+
+        let normal_start = source_x * self.plane_normal.x
+            + source_y * self.plane_normal.y
+            + source_z * self.plane_normal.z;
+
         let t = -normal_start / dir_align;
-        if !(0.0..1.0).contains(&t) {
+
+        let t_mask = t.cmpge(Vec4::ZERO) & t.cmplt(Vec4::splat(1.0));
+        let hit_mask = ray_mask & (dir_align_mask & t_mask).bitmask() as u8;
+        if hit_mask == 0 {
             return;
         }
 
         let hit_fraction = t / dist;
-        result_callback.report_hit(self.plane_normal, hit_fraction, ray_idx);
+        for (i, hit_fraction) in hit_fraction.to_array().into_iter().enumerate() {
+            if (hit_mask & (1 << i)) == 0 {
+                continue;
+            }
+
+            result_callback.report_hit(self.plane_normal, hit_fraction, i);
+        }
     }
 }
