@@ -36,6 +36,22 @@ impl<'a, T: ContactAddedCallback> ConvexTriangleCallback<'a, T> {
             current_triangle_index: 0,
         }
     }
+
+    /// Check if this is fully on one side of the triangle
+    fn is_triangle_separated(&self, triangle_normal: Vec3A, triangle_point: Vec3A) -> bool {
+        let convex = self.convex_obj.get_collision_shape();
+        let convex_trans = self.convex_obj.get_world_trans();
+
+        let local_pt = convex
+            .local_get_supporting_vertex(convex_trans.matrix3.mul_transpose_vec3a(triangle_normal));
+        let world_pt = convex_trans.transform_point3a(local_pt);
+
+        let proj_dist_pt = triangle_normal.dot(world_pt);
+        let proj_dist_tr = triangle_normal.dot(triangle_point);
+
+        let dist = proj_dist_tr - proj_dist_pt;
+        dist > self.manifold.contact_breaking_threshold
+    }
 }
 
 impl<'a, T: ContactAddedCallback> GjkResult for ConvexTriangleCallback<'a, T> {
@@ -54,6 +70,12 @@ impl<'a, T: ContactAddedCallback> GjkResult for ConvexTriangleCallback<'a, T> {
 
 impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> {
     fn process_triangle(&mut self, triangle: &TriangleShape, triangle_idx: usize) {
+        if self.is_triangle_separated(triangle.normal, triangle.points[0])
+            || self.is_triangle_separated(-triangle.normal, triangle.points[0])
+        {
+            return;
+        }
+
         self.current_triangle_index = triangle_idx;
 
         let margin_a = self.convex_obj.get_collision_shape().get_margin();
