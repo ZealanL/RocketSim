@@ -1,6 +1,5 @@
 use glam::{Vec3, Vec3A};
 
-use super::collision_margin::CONVEX_DISTANCE_MARGIN;
 use crate::shared::Aabb;
 
 pub struct ContactInfo {
@@ -182,11 +181,6 @@ impl TriangleShape {
         })
     }
 
-    #[inline]
-    pub const fn get_margin(&self) -> f32 {
-        CONVEX_DISTANCE_MARGIN
-    }
-
     pub fn local_get_supporting_vertex_without_margin(&self, vec: Vec3A) -> Vec3A {
         let dots = Vec3::new(
             vec.dot(self.points[0]),
@@ -197,8 +191,8 @@ impl TriangleShape {
         self.points[dots.max_position()]
     }
 
+    #[inline]
     pub fn local_get_supporting_vertex(&self, vec: Vec3A) -> Vec3A {
-        let vec_norm = vec.normalize_or_zero();
-        self.local_get_supporting_vertex_without_margin(vec) + vec_norm * self.get_margin()
+        self.local_get_supporting_vertex_without_margin(vec)
     }
 }

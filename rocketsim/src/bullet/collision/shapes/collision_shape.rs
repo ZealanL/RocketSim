@@ -85,9 +85,7 @@ impl CollisionShapes {
             Self::Sphere(shape) => shape.get_margin(),
             Self::Compound(shape) => shape.get_margin(),
             Self::ConvexHull(shape) => shape.get_margin(),
-            Self::StaticPlane(_) => 0.0,
-            Self::TriangleMesh(_) => unreachable!(),
-            Self::Triangle(shape) => shape.get_margin(),
+            Self::StaticPlane(_) | Self::TriangleMesh(_) | Self::Triangle(_) => 0.0,
         }
     }
 

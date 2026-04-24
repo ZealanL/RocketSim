@@ -79,15 +79,14 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
         self.current_triangle_index = triangle_idx;
 
         let margin_a = self.convex_obj.get_collision_shape().get_margin();
-        let margin_b = triangle.get_margin();
 
         let input = ClosestPointInput::new(
             self.convex_obj.get_world_trans(),
             &Affine3A::IDENTITY,
-            margin_a + margin_b + self.manifold.contact_breaking_threshold,
+            margin_a + self.manifold.contact_breaking_threshold,
         );
 
-        let detector = GjkPairDetector::new(margin_a, margin_b);
+        let detector = GjkPairDetector::new(margin_a, 0.0);
         detector.get_closest_points(
             &input,
             self.convex_obj.get_collision_shape(),
