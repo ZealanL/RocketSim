@@ -12,7 +12,6 @@ pub enum EpaStatus {
     OutOfVertices,
     AccuracyReached,
     FallBack,
-    Failed,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -106,7 +105,7 @@ pub struct Epa2 {
 
 impl Epa2 {
     const MAX_VERTICES: usize = 128;
-    const MAX_ITERATIONS: usize = 255;
+    const MAX_ITERATIONS: u8 = 255;
 
     const ACCURACY: f32 = 1.0e-4;
     const PLANE_EPS: f32 = 1.0e-5;
@@ -214,7 +213,6 @@ impl Epa2 {
         a_idx: usize,
         b_idx: usize,
         c_idx: usize,
-        forced: bool,
         status: &mut EpaStatus,
     ) -> Option<usize> {
         let face_idx = match self.stock.root {
@@ -251,7 +249,7 @@ impl Epa2 {
             face.n = n / l;
             face.d = dist;
 
-            if forced || face.d >= -Self::PLANE_EPS {
+            if face.d >= -Self::PLANE_EPS {
                 return Some(face_idx);
             } else {
                 *status = EpaStatus::NonConvex;
@@ -265,8 +263,41 @@ impl Epa2 {
         None
     }
 
-    fn find_best(&self) -> Option<usize> {
-        let mut minf = self.hull.root?;
+    fn new_face_forced(&mut self, a_idx: usize, b_idx: usize, c_idx: usize) -> usize {
+        let face_idx = self.stock.root.unwrap();
+
+        Self::remove(&mut self.stock, &mut self.fc_store, face_idx);
+        Self::append(&mut self.hull, &mut self.fc_store, face_idx);
+
+        let a = self.sv_store[a_idx];
+        let b = self.sv_store[b_idx];
+        let c = self.sv_store[c_idx];
+
+        let n = (b.w - a.w).cross(c.w - a.w);
+        let l = n.length();
+        debug_assert!(l > Self::ACCURACY);
+
+        let mut dist = 0.0;
+        if !(self.get_edge_dist(n, a_idx, b_idx, &mut dist)
+            || self.get_edge_dist(n, b_idx, c_idx, &mut dist)
+            || self.get_edge_dist(n, c_idx, a_idx, &mut dist))
+        {
+            dist = a.w.dot(n) / l;
+        }
+
+        let face = &mut self.fc_store[face_idx];
+        face.pass = 0;
+        face.indices = [a_idx, b_idx, c_idx];
+        face.adj = [None, None, None];
+        face.edge = [0, 0, 0];
+        face.n = n / l;
+        face.d = dist;
+
+        face_idx
+    }
+
+    fn find_best(&self) -> usize {
+        let mut minf = self.hull.root.unwrap();
         let mut mind = self.fc_store[minf].d * self.fc_store[minf].d;
         let mut current = self.fc_store[minf].next;
 
@@ -279,7 +310,7 @@ impl Epa2 {
             current = self.fc_store[idx].next;
         }
 
-        Some(minf)
+        minf
     }
 
     fn expand(
@@ -302,9 +333,7 @@ impl Epa2 {
         let e1 = I1M3[edge];
         let w = self.sv_store[w_index].w;
         if (face.n.dot(w) - face.d) < -Self::PLANE_EPS {
-            if let Some(nf) =
-                self.new_face(face.indices[e1], face.indices[edge], w_index, false, status)
-            {
+            if let Some(nf) = self.new_face(face.indices[e1], face.indices[edge], w_index, status) {
                 self.bind(nf, 0, face_idx, edge);
                 if let Some(cf) = horizon.cf {
                     self.bind(cf, 1, nf, 2);
@@ -384,175 +413,106 @@ impl Epa2 {
         }
 
         let tetra = [
-            self.new_face(
-                sv_indices[0],
-                sv_indices[1],
-                sv_indices[2],
-                true,
-                &mut status,
-            ),
-            self.new_face(
-                sv_indices[1],
-                sv_indices[0],
-                sv_indices[3],
-                true,
-                &mut status,
-            ),
-            self.new_face(
-                sv_indices[2],
-                sv_indices[1],
-                sv_indices[3],
-                true,
-                &mut status,
-            ),
-            self.new_face(
-                sv_indices[0],
-                sv_indices[2],
-                sv_indices[3],
-                true,
-                &mut status,
-            ),
+            self.new_face_forced(sv_indices[0], sv_indices[1], sv_indices[2]),
+            self.new_face_forced(sv_indices[1], sv_indices[0], sv_indices[3]),
+            self.new_face_forced(sv_indices[2], sv_indices[1], sv_indices[3]),
+            self.new_face_forced(sv_indices[0], sv_indices[2], sv_indices[3]),
         ];
 
-        if self.hull.count == 4 && tetra.iter().all(|f| f.is_some()) {
-            let f0 = tetra[0].unwrap();
-            let f1 = tetra[1].unwrap();
-            let f2 = tetra[2].unwrap();
-            let f3 = tetra[3].unwrap();
+        self.bind(tetra[0], 0, tetra[1], 0);
+        self.bind(tetra[0], 1, tetra[2], 0);
+        self.bind(tetra[0], 2, tetra[3], 0);
+        self.bind(tetra[1], 1, tetra[3], 2);
+        self.bind(tetra[1], 2, tetra[2], 1);
+        self.bind(tetra[2], 2, tetra[3], 1);
 
-            self.bind(f0, 0, f1, 0);
-            self.bind(f0, 1, f2, 0);
-            self.bind(f0, 2, f3, 0);
-            self.bind(f1, 1, f3, 2);
-            self.bind(f1, 2, f2, 1);
-            self.bind(f2, 2, f3, 1);
+        let mut best = self.find_best();
+        let mut outer = self.fc_store[best];
 
-            if let Some(mut best) = self.find_best() {
-                let mut outer = self.fc_store[best];
-                let mut pass: u8 = 0;
-                let mut iterations = 0usize;
-
-                while iterations < Self::MAX_ITERATIONS {
-                    if self.next_sv >= Self::MAX_VERTICES {
-                        status = EpaStatus::OutOfVertices;
-                        break;
-                    }
-
-                    let mut horizon = EpaHorizon::new();
-                    let w_index = self.next_sv;
-                    self.next_sv += 1;
-
-                    pass = pass.wrapping_add(1);
-                    self.fc_store[best].pass = pass;
-
-                    let mut dir = self.fc_store[best].n;
-                    let dir_len = dir.length();
-                    if dir_len > 0.0 {
-                        dir /= dir_len;
-                    } else {
-                        dir = Vec3A::X;
-                    }
-
-                    let w = gjk.shape.support::<ENABLE_MARGIN>(dir);
-                    self.sv_store[w_index].w = w;
-                    self.sv_store[w_index].d = dir;
-                    self.sv_store[w_index].support_a = Vec3A::ZERO;
-                    self.sv_store[w_index].support_b = Vec3A::ZERO;
-
-                    let wdist = dir.dot(w) - self.fc_store[best].d;
-                    if wdist > Self::ACCURACY {
-                        let mut valid = true;
-                        for j in 0..3 {
-                            if let Some(adj) = self.fc_store[best].adj[j] {
-                                let edge = self.fc_store[best].edge[j] as usize;
-                                valid &= self.expand(
-                                    pass,
-                                    w_index,
-                                    adj,
-                                    edge,
-                                    &mut horizon,
-                                    &mut status,
-                                );
-                            } else {
-                                valid = false;
-                                status = EpaStatus::InvalidHull;
-                            }
-                        }
-
-                        if valid && horizon.nf >= 3 {
-                            if let (Some(cf), Some(ff)) = (horizon.cf, horizon.ff) {
-                                self.bind(cf, 1, ff, 2);
-                            }
-                            Self::remove(&mut self.hull, &mut self.fc_store, best);
-                            Self::append(&mut self.stock, &mut self.fc_store, best);
-
-                            if let Some(next_best) = self.find_best() {
-                                best = next_best;
-                                outer = self.fc_store[best];
-                            } else {
-                                status = EpaStatus::InvalidHull;
-                                break;
-                            }
-                        } else {
-                            status = EpaStatus::InvalidHull;
-                            break;
-                        }
-                    } else {
-                        status = EpaStatus::AccuracyReached;
-                        break;
-                    }
-
-                    iterations += 1;
-                }
-
-                let projection = outer.n * outer.d;
-
-                self.normal = outer.n;
-                self.depth = outer.d;
-                self.result.rank = 3;
-
-                let a_idx = outer.indices[0];
-                let b_idx = outer.indices[1];
-                let c_idx = outer.indices[2];
-
-                self.result.c[0] = a_idx;
-                self.result.c[1] = b_idx;
-                self.result.c[2] = c_idx;
-
-                self.result.p[0] = (self.sv_store[b_idx].w - projection)
-                    .cross(self.sv_store[c_idx].w - projection)
-                    .length();
-                self.result.p[1] = (self.sv_store[c_idx].w - projection)
-                    .cross(self.sv_store[a_idx].w - projection)
-                    .length();
-                self.result.p[2] = (self.sv_store[a_idx].w - projection)
-                    .cross(self.sv_store[b_idx].w - projection)
-                    .length();
-
-                let sum = self.result.p[0] + self.result.p[1] + self.result.p[2];
-                if sum > 0.0 {
-                    self.result.p[0] /= sum;
-                    self.result.p[1] /= sum;
-                    self.result.p[2] /= sum;
-                }
-
-                return status;
+        'epa_iter: for pass in 0..Self::MAX_ITERATIONS {
+            if self.next_sv >= Self::MAX_VERTICES {
+                status = EpaStatus::OutOfVertices;
+                break;
             }
+
+            let w_index = self.next_sv;
+            self.next_sv += 1;
+
+            self.fc_store[best].pass = pass;
+
+            let mut dir = self.fc_store[best].n;
+            let dir_len = dir.length();
+            if dir_len > 0.0 {
+                dir /= dir_len;
+            } else {
+                dir = Vec3A::X;
+            }
+
+            let w = gjk.shape.support::<ENABLE_MARGIN>(dir);
+            self.sv_store[w_index].w = w;
+            self.sv_store[w_index].d = dir;
+            self.sv_store[w_index].support_a = Vec3A::ZERO;
+            self.sv_store[w_index].support_b = Vec3A::ZERO;
+
+            let wdist = dir.dot(w) - self.fc_store[best].d;
+            if wdist <= Self::ACCURACY {
+                status = EpaStatus::AccuracyReached;
+                break;
+            }
+
+            let mut horizon = EpaHorizon::new();
+            for j in 0..3 {
+                let adj = self.fc_store[best].adj[j].unwrap();
+                let edge = self.fc_store[best].edge[j] as usize;
+                if !self.expand(pass, w_index, adj, edge, &mut horizon, &mut status) {
+                    break 'epa_iter;
+                }
+            }
+
+            if horizon.nf < 3 {
+                status = EpaStatus::InvalidHull;
+                break;
+            }
+
+            self.bind(horizon.cf.unwrap(), 1, horizon.ff.unwrap(), 2);
+            Self::remove(&mut self.hull, &mut self.fc_store, best);
+            Self::append(&mut self.stock, &mut self.fc_store, best);
+
+            best = self.find_best();
+            outer = self.fc_store[best];
         }
 
-        self.normal = -guess;
-        let nl = self.normal.length();
-        if nl > 0.0 {
-            self.normal /= nl;
-        } else {
-            self.normal = Vec3A::X;
+        let projection = outer.n * outer.d;
+
+        self.normal = outer.n;
+        self.depth = outer.d;
+        self.result.rank = 3;
+
+        let a_idx = outer.indices[0];
+        let b_idx = outer.indices[1];
+        let c_idx = outer.indices[2];
+
+        self.result.c[0] = a_idx;
+        self.result.c[1] = b_idx;
+        self.result.c[2] = c_idx;
+
+        self.result.p[0] = (self.sv_store[b_idx].w - projection)
+            .cross(self.sv_store[c_idx].w - projection)
+            .length();
+        self.result.p[1] = (self.sv_store[c_idx].w - projection)
+            .cross(self.sv_store[a_idx].w - projection)
+            .length();
+        self.result.p[2] = (self.sv_store[a_idx].w - projection)
+            .cross(self.sv_store[b_idx].w - projection)
+            .length();
+
+        let sum = self.result.p[0] + self.result.p[1] + self.result.p[2];
+        if sum > 0.0 {
+            self.result.p[0] /= sum;
+            self.result.p[1] /= sum;
+            self.result.p[2] /= sum;
         }
 
-        self.depth = 0.0;
-        self.result.rank = 1;
-        self.result.c[0] = simplex.c[0];
-        self.result.p[0] = 1.0;
-
-        EpaStatus::FallBack
+        status
     }
 }
