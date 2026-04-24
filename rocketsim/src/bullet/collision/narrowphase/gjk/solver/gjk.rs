@@ -3,14 +3,6 @@ use glam::{Mat3A, Vec3A};
 
 use super::MinkowskiDiff;
 
-const GJK_MAX_ITERATIONS: usize = 128;
-const GJK_ACCURACY: f32 = 1.0e-4;
-const GJK_MIN_DISTANCE: f32 = 1.0e-4;
-const GJK_DUPLICATED_EPS: f32 = 1.0e-4;
-const GJK_SIMPLEX2_EPS: f32 = 0.0;
-const GJK_SIMPLEX3_EPS: f32 = 0.0;
-const GJK_SIMPLEX4_EPS: f32 = 0.0;
-
 #[derive(Clone, Copy)]
 pub struct GjkSupport {
     pub d: Vec3A,
@@ -54,32 +46,39 @@ pub struct Gjk<'a> {
     pub shape: &'a MinkowskiDiff<'a>,
     ray: Vec3A,
     distance: f32,
-    pub simplices: [GjkSimplex; 2],
+    simplices: [GjkSimplex; 2],
     pub store: [GjkSupport; 4],
     free: ArrayVec<usize, 4>,
     current: usize,
-    pub simplex: usize,
+    simplex: usize,
 }
 
 impl<'a> Gjk<'a> {
-    pub fn new(shape: &'a MinkowskiDiff<'a>) -> Self {
+    const MAX_ITERATIONS: usize = 128;
+
+    const ACCURACY: f32 = 1.0e-4;
+    const MIN_DISTANCE: f32 = 1.0e-4;
+    const DUPLICATED_EPS: f32 = 1.0e-4;
+
+    const SIMPLEX2_EPS: f32 = 0.0;
+    const SIMPLEX3_EPS: f32 = 0.0;
+    const SIMPLEX4_EPS: f32 = 0.0;
+
+    pub const fn new(shape: &'a MinkowskiDiff<'a>) -> Self {
         Self {
             shape,
             ray: Vec3A::ZERO,
             distance: 0.0,
             simplices: [GjkSimplex::new(); 2],
             store: [GjkSupport::new(); 4],
-            free: ArrayVec::new(),
+            free: ArrayVec::new_const(),
             current: 0,
             simplex: 0,
         }
     }
 
-    fn initialize(&mut self) {
-        self.ray = Vec3A::ZERO;
-        self.free.clear();
-        self.current = 0;
-        self.distance = 0.0;
+    pub fn simplex(&self) -> GjkSimplex {
+        self.simplices[self.simplex]
     }
 
     pub fn evaluate<const ENABLE_MARGIN: bool>(&mut self, guess: Vec3A) -> GjkStatus {
@@ -88,10 +87,7 @@ impl<'a> Gjk<'a> {
         let mut alpha = 0.0f32;
         let mut clastw = 0usize;
 
-        self.initialize();
         self.free.extend([0, 1, 2, 3]);
-
-        self.simplices[0].rank = 0;
         self.ray = guess;
 
         let mut sqdist = self.ray.length_squared();
@@ -105,7 +101,7 @@ impl<'a> Gjk<'a> {
 
         while status == GjkStatus::Valid {
             let rl = self.ray.length();
-            if rl < GJK_MIN_DISTANCE {
+            if rl < Self::MIN_DISTANCE {
                 status = GjkStatus::Inside;
                 break;
             }
@@ -119,7 +115,7 @@ impl<'a> Gjk<'a> {
 
             let mut found = false;
             for lastw in lastw {
-                if (w - lastw).length_squared() < GJK_DUPLICATED_EPS {
+                if (w - lastw).length_squared() < Self::DUPLICATED_EPS {
                     found = true;
                     break;
                 }
@@ -138,7 +134,7 @@ impl<'a> Gjk<'a> {
                 alpha = omega;
             }
 
-            if ((rl - alpha) - (GJK_ACCURACY * rl)) <= 0.0 {
+            if ((rl - alpha) - (Self::ACCURACY * rl)) <= 0.0 {
                 self.remove_vertex(current);
                 break;
             }
@@ -197,7 +193,7 @@ impl<'a> Gjk<'a> {
             }
 
             iterations += 1;
-            if iterations >= GJK_MAX_ITERATIONS {
+            if iterations >= Self::MAX_ITERATIONS {
                 status = GjkStatus::Failed;
             }
         }
@@ -336,7 +332,7 @@ impl<'a> Gjk<'a> {
     fn project_origin_2(a: Vec3A, b: Vec3A, w: &mut [f32; 4], m: &mut u8) -> f32 {
         let d = b - a;
         let l = d.length_squared();
-        if l > GJK_SIMPLEX2_EPS {
+        if l > Self::SIMPLEX2_EPS {
             let t = if l > 0.0 { -a.dot(d) / l } else { 0.0 };
             if t >= 1.0 {
                 w[0] = 0.0;
@@ -365,7 +361,7 @@ impl<'a> Gjk<'a> {
         let dl = [a - b, b - c, c - a];
         let n = dl[0].cross(dl[1]);
         let l = n.length_squared();
-        if l > GJK_SIMPLEX3_EPS {
+        if l > Self::SIMPLEX3_EPS {
             let mut mindist = -1.0f32;
             let mut subw = [0.0f32; 4];
             let mut subm: u8 = 0;
@@ -413,7 +409,7 @@ impl<'a> Gjk<'a> {
         let dl = [a - d, b - d, c - d];
         let vl = Self::det(dl[0], dl[1], dl[2]);
         let ng = (vl * a.dot((b - c).cross(a - b))) <= 0.0;
-        if ng && vl.abs() > GJK_SIMPLEX4_EPS {
+        if ng && vl.abs() > Self::SIMPLEX4_EPS {
             let mut mindist = -1.0f32;
             let mut subw = [0.0f32; 4];
             let mut subm: u8 = 0;

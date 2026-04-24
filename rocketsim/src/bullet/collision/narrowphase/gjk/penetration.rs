@@ -25,7 +25,7 @@ fn penetration(
     }
 
     let mut epa = Epa2::new();
-    if epa.evaluate::<true>(&mut gjk, guess) == EpaStatus::Failed {
+    if epa.evaluate::<true>(gjk, guess) == EpaStatus::Failed {
         return None;
     }
 
@@ -59,7 +59,7 @@ fn distance(
         GjkStatus::Valid => {}
     }
 
-    let simplex = gjk.simplices[gjk.simplex];
+    let simplex = gjk.simplex();
     if simplex.rank == 0 {
         return None;
     }

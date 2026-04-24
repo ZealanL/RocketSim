@@ -1,8 +1,5 @@
 use glam::Vec3A;
 
-const VORONOI_SIMPLEX_MAX_VERTS: usize = 5;
-const VORONOI_DEFAULT_EQUAL_VERTEX_THRESHOLD: f32 = 0.0001;
-
 const VERTA: usize = 0;
 const VERTB: usize = 1;
 const VERTC: usize = 2;
@@ -42,12 +39,6 @@ pub struct SubSimplexClosestResult {
     pub degenerate: bool,
 }
 
-impl Default for SubSimplexClosestResult {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl SubSimplexClosestResult {
     pub const fn new() -> Self {
         Self {
@@ -82,52 +73,39 @@ impl SubSimplexClosestResult {
 pub struct VoronoiSimplexSolver {
     num_vertices: usize,
 
-    simplex_vector_w: [Vec3A; VORONOI_SIMPLEX_MAX_VERTS],
-    simplex_points_p: [Vec3A; VORONOI_SIMPLEX_MAX_VERTS],
-    simplex_points_q: [Vec3A; VORONOI_SIMPLEX_MAX_VERTS],
+    simplex_vector_w: [Vec3A; Self::SIMPLEX_MAX_VERTS],
+    simplex_points_p: [Vec3A; Self::SIMPLEX_MAX_VERTS],
+    simplex_points_q: [Vec3A; Self::SIMPLEX_MAX_VERTS],
 
     cached_p1: Vec3A,
     cached_p2: Vec3A,
     cached_v: Vec3A,
     last_w: Vec3A,
 
-    equal_vertex_threshold: f32,
     cached_valid_closest: bool,
 
     cached_bc: SubSimplexClosestResult,
     needs_update: bool,
 }
 
-impl Default for VoronoiSimplexSolver {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl VoronoiSimplexSolver {
+    const SIMPLEX_MAX_VERTS: usize = 5;
+    const EQUAL_VERTEX_THRESHOLD: f32 = 0.0001;
+
     pub const fn new() -> Self {
         Self {
             num_vertices: 0,
-            simplex_vector_w: [Vec3A::ZERO; VORONOI_SIMPLEX_MAX_VERTS],
-            simplex_points_p: [Vec3A::ZERO; VORONOI_SIMPLEX_MAX_VERTS],
-            simplex_points_q: [Vec3A::ZERO; VORONOI_SIMPLEX_MAX_VERTS],
+            simplex_vector_w: [Vec3A::ZERO; Self::SIMPLEX_MAX_VERTS],
+            simplex_points_p: [Vec3A::ZERO; Self::SIMPLEX_MAX_VERTS],
+            simplex_points_q: [Vec3A::ZERO; Self::SIMPLEX_MAX_VERTS],
             cached_p1: Vec3A::ZERO,
             cached_p2: Vec3A::ZERO,
             cached_v: Vec3A::ZERO,
             last_w: Vec3A::new(f32::INFINITY, f32::INFINITY, f32::INFINITY),
-            equal_vertex_threshold: VORONOI_DEFAULT_EQUAL_VERTEX_THRESHOLD,
             cached_valid_closest: false,
             cached_bc: SubSimplexClosestResult::new(),
             needs_update: true,
         }
-    }
-
-    pub fn reset(&mut self) {
-        self.cached_valid_closest = false;
-        self.num_vertices = 0;
-        self.needs_update = true;
-        self.last_w = Vec3A::new(f32::INFINITY, f32::INFINITY, f32::INFINITY);
-        self.cached_bc.reset();
     }
 
     pub fn add_vertex(&mut self, w: Vec3A, p: Vec3A, q: Vec3A) {
@@ -155,7 +133,7 @@ impl VoronoiSimplexSolver {
         let mut found = false;
         for i in 0..self.num_vertices {
             let dist2 = (self.simplex_vector_w[i] - w).length_squared();
-            if dist2 <= self.equal_vertex_threshold {
+            if dist2 <= Self::EQUAL_VERTEX_THRESHOLD {
                 found = true;
                 break;
             }
@@ -168,9 +146,9 @@ impl VoronoiSimplexSolver {
         found
     }
 
-    pub fn compute_points(&mut self, p2: &mut Vec3A) {
+    pub fn compute_points(&mut self) -> Vec3A {
         self.update_closest_vector_and_points();
-        *p2 = self.cached_p2;
+        self.cached_p2
     }
 
     fn remove_vertex(&mut self, index: usize) {
@@ -430,7 +408,7 @@ impl VoronoiSimplexSolver {
         d: Vec3A,
         final_result: &mut SubSimplexClosestResult,
     ) -> bool {
-        let mut temp_result = SubSimplexClosestResult::default();
+        let mut temp_result = SubSimplexClosestResult::new();
 
         final_result.closest_point_on_simplex = p;
         final_result.used_vertices.reset();
