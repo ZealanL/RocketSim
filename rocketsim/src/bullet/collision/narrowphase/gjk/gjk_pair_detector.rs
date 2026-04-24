@@ -24,20 +24,20 @@ struct GjkIterationResult {
 }
 
 pub struct GjkPairDetector {
-    margin_a: f32,
+    margin: f32,
     margin_b: f32,
-    cached_separating_axis: Vec3A,
-    cached_separating_distance: f32,
+    separating_axis: Vec3A,
+    separating_distance: f32,
     simplex_solver: VoronoiSimplexSolver,
 }
 
 impl GjkPairDetector {
     pub const fn new(margin_a: f32, margin_b: f32) -> Self {
         Self {
-            margin_a,
+            margin: margin_a + margin_b,
             margin_b,
-            cached_separating_axis: Vec3A::Y,
-            cached_separating_distance: 0.0,
+            separating_axis: Vec3A::Y,
+            separating_distance: 0.0,
             simplex_solver: VoronoiSimplexSolver::new(),
         }
     }
@@ -66,8 +66,6 @@ impl GjkPairDetector {
         let mut point_on_b = Vec3A::ZERO;
         let mut normal_in_b = Vec3A::ZERO;
 
-        let margin = self.margin_a + self.margin_b;
-
         if check_simplex {
             SimplexContactResult {
                 point_on_b,
@@ -75,43 +73,39 @@ impl GjkPairDetector {
                 distance,
                 is_valid,
                 degenerate_simplex,
-            } = self.compute_simplex_contact(squared_distance, margin, degenerate_simplex);
+            } = self.compute_simplex_contact(squared_distance, degenerate_simplex);
         }
 
         let catch_degenerate_penetration_case =
-            degenerate_simplex != 0 && (distance + margin) < 0.01;
+            degenerate_simplex != 0 && (distance + self.margin) < 0.01;
 
-        if !is_valid || catch_degenerate_penetration_case {
-            self.simplex_solver.reset();
-            self.cached_separating_axis = Vec3A::ZERO;
+        if (!is_valid || catch_degenerate_penetration_case)
+            && let Some(result) = calc_pen_depth(shape_a, shape_b, &local_trans_a, &local_trans_b)
+        {
+            let [tmp_point_on_a, tmp_point_on_b] = result.witnesses;
 
-            if let Some(result) = calc_pen_depth(shape_a, shape_b, &local_trans_a, &local_trans_b) {
-                self.cached_separating_axis = result.normal;
-                let [tmp_point_on_a, tmp_point_on_b] = result.witnesses;
+            if result.penetrating {
+                let tmp_normal_in_b = tmp_point_on_b - tmp_point_on_a;
+                let len_sqr = tmp_normal_in_b.length_squared();
+                if len_sqr > f32::EPSILON * f32::EPSILON {
+                    let length = len_sqr.sqrt();
+                    let distance_2 = -length;
 
-                if result.penetrating {
-                    let tmp_normal_in_b = tmp_point_on_b - tmp_point_on_a;
-                    let len_sqr = tmp_normal_in_b.length_squared();
-                    if len_sqr > f32::EPSILON * f32::EPSILON {
-                        let length = len_sqr.sqrt();
-                        let distance_2 = -length;
-
-                        // only replace valid penetrations when the result is deeper
-                        if !is_valid || distance_2 < distance {
-                            distance = distance_2;
-                            point_on_b = tmp_point_on_b;
-                            normal_in_b = tmp_normal_in_b / length;
-                            is_valid = true;
-                        }
-                    }
-                } else {
-                    let distance_2 = (tmp_point_on_a - tmp_point_on_b).length() - margin;
+                    // only replace valid penetrations when the result is deeper
                     if !is_valid || distance_2 < distance {
                         distance = distance_2;
-                        point_on_b = tmp_point_on_b + self.cached_separating_axis * self.margin_b;
-                        normal_in_b = self.cached_separating_axis.normalize();
+                        point_on_b = tmp_point_on_b;
+                        normal_in_b = tmp_normal_in_b / length;
                         is_valid = true;
                     }
+                }
+            } else {
+                let distance_2 = (tmp_point_on_a - tmp_point_on_b).length() - self.margin;
+                if !is_valid || distance_2 < distance {
+                    distance = distance_2;
+                    point_on_b = tmp_point_on_b + result.normal * self.margin_b;
+                    normal_in_b = result.normal.normalize();
+                    is_valid = true;
                 }
             }
         }
@@ -129,8 +123,8 @@ impl GjkPairDetector {
                 }
             }
 
-            self.cached_separating_axis = normal_in_b;
-            self.cached_separating_distance = distance;
+            self.separating_axis = normal_in_b;
+            self.separating_distance = distance;
 
             output.add_contact_point(normal_in_b, point_on_b + position_offset, distance);
         }
@@ -139,7 +133,6 @@ impl GjkPairDetector {
     fn compute_simplex_contact(
         &mut self,
         squared_distance: f32,
-        margin: f32,
         degenerate_simplex: u8,
     ) -> SimplexContactResult {
         let mut result = SimplexContactResult {
@@ -150,11 +143,11 @@ impl GjkPairDetector {
             degenerate_simplex,
         };
 
-        self.simplex_solver.compute_points(&mut result.point_on_b);
-        result.normal_in_b = self.cached_separating_axis;
+        result.point_on_b = self.simplex_solver.compute_points();
+        result.normal_in_b = self.separating_axis;
 
         // valid normal
-        let len_sqr = self.cached_separating_axis.length_squared();
+        let len_sqr = self.separating_axis.length_squared();
         if len_sqr < 0.0001 {
             result.degenerate_simplex = 5;
         }
@@ -164,8 +157,8 @@ impl GjkPairDetector {
             result.normal_in_b *= rlen;
 
             let s = squared_distance.sqrt();
-            result.point_on_b += self.cached_separating_axis * (self.margin_b / s);
-            result.distance = (1.0 / rlen) - margin;
+            result.point_on_b += self.separating_axis * (self.margin_b / s);
+            result.distance = (1.0 / rlen) - self.margin;
             result.is_valid = true;
         }
 
@@ -186,11 +179,11 @@ impl GjkPairDetector {
             let separating_axis_in_a = input
                 .transform_a
                 .matrix3
-                .mul_transpose_vec3a(-self.cached_separating_axis);
+                .mul_transpose_vec3a(-self.separating_axis);
             let separating_axis_in_b = input
                 .transform_b
                 .matrix3
-                .mul_transpose_vec3a(self.cached_separating_axis);
+                .mul_transpose_vec3a(self.separating_axis);
 
             let p_in_a = shape_a.local_get_support_vertex_without_margin(separating_axis_in_a);
             let p_world = input.transform_a.transform_point3a(p_in_a);
@@ -199,7 +192,7 @@ impl GjkPairDetector {
             let q_world = input.transform_b.transform_point3a(q_in_b);
 
             let w = p_world - q_world;
-            let delta = self.cached_separating_axis.dot(w);
+            let delta = self.separating_axis.dot(w);
 
             // Potential exit: the shapes are separated far enough.
             if delta > 0.0 && delta * delta > squared_distance * input.maximum_distance_squared {
@@ -237,7 +230,7 @@ impl GjkPairDetector {
             }
 
             if new_cached_separating_axis.length_squared() < REL_ERROR2 {
-                self.cached_separating_axis = new_cached_separating_axis;
+                self.separating_axis = new_cached_separating_axis;
                 degenerate_simplex = 6;
                 check_simplex = true;
                 break;
@@ -255,7 +248,7 @@ impl GjkPairDetector {
                 break;
             }
 
-            self.cached_separating_axis = new_cached_separating_axis;
+            self.separating_axis = new_cached_separating_axis;
 
             if self.simplex_solver.full_simplex() {
                 degenerate_simplex = 13;

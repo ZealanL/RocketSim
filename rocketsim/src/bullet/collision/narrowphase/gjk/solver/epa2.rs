@@ -2,12 +2,6 @@ use glam::{Mat3A, Vec3A};
 
 use super::{Gjk, GjkSimplex};
 
-const EPA_MAX_VERTICES: usize = 128;
-const EPA_MAX_ITERATIONS: usize = 255;
-const EPA_ACCURACY: f32 = 1.0e-4;
-const EPA_PLANE_EPS: f32 = 1.0e-5;
-const EPA_MAX_FACES: usize = EPA_MAX_VERTICES * 2;
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EpaStatus {
     Valid,
@@ -103,44 +97,45 @@ pub struct Epa2 {
     pub result: GjkSimplex,
     pub normal: Vec3A,
     pub depth: f32,
-    pub sv_store: [EpaVertex; EPA_MAX_VERTICES],
-    fc_store: [EpaFace; EPA_MAX_FACES],
+    pub sv_store: [EpaVertex; Self::MAX_VERTICES],
+    fc_store: [EpaFace; Self::MAX_FACES],
     next_sv: usize,
     hull: EpaList,
     stock: EpaList,
 }
 
 impl Epa2 {
+    const MAX_VERTICES: usize = 128;
+    const MAX_ITERATIONS: usize = 255;
+
+    const ACCURACY: f32 = 1.0e-4;
+    const PLANE_EPS: f32 = 1.0e-5;
+
+    const MAX_FACES: usize = Self::MAX_VERTICES * 2;
+
     pub const fn new() -> Self {
+        let mut stock = EpaList::new();
+        let mut fc_store = [EpaFace::new(); Self::MAX_FACES];
+
+        let mut i = fc_store.len();
+        while i > 0 {
+            i -= 1;
+            Self::append(&mut stock, &mut fc_store, i);
+        }
+
         Self {
             result: GjkSimplex::new(),
             normal: Vec3A::ZERO,
             depth: 0.0,
-            sv_store: [EpaVertex::new(); EPA_MAX_VERTICES],
-            fc_store: [EpaFace::new(); EPA_MAX_FACES],
+            sv_store: [EpaVertex::new(); Self::MAX_VERTICES],
+            fc_store,
             next_sv: 0,
             hull: EpaList::new(),
-            stock: EpaList::new(),
+            stock,
         }
     }
 
-    fn initialize(&mut self) {
-        self.normal = Vec3A::ZERO;
-        self.depth = 0.0;
-        self.next_sv = 0;
-        self.hull = EpaList::new();
-        self.stock = EpaList::new();
-
-        for face in &mut self.fc_store {
-            *face = EpaFace::new();
-        }
-
-        for i in (0..EPA_MAX_FACES).rev() {
-            Self::append(&mut self.stock, &mut self.fc_store, i);
-        }
-    }
-
-    fn append(list: &mut EpaList, faces: &mut [EpaFace; EPA_MAX_FACES], face_idx: usize) {
+    const fn append(list: &mut EpaList, faces: &mut [EpaFace; Self::MAX_FACES], face_idx: usize) {
         let face = &mut faces[face_idx];
         face.prev = None;
         face.next = list.root;
@@ -151,7 +146,7 @@ impl Epa2 {
         list.count += 1;
     }
 
-    fn remove(list: &mut EpaList, faces: &mut [EpaFace; EPA_MAX_FACES], face_idx: usize) {
+    fn remove(list: &mut EpaList, faces: &mut [EpaFace; Self::MAX_FACES], face_idx: usize) {
         let (prev, next) = {
             let face = &faces[face_idx];
             (face.prev, face.next)
@@ -239,7 +234,7 @@ impl Epa2 {
 
         let n = (b.w - a.w).cross(c.w - a.w);
         let l = n.length();
-        if l > EPA_ACCURACY {
+        if l > Self::ACCURACY {
             let mut dist = 0.0;
             if !(self.get_edge_dist(n, a_idx, b_idx, &mut dist)
                 || self.get_edge_dist(n, b_idx, c_idx, &mut dist)
@@ -256,7 +251,7 @@ impl Epa2 {
             face.n = n / l;
             face.d = dist;
 
-            if forced || face.d >= -EPA_PLANE_EPS {
+            if forced || face.d >= -Self::PLANE_EPS {
                 return Some(face_idx);
             } else {
                 *status = EpaStatus::NonConvex;
@@ -306,7 +301,7 @@ impl Epa2 {
 
         let e1 = I1M3[edge];
         let w = self.sv_store[w_index].w;
-        if (face.n.dot(w) - face.d) < -EPA_PLANE_EPS {
+        if (face.n.dot(w) - face.d) < -Self::PLANE_EPS {
             if let Some(nf) =
                 self.new_face(face.indices[e1], face.indices[edge], w_index, false, status)
             {
@@ -345,13 +340,8 @@ impl Epa2 {
         false
     }
 
-    pub fn evaluate<const ENABLE_MARGIN: bool>(
-        &mut self,
-        gjk: &mut Gjk,
-        guess: Vec3A,
-    ) -> EpaStatus {
-        let simplex = gjk.simplices[gjk.simplex];
-        if simplex.rank <= 1 || !gjk.enclose_origin::<ENABLE_MARGIN>() {
+    pub fn evaluate<const ENABLE_MARGIN: bool>(&mut self, mut gjk: Gjk, guess: Vec3A) -> EpaStatus {
+        if gjk.simplex().rank <= 1 || !gjk.enclose_origin::<ENABLE_MARGIN>() {
             self.normal = -guess;
             let nl = self.normal.length();
             if nl > 0.0 {
@@ -362,13 +352,13 @@ impl Epa2 {
 
             self.depth = 0.0;
             self.result.rank = 1;
-            self.result.c[0] = simplex.c[0];
+            self.result.c[0] = gjk.simplex().c[0];
             self.result.p[0] = 1.0;
 
             return EpaStatus::FallBack;
         }
 
-        self.initialize();
+        let simplex = gjk.simplex();
 
         let mut status = EpaStatus::Valid;
         let mut sv_indices = [0usize; 4];
@@ -442,8 +432,8 @@ impl Epa2 {
                 let mut pass: u8 = 0;
                 let mut iterations = 0usize;
 
-                while iterations < EPA_MAX_ITERATIONS {
-                    if self.next_sv >= EPA_MAX_VERTICES {
+                while iterations < Self::MAX_ITERATIONS {
+                    if self.next_sv >= Self::MAX_VERTICES {
                         status = EpaStatus::OutOfVertices;
                         break;
                     }
@@ -470,7 +460,7 @@ impl Epa2 {
                     self.sv_store[w_index].support_b = Vec3A::ZERO;
 
                     let wdist = dir.dot(w) - self.fc_store[best].d;
-                    if wdist > EPA_ACCURACY {
+                    if wdist > Self::ACCURACY {
                         let mut valid = true;
                         for j in 0..3 {
                             if let Some(adj) = self.fc_store[best].adj[j] {
