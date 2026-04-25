@@ -1,7 +1,7 @@
 use std::ops::Deref;
 
 use arrayvec::ArrayVec;
-use glam::{USizeVec3, Vec3A};
+use glam::{IVec3, USizeVec3, Vec3A};
 
 use super::{
     broadphase_proxy::BroadphaseProxy, overlapping_pair_cache::HashedOverlappingPairCache,
@@ -84,9 +84,16 @@ struct CellGrid {
 impl CellGrid {
     fn get_cell_indices(&self, pos: Vec3A) -> USizeVec3 {
         let cell_idx_f = (pos - self.min_pos) / self.cell_size;
-        cell_idx_f
-            .as_usizevec3()
-            .clamp(USizeVec3::ZERO, self.num_cells - USizeVec3::ONE)
+        unsafe {
+            IVec3 {
+                x: cell_idx_f.x.to_int_unchecked::<i32>(),
+                y: cell_idx_f.y.to_int_unchecked::<i32>(),
+                z: cell_idx_f.z.to_int_unchecked::<i32>(),
+            }
+        }
+        .max(IVec3::ZERO)
+        .as_usizevec3()
+        .min(self.num_cells - USizeVec3::ONE)
     }
 
     fn get_cell_idx(&self, pos: Vec3A) -> usize {
