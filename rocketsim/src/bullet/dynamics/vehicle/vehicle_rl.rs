@@ -1,9 +1,8 @@
-use arrayvec::ArrayVec;
 use glam::{Affine3A, Quat, Vec3A};
 
 use super::{
-    raycaster::VehicleRaycaster,
-    wheel_info::{WheelInfo, WheelInfoConstructionInfo},
+    raycaster::{VehicleRaycaster, VehicleRaycasterResult},
+    wheel_info::WheelInfo,
 };
 use crate::{
     bullet::{
@@ -13,7 +12,6 @@ use crate::{
             },
             discrete_dynamics_world::DiscreteDynamicsWorld,
             rigid_body::RigidBody,
-            vehicle::raycaster::VehicleRaycasterResult,
         },
         linear_math::QuatExt,
     },
@@ -36,18 +34,29 @@ pub struct WheelInfoRL {
 }
 
 impl WheelInfoRL {
-    pub fn new(ci: WheelInfoConstructionInfo) -> Self {
-        Self {
-            wheel_info: WheelInfo::new(ci),
-            is_in_contact_with_world: false,
-            steer_angle: 0.0,
-            vel_at_contact_point: Vec3A::ZERO,
-            lat_friction: 0.0,
-            long_friction: 0.0,
-            impulse: Vec3A::ZERO,
-            suspsension_force_scale: 0.0,
-            extra_pushback: 0.0,
-        }
+    pub const DEFAULT: Self = Self {
+        wheel_info: WheelInfo::DEFAULT,
+        is_in_contact_with_world: false,
+        steer_angle: 0.0,
+        vel_at_contact_point: Vec3A::ZERO,
+        lat_friction: 1.0,
+        long_friction: 1.0,
+        impulse: Vec3A::ZERO,
+        suspsension_force_scale: 1.0,
+        extra_pushback: 0.0,
+    };
+
+    pub fn set_params(
+        &mut self,
+        chassis_connection_cs: Vec3A,
+        suspension_rest_length: f32,
+        wheel_radius: f32,
+        suspsension_force_scale: f32,
+    ) {
+        self.wheel_info.chassis_connection_point_cs = chassis_connection_cs;
+        self.wheel_info.suspension_rest_length_1 = suspension_rest_length;
+        self.wheel_info.wheels_radius = wheel_radius;
+        self.suspsension_force_scale = suspsension_force_scale;
     }
 
     fn update_wheel_trans_ws(&mut self, chassis_trans: &Affine3A) {
@@ -55,19 +64,19 @@ impl WheelInfoRL {
         self.wheel_info.raycast_info.is_in_contact = false;
         self.wheel_info.raycast_info.hard_point_ws =
             chassis_trans.transform_point3a(self.wheel_info.chassis_connection_point_cs);
-        self.wheel_info.raycast_info.wheel_direction_ws =
-            chassis_trans.matrix3 * self.wheel_info.wheel_direction_cs;
-        self.wheel_info.raycast_info.wheel_axle_ws =
-            chassis_trans.matrix3 * self.wheel_info.wheel_axle_cs;
+
+        self.wheel_info.raycast_info.wheel_direction_ws = -chassis_trans.matrix3.z_axis;
+        self.wheel_info.raycast_info.wheel_axle_ws = -chassis_trans.matrix3.y_axis;
     }
 
     fn update_wheel_trans<const FRONT: bool>(&mut self, cb_co: &RigidBody) {
         self.update_wheel_trans_ws(cb_co.get_world_trans());
-        let up = -self.wheel_info.raycast_info.wheel_direction_ws;
         let right = self.wheel_info.raycast_info.wheel_axle_ws;
 
         self.wheel_info.axle_dir = if FRONT {
+            let up = -self.wheel_info.raycast_info.wheel_direction_ws;
             let steering_orn = Quat::from_axis_angle_simd(up, self.steer_angle);
+
             steering_orn * -right
         } else {
             -right
@@ -285,16 +294,20 @@ impl WheelInfoRL {
 
 pub struct VehicleRL {
     raycaster: VehicleRaycaster,
-    pub chassis_body_idx: usize,
-    pub wheels: ArrayVec<WheelInfoRL, NUM_WHEELS>,
+    chassis_body_idx: usize,
+    pub wheels: [WheelInfoRL; NUM_WHEELS],
 }
 
 impl VehicleRL {
-    pub fn new(chassis_body_idx: usize, raycaster: VehicleRaycaster) -> Self {
+    pub const fn new(
+        chassis_body_idx: usize,
+        wheels: [WheelInfoRL; NUM_WHEELS],
+        raycaster: VehicleRaycaster,
+    ) -> Self {
         Self {
             raycaster,
             chassis_body_idx,
-            wheels: ArrayVec::new(),
+            wheels,
         }
     }
 
@@ -311,25 +324,6 @@ impl VehicleRL {
         } else {
             sum_contact_dir.normalize_or_zero()
         }
-    }
-
-    pub fn add_wheel(
-        &mut self,
-        connection_point_cs: Vec3A,
-        wheel_direction_cs0: Vec3A,
-        wheel_axle_cs: Vec3A,
-        suspension_rest_length: f32,
-        wheel_radius: f32,
-    ) {
-        let ci = WheelInfoConstructionInfo {
-            chassis_connection_cs: connection_point_cs,
-            wheel_direction_cs: wheel_direction_cs0,
-            wheel_axle_cs,
-            suspension_rest_length,
-            wheel_radius,
-        };
-
-        self.wheels.push(WheelInfoRL::new(ci));
     }
 
     pub const fn get_num_wheels(&self) -> usize {

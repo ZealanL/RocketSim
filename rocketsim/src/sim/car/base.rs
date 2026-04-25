@@ -7,7 +7,10 @@ use fastrand::Rng;
 use glam::{Affine3A, EulerRot, Mat3A, Vec3A};
 
 // Shorthand using aliases for constants
-use crate::bullet::dynamics::rigid_body::{ActivationState, CollisionFlags};
+use crate::bullet::dynamics::{
+    rigid_body::{ActivationState, CollisionFlags},
+    vehicle::vehicle_rl::WheelInfoRL,
+};
 use crate::{
     CarBodyConfig, CarControls, CarState, CollisionMasks, GameMode, MutatorConfig, PhysState, Team,
     bullet::{
@@ -89,49 +92,44 @@ impl Car {
         );
 
         let raycaster = const { VehicleRaycaster::new(CollisionMasks::DropshotFloor as u8) };
-        let mut bullet_vehicle = VehicleRL::new(rigid_body_idx, raycaster);
 
-        let wheel_direction_cs = Vec3A::new(0.0, 0.0, -1.0);
-        let wheel_axle_cs = Vec3A::new(0.0, -1.0, 0.0);
-
-        for i in 0..4 {
+        let mut wheels = [WheelInfoRL::DEFAULT; 4];
+        for (i, wheel) in wheels.iter_mut().enumerate() {
             let front = i < 2;
             let left = i % 2 != 0;
 
-            let wheels = if front {
-                &config.front_wheels
+            let (wheel_config, suspension_force_scale) = if front {
+                (
+                    &config.front_wheels,
+                    vehicle_consts::SUSPENSION_FORCE_SCALE_FRONT,
+                )
             } else {
-                &config.back_wheels
+                (
+                    &config.back_wheels,
+                    vehicle_consts::SUSPENSION_FORCE_SCALE_BACK,
+                )
             };
 
-            let radius = wheels.wheel_radius;
-            let mut wheel_ray_start_offset = wheels.connection_point_offset;
-            let suspension_rest_length =
-                wheels.suspension_rest_length - vehicle_consts::MAX_SUSPENSION_TRAVEL;
-
+            let mut wheel_ray_start_offset = wheel_config.connection_point_offset;
             if left {
                 wheel_ray_start_offset.y *= -1.0;
             }
 
-            bullet_vehicle.add_wheel(
-                wheel_ray_start_offset * UU_TO_BT,
-                wheel_direction_cs,
-                wheel_axle_cs,
-                suspension_rest_length * UU_TO_BT,
-                radius * UU_TO_BT,
-            );
+            let suspension_rest_length =
+                wheel_config.suspension_rest_length - vehicle_consts::MAX_SUSPENSION_TRAVEL;
 
-            bullet_vehicle.wheels[i].suspsension_force_scale = if front {
-                vehicle_consts::SUSPENSION_FORCE_SCALE_FRONT
-            } else {
-                vehicle_consts::SUSPENSION_FORCE_SCALE_BACK
-            };
+            wheel.set_params(
+                wheel_ray_start_offset * UU_TO_BT,
+                suspension_rest_length * UU_TO_BT,
+                wheel_config.wheel_radius * UU_TO_BT,
+                suspension_force_scale,
+            );
         }
 
         Self {
             info: CarInfo { idx, team, config },
             rigid_body_idx,
-            bullet_vehicle,
+            bullet_vehicle: VehicleRL::new(rigid_body_idx, wheels, raycaster),
             vel_impulse_cache: Vec3A::ZERO,
             state: CarState {
                 boost: mutator_config.car_spawn_boost_amount,
