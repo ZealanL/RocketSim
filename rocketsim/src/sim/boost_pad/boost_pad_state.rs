@@ -14,6 +14,7 @@ impl Default for BoostPadState {
 impl BoostPadState {
     pub const DEFAULT: Self = Self { cooldown: 0.0 };
 
+    #[must_use]
     pub const fn is_active(&self) -> bool {
         self.cooldown <= 0.0
     }

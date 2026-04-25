@@ -80,7 +80,7 @@ impl CollisionShapes {
         self.get_angular_motion_disc() * default_contact_threshold
     }
 
-    pub fn get_margin(&self) -> f32 {
+    pub const fn get_margin(&self) -> f32 {
         match self {
             Self::Sphere(shape) => shape.get_margin(),
             Self::Compound(shape) => shape.get_margin(),

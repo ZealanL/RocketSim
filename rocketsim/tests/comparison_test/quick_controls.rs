@@ -1,6 +1,6 @@
 use rocketsim::CarControls;
 
-pub fn quick_drive(throttle: f32, steer: f32, boost: bool, handbrake: bool) -> CarControls {
+pub const fn quick_drive(throttle: f32, steer: f32, boost: bool, handbrake: bool) -> CarControls {
     CarControls {
         throttle,
         steer,
@@ -14,7 +14,7 @@ pub fn quick_drive(throttle: f32, steer: f32, boost: bool, handbrake: bool) -> C
     }
 }
 
-pub fn quick_air(pitch: f32, yaw: f32, roll: f32, jump: bool, boost: bool) -> CarControls {
+pub const fn quick_air(pitch: f32, yaw: f32, roll: f32, jump: bool, boost: bool) -> CarControls {
     CarControls {
         throttle: 0.0,
         steer: 0.0,

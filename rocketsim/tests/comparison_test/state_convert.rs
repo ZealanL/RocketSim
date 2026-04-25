@@ -113,7 +113,7 @@ pub fn conv_to_old_car_state(state: &CarState) -> OldCarState {
     }
 }
 
-pub fn conv_to_new_car_state(old: &OldCarState, controls: CarControls) -> CarState {
+pub const fn conv_to_new_car_state(old: &OldCarState, controls: CarControls) -> CarState {
     CarState {
         phys: PhysState {
             pos: vec3_to_new(old.pos),

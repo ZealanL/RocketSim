@@ -21,11 +21,11 @@ impl BoxShape {
     }
 
     #[inline]
-    pub fn get_half_extents(&self) -> Vec3A {
+    pub const fn get_half_extents(&self) -> Vec3A {
         self.internal_shape.implicit_dim
     }
 
-    pub fn get_margin(&self) -> f32 {
+    pub const fn get_margin(&self) -> f32 {
         self.internal_shape.margin
     }
 

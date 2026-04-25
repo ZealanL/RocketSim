@@ -45,7 +45,7 @@ impl CompoundShape {
     }
 
     #[inline]
-    pub fn get_margin(&self) -> f32 {
+    pub const fn get_margin(&self) -> f32 {
         self.child_shape.get_margin()
     }
 

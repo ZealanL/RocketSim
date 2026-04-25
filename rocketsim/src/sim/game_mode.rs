@@ -22,15 +22,16 @@ impl GameMode {
         "void",
     ];
 
+    #[must_use]
     pub const fn name(self) -> &'static str {
         Self::NAMES[self as usize]
     }
 
+    #[must_use]
     pub const fn has_soccar_arena(self) -> bool {
-        use GameMode::*;
         match self {
-            Soccar | Heatseeker | Snowday => true,
-            Hoops | Dropshot | TheVoid => false,
+            Self::Soccar | Self::Heatseeker | Self::Snowday => true,
+            Self::Hoops | Self::Dropshot | Self::TheVoid => false,
         }
     }
 

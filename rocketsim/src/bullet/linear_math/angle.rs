@@ -56,7 +56,7 @@ impl Angle {
     pub fn normalize_fix(&mut self) {
         self.yaw = (self.yaw + PI).rem_euclid(TAU) - PI;
         self.pitch = (self.pitch + FRAC_PI_2).rem_euclid(PI) - FRAC_PI_2;
-        self.roll = (self.roll + PI).rem_euclid(TAU) - PI
+        self.roll = (self.roll + PI).rem_euclid(TAU) - PI;
     }
 
     pub fn get_forward_vec(self) -> Vec3A {
@@ -66,7 +66,7 @@ impl Angle {
         Vec3A::new(cp * cy, cp * sy, -sp)
     }
 
-    /// See: https://unrealarchive.org/wikis/unreal-wiki/Rotator.html
+    /// See: <https://unrealarchive.org/wikis/unreal-wiki/Rotator.html>
     ///
     /// You can determine the rounding from measuring the resulting vector directions from conversions
     pub fn round_ue3(self) -> Self {

@@ -52,8 +52,9 @@ pub(crate) struct ArenaEventList {
 
 impl ArenaEventList {
     const STARTING_CAPACITY: usize = 12;
-    pub fn new() -> ArenaEventList {
-        ArenaEventList {
+
+    pub fn new() -> Self {
+        Self {
             events: Vec::with_capacity(Self::STARTING_CAPACITY),
         }
     }

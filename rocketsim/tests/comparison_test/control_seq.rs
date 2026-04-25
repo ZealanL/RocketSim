@@ -23,11 +23,9 @@ impl ControlSeq {
             return CarControls::default();
         }
 
-        if let Some(car_controls) = self.car_controls.get(tick as usize) {
-            *car_controls
-        } else {
-            *self.car_controls.last().unwrap()
-        }
+        self.car_controls
+            .get(tick as usize)
+            .map_or_else(|| *self.car_controls.last().unwrap(), |c| *c)
     }
 
     pub fn add(mut self, controls: CarControls, duration: u64) -> Self {

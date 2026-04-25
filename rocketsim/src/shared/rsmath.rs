@@ -1,11 +1,13 @@
 use glam::Vec3A;
 
+#[must_use]
 pub fn try_calc_tri_normal(points: &[Vec3A; 3]) -> Option<Vec3A> {
     (points[1] - points[0])
         .cross(points[2] - points[0])
         .try_normalize()
 }
 
+#[must_use]
 /// Projects a point onto a line, given two points on said line
 pub fn project_point_on_inf_line(point: Vec3A, line_a: Vec3A, line_b: Vec3A) -> Vec3A {
     let line_vec = line_b - line_a;
@@ -19,6 +21,7 @@ pub fn project_point_on_inf_line(point: Vec3A, line_a: Vec3A, line_b: Vec3A) -> 
     }
 }
 
+#[must_use]
 /// Finds the closest point on a finite segment to a target point.
 pub fn closest_point_on_segment(target: Vec3A, seg_a: Vec3A, seg_b: Vec3A) -> Vec3A {
     let seg_dim = seg_b - seg_a;
@@ -31,9 +34,10 @@ pub fn closest_point_on_segment(target: Vec3A, seg_a: Vec3A, seg_b: Vec3A) -> Ve
     }
 }
 
+#[must_use]
 /// Finds a point closest to two line segments
 ///
-/// **Ref**: https://zalo.github.io/blog/closest-point-between-segments/
+/// **Ref**: <https://zalo.github.io/blog/closest-point-between-segments/>
 pub fn closest_points_between_segments(
     seg_a: Vec3A,
     seg_b: Vec3A,
@@ -61,6 +65,7 @@ pub fn closest_points_between_segments(
     (point_on_ab_closest_to_cd + point_on_cd_closest_to_ab) / 2.0
 }
 
+#[must_use]
 pub fn to_2d(v: Vec3A) -> Vec3A {
     v.truncate().extend(0.0).to_vec3a()
 }

@@ -24,7 +24,7 @@ impl UsageBitfield {
         }
     }
 
-    pub fn reset(&mut self) {
+    pub const fn reset(&mut self) {
         self.used_vertex_a = false;
         self.used_vertex_b = false;
         self.used_vertex_c = false;
@@ -49,7 +49,7 @@ impl SubSimplexClosestResult {
         }
     }
 
-    pub fn reset(&mut self) {
+    pub const fn reset(&mut self) {
         self.degenerate = false;
         self.set_barycentric_coordinates(0.0, 0.0, 0.0, 0.0);
         self.used_vertices.reset();
@@ -62,7 +62,7 @@ impl SubSimplexClosestResult {
             && self.barycentric_coords[3] >= 0.0
     }
 
-    pub fn set_barycentric_coordinates(&mut self, a: f32, b: f32, c: f32, d: f32) {
+    pub const fn set_barycentric_coordinates(&mut self, a: f32, b: f32, c: f32, d: f32) {
         self.barycentric_coords[0] = a;
         self.barycentric_coords[1] = b;
         self.barycentric_coords[2] = c;
@@ -108,7 +108,7 @@ impl VoronoiSimplexSolver {
         }
     }
 
-    pub fn add_vertex(&mut self, w: Vec3A, p: Vec3A, q: Vec3A) {
+    pub const fn add_vertex(&mut self, w: Vec3A, p: Vec3A, q: Vec3A) {
         self.last_w = w;
         self.needs_update = true;
 
@@ -125,7 +125,7 @@ impl VoronoiSimplexSolver {
         success
     }
 
-    pub fn full_simplex(&self) -> bool {
+    pub const fn full_simplex(&self) -> bool {
         self.num_vertices == 4
     }
 
@@ -186,9 +186,6 @@ impl VoronoiSimplexSolver {
         self.needs_update = false;
 
         match self.num_vertices {
-            0 => {
-                self.cached_valid_closest = false;
-            }
             1 => {
                 self.cached_p1 = self.simplex_points_p[0];
                 self.cached_p2 = self.simplex_points_q[0];
@@ -213,12 +210,12 @@ impl VoronoiSimplexSolver {
                         t /= dot_vv;
                         diff -= t * v;
                         self.cached_bc.used_vertices.used_vertex_a = true;
-                        self.cached_bc.used_vertices.used_vertex_b = true;
                     } else {
                         t = 1.0;
                         diff -= v;
-                        self.cached_bc.used_vertices.used_vertex_b = true;
                     }
+
+                    self.cached_bc.used_vertices.used_vertex_b = true;
                 } else {
                     t = 0.0;
                     self.cached_bc.used_vertices.used_vertex_a = true;

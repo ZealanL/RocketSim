@@ -45,6 +45,7 @@ impl ArenaConfig {
         rng_seed: None,
     };
 
+    #[must_use]
     pub fn new(game_mode: GameMode) -> Self {
         Self {
             game_mode,

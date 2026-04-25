@@ -14,7 +14,7 @@ struct ManifoldResult<'a, T: ContactAddedCallback> {
     contact_added_callback: &'a mut T,
 }
 
-impl<'a, T: ContactAddedCallback> GjkResult for ManifoldResult<'a, T> {
+impl<T: ContactAddedCallback> GjkResult for ManifoldResult<'_, T> {
     fn add_contact_point(
         &mut self,
         normal_on_b: glam::Vec3A,
@@ -34,7 +34,7 @@ impl<'a, T: ContactAddedCallback> GjkResult for ManifoldResult<'a, T> {
 }
 
 pub fn process_collision<T: ContactAddedCallback>(
-    convex_obj_a: RigidBodyWrapper,
+    convex_obj_a: &RigidBodyWrapper,
     convex_obj_b: &RigidBody,
     contact_added_callback: &mut T,
 ) -> Option<PersistentManifold> {

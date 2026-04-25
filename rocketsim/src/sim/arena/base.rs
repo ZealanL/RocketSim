@@ -52,6 +52,7 @@ pub struct Arena {
 }
 
 impl Arena {
+    #[must_use]
     pub fn new(game_mode: GameMode) -> Self {
         Self::new_with_config(ArenaConfig::new(game_mode))
     }
@@ -89,34 +90,36 @@ impl Arena {
             config.no_ball_rot,
         );
 
-        let mut boost_pad_grid = None;
-        if config.game_mode != GameMode::TheVoid && config.game_mode != GameMode::Dropshot {
-            let mut boost_pad_configs = Vec::new();
+        let boost_pad_grid =
+            if config.game_mode != GameMode::TheVoid && config.game_mode != GameMode::Dropshot {
+                let mut boost_pad_configs = Vec::new();
 
-            if let Some(custom_boost_pads) = config.custom_boost_pads.as_ref() {
-                boost_pad_configs.extend_from_slice(custom_boost_pads);
+                if let Some(custom_boost_pads) = config.custom_boost_pads.as_ref() {
+                    boost_pad_configs.extend_from_slice(custom_boost_pads);
+                } else {
+                    let small_pad_locs = consts::boost_pads::get_locations(config.game_mode, false);
+                    let big_pad_locs = consts::boost_pads::get_locations(config.game_mode, true);
+                    boost_pad_configs.reserve(small_pad_locs.len() + big_pad_locs.len());
+
+                    for small_pos in small_pad_locs {
+                        boost_pad_configs.push(BoostPadConfig {
+                            pos: *small_pos,
+                            is_big: false,
+                        });
+                    }
+
+                    for big_pos in big_pad_locs {
+                        boost_pad_configs.push(BoostPadConfig {
+                            pos: *big_pos,
+                            is_big: true,
+                        });
+                    }
+                }
+
+                Some(BoostPadGrid::new(&boost_pad_configs, &config.mutators))
             } else {
-                let small_pad_locs = consts::boost_pads::get_locations(config.game_mode, false);
-                let big_pad_locs = consts::boost_pads::get_locations(config.game_mode, true);
-                boost_pad_configs.reserve(small_pad_locs.len() + big_pad_locs.len());
-
-                for small_pos in small_pad_locs {
-                    boost_pad_configs.push(BoostPadConfig {
-                        pos: *small_pos,
-                        is_big: false,
-                    });
-                }
-
-                for big_pos in big_pad_locs {
-                    boost_pad_configs.push(BoostPadConfig {
-                        pos: *big_pos,
-                        is_big: true,
-                    });
-                }
-            }
-
-            boost_pad_grid = Some(BoostPadGrid::new(&boost_pad_configs, &config.mutators));
-        }
+                None
+            };
 
         let rng = config.rng_seed.map_or_else(Rng::new, Rng::with_seed);
 
@@ -137,6 +140,7 @@ impl Arena {
         }
     }
 
+    #[must_use]
     pub const fn get_config(&self) -> &ArenaConfig {
         &self.config
     }
@@ -283,6 +287,7 @@ impl Arena {
         dist_sq - RADIUS_SQ
     }
 
+    #[must_use]
     pub fn is_ball_scored(&self) -> bool {
         let ball_pos = self.bullet_world.bodies()[self.ball.rigid_body_idx]
             .get_world_trans()
@@ -575,7 +580,7 @@ impl Arena {
         );
     }
 
-    pub fn get_ball_state(&self) -> &BallState {
+    pub const fn get_ball_state(&self) -> &BallState {
         &self.ball.state
     }
 
@@ -616,7 +621,7 @@ impl Arena {
     }
 
     pub fn set_car_controls(&mut self, car_idx: usize, controls: CarControls) {
-        self.cars[car_idx].state.controls = controls
+        self.cars[car_idx].state.controls = controls;
     }
 
     pub fn respawn_car(&mut self, car_idx: usize) {
@@ -630,16 +635,14 @@ impl Arena {
         );
     }
 
+    #[must_use]
     pub fn get_boost_pad_state(&self, idx: usize) -> BoostPadState {
         let pad = self.boost_pads()[idx];
-
-        let cooldown = if let Some(gave_boost_tick) = pad.gave_boost_tick_count {
+        let cooldown = pad.gave_boost_tick_count.map_or(0.0, |gave_boost_tick| {
             let max_cooldown = pad.max_cooldown;
             let time_since = ((self.tick_count() - gave_boost_tick) as f32) * TICK_TIME;
             (max_cooldown - time_since).max(0.0)
-        } else {
-            0.0
-        };
+        });
 
         BoostPadState { cooldown }
     }
@@ -657,6 +660,7 @@ impl Arena {
         }
     }
 
+    #[must_use]
     pub fn get_boost_pad_config(&self, idx: usize) -> &BoostPadConfig {
         self.boost_pads()[idx].config()
     }
@@ -665,22 +669,26 @@ impl Arena {
         &self.boost_pad_grid.as_ref().unwrap().all_pads
     }
 
+    #[must_use]
     pub fn num_boost_pads(&self) -> usize {
         self.boost_pads().len()
     }
 
+    #[must_use]
     pub fn get_all_boost_pad_states(&self) -> Vec<BoostPadState> {
         (0..self.num_boost_pads())
             .map(|i| self.get_boost_pad_state(i))
             .collect()
     }
 
+    #[must_use]
     pub fn get_all_boost_pad_configs(&self) -> Vec<BoostPadConfig> {
         (0..self.num_boost_pads())
             .map(|i| *self.get_boost_pad_config(i))
             .collect()
     }
 
+    #[must_use]
     pub fn get_arena_state(&self) -> ArenaState {
         let car_infos = self.cars.iter().map(|c| c.info).collect::<Vec<_>>();
         let car_states = self.cars.iter().map(|c| c.state).collect::<Vec<_>>();
@@ -698,6 +706,7 @@ impl Arena {
         }
     }
 
+    #[must_use]
     /// Returns the events generated during the last stepped tick
     pub fn get_last_step_events(&self) -> &[ArenaEvent] {
         self.events.events()
@@ -743,7 +752,7 @@ impl Arena {
         self.events.push(BallHitWorld(BallHitWorldEvent {
             contact_point,
             contact_normal,
-        }))
+        }));
     }
 
     fn on_car_ball_collision(
@@ -753,7 +762,7 @@ impl Arena {
         ball_is_body_a: bool,
     ) {
         self.ball.on_hit(
-            &mut self.cars[car_idx],
+            &self.cars[car_idx],
             self.config.game_mode,
             &self.config.mutators,
             self.tick_count,

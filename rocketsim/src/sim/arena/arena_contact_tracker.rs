@@ -37,7 +37,7 @@ impl ArenaContactTracker {
         }
     }
 
-    pub fn num_records(&self) -> usize {
+    pub const fn num_records(&self) -> usize {
         self.collision_records.len()
     }
 

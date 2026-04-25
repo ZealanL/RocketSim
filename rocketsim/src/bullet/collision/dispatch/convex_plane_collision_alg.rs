@@ -10,7 +10,7 @@ use crate::bullet::{
 };
 
 pub fn process_collision<T: ContactAddedCallback>(
-    convex_obj: RigidBodyWrapper,
+    convex_obj: &RigidBodyWrapper,
     plane_obj: &RigidBody,
     plane_shape: &StaticPlaneShape,
     contact_added_callback: &mut T,

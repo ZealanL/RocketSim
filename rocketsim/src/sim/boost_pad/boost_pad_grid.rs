@@ -12,7 +12,7 @@ pub struct BoostPadProcessor<'a> {
     pad_idx: Option<usize>,
 }
 
-impl<'a> bvh::ProcessNode for BoostPadProcessor<'a> {
+impl bvh::ProcessNode for BoostPadProcessor<'_> {
     fn process_node(&mut self, pad_idx: usize) {
         if self.pad_idx.is_some() {
             return; // Already found a pad to give boost from, no need to check more

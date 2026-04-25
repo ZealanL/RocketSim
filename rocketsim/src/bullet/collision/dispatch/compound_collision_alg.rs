@@ -338,13 +338,13 @@ pub fn process_collision<T: ContactAddedCallback>(
             }
         }
         CollisionShapes::StaticPlane(plane) => convex_plane_collision_alg::process_collision(
-            compound_obj_wrap,
+            &compound_obj_wrap,
             other_obj,
             plane,
             contact_added_callback,
         ),
         CollisionShapes::ConvexHull(_) => convex_convex_collision_alg::process_collision(
-            compound_obj_wrap,
+            &compound_obj_wrap,
             other_obj,
             contact_added_callback,
         ),

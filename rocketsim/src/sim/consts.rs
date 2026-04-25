@@ -16,6 +16,7 @@ pub struct CarSpawnPos {
 
 impl CarSpawnPos {
     #[inline]
+    #[must_use]
     pub const fn new(x: f32, y: f32, yaw_ang: f32) -> Self {
         Self { x, y, yaw_ang }
     }
@@ -32,7 +33,7 @@ pub(crate) const UU_TO_BT: f32 = 1.0 / 50.0;
 /// How many ticks occur in one second
 pub const TICK_RATE: f32 = 120.0;
 
-/// The amount of time each tick takes up (inverse of TICK_RATE)
+/// The amount of time each tick takes up (inverse of `TICK_RATE`)
 pub const TICK_TIME: f32 = 1.0 / TICK_RATE;
 
 /// The z-velocity added by gravity each second
@@ -49,6 +50,7 @@ pub mod arena {
         restitution: 0.3,
     };
 
+    #[must_use]
     pub const fn get_aabb(game_mode: GameMode) -> Aabb {
         let (max_x, max_y, max_z) = match game_mode {
             GameMode::Hoops => (8900.0 / 3.0, 3581.0, 1820.0),
@@ -206,6 +208,7 @@ pub mod car {
         pub const REST_Z: f32 = 17.0;
         pub const RESPAWN_Z: f32 = 36.0;
 
+        #[must_use]
         pub const fn get_kickoff_spawn_locations(game_mode: GameMode) -> &'static [CarSpawnPos] {
             pub const LOCATIONS_SOCCAR: [CarSpawnPos; 5] = [
                 CarSpawnPos::new(-2048., -2560., FRAC_PI_4 * 1.),
@@ -245,6 +248,7 @@ pub mod car {
 
         pub const RESPAWN_TIME: f32 = 3.0;
 
+        #[must_use]
         pub const fn get_respawn_locations(game_mode: GameMode) -> &'static [CarSpawnPos] {
             const LOCATIONS_SOCCAR: [CarSpawnPos; 4] = [
                 CarSpawnPos::new(-2304., -4608., FRAC_PI_2),
@@ -278,6 +282,7 @@ pub mod ball {
     use super::PhysicsCoefs;
     use crate::{GameMode, consts::snowday};
 
+    #[must_use]
     pub const fn get_radius(game_mode: GameMode) -> f32 {
         pub const RADIUS_SOCCAR: f32 = 91.25;
         pub const RADIUS_HOOPS: f32 = 96.3831;
@@ -331,6 +336,7 @@ pub mod goal {
 
     pub const HOOPS_GOAL_SCORE_THRESHOLD_Z: f32 = 270.0;
 
+    #[must_use]
     pub const fn get_goal_aabb(goal_team: Team) -> Aabb {
         const FRONT_Y: f32 = SOCCAR_GOAL_SCORE_BASE_THRESHOLD_Y;
         const DEPTH: f32 = SOCCAR_GOAL_DEPTH;
@@ -345,6 +351,7 @@ pub mod goal {
         )
     }
 
+    #[must_use]
     pub const fn get_goal_face_center(goal_team: Team) -> Vec3A {
         Vec3A::new(
             0.0,
@@ -438,7 +445,7 @@ pub mod heatseeker {
 }
 
 pub mod snowday {
-    use super::*;
+    use super::PhysicsCoefs;
 
     /// Real puck radius varies a bit from point to point, but it shouldn't matter
     pub const PUCK_RADIUS: f32 = 114.25;
@@ -505,6 +512,7 @@ pub mod boost_pads {
     pub const BOOST_AMOUNT_BIG: f32 = 100.0;
     pub const BOOST_AMOUNT_SMALL: f32 = 12.0;
 
+    #[must_use]
     pub const fn get_locations(game_mode: GameMode, is_big: bool) -> &'static [Vec3A] {
         const LOCS_SMALL_SOCCAR: [Vec3A; 28] = [
             Vec3A::new(0., -4240., 70.),
