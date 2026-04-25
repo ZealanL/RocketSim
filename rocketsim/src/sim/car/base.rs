@@ -88,7 +88,6 @@ impl Car {
             CollisionFilterGroups::All as u8,
         );
 
-        let rb = &bullet_world.bodies()[rigid_body_idx];
         let raycaster = const { VehicleRaycaster::new(CollisionMasks::DropshotFloor as u8) };
         let mut bullet_vehicle = VehicleRL::new(rigid_body_idx, raycaster);
 
@@ -115,7 +114,6 @@ impl Car {
             }
 
             bullet_vehicle.add_wheel(
-                rb,
                 wheel_ray_start_offset * UU_TO_BT,
                 wheel_direction_cs,
                 wheel_axle_cs,
@@ -297,7 +295,7 @@ impl Car {
                 continue;
             }
 
-            let lat_dir = wheel.wheel_info.world_trans.matrix3.y_axis;
+            let lat_dir = wheel.wheel_info.axle_dir;
             let long_dir = lat_dir.cross(wheel.wheel_info.raycast_info.contact_normal_ws);
 
             let wheel_delta = wheel.wheel_info.raycast_info.hard_point_ws - car_pos;

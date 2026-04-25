@@ -1,4 +1,4 @@
-use glam::{Affine3A, Vec3A};
+use glam::Vec3A;
 
 #[derive(Clone, Copy)]
 pub struct WheelInfoConstructionInfo {
@@ -23,7 +23,7 @@ pub struct RaycastInfo {
 
 pub struct WheelInfo {
     pub raycast_info: RaycastInfo,
-    pub world_trans: Affine3A,
+    pub axle_dir: Vec3A,
     pub chassis_connection_point_cs: Vec3A,
     pub wheel_direction_cs: Vec3A,
     pub wheel_axle_cs: Vec3A,
@@ -47,7 +47,7 @@ impl WheelInfo {
             engine_force: 0.0,
             brake: 0.0,
             raycast_info: RaycastInfo::default(),
-            world_trans: Affine3A::IDENTITY,
+            axle_dir: Vec3A::ZERO,
             clipped_inv_contact_dot_suspension: 0.0,
             suspension_relative_vel: 0.0,
             wheels_suspension_force: 0.0,

@@ -1,5 +1,5 @@
 use arrayvec::ArrayVec;
-use glam::{Affine3A, Mat3A, Quat, Vec3A};
+use glam::{Affine3A, Quat, Vec3A};
 
 use super::{
     raycaster::VehicleRaycaster,
@@ -15,7 +15,7 @@ use crate::{
             rigid_body::RigidBody,
             vehicle::raycaster::VehicleRaycasterResult,
         },
-        linear_math::{Mat3AExt, QuatExt},
+        linear_math::QuatExt,
     },
     consts::{UU_TO_BT, bullet_vehicle},
     sim::consts::bullet_vehicle::SUSPENSION_SUBTRACTION,
@@ -61,27 +61,20 @@ impl WheelInfoRL {
             chassis_trans.matrix3 * self.wheel_info.wheel_axle_cs;
     }
 
-    fn update_wheel_trans(&mut self, cb_co: &RigidBody) {
+    fn update_wheel_trans<const FRONT: bool>(&mut self, cb_co: &RigidBody) {
         self.update_wheel_trans_ws(cb_co.get_world_trans());
         let up = -self.wheel_info.raycast_info.wheel_direction_ws;
         let right = self.wheel_info.raycast_info.wheel_axle_ws;
-        let fwd = up.cross(right).normalize();
 
-        let steering_orn = Quat::from_axis_angle_simd(up, self.steer_angle);
-        let steering_mat = Mat3A::bullet_from_quat(steering_orn);
-
-        let basis2 = Mat3A::from_cols(fwd, -right, up);
-        self.wheel_info.world_trans = Affine3A {
-            matrix3: steering_mat * basis2,
-            translation: self.wheel_info.raycast_info.hard_point_ws
-                + self.wheel_info.wheel_direction_cs
-                    * self.wheel_info.raycast_info.suspension_length,
-        }
+        self.wheel_info.axle_dir = if FRONT {
+            let steering_orn = Quat::from_axis_angle_simd(up, self.steer_angle);
+            steering_orn * -right
+        } else {
+            -right
+        };
     }
 
-    fn prepare_for_raycast(&mut self, chassis: &RigidBody) -> (Vec3A, Vec3A, f32) {
-        self.update_wheel_trans_ws(chassis.get_world_trans());
-
+    fn prepare_for_raycast(&mut self) -> (Vec3A, Vec3A, f32) {
         let suspension_travel = bullet_vehicle::MAX_SUSPENSION_TRAVEL * UU_TO_BT;
         let real_ray_length = self.wheel_info.suspension_rest_length_1
             + suspension_travel
@@ -190,7 +183,7 @@ impl WheelInfoRL {
         };
         let ground_rb = &bodies[ground_rb_idx];
 
-        let mut axle_dir = self.wheel_info.world_trans.matrix3.y_axis;
+        let mut axle_dir = self.wheel_info.axle_dir;
         let surf_normal_ws = self.wheel_info.raycast_info.contact_normal_ws;
         let proj = axle_dir.dot(surf_normal_ws);
         axle_dir -= surf_normal_ws * proj;
@@ -291,13 +284,7 @@ impl WheelInfoRL {
 }
 
 pub struct VehicleRL {
-    // forward_ws: Vec<Vec3A>,
-    // axle: Vec<Vec3A>,
-    // forward_impulse: Vec<f32>,
-    // side_impulse: Vec<f32>,
     raycaster: VehicleRaycaster,
-    // pitch_control: f32,
-    // steering_value: f32,
     pub chassis_body_idx: usize,
     pub wheels: ArrayVec<WheelInfoRL, NUM_WHEELS>,
 }
@@ -307,12 +294,6 @@ impl VehicleRL {
         Self {
             raycaster,
             chassis_body_idx,
-            // forward_ws: Vec::new(),
-            // axle: Vec::new(),
-            // forward_impulse: Vec::new(),
-            // side_impulse: Vec::new(),
-            // pitch_control: 0.0,
-            // steering_value: 0.0,
             wheels: ArrayVec::new(),
         }
     }
@@ -332,10 +313,8 @@ impl VehicleRL {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub fn add_wheel(
         &mut self,
-        cb_co: &RigidBody,
         connection_point_cs: Vec3A,
         wheel_direction_cs0: Vec3A,
         wheel_axle_cs: Vec3A,
@@ -350,9 +329,7 @@ impl VehicleRL {
             wheel_radius,
         };
 
-        let mut wheel = WheelInfoRL::new(ci);
-        wheel.update_wheel_trans(cb_co);
-        self.wheels.push(wheel);
+        self.wheels.push(WheelInfoRL::new(ci));
     }
 
     pub const fn get_num_wheels(&self) -> usize {
@@ -366,9 +343,13 @@ impl VehicleRL {
     ) {
         let chassis = &collision_world.bodies()[self.chassis_body_idx];
 
-        let friction_scale = chassis.get_mass() / 3.0;
-        for wheel in &mut self.wheels {
-            wheel.update_wheel_trans(chassis);
+        let (front_wheels, back_wheels) = self.wheels.split_at_mut(2);
+        for wheel in front_wheels {
+            wheel.update_wheel_trans::<true>(chassis);
+        }
+
+        for wheel in back_wheels {
+            wheel.update_wheel_trans::<false>(chassis);
         }
 
         let mut sources = [Vec3A::ZERO; 4];
@@ -376,7 +357,7 @@ impl VehicleRL {
         let mut suspension_travels = [0.0; 4];
 
         for (i, wheel) in self.wheels.iter_mut().enumerate() {
-            (sources[i], targets[i], suspension_travels[i]) = wheel.prepare_for_raycast(chassis);
+            (sources[i], targets[i], suspension_travels[i]) = wheel.prepare_for_raycast();
         }
 
         let ray_results = self
@@ -391,6 +372,7 @@ impl VehicleRL {
             }
         }
 
+        let friction_scale = chassis.get_mass() / 3.0;
         for wheel in &mut self.wheels {
             wheel.calc_friction_impulses(
                 chassis,
