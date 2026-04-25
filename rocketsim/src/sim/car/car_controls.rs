@@ -77,6 +77,7 @@ impl CarControls {
 
     pub const NUM_VALS: usize = 8;
 
+    #[must_use]
     pub const fn clamp(mut self) -> Self {
         self.throttle = self.throttle.clamp(-1.0, 1.0);
         self.steer = self.steer.clamp(-1.0, 1.0);
@@ -86,10 +87,12 @@ impl CarControls {
         self
     }
 
+    #[must_use]
     pub const fn pyr(self) -> Vec3 {
         Vec3::new(self.pitch, self.yaw, self.roll)
     }
 
+    #[must_use]
     pub const fn to_floats(&self) -> [f32; Self::NUM_VALS] {
         [
             self.throttle,
@@ -103,6 +106,7 @@ impl CarControls {
         ]
     }
 
+    #[must_use]
     /// `boolean_thresh`: Floats over this value will trigger boolean controls (jump, boost, handbrake)
     pub const fn from_floats(floats: [f32; Self::NUM_VALS], boolean_tresh: f32) -> Self {
         Self {
@@ -120,46 +124,55 @@ impl CarControls {
 
     //////////////////////////
 
+    #[must_use]
     pub const fn with_throttle(mut self, val: f32) -> Self {
         self.throttle = val;
         self
     }
 
+    #[must_use]
     pub const fn with_steer(mut self, val: f32) -> Self {
         self.steer = val;
         self
     }
 
+    #[must_use]
     pub const fn with_pitch(mut self, val: f32) -> Self {
         self.pitch = val;
         self
     }
 
+    #[must_use]
     pub const fn with_yaw(mut self, val: f32) -> Self {
         self.yaw = val;
         self
     }
 
+    #[must_use]
     pub const fn with_roll(mut self, val: f32) -> Self {
         self.roll = val;
         self
     }
 
+    #[must_use]
     pub const fn with_pyr(mut self, pyr: Vec3) -> Self {
         (self.pitch, self.yaw, self.roll) = (pyr.x, pyr.y, pyr.z);
         self
     }
 
+    #[must_use]
     pub const fn with_jump(mut self, val: bool) -> Self {
         self.jump = val;
         self
     }
 
+    #[must_use]
     pub const fn with_boost(mut self, val: bool) -> Self {
         self.boost = val;
         self
     }
 
+    #[must_use]
     pub const fn with_handbrake(mut self, val: bool) -> Self {
         self.handbrake = val;
         self

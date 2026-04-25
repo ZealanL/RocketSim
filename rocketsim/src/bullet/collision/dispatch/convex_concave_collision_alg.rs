@@ -54,7 +54,7 @@ impl<'a, T: ContactAddedCallback> ConvexTriangleCallback<'a, T> {
     }
 }
 
-impl<'a, T: ContactAddedCallback> GjkResult for ConvexTriangleCallback<'a, T> {
+impl<T: ContactAddedCallback> GjkResult for ConvexTriangleCallback<'_, T> {
     fn add_contact_point(&mut self, normal_on_b: Vec3A, point_on_b_world: Vec3A, depth: f32) {
         self.manifold.add_contact_point(
             self.convex_obj,

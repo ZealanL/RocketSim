@@ -26,12 +26,12 @@ impl SphereShape {
     }
 
     #[inline]
-    pub fn get_radius(&self) -> f32 {
+    pub const fn get_radius(&self) -> f32 {
         self.convex_internal_shape.margin
     }
 
     #[inline]
-    pub fn get_margin(&self) -> f32 {
+    pub const fn get_margin(&self) -> f32 {
         self.get_radius()
     }
 

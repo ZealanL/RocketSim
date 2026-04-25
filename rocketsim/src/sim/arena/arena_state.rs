@@ -11,11 +11,13 @@ pub struct ArenaState {
 }
 
 impl ArenaState {
-    pub fn game_mode(&self) -> GameMode {
+    #[must_use]
+    pub const fn game_mode(&self) -> GameMode {
         self.game_mode
     }
 
-    pub fn new_empty(game_mode: GameMode) -> ArenaState {
+    #[must_use]
+    pub fn new_empty(game_mode: GameMode) -> Self {
         Self {
             game_mode,
             car_infos: Vec::new(),
@@ -26,10 +28,12 @@ impl ArenaState {
         }
     }
 
+    #[must_use]
     pub const fn num_cars(&self) -> usize {
         self.car_infos.len()
     }
 
+    #[must_use]
     pub const fn num_boost_pads(&self) -> usize {
         self.boost_pad_configs.len()
     }

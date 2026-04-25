@@ -32,28 +32,21 @@ impl CollisionDispatcher {
     ) -> Option<PersistentManifold> {
         match col_obj_a.get_collision_shape() {
             CollisionShapes::StaticPlane(plane) => match col_obj_b.get_collision_shape() {
-                CollisionShapes::Sphere(_) => convex_plane_collision_alg::process_collision(
-                    RigidBodyWrapper {
-                        obj: col_obj_b,
-                        world_trans: *col_obj_b.get_world_trans(),
-                    },
-                    col_obj_a,
-                    plane,
-                    contact_added_callback,
-                ),
+                CollisionShapes::Sphere(_) | CollisionShapes::ConvexHull(_) => {
+                    convex_plane_collision_alg::process_collision(
+                        &RigidBodyWrapper {
+                            obj: col_obj_b,
+                            world_trans: *col_obj_b.get_world_trans(),
+                        },
+                        col_obj_a,
+                        plane,
+                        contact_added_callback,
+                    )
+                }
                 CollisionShapes::Compound(compound) => compound_collision_alg::process_collision(
                     col_obj_b,
                     compound,
                     col_obj_a,
-                    contact_added_callback,
-                ),
-                CollisionShapes::ConvexHull(_) => convex_plane_collision_alg::process_collision(
-                    RigidBodyWrapper {
-                        obj: col_obj_b,
-                        world_trans: *col_obj_b.get_world_trans(),
-                    },
-                    col_obj_a,
-                    plane,
                     contact_added_callback,
                 ),
                 _ => unreachable!(),
@@ -61,7 +54,7 @@ impl CollisionDispatcher {
             CollisionShapes::Sphere(sphere) => match col_obj_b.get_collision_shape() {
                 CollisionShapes::StaticPlane(plane) => {
                     convex_plane_collision_alg::process_collision(
-                        RigidBodyWrapper {
+                        &RigidBodyWrapper {
                             obj: col_obj_a,
                             world_trans: *col_obj_a.get_world_trans(),
                         },
@@ -144,7 +137,7 @@ impl CollisionDispatcher {
             CollisionShapes::ConvexHull(_) => match col_obj_b.get_collision_shape() {
                 CollisionShapes::StaticPlane(plane) => {
                     convex_plane_collision_alg::process_collision(
-                        RigidBodyWrapper {
+                        &RigidBodyWrapper {
                             obj: col_obj_a,
                             world_trans: *col_obj_a.get_world_trans(),
                         },

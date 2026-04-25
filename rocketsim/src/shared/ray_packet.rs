@@ -11,6 +11,7 @@ pub struct RayPacketInfo<'a> {
 }
 
 impl<'a> RayPacketInfo<'a> {
+    #[must_use]
     pub fn new(ray_sources: &'a [Vec3A; 4], ray_targets: &'a [Vec3A; 4]) -> Self {
         // Union AABB of the 4 segments for quick root rejection.
         let mut aabb = Aabb::new(
@@ -32,6 +33,7 @@ impl<'a> RayPacketInfo<'a> {
         }
     }
 
+    #[must_use]
     pub fn calc_pos_dir(&self) -> ([Vec4; 3], [Vec4; 3]) {
         const LARGE_VEC: Vec4 = Vec4::splat(LARGE_FLOAT);
 
@@ -90,6 +92,7 @@ impl<'a> RayPacketInfo<'a> {
         (sources, inv_dirs)
     }
 
+    #[must_use]
     /// Packet slab test for 4 rays using Vec4 lanes.
     ///
     /// Returns a bitmask (bit i set if ray i overlaps the AABB).

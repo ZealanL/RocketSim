@@ -167,7 +167,7 @@ impl Epa2 {
         list.count -= 1;
     }
 
-    fn bind(&mut self, fa: usize, ea: usize, fb: usize, eb: usize) {
+    const fn bind(&mut self, fa: usize, ea: usize, fb: usize, eb: usize) {
         self.fc_store[fa].edge[ea] = eb as u8;
         self.fc_store[fa].adj[ea] = Some(fb);
         self.fc_store[fb].edge[eb] = ea as u8;
@@ -215,12 +215,9 @@ impl Epa2 {
         c_idx: usize,
         status: &mut EpaStatus,
     ) -> Option<usize> {
-        let face_idx = match self.stock.root {
-            Some(idx) => idx,
-            None => {
-                *status = EpaStatus::OutOfFaces;
-                return None;
-            }
+        let Some(face_idx) = self.stock.root else {
+            *status = EpaStatus::OutOfFaces;
+            return None;
         };
 
         Self::remove(&mut self.stock, &mut self.fc_store, face_idx);
@@ -251,9 +248,9 @@ impl Epa2 {
 
             if face.d >= -Self::PLANE_EPS {
                 return Some(face_idx);
-            } else {
-                *status = EpaStatus::NonConvex;
             }
+
+            *status = EpaStatus::NonConvex;
         } else {
             *status = EpaStatus::Degenerated;
         }

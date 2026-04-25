@@ -51,12 +51,12 @@ impl PolyhedralConvexShape {
     }
 
     #[inline]
-    pub fn get_margin(&self) -> f32 {
+    pub const fn get_margin(&self) -> f32 {
         self.convex_internal_shape.margin
     }
 
     #[inline]
-    pub fn get_ident_aabb(&self) -> &Aabb {
+    pub const fn get_ident_aabb(&self) -> &Aabb {
         &self.local_aabb
     }
 

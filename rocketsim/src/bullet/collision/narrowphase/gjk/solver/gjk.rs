@@ -77,7 +77,7 @@ impl<'a> Gjk<'a> {
         }
     }
 
-    pub fn simplex(&self) -> GjkSimplex {
+    pub const fn simplex(&self) -> GjkSimplex {
         self.simplices[self.simplex]
     }
 
@@ -124,10 +124,10 @@ impl<'a> Gjk<'a> {
             if found {
                 self.remove_vertex(current);
                 break;
-            } else {
-                clastw = (clastw + 1) & 3;
-                lastw[clastw] = w;
             }
+
+            clastw = (clastw + 1) & 3;
+            lastw[clastw] = w;
 
             let omega = self.ray.dot(w) / rl;
             if omega > alpha {
@@ -357,14 +357,18 @@ impl<'a> Gjk<'a> {
 
     fn project_origin_3(a: Vec3A, b: Vec3A, c: Vec3A, w: &mut [f32; 4], m: &mut u8) -> f32 {
         const IMD3: [usize; 3] = [1, 2, 0];
+
         let vt = [a, b, c];
         let dl = [a - b, b - c, c - a];
+
         let n = dl[0].cross(dl[1]);
         let l = n.length_squared();
+
         if l > Self::SIMPLEX3_EPS {
             let mut mindist = -1.0f32;
             let mut subw = [0.0f32; 4];
             let mut subm: u8 = 0;
+
             for i in 0..3 {
                 if vt[i].dot(dl[i].cross(n)) > 0.0 {
                     let j = IMD3[i];
@@ -380,6 +384,7 @@ impl<'a> Gjk<'a> {
                     }
                 }
             }
+
             if mindist < 0.0 {
                 let d = a.dot(n);
                 let s = l.sqrt();
@@ -390,6 +395,7 @@ impl<'a> Gjk<'a> {
                 w[1] = (dl[2].cross(c - p)).length() / s;
                 w[2] = 1.0 - (w[0] + w[1]);
             }
+
             mindist
         } else {
             -1.0
@@ -408,11 +414,13 @@ impl<'a> Gjk<'a> {
         let vt = [a, b, c, d];
         let dl = [a - d, b - d, c - d];
         let vl = Self::det(dl[0], dl[1], dl[2]);
+
         let ng = (vl * a.dot((b - c).cross(a - b))) <= 0.0;
         if ng && vl.abs() > Self::SIMPLEX4_EPS {
             let mut mindist = -1.0f32;
             let mut subw = [0.0f32; 4];
             let mut subm: u8 = 0;
+
             for i in 0..3 {
                 let j = IMD3[i];
                 let s = vl * d.dot(dl[i].cross(dl[j]));
@@ -430,6 +438,7 @@ impl<'a> Gjk<'a> {
                     }
                 }
             }
+
             if mindist < 0.0 {
                 mindist = 0.0;
                 *m = 15;
@@ -438,6 +447,7 @@ impl<'a> Gjk<'a> {
                 w[2] = Self::det(b, a, d) / vl;
                 w[3] = 1.0 - (w[0] + w[1] + w[2]);
             }
+
             mindist
         } else {
             -1.0

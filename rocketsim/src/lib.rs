@@ -1,4 +1,9 @@
-#![allow(clippy::suboptimal_flops)]
+#![allow(
+    clippy::suboptimal_flops,
+    clippy::cast_precision_loss,
+    clippy::cast_possible_wrap,
+    clippy::cast_possible_truncation
+)]
 
 mod base;
 mod bullet;

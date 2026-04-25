@@ -358,7 +358,7 @@ impl RigidBody {
         self.lin_vel.dot(self.get_forward_vector())
     }
 
-    pub fn get_world_pos(&self) -> Vec3A {
+    pub const fn get_world_pos(&self) -> Vec3A {
         self.get_world_trans().translation
     }
 }

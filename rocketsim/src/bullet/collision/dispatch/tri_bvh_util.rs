@@ -6,7 +6,7 @@ use crate::{
         triangle_mesh::TriangleMesh,
         triangle_shape::TriangleShape,
     },
-    shared::bvh::*,
+    shared::bvh::{ProcessNode, ProcessRayPacketNode},
 };
 
 pub struct NodeOverlapCallback<'a, T: ProcessTriangle> {

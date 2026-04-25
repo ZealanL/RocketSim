@@ -4,7 +4,10 @@ use super::{
 };
 use crate::{
     bullet::collision::{
-        dispatch::{internal_edge_utility::generate_internal_edge_info, tri_bvh_util::*},
+        dispatch::{
+            internal_edge_utility::generate_internal_edge_info,
+            tri_bvh_util::{NodeOverlapCallback, RayPacketNodeOverlapCallback},
+        },
         shapes::{optimized_bvh::create_bvh, triangle_callback::ProcessRayPacketTriangle},
     },
     shared::{Aabb, RayPacketInfo, bvh::Tree},

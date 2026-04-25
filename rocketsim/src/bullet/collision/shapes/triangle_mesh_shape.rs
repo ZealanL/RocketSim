@@ -82,7 +82,7 @@ impl ProcessTriangle for SupportVertexCallback {
 }
 
 impl SupportVertexCallback {
-    pub fn new(support_vec_local: Vec3A) -> Self {
+    pub const fn new(support_vec_local: Vec3A) -> Self {
         Self {
             support_vertex_local: Vec3A::ZERO,
             support_vec_local,

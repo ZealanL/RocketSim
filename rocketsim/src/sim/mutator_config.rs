@@ -53,6 +53,7 @@ impl Default for MutatorConfig {
 }
 
 impl MutatorConfig {
+    #[must_use]
     pub const fn new(game_mode: GameMode) -> Self {
         Self {
             gravity: Vec3A::new(0., 0., consts::GRAVITY_Z),

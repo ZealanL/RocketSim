@@ -59,7 +59,7 @@ impl ConvexHullShape {
     }
 
     #[inline]
-    pub fn get_margin(&self) -> f32 {
+    pub const fn get_margin(&self) -> f32 {
         self.polyhedral_convex_shape.get_margin()
     }
 
@@ -83,7 +83,7 @@ impl ConvexHullShape {
     }
 
     #[inline]
-    pub fn get_ident_aabb(&self) -> &Aabb {
+    pub const fn get_ident_aabb(&self) -> &Aabb {
         self.polyhedral_convex_shape.get_ident_aabb()
     }
 
@@ -100,7 +100,7 @@ impl ConvexHullShape {
 
         let l = 2.0 * (half_extents + margin);
         let l2 = l * l;
-        let scaled_mass = mass * 0.08333333;
+        let scaled_mass = mass * 0.083_333_33;
 
         scaled_mass * Vec3A::new(l2.y + l2.z, l2.x + l2.z, l2.x + l2.y)
     }
@@ -108,7 +108,7 @@ impl ConvexHullShape {
     pub fn perform_raycast<T: RayResultCallback>(
         &self,
         result_callback: &mut BridgeTriangleRaycastPacketCallback<'_, T>,
-        ray_info: &mut RayPacketInfo<'_>,
+        ray_info: &RayPacketInfo<'_>,
     ) {
         let hull_aabb = self.get_ident_aabb();
         if !ray_info.aabb.intersects(hull_aabb) {
