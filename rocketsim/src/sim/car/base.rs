@@ -6,11 +6,6 @@ use std::{
 use fastrand::Rng;
 use glam::{Affine3A, EulerRot, Mat3A, Vec3A};
 
-// Shorthand using aliases for constants
-use crate::bullet::dynamics::{
-    rigid_body::{ActivationState, CollisionFlags},
-    vehicle::vehicle_rl::WheelInfoRL,
-};
 use crate::{
     CarBodyConfig, CarControls, CarState, CollisionMasks, GameMode, MutatorConfig, PhysState, Team,
     bullet::{
@@ -23,15 +18,15 @@ use crate::{
         },
         dynamics::{
             discrete_dynamics_world::DiscreteDynamicsWorld,
-            rigid_body::{RigidBody, RigidBodyConstructionInfo},
-            vehicle::{raycaster::VehicleRaycaster, vehicle_rl::VehicleRL},
+            rigid_body::{ActivationState, CollisionFlags, RigidBody, RigidBodyConstructionInfo},
+            vehicle::{NUM_WHEELS, VehicleRL, WheelInfo},
         },
         linear_math::Mat3AExt,
     },
-    consts,
     consts::{
-        BT_TO_UU, TICK_TIME, UU_TO_BT, bullet_vehicle as vehicle_consts, car as car_consts,
-        car::drive as drive_consts, curves,
+        self, BT_TO_UU, TICK_TIME, UU_TO_BT, bullet_vehicle as vehicle_consts,
+        car::{self as car_consts, drive as drive_consts},
+        curves,
     },
     sim::{UserInfoTypes, car::car_info::CarInfo},
 };
@@ -91,9 +86,7 @@ impl Car {
             CollisionFilterGroups::All as u8,
         );
 
-        let raycaster = const { VehicleRaycaster::new(CollisionMasks::DropshotFloor as u8) };
-
-        let mut wheels = [WheelInfoRL::DEFAULT; 4];
+        let mut wheels = [WheelInfo::DEFAULT; NUM_WHEELS];
         for (i, wheel) in wheels.iter_mut().enumerate() {
             let front = i < 2;
             let left = i % 2 != 0;
@@ -129,7 +122,7 @@ impl Car {
         Self {
             info: CarInfo { idx, team, config },
             rigid_body_idx,
-            bullet_vehicle: VehicleRL::new(rigid_body_idx, wheels, raycaster),
+            bullet_vehicle: VehicleRL::new(rigid_body_idx, wheels),
             vel_impulse_cache: Vec3A::ZERO,
             state: CarState {
                 boost: mutator_config.car_spawn_boost_amount,
@@ -181,10 +174,12 @@ impl Car {
         self.set_state(rb, &new_state);
     }
 
+    #[must_use]
     pub const fn get_state(&self) -> &CarState {
         &self.state
     }
 
+    #[must_use]
     pub const fn get_config(&self) -> &CarBodyConfig {
         &self.info.config
     }
@@ -264,8 +259,8 @@ impl Car {
             * drive_speed_scale;
         let drive_brake_force = real_brake * const { drive_consts::BRAKE_TORQUE_AMOUNT * UU_TO_BT };
         for wheel in &mut self.bullet_vehicle.wheels {
-            wheel.wheel_info.engine_force = drive_engine_force;
-            wheel.wheel_info.brake = drive_brake_force;
+            wheel.engine_force = drive_engine_force;
+            wheel.brake = drive_brake_force;
         }
 
         let mut steer_angle = if self.config.three_wheels {
@@ -289,14 +284,14 @@ impl Car {
         let car_ang_vel = rb.ang_vel;
 
         for wheel in &mut self.bullet_vehicle.wheels {
-            if wheel.wheel_info.raycast_info.ground_obj.is_none() {
+            if wheel.raycast_info.ground_obj.is_none() {
                 continue;
             }
 
-            let lat_dir = wheel.wheel_info.axle_dir;
-            let long_dir = lat_dir.cross(wheel.wheel_info.raycast_info.contact_normal_ws);
+            let lat_dir = wheel.axle_dir;
+            let long_dir = lat_dir.cross(wheel.raycast_info.contact_normal_ws);
 
-            let wheel_delta = wheel.wheel_info.raycast_info.hard_point_ws - car_pos;
+            let wheel_delta = wheel.raycast_info.hard_point_ws - car_pos;
             let cross_vec = (car_ang_vel.cross(wheel_delta) + car_vel) * BT_TO_UU;
 
             let base_friction = cross_vec.dot(lat_dir).abs();
@@ -326,7 +321,7 @@ impl Car {
             if real_throttle == 0.0 {
                 // contact is not sticky
                 let non_sticky_scale = curves::NON_STICKY_FRICTION_FACTOR
-                    .get_output(wheel.wheel_info.raycast_info.contact_normal_ws.z);
+                    .get_output(wheel.raycast_info.contact_normal_ws.z);
                 lat_friction *= non_sticky_scale;
                 long_friction *= non_sticky_scale;
             }
@@ -791,7 +786,7 @@ impl Car {
             .iter()
             .zip(&mut self.state.wheels_with_contact)
         {
-            let in_contact = wheel.wheel_info.raycast_info.is_in_contact;
+            let in_contact = wheel.raycast_info.is_in_contact;
             *has_contact = in_contact;
             num_wheels_in_contact += u8::from(in_contact);
         }
