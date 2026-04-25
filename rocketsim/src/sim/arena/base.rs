@@ -16,12 +16,10 @@ use crate::{
     bullet::{
         collision::{
             broadphase::{GridBroadphase, HashedOverlappingPairCache},
-            dispatch::collision_dispatcher::CollisionDispatcher,
             narrowphase::manifold_point::ManifoldPoint,
             shapes::{collision_shape::CollisionShapes, static_plane_shape::StaticPlaneShape},
         },
         dynamics::{
-            constraint_solver::seq_impulse_constraint_solver::SeqImpulseConstraintSolver,
             discrete_dynamics_world::DiscreteDynamicsWorld,
             rigid_body::{ActivationState, RigidBody, RigidBodyConstructionInfo},
         },
@@ -58,8 +56,6 @@ impl Arena {
     }
 
     pub fn new_with_config(config: ArenaConfig) -> Self {
-        let collision_dispatcher = CollisionDispatcher::default();
-        let constraint_solver = SeqImpulseConstraintSolver::default();
         let overlapping_pair_cache = HashedOverlappingPairCache::default();
 
         let (cell_size_multiplier, initial_handle_size) = match config.mem_weight_mode {
@@ -76,8 +72,7 @@ impl Arena {
         );
 
         let mut bullet_world =
-            DiscreteDynamicsWorld::new(collision_dispatcher, broadphase, constraint_solver);
-        bullet_world.set_gravity(config.mutators.gravity * UU_TO_BT);
+            DiscreteDynamicsWorld::new(broadphase, config.mutators.gravity * UU_TO_BT);
 
         if config.game_mode != GameMode::TheVoid {
             Self::setup_arena_collision_shapes(&mut bullet_world, config.game_mode);

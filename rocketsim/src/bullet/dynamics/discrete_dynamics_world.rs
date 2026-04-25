@@ -6,10 +6,7 @@ use super::{
 };
 use crate::bullet::collision::{
     broadphase::{CollisionFilterGroups, GridBroadphase},
-    dispatch::{
-        collision_dispatcher::CollisionDispatcher, collision_world::CollisionWorld,
-        ray_packet_callbacks::RayResultCallback,
-    },
+    dispatch::{collision_world::CollisionWorld, ray_packet_callbacks::RayResultCallback},
     narrowphase::persistent_manifold::ContactAddedCallback,
 };
 
@@ -21,16 +18,12 @@ pub struct DiscreteDynamicsWorld {
 }
 
 impl DiscreteDynamicsWorld {
-    pub fn new(
-        dispatcher: CollisionDispatcher,
-        pair_cache: GridBroadphase,
-        constraint_solver: SeqImpulseConstraintSolver,
-    ) -> Self {
+    pub fn new(pair_cache: GridBroadphase, gravity: Vec3A) -> Self {
         Self {
-            collision_world: CollisionWorld::new(dispatcher, pair_cache),
-            solver: constraint_solver,
-            gravity: Vec3A::new(0.0, -10.0, 0.0),
-            non_static_rigid_bodies: Vec::with_capacity(8),
+            collision_world: CollisionWorld::new(pair_cache),
+            solver: SeqImpulseConstraintSolver::default(),
+            non_static_rigid_bodies: Vec::new(),
+            gravity,
         }
     }
 
@@ -42,10 +35,6 @@ impl DiscreteDynamicsWorld {
     #[inline]
     pub fn bodies(&self) -> &[RigidBody] {
         &self.collision_world.collision_objs
-    }
-
-    pub const fn set_gravity(&mut self, gravity: Vec3A) {
-        self.gravity = gravity;
     }
 
     #[inline]

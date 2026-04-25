@@ -26,10 +26,10 @@ pub struct CollisionWorld {
 }
 
 impl CollisionWorld {
-    pub const fn new(dispatcher: CollisionDispatcher, pair_cache: GridBroadphase) -> Self {
+    pub fn new(pair_cache: GridBroadphase) -> Self {
         Self {
             collision_objs: Vec::new(),
-            dispatcher1: dispatcher,
+            dispatcher1: CollisionDispatcher::default(),
             broadphase_pair_cache: pair_cache,
             num_skippable_statics: 0,
         }
