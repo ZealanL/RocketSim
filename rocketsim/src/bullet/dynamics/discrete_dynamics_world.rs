@@ -6,7 +6,10 @@ use super::{
 };
 use crate::bullet::collision::{
     broadphase::{CollisionFilterGroups, GridBroadphase},
-    dispatch::{collision_world::CollisionWorld, ray_packet_callbacks::RayResultCallback},
+    dispatch::{
+        collision_world::CollisionWorld,
+        ray_packet_callbacks::{QuadRayCallback, RayResultCallback},
+    },
     narrowphase::persistent_manifold::ContactAddedCallback,
 };
 
@@ -37,15 +40,24 @@ impl DiscreteDynamicsWorld {
         &self.collision_world.collision_objs
     }
 
-    #[inline]
     pub fn ray_test<T: RayResultCallback>(
         &self,
         ray_from_world: &[Vec3A; 4],
         ray_to_world: &[Vec3A; 4],
         result_callback: &mut T,
     ) {
-        self.collision_world
-            .ray_test(ray_from_world, ray_to_world, result_callback);
+        let mut ray_cb = QuadRayCallback::new(
+            ray_from_world,
+            ray_to_world,
+            &self.collision_world,
+            result_callback,
+        );
+
+        self.collision_world.broadphase_pair_cache.ray_test(
+            ray_from_world,
+            ray_to_world,
+            &mut ray_cb,
+        );
     }
 
     #[inline]

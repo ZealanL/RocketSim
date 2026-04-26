@@ -24,8 +24,8 @@ impl VehicleRL {
     pub fn get_upwards_dir_from_wheel_contacts(&self, cb: &RigidBody) -> Vec3A {
         let mut sum_contact_dir = Vec3A::ZERO;
         for wheel in &self.wheels {
-            if wheel.raycast_info.is_in_contact {
-                sum_contact_dir += wheel.raycast_info.contact_normal_ws;
+            if let Some(raycast_info) = wheel.raycast_info.as_ref() {
+                sum_contact_dir += raycast_info.contact_normal;
             }
         }
 
@@ -44,22 +44,13 @@ impl VehicleRL {
         time_step: f32,
     ) {
         let chassis = &collision_world.bodies()[self.chassis_body_idx];
-
-        let (front_wheels, back_wheels) = self.wheels.split_at_mut(2);
-        for wheel in front_wheels {
-            wheel.update_wheel_trans::<true>(chassis);
-        }
-
-        for wheel in back_wheels {
-            wheel.update_wheel_trans::<false>(chassis);
-        }
+        let chassis_trans = chassis.get_world_trans();
 
         let mut sources = [Vec3A::ZERO; 4];
         let mut targets = [Vec3A::ZERO; 4];
-        let mut suspension_travels = [0.0; 4];
 
         for (i, wheel) in self.wheels.iter_mut().enumerate() {
-            (sources[i], targets[i], suspension_travels[i]) = wheel.prepare_for_raycast();
+            (sources[i], targets[i]) = wheel.prepare_for_raycast(chassis_trans);
         }
 
         let ray_results = self
@@ -68,20 +59,10 @@ impl VehicleRL {
 
         for (i, wheel) in self.wheels.iter_mut().enumerate() {
             if let Some(ray_result) = ray_results[i] {
-                wheel.apply_ray_cast(chassis, suspension_travels[i], ray_result, time_step);
+                wheel.apply_ray_cast(chassis, ray_result, time_step, i < 2);
             } else {
-                wheel.reset_wheel_suspension(suspension_travels[i]);
+                wheel.reset_wheel_suspension();
             }
-        }
-
-        let friction_scale = chassis.get_mass() / 3.0;
-        for wheel in &mut self.wheels {
-            wheel.calc_friction_impulses(
-                chassis,
-                collision_world.bodies(),
-                friction_scale,
-                time_step,
-            );
         }
     }
 
