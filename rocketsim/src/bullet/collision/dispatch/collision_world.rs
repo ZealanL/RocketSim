@@ -2,9 +2,7 @@ use glam::Vec3A;
 
 use super::{
     collision_dispatcher::CollisionDispatcher,
-    ray_packet_callbacks::{
-        BridgeTriangleRaycastPacketCallback, QuadRayCallback, RayResultCallback,
-    },
+    ray_packet_callbacks::{BridgeTriangleRaycastPacketCallback, RayResultCallback},
 };
 use crate::{
     bullet::{
@@ -21,7 +19,7 @@ use crate::{
 pub struct CollisionWorld {
     pub collision_objs: Vec<RigidBody>,
     pub dispatcher1: CollisionDispatcher,
-    pub(crate) broadphase_pair_cache: GridBroadphase,
+    pub broadphase_pair_cache: GridBroadphase,
     num_skippable_statics: usize,
 }
 
@@ -157,16 +155,5 @@ impl CollisionWorld {
 
         co.get_collision_shape()
             .perform_raycast(&mut rcb, &mut ray_info);
-    }
-
-    pub fn ray_test<T: RayResultCallback>(
-        &self,
-        ray_from_world: &[Vec3A; 4],
-        ray_to_world: &[Vec3A; 4],
-        result_callback: &mut T,
-    ) {
-        let mut ray_cb = QuadRayCallback::new(ray_from_world, ray_to_world, self, result_callback);
-        self.broadphase_pair_cache
-            .ray_test(ray_from_world, ray_to_world, &mut ray_cb);
     }
 }

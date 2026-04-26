@@ -284,14 +284,18 @@ impl Car {
         let car_ang_vel = rb.ang_vel;
 
         for wheel in &mut self.bullet_vehicle.wheels {
-            if wheel.raycast_info.ground_obj.is_none() {
+            let Some(raycast_info) = wheel.raycast_info.as_ref() else {
+                continue;
+            };
+
+            if !raycast_info.is_in_contact_with_world {
                 continue;
             }
 
             let lat_dir = wheel.axle_dir;
-            let long_dir = lat_dir.cross(wheel.raycast_info.contact_normal_ws);
+            let long_dir = lat_dir.cross(raycast_info.contact_normal);
 
-            let wheel_delta = wheel.raycast_info.hard_point_ws - car_pos;
+            let wheel_delta = wheel.hard_point - car_pos;
             let cross_vec = (car_ang_vel.cross(wheel_delta) + car_vel) * BT_TO_UU;
 
             let base_friction = cross_vec.dot(lat_dir).abs();
@@ -320,8 +324,8 @@ impl Car {
 
             if real_throttle == 0.0 {
                 // contact is not sticky
-                let non_sticky_scale = curves::NON_STICKY_FRICTION_FACTOR
-                    .get_output(wheel.raycast_info.contact_normal_ws.z);
+                let non_sticky_scale =
+                    curves::NON_STICKY_FRICTION_FACTOR.get_output(raycast_info.contact_normal.z);
                 lat_friction *= non_sticky_scale;
                 long_friction *= non_sticky_scale;
             }
@@ -330,11 +334,12 @@ impl Car {
             wheel.long_friction = long_friction;
         }
 
-        let wheels_have_world_contact = self
-            .bullet_vehicle
-            .wheels
-            .iter()
-            .any(|wheel| wheel.is_in_contact_with_world);
+        let wheels_have_world_contact = self.bullet_vehicle.wheels.iter().any(|wheel| {
+            wheel
+                .raycast_info
+                .as_ref()
+                .is_some_and(|info| info.is_in_contact_with_world)
+        });
         if wheels_have_world_contact {
             let upwards_dir = self.bullet_vehicle.get_upwards_dir_from_wheel_contacts(rb);
 
@@ -786,7 +791,7 @@ impl Car {
             .iter()
             .zip(&mut self.state.wheels_with_contact)
         {
-            let in_contact = wheel.raycast_info.is_in_contact;
+            let in_contact = wheel.raycast_info.is_some();
             *has_contact = in_contact;
             num_wheels_in_contact += u8::from(in_contact);
         }

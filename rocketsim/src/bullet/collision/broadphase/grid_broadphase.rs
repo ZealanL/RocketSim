@@ -334,10 +334,6 @@ impl GridBroadphase {
 
     pub fn calculate_overlapping_pairs(&mut self) {
         debug_assert!(self.pair_cache.is_empty());
-        if self.cell_grid.num_dyn_proxies == 0 {
-            return;
-        }
-
         for (i, proxy) in self
             .handles
             .iter()
