@@ -5,7 +5,7 @@ use crate::bullet::{
     collision::narrowphase::{
         manifold_point::ManifoldPoint, persistent_manifold::PersistentManifold,
     },
-    dynamics::rigid_body::RigidBody,
+    dynamics::rigid_body::{CollisionFlags, RigidBody},
     linear_math::{
         plane_space_1,
         transform_util::{integrate_trans, integrate_trans_no_rot},
@@ -476,7 +476,7 @@ impl SeqImpulseConstraintSolver {
             solver.ang_vel += solver.delta_ang_vel;
 
             if solver.push_vel.length_squared() != 0.0 || solver.turn_vel.length_squared() != 0.0 {
-                if body.no_rot {
+                if body.collision_flags & CollisionFlags::NoAngularMotion as u8 != 0 {
                     integrate_trans_no_rot(
                         &mut solver.world_trans.translation,
                         solver.push_vel,

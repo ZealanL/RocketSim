@@ -74,8 +74,7 @@ impl Ball {
         let (collision_shape, local_inertia) =
             Self::make_ball_collision_shape(game_mode, mutator_config);
 
-        let mut info =
-            RigidBodyConstructionInfo::new(mutator_config.ball_mass, collision_shape, true);
+        let mut info = RigidBodyConstructionInfo::new(mutator_config.ball_mass, collision_shape);
         info.start_world_trans.translation.z = consts::ball::REST_Z * UU_TO_BT;
         info.local_inertia = local_inertia;
         info.linear_damping = mutator_config.ball_drag;
@@ -90,8 +89,11 @@ impl Ball {
 
         let mut body = RigidBody::new(info);
         body.user_idx = UserInfoTypes::Ball;
-        body.collision_flags |= CollisionFlags::CustomMaterialCallback as u8;
-        body.no_rot = no_rot && matches!(body.get_collision_shape(), CollisionShapes::Sphere(_));
+        body.collision_flags |=
+            CollisionFlags::CustomMaterialCallback as u8 | CollisionFlags::CanSleep as u8;
+        if no_rot && matches!(body.get_collision_shape(), CollisionShapes::Sphere(_)) {
+            body.collision_flags |= CollisionFlags::NoAngularMotion as u8;
+        }
 
         let rigid_body_idx = bullet_world.add_rigid_body(
             body,

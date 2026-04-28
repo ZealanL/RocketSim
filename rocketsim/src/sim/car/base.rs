@@ -68,8 +68,7 @@ impl Car {
         let compound_shape = CompoundShape::new(child_hitbox_shape, hitbox_offset);
 
         let collision_shape = CollisionShapes::Compound(compound_shape);
-        let mut rb_info =
-            RigidBodyConstructionInfo::new(mutator_config.car_mass, collision_shape, false);
+        let mut rb_info = RigidBodyConstructionInfo::new(mutator_config.car_mass, collision_shape);
         rb_info.friction = car_consts::BASE_COEFS.friction;
         rb_info.restitution = car_consts::BASE_COEFS.restitution;
         rb_info.start_world_trans = Affine3A::IDENTITY;
