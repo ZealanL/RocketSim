@@ -7,7 +7,7 @@ use fastrand::Rng;
 use glam::{Affine3A, EulerRot, Mat3A, Vec3A};
 
 use crate::{
-    CarBodyConfig, CarControls, CarState, CollisionMasks, GameMode, MutatorConfig, PhysState, Team,
+    CarBodyConfig, CarControls, CarState, GameMode, MutatorConfig, PhysState, Team,
     bullet::{
         collision::{
             broadphase::CollisionFilterGroups,
@@ -80,7 +80,7 @@ impl Car {
 
         let rigid_body_idx = bullet_world.add_rigid_body(
             body,
-            CollisionFilterGroups::Default as u8 | CollisionMasks::DropshotFloor as u8,
+            CollisionFilterGroups::Default as u8 | CollisionFilterGroups::DropshotFloor as u8,
             CollisionFilterGroups::All as u8,
         );
 

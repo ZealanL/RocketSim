@@ -2,7 +2,6 @@ mod arena;
 mod ball;
 mod boost_pad;
 mod car;
-mod collision_masks;
 #[allow(clippy::redundant_pub_crate)]
 pub(crate) mod collision_mesh_file;
 pub mod consts;
@@ -17,8 +16,6 @@ pub use arena::*;
 pub use ball::*;
 pub use boost_pad::*;
 pub use car::*;
-#[allow(clippy::redundant_pub_crate)]
-pub(crate) use collision_masks::*;
 pub use game_mode::*;
 pub use mutator_config::*;
 pub use phys_state::*;
