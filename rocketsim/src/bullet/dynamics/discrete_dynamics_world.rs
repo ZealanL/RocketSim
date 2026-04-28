@@ -69,8 +69,7 @@ impl DiscreteDynamicsWorld {
     }
 
     pub fn add_rigid_body_default(&mut self, mut body: RigidBody) -> usize {
-        if !body.is_static_obj()
-            && body.collision_flags & CollisionFlags::DisableWorldGravity as u8 == 0
+        if !body.is_static_obj() && body.collision_flags & CollisionFlags::NoWorldGravity as u8 == 0
         {
             body.set_gravity(self.gravity);
         }
@@ -100,8 +99,7 @@ impl DiscreteDynamicsWorld {
     }
 
     pub fn add_rigid_body(&mut self, mut body: RigidBody, group: u8, mask: u8) -> usize {
-        if !body.is_static_obj()
-            && body.collision_flags & CollisionFlags::DisableWorldGravity as u8 == 0
+        if !body.is_static_obj() && body.collision_flags & CollisionFlags::NoWorldGravity as u8 == 0
         {
             body.set_gravity(self.gravity);
         }

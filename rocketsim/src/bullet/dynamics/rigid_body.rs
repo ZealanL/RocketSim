@@ -19,11 +19,10 @@ pub struct RigidBodyConstructionInfo {
     pub restitution: f32,
     pub linear_sleeping_threshold: f32,
     pub angular_sleeping_threshold: f32,
-    pub can_sleep: bool,
 }
 
 impl RigidBodyConstructionInfo {
-    pub const fn new(mass: f32, collision_shape: CollisionShapes, can_sleep: bool) -> Self {
+    pub const fn new(mass: f32, collision_shape: CollisionShapes) -> Self {
         Self {
             mass,
             collision_shape,
@@ -35,7 +34,6 @@ impl RigidBodyConstructionInfo {
             linear_sleeping_threshold: 0.0,
             angular_sleeping_threshold: 1.0,
             start_world_trans: Affine3A::IDENTITY,
-            can_sleep,
         }
     }
 }
@@ -49,9 +47,11 @@ pub enum ActivationState {
 
 pub enum CollisionFlags {
     StaticObject = 1,
-    NoContactResponse = (1 << 1),
-    CustomMaterialCallback = (1 << 2),
-    DisableWorldGravity = (1 << 3),
+    CustomMaterialCallback = (1 << 1),
+    CanSleep = (1 << 2),
+    NoContactResponse = (1 << 3),
+    NoWorldGravity = (1 << 4),
+    NoAngularMotion = (1 << 5),
 }
 
 pub struct RigidBody {
@@ -68,11 +68,9 @@ pub struct RigidBody {
     pub companion_id: Option<usize>,
     /// The index of this object in `CollisionWorld`
     pub world_array_idx: usize,
-    pub can_sleep: bool,
     pub deactivation_time: f32,
     pub friction: f32,
     pub restitution: f32,
-    pub no_rot: bool,
     pub user_pointer: usize,
     pub user_idx: UserInfoTypes,
 
@@ -132,11 +130,8 @@ impl RigidBody {
             deactivation_time: 0.0,
             friction: info.friction,
             restitution: info.restitution,
-            no_rot: false,
             user_pointer: 0,
             user_idx: UserInfoTypes::default(),
-            can_sleep: info.can_sleep,
-
             inv_inertia_tensor_world,
             lin_vel: Vec3A::ZERO,
             ang_vel: Vec3A::ZERO,
@@ -155,7 +150,10 @@ impl RigidBody {
     }
 
     pub fn set_world_trans(&mut self, world_trans: Affine3A) {
-        self.world_quat = Quat::from_mat3a(&world_trans.matrix3);
+        if self.collision_flags & CollisionFlags::NoAngularMotion as u8 == 0 {
+            self.world_quat = Quat::from_mat3a(&world_trans.matrix3);
+        }
+
         self.world_trans = world_trans;
     }
 
@@ -283,7 +281,7 @@ impl RigidBody {
         let mut trans = self.world_trans;
         let mut quat = self.world_quat;
 
-        if self.no_rot {
+        if self.collision_flags & CollisionFlags::NoAngularMotion as u8 != 0 {
             integrate_trans_no_rot(&mut trans.translation, self.lin_vel, time_step);
         } else {
             integrate_trans(&mut trans, &mut quat, self.lin_vel, self.ang_vel, time_step);
@@ -304,7 +302,7 @@ impl RigidBody {
     }
 
     pub fn update_activation_state(&mut self, _time_step: f32) {
-        if !self.can_sleep {
+        if self.collision_flags & CollisionFlags::CanSleep as u8 == 0 {
             self.set_activation_state(ActivationState::Active);
             return;
         }
