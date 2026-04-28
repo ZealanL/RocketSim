@@ -15,7 +15,7 @@ use crate::{
     MutatorConfig, PhysState, Team,
     bullet::{
         collision::{
-            broadphase::GridBroadphase,
+            broadphase::{CollisionFilterGroups, GridBroadphase},
             narrowphase::manifold_point::ManifoldPoint,
             shapes::{collision_shape::CollisionShapes, static_plane_shape::StaticPlaneShape},
         },
@@ -24,12 +24,12 @@ use crate::{
             rigid_body::{ActivationState, RigidBody, RigidBodyConstructionInfo},
         },
     },
-    consts,
-    consts::{BT_TO_UU, TICK_RATE, TICK_TIME, UU_TO_BT},
+    consts::{self, BT_TO_UU, TICK_RATE, TICK_TIME, UU_TO_BT},
     sim::{
-        ArenaEvent, ArenaEvent::CarHitBall, Ball, BallState, BoostPad, CarHitBallEvent,
-        CarHitCarEvent, CarHitWorldEvent, DemoMode, UserInfoTypes, arena::ArenaEventList,
-        collision_masks::CollisionMasks,
+        ArenaEvent::{self, CarHitBall},
+        Ball, BallState, BoostPad, CarHitBallEvent, CarHitCarEvent, CarHitWorldEvent, DemoMode,
+        UserInfoTypes,
+        arena::ArenaEventList,
     },
 };
 
@@ -141,8 +141,7 @@ impl Arena {
         bullet_world: &mut DiscreteDynamicsWorld,
         shape: CollisionShapes,
         pos_bt: Vec3A,
-        group: u8,
-        mask: u8,
+        group: Option<u8>,
     ) {
         let mut rb_info = RigidBodyConstructionInfo::new(0.0, shape);
         rb_info.restitution = consts::arena::BASE_COEFS.restitution;
@@ -150,8 +149,12 @@ impl Arena {
         rb_info.start_world_trans.translation = pos_bt;
 
         let shape_rb = RigidBody::new(rb_info);
-        if (group | mask) != 0 {
-            bullet_world.add_rigid_body(shape_rb, group, mask);
+        if let Some(group) = group {
+            bullet_world.add_rigid_body(
+                shape_rb,
+                group | CollisionFilterGroups::Static as u8,
+                CollisionFilterGroups::All as u8 ^ CollisionFilterGroups::Static as u8,
+            );
         } else {
             bullet_world.add_rigid_body_default(shape_rb);
         }
@@ -183,16 +186,15 @@ impl Arena {
             };
 
             let mask = if is_hoops_net {
-                CollisionMasks::HoopsNet as u8
+                Some(CollisionFilterGroups::HoopsNet as u8)
             } else {
-                0
+                None
             };
 
             Self::add_static_collision_shape(
                 bullet_world,
                 CollisionShapes::TriangleMesh(mesh.clone()),
                 Vec3A::ZERO,
-                mask,
                 mask,
             );
         }
@@ -201,7 +203,7 @@ impl Arena {
 
         let arena_aabb = consts::arena::get_aabb(game_mode);
 
-        let mut add_plane = |pos_uu: Vec3A, normal: Vec3A, mask: u8| {
+        let mut add_plane = |pos_uu: Vec3A, normal: Vec3A, mask: Option<u8>| {
             debug_assert!(normal.is_normalized());
             let pos_bt = pos_uu * UU_TO_BT;
             let trans = Affine3A {
@@ -216,33 +218,32 @@ impl Arena {
                 CollisionShapes::StaticPlane(plane_shape),
                 pos_bt,
                 mask,
-                mask,
             );
         };
 
         let floor_mask = if game_mode == GameMode::Dropshot {
-            CollisionMasks::DropshotFloor as u8
+            Some(CollisionFilterGroups::DropshotFloor as u8)
         } else {
-            0
+            None
         };
 
         // Floor
         add_plane(Vec3A::new(0.0, 0.0, arena_aabb.min.z), Vec3A::Z, floor_mask);
 
         // Ceiling
-        add_plane(Vec3A::new(0.0, 0.0, arena_aabb.max.z), Vec3A::NEG_Z, 0);
+        add_plane(Vec3A::new(0.0, 0.0, arena_aabb.max.z), Vec3A::NEG_Z, None);
 
         if game_mode != GameMode::Dropshot {
             // Side walls
             add_plane(
                 Vec3A::new(arena_aabb.min.x, 0.0, arena_aabb.center().z),
                 Vec3A::X,
-                0,
+                None,
             );
             add_plane(
                 Vec3A::new(arena_aabb.max.x, 0.0, arena_aabb.center().z),
                 Vec3A::NEG_X,
-                0,
+                None,
             );
         }
 
@@ -252,13 +253,13 @@ impl Arena {
                 add_plane(
                     Vec3A::new(0.0, arena_aabb.min.y, arena_aabb.center().z),
                     Vec3A::Y,
-                    0,
+                    None,
                 );
 
                 add_plane(
                     Vec3A::new(0.0, arena_aabb.min.z, arena_aabb.center().z),
                     Vec3A::NEG_Y,
-                    0,
+                    None,
                 );
             }
             GameMode::Dropshot => {

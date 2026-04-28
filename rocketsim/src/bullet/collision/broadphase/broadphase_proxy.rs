@@ -5,6 +5,9 @@ use crate::shared::Aabb;
 pub enum CollisionFilterGroups {
     Default = 1,
     Static = (1 << 1),
+    HoopsNet = (1 << 2),
+    DropshotTile = (1 << 3),
+    DropshotFloor = (1 << 4),
     All = -1,
 }
 

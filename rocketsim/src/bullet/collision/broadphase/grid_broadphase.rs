@@ -251,7 +251,12 @@ impl GridBroadphase {
             self.cell_grid
                 .update_cells_static(&new_handle, co, new_handle_idx);
         } else {
-            debug_assert!(aabb.min.distance_squared(aabb.max) <= self.cell_grid.cell_size_sq);
+            debug_assert!(
+                aabb.min.distance_squared(aabb.max) <= self.cell_grid.cell_size_sq,
+                "Dynamic objects must fit within a single cell - ({} > {})",
+                aabb.min.distance_squared(aabb.max),
+                self.cell_grid.cell_size_sq
+            );
 
             self.cell_grid
                 .update_cells_dynamic::<true>(new_handle_idx, indices);

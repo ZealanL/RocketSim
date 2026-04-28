@@ -1,9 +1,9 @@
 use glam::Vec3A;
 
 use super::{NUM_WHEELS, raycaster::VehicleRaycaster, wheel_info::WheelInfo};
-use crate::{
-    CollisionMasks,
-    bullet::dynamics::{discrete_dynamics_world::DiscreteDynamicsWorld, rigid_body::RigidBody},
+use crate::bullet::{
+    collision::broadphase::CollisionFilterGroups,
+    dynamics::{discrete_dynamics_world::DiscreteDynamicsWorld, rigid_body::RigidBody},
 };
 
 pub struct VehicleRL {
@@ -15,7 +15,7 @@ pub struct VehicleRL {
 impl VehicleRL {
     pub const fn new(chassis_body_idx: usize, wheels: [WheelInfo; NUM_WHEELS]) -> Self {
         Self {
-            raycaster: VehicleRaycaster::new(CollisionMasks::DropshotFloor as u8),
+            raycaster: VehicleRaycaster::new(CollisionFilterGroups::DropshotFloor as u8),
             chassis_body_idx,
             wheels,
         }

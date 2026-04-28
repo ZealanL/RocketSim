@@ -19,7 +19,7 @@ use crate::{
         linear_math::angle::Angle,
     },
     consts::{UU_TO_BT, dropshot, heatseeker, snowday},
-    sim::{UserInfoTypes, collision_masks::CollisionMasks, consts},
+    sim::{UserInfoTypes, consts},
 };
 
 pub(crate) struct Ball {
@@ -98,8 +98,8 @@ impl Ball {
         let rigid_body_idx = bullet_world.add_rigid_body(
             body,
             CollisionFilterGroups::Default as u8
-                | CollisionMasks::HoopsNet as u8
-                | CollisionMasks::DropshotTile as u8,
+                | CollisionFilterGroups::HoopsNet as u8
+                | CollisionFilterGroups::DropshotTile as u8,
             CollisionFilterGroups::All as u8,
         );
 
