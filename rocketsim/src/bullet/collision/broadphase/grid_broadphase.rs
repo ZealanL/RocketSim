@@ -113,7 +113,7 @@ impl CellGrid {
 
                     for i1 in 0..=2 {
                         for j1 in 0..=2 {
-                            'outer: for k1 in 0..=2 {
+                            for k1 in 0..=2 {
                                 let mut cell = USizeVec3::new(i + i1, j + j1, k + k1);
                                 if cell.cmpeq(USizeVec3::ZERO).any() {
                                     continue;
@@ -126,12 +126,8 @@ impl CellGrid {
                                 }
 
                                 let i = self.cell_indices_to_idx(cell);
-
-                                for &static_handle in &self.cells[i].static_handles {
-                                    // check if static_handle and proxy are the same
-                                    if static_handle == proxy_idx {
-                                        continue 'outer;
-                                    }
+                                if self.cells[i].static_handles.contains(&proxy_idx) {
+                                    continue;
                                 }
 
                                 self.cells[i].static_handles.push(proxy_idx);
