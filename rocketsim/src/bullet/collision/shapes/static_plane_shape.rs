@@ -1,11 +1,8 @@
 use glam::{Affine3A, Vec3A, Vec4};
 
 use crate::{
-    bullet::{
-        collision::dispatch::ray_packet_callbacks::{
-            BridgeTriangleRaycastPacketCallback, RayResultCallback,
-        },
-        linear_math::LARGE_FLOAT,
+    bullet::collision::dispatch::ray_packet_callbacks::{
+        BridgeTriangleRaycastPacketCallback, RayResultCallback,
     },
     shared::{Aabb, RayPacketInfo},
 };
@@ -54,8 +51,8 @@ impl StaticPlaneShape {
     }
 
     pub fn get_aabb(&self, t: &Affine3A) -> Aabb {
-        let mut min = Vec3A::splat(-LARGE_FLOAT);
-        let mut max = Vec3A::splat(LARGE_FLOAT);
+        let mut min = Vec3A::MIN;
+        let mut max = Vec3A::MAX;
 
         if self.is_single_axis {
             const PLANE_CONSTANT_OFFSET: f32 = 0.2;
@@ -68,9 +65,9 @@ impl StaticPlaneShape {
             } else {
                 &mut min
             })[self.single_axis_idx] = if self.single_axis_backwards {
-                LARGE_FLOAT
+                f32::MAX
             } else {
-                -LARGE_FLOAT
+                f32::MIN
             };
         }
 

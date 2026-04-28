@@ -39,19 +39,16 @@ impl CollisionWorld {
         filter_group: u8,
         filter_mask: u8,
     ) -> usize {
-        {
-            let obj = &mut obj;
-            obj.world_array_idx = self.collision_objs.len();
+        obj.world_array_idx = self.collision_objs.len();
 
-            let trans = obj.get_world_trans();
-            let aabb = obj.get_collision_shape().get_aabb(trans);
+        let trans = obj.get_world_trans();
+        let aabb = obj.get_collision_shape().get_aabb(trans);
 
-            let proxy =
-                self.broadphase_pair_cache
-                    .create_proxy(aabb, obj, filter_group, filter_mask);
+        let proxy = self
+            .broadphase_pair_cache
+            .create_proxy(aabb, &obj, filter_group, filter_mask);
 
-            obj.set_broadphase_handle(proxy);
-        }
+        obj.set_broadphase_handle(proxy);
 
         let idx = self.collision_objs.len();
         self.collision_objs.push(obj);
@@ -63,13 +60,12 @@ impl CollisionWorld {
         const CBT: Vec3A = Vec3A::splat(CONTACT_BREAKING_THRESHOLD);
 
         let mut prev_is_static = true;
-        for (i, rb) in self
+        for (i, col_obj) in self
             .collision_objs
             .iter()
             .enumerate()
             .skip(self.num_skippable_statics)
         {
-            let col_obj = &rb;
             debug_assert_eq!(col_obj.world_array_idx, i);
 
             if prev_is_static && col_obj.is_static_obj() {
@@ -96,11 +92,8 @@ impl CollisionWorld {
             }
 
             debug_assert!(col_obj.is_static_obj() || (aabb.max - aabb.min).length_squared() < 1e12);
-            self.broadphase_pair_cache.set_aabb(
-                col_obj,
-                col_obj.get_broadphase_handle().unwrap(),
-                aabb,
-            );
+            self.broadphase_pair_cache
+                .set_aabb(col_obj, col_obj.get_broadphase_handle(), aabb);
         }
     }
 

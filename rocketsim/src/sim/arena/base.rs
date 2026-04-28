@@ -15,7 +15,7 @@ use crate::{
     MutatorConfig, PhysState, Team,
     bullet::{
         collision::{
-            broadphase::{GridBroadphase, HashedOverlappingPairCache},
+            broadphase::GridBroadphase,
             narrowphase::manifold_point::ManifoldPoint,
             shapes::{collision_shape::CollisionShapes, static_plane_shape::StaticPlaneShape},
         },
@@ -56,8 +56,6 @@ impl Arena {
     }
 
     pub fn new_with_config(config: ArenaConfig) -> Self {
-        let overlapping_pair_cache = HashedOverlappingPairCache::default();
-
         let (cell_size_multiplier, initial_handle_size) = match config.mem_weight_mode {
             ArenaMemWeightMode::Light => (3.0, 1),
             ArenaMemWeightMode::Heavy => (1.0, 8),
@@ -68,7 +66,6 @@ impl Arena {
             config.max_pos * UU_TO_BT,
             config.max_aabb_len * UU_TO_BT * cell_size_multiplier,
             initial_handle_size,
-            overlapping_pair_cache,
         );
 
         let mut bullet_world =

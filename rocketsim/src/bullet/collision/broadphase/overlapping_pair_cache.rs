@@ -2,7 +2,7 @@ use std::mem;
 
 use ahash::AHashMap;
 
-use super::{BroadphasePair, BroadphaseProxy, GridBroadphaseProxy};
+use super::{BroadphasePair, BroadphaseProxy};
 use crate::bullet::{
     collision::{
         dispatch::collision_dispatcher::CollisionDispatcher,
@@ -95,7 +95,7 @@ impl HashedOverlappingPairCache {
         &mut self,
         collision_objs: &[RigidBody],
         dispatcher: &mut CollisionDispatcher,
-        handles: &[GridBroadphaseProxy],
+        handles: &[BroadphaseProxy],
         contact_added_callback: &mut T,
     ) {
         for pair in &self.overlapping_pair_array {

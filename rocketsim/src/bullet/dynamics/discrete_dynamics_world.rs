@@ -2,15 +2,18 @@ use glam::Vec3A;
 
 use super::{
     constraint_solver::seq_impulse_constraint_solver::SeqImpulseConstraintSolver,
-    rigid_body::{ActivationState, RigidBody, RigidBodyFlags},
+    rigid_body::{ActivationState, RigidBody},
 };
-use crate::bullet::collision::{
-    broadphase::{CollisionFilterGroups, GridBroadphase},
-    dispatch::{
-        collision_world::CollisionWorld,
-        ray_packet_callbacks::{QuadRayCallback, RayResultCallback},
+use crate::bullet::{
+    collision::{
+        broadphase::{CollisionFilterGroups, GridBroadphase},
+        dispatch::{
+            collision_world::CollisionWorld,
+            ray_packet_callbacks::{QuadRayCallback, RayResultCallback},
+        },
+        narrowphase::persistent_manifold::ContactAddedCallback,
     },
-    narrowphase::persistent_manifold::ContactAddedCallback,
+    dynamics::rigid_body::CollisionFlags,
 };
 
 pub struct DiscreteDynamicsWorld {
@@ -67,7 +70,7 @@ impl DiscreteDynamicsWorld {
 
     pub fn add_rigid_body_default(&mut self, mut body: RigidBody) -> usize {
         if !body.is_static_obj()
-            && body.get_rb_flags() & RigidBodyFlags::DisableWorldGravity as u8 == 0
+            && body.collision_flags & CollisionFlags::DisableWorldGravity as u8 == 0
         {
             body.set_gravity(self.gravity);
         }
@@ -98,7 +101,7 @@ impl DiscreteDynamicsWorld {
 
     pub fn add_rigid_body(&mut self, mut body: RigidBody, group: u8, mask: u8) -> usize {
         if !body.is_static_obj()
-            && body.get_rb_flags() & RigidBodyFlags::DisableWorldGravity as u8 == 0
+            && body.collision_flags & CollisionFlags::DisableWorldGravity as u8 == 0
         {
             body.set_gravity(self.gravity);
         }

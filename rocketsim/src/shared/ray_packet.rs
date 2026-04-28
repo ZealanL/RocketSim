@@ -1,7 +1,6 @@
 use glam::{Vec3A, Vec4};
 
 use super::Aabb;
-use crate::bullet::linear_math::LARGE_FLOAT;
 
 pub struct RayPacketInfo<'a> {
     pub ray_sources: &'a [Vec3A; 4],
@@ -35,8 +34,6 @@ impl<'a> RayPacketInfo<'a> {
 
     #[must_use]
     pub fn calc_pos_dir(&self) -> ([Vec4; 3], [Vec4; 3]) {
-        const LARGE_VEC: Vec4 = Vec4::splat(LARGE_FLOAT);
-
         let sources = [
             Vec4::from_array([
                 self.ray_sources[0].x,
@@ -86,7 +83,7 @@ impl<'a> RayPacketInfo<'a> {
         ];
 
         for inv_dir in &mut inv_dirs {
-            *inv_dir = Vec4::select(inv_dir.is_finite_mask(), *inv_dir, LARGE_VEC);
+            *inv_dir = Vec4::select(inv_dir.is_finite_mask(), *inv_dir, Vec4::MAX);
         }
 
         (sources, inv_dirs)

@@ -1,4 +1,4 @@
-use glam::{Affine3A, Mat3A, Vec3A};
+use glam::{Affine3A, Mat3A, Quat, Vec3A};
 
 use crate::{
     bullet::{
@@ -7,10 +7,6 @@ use crate::{
     },
     sim::UserInfoTypes,
 };
-
-pub enum RigidBodyFlags {
-    DisableWorldGravity = 1,
-}
 
 pub struct RigidBodyConstructionInfo {
     pub mass: f32,
@@ -55,17 +51,18 @@ pub enum CollisionFlags {
     StaticObject = 1,
     NoContactResponse = (1 << 1),
     CustomMaterialCallback = (1 << 2),
+    DisableWorldGravity = (1 << 3),
 }
 
 pub struct RigidBody {
     world_trans: Affine3A,
+    world_quat: Quat,
     shape: CollisionShapes,
     activation: ActivationState,
-    rb_flags: u8,
 
     pub interp_world_trans: Affine3A,
     pub contact_processing_threshold: f32,
-    broadphase_handle: Option<usize>,
+    broadphase_handle: usize,
 
     pub collision_flags: u8,
     pub companion_id: Option<usize>,
@@ -119,9 +116,10 @@ impl RigidBody {
 
         Self {
             world_trans: info.start_world_trans,
+            world_quat: Quat::from_mat3a(&info.start_world_trans.matrix3),
             interp_world_trans: info.start_world_trans,
             contact_processing_threshold: f32::MAX,
-            broadphase_handle: None,
+            broadphase_handle: 0,
             shape: info.collision_shape,
             collision_flags: if info.mass == 0.0 {
                 CollisionFlags::StaticObject as u8
@@ -153,16 +151,20 @@ impl RigidBody {
             linear_sleeping_threshold,
             angular_sleeping_threshold,
             inv_mass: Vec3A::splat(inverse_mass),
-            rb_flags: 0,
         }
     }
 
-    pub const fn set_world_trans(&mut self, world_trans: Affine3A) {
+    pub fn set_world_trans(&mut self, world_trans: Affine3A) {
+        self.world_quat = Quat::from_mat3a(&world_trans.matrix3);
         self.world_trans = world_trans;
     }
 
     pub const fn get_world_trans(&self) -> &Affine3A {
         &self.world_trans
+    }
+
+    pub const fn get_world_rot(&self) -> Quat {
+        self.world_quat
     }
 
     pub const fn get_collision_shape(&self) -> &CollisionShapes {
@@ -202,15 +204,11 @@ impl RigidBody {
     }
 
     pub const fn set_broadphase_handle(&mut self, handle: usize) {
-        self.broadphase_handle = Some(handle);
+        self.broadphase_handle = handle;
     }
 
-    pub const fn get_broadphase_handle(&self) -> Option<usize> {
+    pub const fn get_broadphase_handle(&self) -> usize {
         self.broadphase_handle
-    }
-
-    pub const fn get_rb_flags(&self) -> u8 {
-        self.rb_flags
     }
 
     pub fn set_gravity(&mut self, acceleration: Vec3A) {
@@ -282,12 +280,13 @@ impl RigidBody {
     }
 
     pub fn predict_integration_trans(&self, time_step: f32) -> Affine3A {
-        let mut trans = *self.get_world_trans();
+        let mut trans = self.world_trans;
+        let mut quat = self.world_quat;
 
         if self.no_rot {
-            integrate_trans_no_rot(&mut trans, self.lin_vel, time_step);
+            integrate_trans_no_rot(&mut trans.translation, self.lin_vel, time_step);
         } else {
-            integrate_trans(&mut trans, self.lin_vel, self.ang_vel, time_step);
+            integrate_trans(&mut trans, &mut quat, self.lin_vel, self.ang_vel, time_step);
         }
 
         trans

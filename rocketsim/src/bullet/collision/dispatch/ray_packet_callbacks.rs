@@ -129,17 +129,15 @@ impl<'a, T: RayResultCallback> QuadRayCallback<'a, T> {
 
 impl<T: RayResultCallback> BroadphaseAabbCallback for QuadRayCallback<'_, T> {
     fn process(&mut self, proxy: &BroadphaseProxy) -> bool {
-        let obj_idx = proxy.client_obj_idx;
         let rb = &self.world.collision_objs[proxy.client_obj_idx];
-        let handle_idx = rb.get_broadphase_handle().unwrap();
-        let handle = &self.world.broadphase_pair_cache.handles[handle_idx];
+        let handle = &self.world.broadphase_pair_cache.handles[rb.get_broadphase_handle()];
 
         if self.result_callback.needs_collision(handle) {
             CollisionWorld::quad_ray_test(
                 self.ray_from_world,
                 self.ray_to_world,
                 rb,
-                obj_idx,
+                proxy.client_obj_idx,
                 self.result_callback,
             );
         }
