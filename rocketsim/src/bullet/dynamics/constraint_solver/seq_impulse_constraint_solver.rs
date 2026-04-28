@@ -477,10 +477,15 @@ impl SeqImpulseConstraintSolver {
 
             if solver.push_vel.length_squared() != 0.0 || solver.turn_vel.length_squared() != 0.0 {
                 if body.no_rot {
-                    integrate_trans_no_rot(&mut solver.world_trans, solver.push_vel, time_step);
+                    integrate_trans_no_rot(
+                        &mut solver.world_trans.translation,
+                        solver.push_vel,
+                        time_step,
+                    );
                 } else {
                     integrate_trans(
                         &mut solver.world_trans,
+                        &mut solver.world_rot,
                         solver.push_vel,
                         solver.turn_vel * contact_solver_info::SPLIT_IMPULSE_TURN_ERP,
                         time_step,

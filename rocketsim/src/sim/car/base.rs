@@ -21,7 +21,6 @@ use crate::{
             rigid_body::{ActivationState, CollisionFlags, RigidBody, RigidBodyConstructionInfo},
             vehicle::{NUM_WHEELS, VehicleRL, WheelInfo},
         },
-        linear_math::Mat3AExt,
     },
     consts::{
         self, BT_TO_UU, TICK_TIME, UU_TO_BT, bullet_vehicle as vehicle_consts,
@@ -392,7 +391,7 @@ impl Car {
                 let dodge_torque = rel_dodge_torque
                     * const { Vec3A::new(car_consts::flip::TORQUE_X, car_consts::flip::TORQUE_Y, 0.0) };
 
-                let rb_torque = rb.inv_inertia_tensor_world.bullet_inverse()
+                let rb_torque = rb.inv_inertia_tensor_world.inverse()
                     * rb.get_world_trans().matrix3
                     * dodge_torque;
                 rb.apply_torque(rb_torque);
@@ -442,7 +441,7 @@ impl Car {
 
             let damping = dir_yaw * damp_yaw + dir_pitch * damp_pitch + dir_roll * damp_roll;
 
-            let rb_torque = rb.inv_inertia_tensor_world.bullet_inverse()
+            let rb_torque = rb.inv_inertia_tensor_world.inverse()
                 * (torque - damping)
                 * car_consts::air_control::TORQUE_APPLY_SCALE;
             rb.apply_torque(rb_torque);
@@ -699,7 +698,7 @@ impl Car {
                 * const { car_consts::autoroll::FORCE * UU_TO_BT * car_consts::MASS_BT },
         );
 
-        let rb_torque = rb.inv_inertia_tensor_world.bullet_inverse()
+        let rb_torque = rb.inv_inertia_tensor_world.inverse()
             * (torque_forward + torque_right)
             * car_consts::autoroll::TORQUE;
         rb.apply_torque(rb_torque);
@@ -764,15 +763,11 @@ impl Car {
 
                 rb.set_activation_state(ActivationState::DisableSimulation);
                 rb.collision_flags |= CollisionFlags::NoContactResponse as u8;
-            } else {
-                rb.force_activate();
-                rb.collision_flags &= !(CollisionFlags::NoContactResponse as u8);
-            }
-
-            if self.state.is_demoed {
                 return;
             }
 
+            rb.force_activate();
+            rb.collision_flags &= !(CollisionFlags::NoContactResponse as u8);
             self.state.controls = self.state.controls.clamp();
 
             rb.get_forward_speed() * BT_TO_UU

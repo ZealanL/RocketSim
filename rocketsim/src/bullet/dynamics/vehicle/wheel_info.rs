@@ -190,13 +190,8 @@ impl WheelInfo {
 
         let forward_dir = contact_normal.cross(axle_dir).normalize_or_zero();
 
-        let side_impulse = resolve_single_bilateral(
-            chassis,
-            ground_rb,
-            contact_point,
-            contact_point,
-            axle_dir,
-        );
+        let side_impulse =
+            resolve_single_bilateral(chassis, ground_rb, contact_point, contact_point, axle_dir);
 
         let rolling_friction = if self.engine_force == 0.0 {
             if self.brake == 0.0 {
@@ -204,8 +199,7 @@ impl WheelInfo {
             } else {
                 const ROLLING_FRICTION_SCALE: f32 = 113.73963;
 
-                let car_rel_contact_point =
-                    contact_point - chassis.get_world_trans().translation;
+                let car_rel_contact_point = contact_point - chassis.get_world_trans().translation;
 
                 let v1 = chassis.get_vel_in_local_point(car_rel_contact_point);
                 let v2 = ground_rb.get_vel_in_local_point(car_rel_contact_point);

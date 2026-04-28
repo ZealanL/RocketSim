@@ -1,3 +1,5 @@
+use glam::USizeVec3;
+
 use crate::shared::Aabb;
 
 pub enum CollisionFilterGroups {
@@ -12,8 +14,9 @@ pub struct BroadphaseProxy {
     pub collision_filter_group: u8,
     pub collision_filter_mask: u8,
     pub unique_id: u32,
-    pub is_static: bool,
     pub aabb: Aabb,
+    pub cell_idx: usize,
+    pub indices: USizeVec3,
 }
 
 pub struct BroadphasePair {

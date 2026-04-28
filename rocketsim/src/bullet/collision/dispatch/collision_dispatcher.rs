@@ -5,7 +5,7 @@ use super::{
 };
 use crate::bullet::{
     collision::{
-        broadphase::{GridBroadphase, GridBroadphaseProxy},
+        broadphase::{BroadphaseProxy, GridBroadphase},
         narrowphase::persistent_manifold::{ContactAddedCallback, PersistentManifold},
         shapes::collision_shape::CollisionShapes,
     },
@@ -169,8 +169,8 @@ impl CollisionDispatcher {
     pub fn near_callback<T: ContactAddedCallback>(
         &mut self,
         collision_objs: &[RigidBody],
-        proxy0: &GridBroadphaseProxy,
-        proxy1: &GridBroadphaseProxy,
+        proxy0: &BroadphaseProxy,
+        proxy1: &BroadphaseProxy,
         contact_added_callback: &mut T,
     ) {
         let rb0 = &collision_objs[proxy0.client_obj_idx];

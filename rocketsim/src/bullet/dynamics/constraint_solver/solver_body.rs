@@ -1,9 +1,10 @@
-use glam::{Affine3A, Vec3A};
+use glam::{Affine3A, Quat, Vec3A};
 
 use crate::bullet::dynamics::rigid_body::RigidBody;
 
 pub struct SolverBody {
     pub world_trans: Affine3A,
+    pub world_rot: Quat,
     pub delta_lin_vel: Vec3A,
     pub delta_ang_vel: Vec3A,
     pub inv_mass: Vec3A,
@@ -19,6 +20,7 @@ pub struct SolverBody {
 impl SolverBody {
     pub const DEFAULT: Self = Self {
         world_trans: Affine3A::IDENTITY,
+        world_rot: Quat::IDENTITY,
         delta_lin_vel: Vec3A::ZERO,
         delta_ang_vel: Vec3A::ZERO,
         inv_mass: Vec3A::ZERO,
@@ -34,6 +36,7 @@ impl SolverBody {
     pub fn new(rb: &RigidBody, time_step: f32) -> Self {
         Self {
             world_trans: *rb.get_world_trans(),
+            world_rot: rb.get_world_rot(),
             delta_lin_vel: Vec3A::ZERO,
             delta_ang_vel: Vec3A::ZERO,
             inv_mass: rb.inv_mass,
