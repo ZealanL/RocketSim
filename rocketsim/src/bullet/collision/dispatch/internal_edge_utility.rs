@@ -115,12 +115,12 @@ impl ProcessTriangle for ConnectivityProcessor<'_> {
                     let mut computed_normal_b = orn * self.shape.normal;
                     if computed_normal_b.dot(tri.normal) < 0.0 {
                         computed_normal_b *= -1.0;
-                        info.flags |= TriInfoFlag::V0V1SwapNormalB as u8;
+                        info.flags |= TriInfoFlag::V0V1SwapNormalB;
                     }
 
                     info.edge_v0_v1_angle = -corrected_angle;
                     if is_convex {
-                        info.flags |= TriInfoFlag::V0V1Convex as u8;
+                        info.flags |= TriInfoFlag::V0V1Convex;
                     }
                 }
                 2 => {
@@ -129,12 +129,12 @@ impl ProcessTriangle for ConnectivityProcessor<'_> {
                     let mut computed_normal_b = orn * self.shape.normal;
                     if computed_normal_b.dot(tri.normal) < 0.0 {
                         computed_normal_b *= -1.0;
-                        info.flags |= TriInfoFlag::V2V0SwapNormalB as u8;
+                        info.flags |= TriInfoFlag::V2V0SwapNormalB;
                     }
 
                     info.edge_v2_v0_angle = -corrected_angle;
                     if is_convex {
-                        info.flags |= TriInfoFlag::V2V0Convex as u8;
+                        info.flags |= TriInfoFlag::V2V0Convex;
                     }
                 }
                 3 => {
@@ -143,12 +143,12 @@ impl ProcessTriangle for ConnectivityProcessor<'_> {
                     let mut computed_normal_b = orn * self.shape.normal;
                     if computed_normal_b.dot(tri.normal) < 0.0 {
                         computed_normal_b *= -1.0;
-                        info.flags |= TriInfoFlag::V1V2SwapNormalB as u8;
+                        info.flags |= TriInfoFlag::V1V2SwapNormalB;
                     }
 
                     info.edge_v1_v2_angle = -corrected_angle;
                     if is_convex {
-                        info.flags |= TriInfoFlag::V1V2Convex as u8;
+                        info.flags |= TriInfoFlag::V1V2Convex;
                     }
                 }
                 _ => unreachable!(),
@@ -273,14 +273,14 @@ pub fn adjust_internal_edge_contacts(
             }
 
             if info.edge_v0_v1_angle != 0.0 {
-                let is_edge_convex = (info.flags & TriInfoFlag::V0V1Convex as u8) != 0;
+                let is_edge_convex = (info.flags & TriInfoFlag::V0V1Convex) != 0;
                 let swap_factor = f32::from(is_edge_convex) * 2.0 - 1.0;
 
                 let edge = -tri.edges[0];
                 let n_a = swap_factor * tri.normal;
                 let orn = Quat::from_axis_angle_simd(edge.normalize(), info.edge_v0_v1_angle);
                 let mut computed_normal_b = orn * tri.normal;
-                if (info.flags & TriInfoFlag::V0V1SwapNormalB as u8) != 0 {
+                if (info.flags & TriInfoFlag::V0V1SwapNormalB) != 0 {
                     computed_normal_b *= -1.0;
                 }
                 let n_b = swap_factor * computed_normal_b;
@@ -319,14 +319,14 @@ pub fn adjust_internal_edge_contacts(
             }
 
             if info.edge_v1_v2_angle != 0.0 {
-                let is_edge_convex = (info.flags & TriInfoFlag::V1V2Convex as u8) != 0;
+                let is_edge_convex = (info.flags & TriInfoFlag::V1V2Convex) != 0;
                 let swap_factor = f32::from(is_edge_convex) * 2.0 - 1.0;
 
                 let edge = -tri.edges[1];
                 let n_a = swap_factor * tri.normal;
                 let orn = Quat::from_axis_angle_simd(edge.normalize(), info.edge_v1_v2_angle);
                 let mut computed_normal_b = orn * tri.normal;
-                if (info.flags & TriInfoFlag::V1V2SwapNormalB as u8) != 0 {
+                if (info.flags & TriInfoFlag::V1V2SwapNormalB) != 0 {
                     computed_normal_b *= -1.0;
                 }
                 let n_b = swap_factor * computed_normal_b;
@@ -365,14 +365,14 @@ pub fn adjust_internal_edge_contacts(
             }
 
             if info.edge_v2_v0_angle != 0.0 {
-                let is_edge_convex = (info.flags & TriInfoFlag::V2V0Convex as u8) != 0;
+                let is_edge_convex = (info.flags & TriInfoFlag::V2V0Convex) != 0;
                 let swap_factor = f32::from(is_edge_convex) * 2.0 - 1.0;
 
                 let edge = -tri.edges[2];
                 let n_a = swap_factor * tri.normal;
                 let orn = Quat::from_axis_angle_simd(edge.normalize(), info.edge_v2_v0_angle);
                 let mut computed_normal_b = orn * tri.normal;
-                if (info.flags & TriInfoFlag::V2V0SwapNormalB as u8) != 0 {
+                if (info.flags & TriInfoFlag::V2V0SwapNormalB) != 0 {
                     computed_normal_b *= -1.0;
                 }
                 let n_b = swap_factor * computed_normal_b;

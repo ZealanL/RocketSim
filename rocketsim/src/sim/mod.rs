@@ -5,6 +5,7 @@ mod car;
 #[allow(clippy::redundant_pub_crate)]
 pub(crate) mod collision_mesh_file;
 pub mod consts;
+mod dropshot_tiles;
 mod game_mode;
 mod linear_piece_curve;
 mod mutator_config;
@@ -16,6 +17,7 @@ pub use arena::*;
 pub use ball::*;
 pub use boost_pad::*;
 pub use car::*;
+pub use dropshot_tiles::*;
 pub use game_mode::*;
 pub use mutator_config::*;
 pub use phys_state::*;

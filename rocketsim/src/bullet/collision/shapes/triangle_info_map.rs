@@ -1,7 +1,7 @@
 use std::{
     f32::consts::TAU,
     iter::repeat_n,
-    ops::{Deref, DerefMut},
+    ops::{BitAnd, BitOrAssign, Deref, DerefMut},
 };
 
 pub enum TriInfoFlag {
@@ -11,6 +11,20 @@ pub enum TriInfoFlag {
     V0V1SwapNormalB = 1 << 3,
     V1V2SwapNormalB = 1 << 4,
     V2V0SwapNormalB = 1 << 5,
+}
+
+impl BitOrAssign<TriInfoFlag> for u8 {
+    fn bitor_assign(&mut self, rhs: TriInfoFlag) {
+        *self |= rhs as u8;
+    }
+}
+
+impl BitAnd<TriInfoFlag> for u8 {
+    type Output = u8;
+
+    fn bitand(self, rhs: TriInfoFlag) -> Self::Output {
+        self & (rhs as u8)
+    }
 }
 
 #[derive(Clone, Copy)]

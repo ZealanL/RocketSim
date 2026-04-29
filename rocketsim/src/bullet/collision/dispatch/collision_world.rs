@@ -39,18 +39,16 @@ impl CollisionWorld {
         filter_group: u8,
         filter_mask: u8,
     ) -> usize {
-        obj.world_array_idx = self.collision_objs.len();
+        let idx = self.collision_objs.len();
+        obj.world_array_idx = idx;
 
         let trans = obj.get_world_trans();
         let aabb = obj.get_collision_shape().get_aabb(trans);
-
         let proxy = self
             .broadphase_pair_cache
             .create_proxy(aabb, &obj, filter_group, filter_mask);
 
         obj.set_broadphase_handle(proxy);
-
-        let idx = self.collision_objs.len();
         self.collision_objs.push(obj);
 
         idx
@@ -91,7 +89,12 @@ impl CollisionWorld {
                 aabb += aabb2;
             }
 
-            debug_assert!(col_obj.is_static_obj() || (aabb.max - aabb.min).length_squared() < 1e12);
+            debug_assert!(
+                col_obj.is_static_obj() || (aabb.max - aabb.min).length_squared() < 1e12,
+                "object #{i} {:?} has invalid aabb: {:?}",
+                col_obj.user_idx,
+                aabb
+            );
             self.broadphase_pair_cache
                 .set_aabb(col_obj, col_obj.get_broadphase_handle(), aabb);
         }

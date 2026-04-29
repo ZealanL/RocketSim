@@ -1,3 +1,5 @@
+use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor};
+
 use glam::USizeVec3;
 
 use crate::shared::Aabb;
@@ -8,7 +10,66 @@ pub enum CollisionFilterGroups {
     HoopsNet = (1 << 2),
     DropshotTile = (1 << 3),
     DropshotFloor = (1 << 4),
-    All = -1,
+}
+
+impl CollisionFilterGroups {
+    pub const ALL: u8 = Self::Default as u8
+        | Self::Static as u8
+        | Self::HoopsNet as u8
+        | Self::DropshotTile as u8
+        | Self::DropshotFloor as u8;
+}
+
+impl BitOrAssign<CollisionFilterGroups> for u8 {
+    fn bitor_assign(&mut self, rhs: CollisionFilterGroups) {
+        *self |= rhs as u8;
+    }
+}
+
+impl BitAndAssign<CollisionFilterGroups> for u8 {
+    fn bitand_assign(&mut self, rhs: CollisionFilterGroups) {
+        *self &= rhs as u8;
+    }
+}
+
+impl BitAnd<CollisionFilterGroups> for u8 {
+    type Output = u8;
+
+    fn bitand(self, rhs: CollisionFilterGroups) -> Self::Output {
+        self & (rhs as u8)
+    }
+}
+
+impl BitOr<CollisionFilterGroups> for u8 {
+    type Output = u8;
+
+    fn bitor(self, rhs: CollisionFilterGroups) -> Self::Output {
+        self | (rhs as u8)
+    }
+}
+
+impl BitXor<CollisionFilterGroups> for u8 {
+    type Output = u8;
+
+    fn bitxor(self, rhs: CollisionFilterGroups) -> Self::Output {
+        self ^ (rhs as u8)
+    }
+}
+
+impl BitXor for CollisionFilterGroups {
+    type Output = u8;
+
+    fn bitxor(self, rhs: Self) -> Self::Output {
+        self as u8 ^ rhs as u8
+    }
+}
+
+impl BitOr for CollisionFilterGroups {
+    type Output = u8;
+
+    fn bitor(self, rhs: Self) -> Self::Output {
+        self as u8 | rhs as u8
+    }
 }
 
 pub struct BroadphaseProxy {

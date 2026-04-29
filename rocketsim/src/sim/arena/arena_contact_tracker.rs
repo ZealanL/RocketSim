@@ -20,8 +20,6 @@ pub(crate) struct ContactRecord {
     pub is_swap: bool,
     pub rb_idx_a: usize,
     pub rb_idx_b: usize,
-    pub user_idx_a: UserInfoTypes,
-    pub user_idx_b: UserInfoTypes,
     pub manifold_point: ManifoldPoint,
 }
 
@@ -82,12 +80,8 @@ impl ContactAddedCallback for ArenaContactTracker {
             };
             manifold_point.combined_friction = hit_coefs.friction;
             manifold_point.combined_restitution = hit_coefs.restitution;
-        } else if user_idx_a == UserInfoTypes::Ball {
-            if user_idx_b == UserInfoTypes::DropshotTile {
-                todo!()
-            } else if user_idx_b == UserInfoTypes::None {
-                manifold_point.is_special = true;
-            }
+        } else if user_idx_a == UserInfoTypes::Ball && user_idx_b == UserInfoTypes::None {
+            manifold_point.is_special = true;
         }
 
         // NOTE: Push *before* the manifold is mutated by adjust_internal_edge_contacts()
@@ -95,8 +89,6 @@ impl ContactAddedCallback for ArenaContactTracker {
             is_swap: should_swap,
             rb_idx_a: body_a.world_array_idx,
             rb_idx_b: body_b.world_array_idx,
-            user_idx_a,
-            user_idx_b,
             manifold_point: *manifold_point,
         });
 

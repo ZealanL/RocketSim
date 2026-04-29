@@ -3,7 +3,7 @@ use std::f32::consts::TAU;
 use glam::{Affine3A, Vec2, Vec3A};
 
 use crate::{
-    BallState, Car, GameMode, MutatorConfig,
+    BallState, Car, GameMode, MutatorConfig, Team, TileDamageState, TileNeighbors, TileStates,
     bullet::{
         collision::{
             broadphase::CollisionFilterGroups,
@@ -18,7 +18,7 @@ use crate::{
         },
         linear_math::angle::Angle,
     },
-    consts::{UU_TO_BT, dropshot, heatseeker, snowday},
+    consts::{BT_TO_UU, UU_TO_BT, dropshot, heatseeker, snowday},
     sim::{UserInfoTypes, consts},
 };
 
@@ -89,18 +89,17 @@ impl Ball {
 
         let mut body = RigidBody::new(info);
         body.user_idx = UserInfoTypes::Ball;
-        body.collision_flags |=
-            CollisionFlags::CustomMaterialCallback as u8 | CollisionFlags::CanSleep as u8;
+        body.collision_flags |= CollisionFlags::CustomMaterialCallback | CollisionFlags::CanSleep;
         if no_rot && matches!(body.get_collision_shape(), CollisionShapes::Sphere(_)) {
-            body.collision_flags |= CollisionFlags::NoAngularMotion as u8;
+            body.collision_flags |= CollisionFlags::NoAngularMotion;
         }
 
         let rigid_body_idx = bullet_world.add_rigid_body(
             body,
-            CollisionFilterGroups::Default as u8
-                | CollisionFilterGroups::HoopsNet as u8
-                | CollisionFilterGroups::DropshotTile as u8,
-            CollisionFilterGroups::All as u8,
+            CollisionFilterGroups::Default
+                | CollisionFilterGroups::HoopsNet
+                | CollisionFilterGroups::DropshotTile,
+            CollisionFilterGroups::ALL,
         );
 
         Self {
@@ -346,7 +345,7 @@ impl Ball {
         }
     }
 
-    pub fn on_world_hit(&mut self, rb: &mut RigidBody, game_mode: GameMode, normal: Vec3A) {
+    pub(crate) fn on_world_hit(&mut self, rb: &mut RigidBody, game_mode: GameMode, normal: Vec3A) {
         match game_mode {
             GameMode::Heatseeker => {
                 const ARENA_EXTENT: Vec3A = consts::arena::get_aabb(GameMode::Soccar).max;
@@ -386,5 +385,64 @@ impl Ball {
             }
             _ => {}
         }
+    }
+
+    pub(crate) fn on_dropshot_tile_collision(
+        &mut self,
+        tile_states: &mut TileStates,
+        tile_total_index: usize,
+        tile_neighbors: &TileNeighbors,
+        tick_count: u64,
+    ) {
+        let team_idx = tile_total_index / dropshot::NUM_TILES_PER_TEAM;
+        let tile_idx = tile_total_index % dropshot::NUM_TILES_PER_TEAM;
+        let tile_state = tile_states.states[team_idx][tile_idx];
+        let tile_pos = TileNeighbors::get_tile_pos(
+            Team::try_from(u8::try_from(team_idx).unwrap()).unwrap(),
+            tile_idx,
+        );
+
+        // This should be possible in rare circumstances where two tiles are hit simultaneously
+        if tile_state == TileDamageState::Broken {
+            return;
+        }
+
+        if let Some(last_damage_tick) = self.state.ds_info.last_damage_tick {
+            let time_since_damage = (tick_count - last_damage_tick) as f32 * consts::TICK_TIME;
+            if time_since_damage <= dropshot::MIN_DAMAGE_INTERVAL {
+                return; // Hasn't been long enough since we last damaged
+            }
+        }
+
+        if self.state.phys.vel.z * BT_TO_UU > -dropshot::MIN_DOWNWARD_SPEED_TO_DAMAGE {
+            return; // Not going fast enough downward
+        }
+
+        if self.state.ds_info.charge_level > 1
+            && self.state.ds_info.y_target_dir != 0
+            && tile_pos.y.signum() != f32::from(self.state.ds_info.y_target_dir)
+        {
+            return; // Wrong side of the arena
+        }
+
+        // All checks passed, break the tile(s)
+        let indices_to_break = match self.state.ds_info.charge_level {
+            3 => tile_neighbors.get_neighbor_indices_2(tile_idx),
+            2 => tile_neighbors.get_neighbor_indices_1(tile_idx),
+            _ => &[tile_idx],
+        };
+        for &i in indices_to_break {
+            let prev_state = tile_states.states[team_idx][i];
+            tile_states.states[team_idx][i] = match prev_state {
+                TileDamageState::Full => TileDamageState::Damaged,
+                TileDamageState::Damaged => TileDamageState::Broken,
+                TileDamageState::Broken => continue, // Already broken, skip
+            }
+        }
+
+        self.state.ds_info.last_damage_tick = Some(tick_count);
+        self.state.ds_info.accumulated_hit_force = 0.0;
+        self.state.ds_info.charge_level = 1;
+        self.state.ds_info.y_target_dir = 0;
     }
 }

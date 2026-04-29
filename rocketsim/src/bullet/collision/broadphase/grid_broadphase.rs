@@ -204,7 +204,7 @@ impl GridBroadphase {
         let sbp = &mut self.handles[proxy_idx];
         sbp.aabb = aabb;
 
-        if sbp.collision_filter_group & CollisionFilterGroups::Static as u8 != 0 {
+        if (sbp.collision_filter_group & CollisionFilterGroups::Static) != 0 {
             self.cell_grid.update_cells_static(sbp, col_obj, proxy_idx);
         } else {
             let old_idx = sbp.cell_idx;
@@ -231,7 +231,7 @@ impl GridBroadphase {
     ) -> usize {
         debug_assert!(aabb.min.cmple(aabb.max).all());
 
-        let is_static = collision_filter_group & CollisionFilterGroups::Static as u8 != 0;
+        let is_static = (collision_filter_group & CollisionFilterGroups::Static) != 0;
         let new_handle_idx = self.handles.len();
         let indices = self.cell_grid.get_cell_indices(aabb.min);
         let cell_idx = self.cell_grid.cell_indices_to_idx(indices);
@@ -274,7 +274,7 @@ impl GridBroadphase {
             .enumerate()
             .skip(self.min_dyn_handle_idx)
             .filter(|(_, proxy)| {
-                proxy.collision_filter_group & CollisionFilterGroups::Static as u8 == 0
+                (proxy.collision_filter_group & CollisionFilterGroups::Static) == 0
             })
         {
             let cell = &self.cell_grid.cells[proxy.cell_idx];
