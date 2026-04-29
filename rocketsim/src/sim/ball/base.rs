@@ -3,7 +3,7 @@ use std::f32::consts::TAU;
 use glam::{Affine3A, Vec2, Vec3A};
 
 use crate::{
-    BallState, Car, GameMode, MutatorConfig, Team, TileDamageState, TileNeighbors, TileStates,
+    BallState, Car, GameMode, MutatorConfig, Team, TileDamageState, TileStates,
     bullet::{
         collision::{
             broadphase::CollisionFilterGroups,
@@ -19,6 +19,7 @@ use crate::{
         linear_math::angle::Angle,
     },
     consts::{BT_TO_UU, UU_TO_BT, dropshot, heatseeker, snowday},
+    get_neighbor_indices_1, get_neighbor_indices_2, get_tile_pos,
     sim::{UserInfoTypes, consts},
 };
 
@@ -391,13 +392,12 @@ impl Ball {
         &mut self,
         tile_states: &mut TileStates,
         tile_total_index: usize,
-        tile_neighbors: &TileNeighbors,
         tick_count: u64,
     ) {
         let team_idx = tile_total_index / dropshot::NUM_TILES_PER_TEAM;
         let tile_idx = tile_total_index % dropshot::NUM_TILES_PER_TEAM;
         let tile_state = tile_states.states[team_idx][tile_idx];
-        let tile_pos = TileNeighbors::get_tile_pos(
+        let tile_pos = get_tile_pos(
             Team::try_from(u8::try_from(team_idx).unwrap()).unwrap(),
             tile_idx,
         );
@@ -427,8 +427,8 @@ impl Ball {
 
         // All checks passed, break the tile(s)
         let indices_to_break = match self.state.ds_info.charge_level {
-            3 => tile_neighbors.get_neighbor_indices_2(tile_idx),
-            2 => tile_neighbors.get_neighbor_indices_1(tile_idx),
+            3 => get_neighbor_indices_2(tile_idx),
+            2 => get_neighbor_indices_1(tile_idx),
             _ => &[tile_idx],
         };
         for &i in indices_to_break {
