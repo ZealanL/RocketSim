@@ -153,7 +153,7 @@ impl Arena {
             bullet_world.add_rigid_body(
                 shape_rb,
                 group | CollisionFilterGroups::Static as u8,
-                CollisionFilterGroups::All as u8 ^ CollisionFilterGroups::Static as u8,
+                group,
             );
         } else {
             bullet_world.add_rigid_body_default(shape_rb);
