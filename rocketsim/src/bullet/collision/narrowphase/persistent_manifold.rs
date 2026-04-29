@@ -206,8 +206,8 @@ impl PersistentManifold {
 
         let insert_idx = self.add_manifold_point(new_pt);
 
-        if body0.collision_flags & CollisionFlags::CustomMaterialCallback as u8 != 0
-            || body1.collision_flags & CollisionFlags::CustomMaterialCallback as u8 != 0
+        if (body0.collision_flags & CollisionFlags::CustomMaterialCallback) != 0
+            || (body1.collision_flags & CollisionFlags::CustomMaterialCallback) != 0
         {
             contact_added_callback.callback(&mut self.point_cache[insert_idx], body0, body1, idx_1);
         }

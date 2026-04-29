@@ -480,12 +480,12 @@ pub mod dropshot {
         + TILE_HEXAGON_VERTS_BT[4].to_array()[1])
         * BT_TO_UU;
     pub const TILE_OFFSET_Y: f32 = 2.54736 * BT_TO_UU;
-    pub const NUM_TILES_PER_TEAM: i32 = 70;
+    pub const NUM_TILES_PER_TEAM: usize = 70;
     pub const TEAM_AMOUNT: i32 = 2;
     /// Number descends each row
-    pub const TILES_IN_FIRST_ROW: i32 = 13;
-    pub const TILES_IN_LAST_ROW: i32 = 7;
-    pub const NUM_TILE_ROWS: i32 = TILES_IN_FIRST_ROW - TILES_IN_LAST_ROW + 1;
+    pub const TILES_IN_FIRST_ROW: u8 = 13;
+    pub const TILES_IN_LAST_ROW: u8 = 7;
+    pub const NUM_TILE_ROWS: u8 = TILES_IN_FIRST_ROW - TILES_IN_LAST_ROW + 1;
     pub const TILE_HEXAGON_AABB_MAX: Vec3A = Vec3A::new(7.6643, 8.85, 0.);
     pub const TILE_HEXAGON_VERTS_BT: [Vec3A; 6] = [
         Vec3A::new(0.0, -8.85, 0.),

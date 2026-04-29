@@ -12,7 +12,7 @@ use crate::{
     ArenaEvent::{BallHitWorld, CarPickupBoost},
     ArenaMemWeightMode, ArenaState, BallHitWorldEvent, BoostPadConfig, BoostPadGrid, BoostPadState,
     Car, CarBodyConfig, CarControls, CarInfo, CarPickupBoostEvent, CarState, GameMode,
-    MutatorConfig, PhysState, Team,
+    MutatorConfig, PhysState, Team, TileDamageState, TileNeighbors, TileStates,
     bullet::{
         collision::{
             broadphase::{CollisionFilterGroups, GridBroadphase},
@@ -21,7 +21,7 @@ use crate::{
         },
         dynamics::{
             discrete_dynamics_world::DiscreteDynamicsWorld,
-            rigid_body::{ActivationState, RigidBody, RigidBodyConstructionInfo},
+            rigid_body::{ActivationState, CollisionFlags, RigidBody, RigidBodyConstructionInfo},
         },
     },
     consts::{self, BT_TO_UU, TICK_RATE, TICK_TIME, UU_TO_BT},
@@ -42,6 +42,8 @@ pub struct Arena {
     pub(crate) cars: Vec<Car>,
     pub(crate) tick_count: u64,
     pub(crate) boost_pad_grid: Option<BoostPadGrid>,
+    pub(crate) tile_neighbors: Option<TileNeighbors>,
+    pub(crate) tile_states: Option<TileStates>,
     pub(crate) contact_tracker: ArenaContactTracker,
     pub(crate) events: ArenaEventList,
 
@@ -113,6 +115,12 @@ impl Arena {
                 None
             };
 
+        let (tile_neighbors, tile_states) = if config.game_mode == GameMode::Dropshot {
+            (Some(TileNeighbors::default()), Some(TileStates::DEFAULT))
+        } else {
+            (None, None)
+        };
+
         let rng = config.rng_seed.map_or_else(Rng::new, Rng::with_seed);
 
         Self {
@@ -123,6 +131,8 @@ impl Arena {
             tick_count: 0,
             cars: Vec::with_capacity(6),
             bullet_world,
+            tile_neighbors,
+            tile_states,
 
             contact_tracker: ArenaContactTracker::new(),
             events: ArenaEventList::new(),
@@ -142,7 +152,7 @@ impl Arena {
         shape: CollisionShapes,
         pos_bt: Vec3A,
         group: Option<u8>,
-    ) {
+    ) -> usize {
         let mut rb_info = RigidBodyConstructionInfo::new(0.0, shape);
         rb_info.restitution = consts::arena::BASE_COEFS.restitution;
         rb_info.friction = consts::arena::BASE_COEFS.friction;
@@ -152,11 +162,11 @@ impl Arena {
         if let Some(group) = group {
             bullet_world.add_rigid_body(
                 shape_rb,
-                group | CollisionFilterGroups::Static as u8,
-                group,
-            );
+                group | CollisionFilterGroups::Static,
+                group ^ CollisionFilterGroups::Static,
+            )
         } else {
-            bullet_world.add_rigid_body_default(shape_rb);
+            bullet_world.add_rigid_body_default(shape_rb)
         }
     }
 
@@ -236,12 +246,12 @@ impl Arena {
         if game_mode != GameMode::Dropshot {
             // Side walls
             add_plane(
-                Vec3A::new(arena_aabb.min.x, 0.0, arena_aabb.center().z),
+                Vec3A::new(arena_aabb.min.x, 0.0, arena_aabb.max.z / 2.0),
                 Vec3A::X,
                 None,
             );
             add_plane(
-                Vec3A::new(arena_aabb.max.x, 0.0, arena_aabb.center().z),
+                Vec3A::new(arena_aabb.max.x, 0.0, arena_aabb.max.z / 2.0),
                 Vec3A::NEG_X,
                 None,
             );
@@ -251,20 +261,36 @@ impl Arena {
             GameMode::Hoops => {
                 // Y walls
                 add_plane(
-                    Vec3A::new(0.0, arena_aabb.min.y, arena_aabb.center().z),
+                    Vec3A::new(0.0, arena_aabb.min.y, arena_aabb.max.z / 2.0),
                     Vec3A::Y,
                     None,
                 );
 
                 add_plane(
-                    Vec3A::new(0.0, arena_aabb.min.z, arena_aabb.center().z),
+                    Vec3A::new(0.0, arena_aabb.max.y, arena_aabb.max.z / 2.0),
                     Vec3A::NEG_Y,
                     None,
                 );
             }
             GameMode::Dropshot => {
                 // Add tiles
-                todo!()
+                let tiles = TileNeighbors::make_tile_shapes();
+
+                for (i, tile) in tiles.enumerate() {
+                    // Shift down so the collision doesn't peek through the floor
+                    let pos = Vec3A::new(0.0, 0.0, -tile.get_margin());
+
+                    let rb_idx = Self::add_static_collision_shape(
+                        bullet_world,
+                        CollisionShapes::ConvexHull(tile),
+                        pos,
+                        Some(CollisionFilterGroups::DropshotTile as u8),
+                    );
+
+                    let rb = &mut bullet_world.bodies_mut()[rb_idx];
+                    rb.user_idx = UserInfoTypes::DropshotTile;
+                    rb.user_pointer = i;
+                }
             }
             _ => {}
         }
@@ -406,6 +432,9 @@ impl Arena {
             GameMode::Snowday => {
                 ball_state.phys.vel.z = f32::EPSILON;
             }
+            GameMode::Dropshot => {
+                self.update_tile_states();
+            }
             _ => {}
         }
 
@@ -414,8 +443,6 @@ impl Arena {
         if let Some(boost_pad_grid) = self.boost_pad_grid.as_mut() {
             boost_pad_grid.reset();
         }
-
-        // TODO: Reset tile states
     }
 
     /// Creates and adds a car to the arena, returning the index of the car in the cars vector
@@ -480,11 +507,15 @@ impl Arena {
             let contact = *self.contact_tracker.get_record(idx);
 
             let bodies = self.bullet_world.bodies();
-            let user_pointer_a = bodies[contact.rb_idx_a].user_pointer;
-            let user_pointer_b = bodies[contact.rb_idx_b].user_pointer;
+            let rb_a = &bodies[contact.rb_idx_a];
+            let rb_b = &bodies[contact.rb_idx_b];
+            let user_idx_a = rb_a.user_idx;
+            let user_idx_b = rb_b.user_idx;
+            let user_pointer_a = rb_a.user_pointer;
+            let user_pointer_b = rb_b.user_pointer;
 
-            if contact.user_idx_a == UserInfoTypes::Car {
-                match contact.user_idx_b {
+            match user_idx_a {
+                UserInfoTypes::Car => match user_idx_b {
                     UserInfoTypes::Ball => {
                         self.on_car_ball_collision(
                             user_pointer_a,
@@ -500,9 +531,17 @@ impl Arena {
                         );
                     }
                     _ => self.on_car_world_collision(user_pointer_a, &contact.manifold_point),
-                }
-            } else if contact.user_idx_a == UserInfoTypes::Ball {
-                self.on_ball_world_collision(&contact.manifold_point, contact.rb_idx_a);
+                },
+                UserInfoTypes::Ball => match user_idx_b {
+                    UserInfoTypes::DropshotTile => {
+                        self.on_ball_tile_collision(user_pointer_b);
+                    }
+                    UserInfoTypes::None => {
+                        self.on_ball_world_collision(&contact.manifold_point, contact.rb_idx_a);
+                    }
+                    _ => {}
+                },
+                _ => {}
             }
         }
 
@@ -533,8 +572,10 @@ impl Arena {
         self.ball
             .finish_physics_tick(ball_rb, &self.config.mutators);
 
-        if self.config.game_mode == GameMode::Dropshot {
-            todo!("Dropshot tile state sync")
+        if self.config.game_mode == GameMode::Dropshot
+            && self.ball.state.ds_info.last_damage_tick == Some(self.tick_count)
+        {
+            self.update_tile_states();
         }
 
         self.tick_count += 1;
@@ -681,13 +722,45 @@ impl Arena {
             .collect()
     }
 
+    pub fn get_tile_states(&self) -> &TileStates {
+        self.tile_states.as_ref().unwrap()
+    }
+
+    fn update_tile_states(&mut self) {
+        for (team_idx, team_states) in self.tile_states.as_ref().unwrap().states.iter().enumerate()
+        {
+            for (tile_idx, &new_state) in team_states.iter().enumerate() {
+                let rb_idx = tile_idx + consts::dropshot::NUM_TILES_PER_TEAM * team_idx;
+                let tile_rb = &mut self.bullet_world.bodies_mut()[rb_idx];
+                if new_state == TileDamageState::Broken {
+                    tile_rb.collision_flags |= CollisionFlags::NoContactResponse;
+                } else {
+                    tile_rb.collision_flags &= !CollisionFlags::NoContactResponse;
+                }
+            }
+        }
+    }
+
+    pub fn set_tile_states(&mut self, tile_states: TileStates) {
+        self.tile_states = Some(tile_states);
+        self.update_tile_states();
+    }
+
     #[must_use]
     pub fn get_arena_state(&self) -> ArenaState {
         let car_infos = self.cars.iter().map(|c| c.info).collect::<Vec<_>>();
         let car_states = self.cars.iter().map(|c| c.state).collect::<Vec<_>>();
         let ball_state = *self.get_ball_state();
-        let boost_pad_states = self.get_all_boost_pad_states();
-        let boost_pad_configs = self.get_all_boost_pad_configs();
+
+        let (boost_pad_states, boost_pad_configs) = match self.config.game_mode {
+            GameMode::Soccar | GameMode::Hoops | GameMode::Snowday => (
+                self.get_all_boost_pad_states(),
+                self.get_all_boost_pad_configs(),
+            ),
+            GameMode::Dropshot | GameMode::Heatseeker | GameMode::TheVoid => {
+                (Vec::new(), Vec::new())
+            }
+        };
 
         ArenaState {
             game_mode: self.config.game_mode,
@@ -734,6 +807,15 @@ impl Arena {
 }
 
 impl Arena {
+    fn on_ball_tile_collision(&mut self, tile_idx: usize) {
+        self.ball.on_dropshot_tile_collision(
+            self.tile_states.as_mut().unwrap(),
+            tile_idx,
+            self.tile_neighbors.as_ref().unwrap(),
+            self.tick_count,
+        );
+    }
+
     fn on_ball_world_collision(&mut self, manifold_point: &ManifoldPoint, rb_index: usize) {
         let contact_point = manifold_point.pos_world_on_b * BT_TO_UU;
         let contact_normal = manifold_point.normal_world_on_b;

@@ -31,7 +31,7 @@ impl Default for RayResultCallbackBase {
             closest_hit_fraction: Vec4::ONE,
             collision_obj_idx: [None; 4],
             collision_filter_group: CollisionFilterGroups::Default as u8,
-            collision_filter_mask: CollisionFilterGroups::All as u8,
+            collision_filter_mask: CollisionFilterGroups::ALL,
             ignore_obj_world_idx: None,
         }
     }
@@ -48,8 +48,8 @@ pub trait RayResultCallback {
             return false;
         }
 
-        proxy0.collision_filter_group & base.collision_filter_mask != 0
-            && base.collision_filter_group & proxy0.collision_filter_mask != 0
+        (proxy0.collision_filter_group & base.collision_filter_mask) != 0
+            && (base.collision_filter_group & proxy0.collision_filter_mask) != 0
     }
     fn add_single_result(&mut self, ray_result: LocalRayResult, ray_idx: usize);
 }

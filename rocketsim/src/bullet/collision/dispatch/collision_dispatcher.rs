@@ -6,6 +6,7 @@ use super::{
 use crate::bullet::{
     collision::{
         broadphase::{BroadphaseProxy, GridBroadphase},
+        dispatch::convex_convex_collision_alg,
         narrowphase::persistent_manifold::{ContactAddedCallback, PersistentManifold},
         shapes::collision_shape::CollisionShapes,
     },
@@ -77,6 +78,14 @@ impl CollisionDispatcher {
                     sphere,
                     col_obj_b,
                     compound,
+                    contact_added_callback,
+                ),
+                CollisionShapes::ConvexHull(_) => convex_convex_collision_alg::process_collision(
+                    &RigidBodyWrapper {
+                        obj: col_obj_a,
+                        world_trans: *col_obj_a.get_world_trans(),
+                    },
+                    col_obj_b,
                     contact_added_callback,
                 ),
                 _ => unreachable!(),
@@ -160,6 +169,14 @@ impl CollisionDispatcher {
                         contact_added_callback,
                     )
                 }
+                CollisionShapes::Sphere(_) => convex_convex_collision_alg::process_collision(
+                    &RigidBodyWrapper {
+                        obj: col_obj_a,
+                        world_trans: *col_obj_a.get_world_trans(),
+                    },
+                    col_obj_b,
+                    contact_added_callback,
+                ),
                 _ => unreachable!(),
             },
             CollisionShapes::Triangle(_) => unreachable!(),

@@ -476,7 +476,7 @@ impl SeqImpulseConstraintSolver {
             solver.ang_vel += solver.delta_ang_vel;
 
             if solver.push_vel.length_squared() != 0.0 || solver.turn_vel.length_squared() != 0.0 {
-                if body.collision_flags & CollisionFlags::NoAngularMotion as u8 != 0 {
+                if body.collision_flags & CollisionFlags::NoAngularMotion != 0 {
                     integrate_trans_no_rot(
                         &mut solver.world_trans.translation,
                         solver.push_vel,

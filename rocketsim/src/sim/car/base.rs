@@ -76,12 +76,12 @@ impl Car {
 
         let mut body = RigidBody::new(rb_info);
         body.user_idx = UserInfoTypes::Car;
-        body.collision_flags |= CollisionFlags::CustomMaterialCallback as u8;
+        body.collision_flags |= CollisionFlags::CustomMaterialCallback;
 
         let rigid_body_idx = bullet_world.add_rigid_body(
             body,
-            CollisionFilterGroups::Default as u8 | CollisionFilterGroups::DropshotFloor as u8,
-            CollisionFilterGroups::All as u8,
+            CollisionFilterGroups::Default | CollisionFilterGroups::DropshotFloor,
+            CollisionFilterGroups::ALL,
         );
 
         let mut wheels = [WheelInfo::DEFAULT; NUM_WHEELS];

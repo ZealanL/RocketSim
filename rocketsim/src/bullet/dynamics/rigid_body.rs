@@ -1,3 +1,5 @@
+use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not};
+
 use glam::{Affine3A, Mat3A, Quat, Vec3A};
 
 use crate::{
@@ -54,6 +56,64 @@ pub enum CollisionFlags {
     NoAngularMotion = (1 << 5),
 }
 
+impl BitOrAssign<CollisionFlags> for u8 {
+    fn bitor_assign(&mut self, rhs: CollisionFlags) {
+        *self |= rhs as u8;
+    }
+}
+
+impl BitAndAssign<CollisionFlags> for u8 {
+    fn bitand_assign(&mut self, rhs: CollisionFlags) {
+        *self &= rhs as u8;
+    }
+}
+
+impl BitAnd<CollisionFlags> for u8 {
+    type Output = u8;
+
+    fn bitand(self, rhs: CollisionFlags) -> Self::Output {
+        self & (rhs as u8)
+    }
+}
+
+impl BitOr<CollisionFlags> for u8 {
+    type Output = u8;
+
+    fn bitor(self, rhs: CollisionFlags) -> Self::Output {
+        self | (rhs as u8)
+    }
+}
+
+impl BitXor<CollisionFlags> for u8 {
+    type Output = u8;
+
+    fn bitxor(self, rhs: CollisionFlags) -> Self::Output {
+        self ^ (rhs as u8)
+    }
+}
+
+impl BitOr for CollisionFlags {
+    type Output = u8;
+
+    fn bitor(self, rhs: Self) -> Self::Output {
+        self as u8 | rhs as u8
+    }
+}
+
+impl BitXorAssign<CollisionFlags> for u8 {
+    fn bitxor_assign(&mut self, rhs: CollisionFlags) {
+        *self ^= rhs as u8;
+    }
+}
+
+impl Not for CollisionFlags {
+    type Output = u8;
+
+    fn not(self) -> Self::Output {
+        !(self as u8)
+    }
+}
+
 pub struct RigidBody {
     world_trans: Affine3A,
     world_quat: Quat,
@@ -92,10 +152,10 @@ pub struct RigidBody {
 
 impl RigidBody {
     pub fn new(info: RigidBodyConstructionInfo) -> Self {
-        let inverse_mass = if info.mass == 0.0 {
-            0.0
+        let (inverse_mass, collision_flags) = if info.mass == 0.0 {
+            (0.0, CollisionFlags::StaticObject as u8)
         } else {
-            1.0 / info.mass
+            (1.0 / info.mass, 0)
         };
 
         let linear_damping = info.linear_damping.clamp(0.0, 1.0);
@@ -119,11 +179,7 @@ impl RigidBody {
             contact_processing_threshold: f32::MAX,
             broadphase_handle: 0,
             shape: info.collision_shape,
-            collision_flags: if info.mass == 0.0 {
-                CollisionFlags::StaticObject as u8
-            } else {
-                0
-            },
+            collision_flags,
             companion_id: None,
             world_array_idx: 0,
             activation: ActivationState::Active,
@@ -150,7 +206,7 @@ impl RigidBody {
     }
 
     pub fn set_world_trans(&mut self, world_trans: Affine3A) {
-        if self.collision_flags & CollisionFlags::NoAngularMotion as u8 == 0 {
+        if (self.collision_flags & CollisionFlags::NoAngularMotion) == 0 {
             self.world_quat = Quat::from_mat3a(&world_trans.matrix3);
         }
 
@@ -169,8 +225,8 @@ impl RigidBody {
         &self.shape
     }
 
-    pub const fn is_static_obj(&self) -> bool {
-        self.collision_flags & CollisionFlags::StaticObject as u8 != 0
+    pub fn is_static_obj(&self) -> bool {
+        (self.collision_flags & CollisionFlags::StaticObject) != 0
     }
 
     pub const fn is_active(&self) -> bool {
@@ -180,14 +236,8 @@ impl RigidBody {
         )
     }
 
-    pub const fn has_contact_response(&self) -> bool {
-        self.collision_flags & CollisionFlags::NoContactResponse as u8 == 0
-    }
-
-    #[inline]
-    #[allow(unused)]
-    pub const fn get_activation_state(&self) -> ActivationState {
-        self.activation
+    pub fn has_contact_response(&self) -> bool {
+        self.collision_flags & CollisionFlags::NoContactResponse == 0
     }
 
     pub fn set_activation_state(&mut self, new_state: ActivationState) {
@@ -281,7 +331,7 @@ impl RigidBody {
         let mut trans = self.world_trans;
         let mut quat = self.world_quat;
 
-        if self.collision_flags & CollisionFlags::NoAngularMotion as u8 != 0 {
+        if (self.collision_flags & CollisionFlags::NoAngularMotion) != 0 {
             integrate_trans_no_rot(&mut trans.translation, self.lin_vel, time_step);
         } else {
             integrate_trans(&mut trans, &mut quat, self.lin_vel, self.ang_vel, time_step);
@@ -302,7 +352,7 @@ impl RigidBody {
     }
 
     pub fn update_activation_state(&mut self, _time_step: f32) {
-        if self.collision_flags & CollisionFlags::CanSleep as u8 == 0 {
+        if self.collision_flags & CollisionFlags::CanSleep == 0 {
             self.set_activation_state(ActivationState::Active);
             return;
         }
