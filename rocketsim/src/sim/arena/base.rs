@@ -12,7 +12,7 @@ use crate::{
     ArenaEvent::{BallHitWorld, CarPickupBoost},
     ArenaMemWeightMode, ArenaState, BallHitWorldEvent, BoostPadConfig, BoostPadGrid, BoostPadState,
     Car, CarBodyConfig, CarControls, CarInfo, CarPickupBoostEvent, CarState, GameMode,
-    MutatorConfig, PhysState, Team, TileDamageState, TileNeighbors, TileStates,
+    MutatorConfig, PhysState, Team, TileDamageState, TileStates,
     bullet::{
         collision::{
             broadphase::{CollisionFilterGroups, GridBroadphase},
@@ -25,6 +25,7 @@ use crate::{
         },
     },
     consts::{self, BT_TO_UU, TICK_RATE, TICK_TIME, UU_TO_BT},
+    make_tile_shapes,
     sim::{
         ArenaEvent::{self, CarHitBall},
         Ball, BallState, BoostPad, CarHitBallEvent, CarHitCarEvent, CarHitWorldEvent, DemoMode,
@@ -42,7 +43,6 @@ pub struct Arena {
     pub(crate) cars: Vec<Car>,
     pub(crate) tick_count: u64,
     pub(crate) boost_pad_grid: Option<BoostPadGrid>,
-    pub(crate) tile_neighbors: Option<TileNeighbors>,
     pub(crate) tile_states: Option<TileStates>,
     pub(crate) contact_tracker: ArenaContactTracker,
     pub(crate) events: ArenaEventList,
@@ -115,10 +115,10 @@ impl Arena {
                 None
             };
 
-        let (tile_neighbors, tile_states) = if config.game_mode == GameMode::Dropshot {
-            (Some(TileNeighbors::default()), Some(TileStates::DEFAULT))
+        let tile_states = if config.game_mode == GameMode::Dropshot {
+            Some(TileStates::DEFAULT)
         } else {
-            (None, None)
+            None
         };
 
         let rng = config.rng_seed.map_or_else(Rng::new, Rng::with_seed);
@@ -131,7 +131,6 @@ impl Arena {
             tick_count: 0,
             cars: Vec::with_capacity(6),
             bullet_world,
-            tile_neighbors,
             tile_states,
 
             contact_tracker: ArenaContactTracker::new(),
@@ -273,10 +272,7 @@ impl Arena {
                 );
             }
             GameMode::Dropshot => {
-                // Add tiles
-                let tiles = TileNeighbors::make_tile_shapes();
-
-                for (i, tile) in tiles.enumerate() {
+                for (i, tile) in make_tile_shapes().enumerate() {
                     // Shift down so the collision doesn't peek through the floor
                     let pos = Vec3A::new(0.0, 0.0, -tile.get_margin());
 
@@ -811,7 +807,6 @@ impl Arena {
         self.ball.on_dropshot_tile_collision(
             self.tile_states.as_mut().unwrap(),
             tile_idx,
-            self.tile_neighbors.as_ref().unwrap(),
             self.tick_count,
         );
     }
