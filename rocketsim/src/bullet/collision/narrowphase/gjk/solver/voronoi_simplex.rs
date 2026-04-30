@@ -384,17 +384,17 @@ impl VoronoiSimplexSolver {
         true
     }
 
-    fn point_outside_of_plane(p: Vec3A, a: Vec3A, b: Vec3A, c: Vec3A, d: Vec3A) -> i32 {
+    fn point_outside_of_plane(p: Vec3A, a: Vec3A, b: Vec3A, c: Vec3A, d: Vec3A) -> Option<bool> {
         let normal = (b - a).cross(c - a);
 
         let signp = (p - a).dot(normal);
         let signd = (d - a).dot(normal);
 
         if signd * signd < DEGENERATE_TETRAHEDRON_EPS * DEGENERATE_TETRAHEDRON_EPS {
-            return -1;
+            return None;
         }
 
-        i32::from(signp * signd < 0.0)
+        Some(signp * signd < 0.0)
     }
 
     fn closest_pt_point_tetrahedron(
@@ -405,41 +405,41 @@ impl VoronoiSimplexSolver {
         d: Vec3A,
         final_result: &mut SubSimplexClosestResult,
     ) -> bool {
-        let mut temp_result = SubSimplexClosestResult::new();
-
         final_result.closest_point_on_simplex = p;
-        final_result.used_vertices.reset();
         final_result.used_vertices.used_vertex_a = true;
         final_result.used_vertices.used_vertex_b = true;
         final_result.used_vertices.used_vertex_c = true;
         final_result.used_vertices.used_vertex_d = true;
-        final_result.degenerate = false;
 
-        let point_outside_abc = Self::point_outside_of_plane(p, a, b, c, d);
-        let point_outside_acd = Self::point_outside_of_plane(p, a, c, d, b);
-        let point_outside_adb = Self::point_outside_of_plane(p, a, d, b, c);
-        let point_outside_bdc = Self::point_outside_of_plane(p, b, d, c, a);
-
-        if point_outside_abc < 0
-            || point_outside_acd < 0
-            || point_outside_adb < 0
-            || point_outside_bdc < 0
-        {
+        let Some(point_outside_abc) = Self::point_outside_of_plane(p, a, b, c, d) else {
             final_result.degenerate = true;
             return false;
-        }
+        };
 
-        if point_outside_abc == 0
-            && point_outside_acd == 0
-            && point_outside_adb == 0
-            && point_outside_bdc == 0
-        {
+        let Some(point_outside_acd) = Self::point_outside_of_plane(p, a, c, d, b) else {
+            final_result.degenerate = true;
+            return false;
+        };
+
+        let Some(point_outside_adb) = Self::point_outside_of_plane(p, a, d, b, c) else {
+            final_result.degenerate = true;
+            return false;
+        };
+
+        let Some(point_outside_bdc) = Self::point_outside_of_plane(p, b, d, c, a) else {
+            final_result.degenerate = true;
+            return false;
+        };
+
+        final_result.degenerate = false;
+        if !point_outside_abc && !point_outside_acd && !point_outside_adb && !point_outside_bdc {
             return false;
         }
 
         let mut best_sq_dist = f32::MAX;
+        let mut temp_result = SubSimplexClosestResult::new();
 
-        if point_outside_abc != 0 {
+        if point_outside_abc {
             Self::closest_pt_point_triangle(p, a, b, c, &mut temp_result);
             let q = temp_result.closest_point_on_simplex;
             let sq_dist = (q - p).length_squared();
@@ -459,7 +459,7 @@ impl VoronoiSimplexSolver {
             }
         }
 
-        if point_outside_acd != 0 {
+        if point_outside_acd {
             Self::closest_pt_point_triangle(p, a, c, d, &mut temp_result);
             let q = temp_result.closest_point_on_simplex;
             let sq_dist = (q - p).length_squared();
@@ -479,7 +479,7 @@ impl VoronoiSimplexSolver {
             }
         }
 
-        if point_outside_adb != 0 {
+        if point_outside_adb {
             Self::closest_pt_point_triangle(p, a, d, b, &mut temp_result);
             let q = temp_result.closest_point_on_simplex;
             let sq_dist = (q - p).length_squared();
@@ -499,7 +499,7 @@ impl VoronoiSimplexSolver {
             }
         }
 
-        if point_outside_bdc != 0 {
+        if point_outside_bdc {
             Self::closest_pt_point_triangle(p, b, d, c, &mut temp_result);
             let q = temp_result.closest_point_on_simplex;
             let sq_dist = (q - p).length_squared();

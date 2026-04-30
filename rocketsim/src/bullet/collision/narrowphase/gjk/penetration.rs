@@ -68,12 +68,11 @@ fn distance(
     let mut w0 = Vec3A::ZERO;
     let mut w1 = Vec3A::ZERO;
 
-    for i in 0..simplex.rank {
-        let sv = gjk.store[simplex.c[i]];
+    for (i, sv_d) in gjk.simplex_d().enumerate() {
         let weight = simplex.p[i];
         if weight != 0.0 {
-            w0 += shape.support0::<false>(sv.d) * weight;
-            w1 += shape.support1::<false>(-sv.d) * weight;
+            w0 += shape.support0::<false>(sv_d) * weight;
+            w1 += shape.support1::<false>(-sv_d) * weight;
         }
     }
 
