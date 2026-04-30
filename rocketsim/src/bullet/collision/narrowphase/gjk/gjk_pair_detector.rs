@@ -117,18 +117,6 @@ impl GjkPairDetector {
         }
 
         if is_valid && distance * distance < input.maximum_distance_squared {
-            {
-                // in some degenerate cases (usually when the use uses very small margins)
-                // the contact normal is pointing the wrong direction
-                // todo: see if this can be removed :/
-                let pos_a = shape_a.get_aabb(&local_trans_a).center();
-                let pos_b = shape_b.get_aabb(&local_trans_b).center();
-                let diff = pos_a - pos_b;
-                if diff.dot(diff).is_sign_negative() {
-                    normal_in_b *= -1.0;
-                }
-            }
-
             self.separating_axis = normal_in_b;
             self.separating_distance = distance;
 

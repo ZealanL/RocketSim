@@ -47,7 +47,7 @@ pub struct Gjk<'a> {
     ray: Vec3A,
     distance: f32,
     simplices: [GjkSimplex; 2],
-    pub store: [GjkSupport; 4],
+    store: [GjkSupport; 4],
     free: ArrayVec<usize, 4>,
     current: usize,
     simplex: usize,
@@ -77,8 +77,21 @@ impl<'a> Gjk<'a> {
         }
     }
 
-    pub const fn simplex(&self) -> GjkSimplex {
-        self.simplices[self.simplex]
+    pub const fn simplex(&self) -> &GjkSimplex {
+        &self.simplices[self.simplex]
+    }
+
+    pub fn simplex_d(&self) -> impl Iterator<Item = Vec3A> + '_ {
+        let simplex = &self.simplices[self.simplex];
+        simplex.c[..simplex.rank].iter().map(|&i| self.store[i].d)
+    }
+
+    pub fn simplex_w_d(&self) -> impl Iterator<Item = [Vec3A; 2]> + '_ {
+        let simplex = &self.simplices[self.simplex];
+        simplex.c[..simplex.rank].iter().map(|&i| {
+            let sv = self.store[i];
+            [sv.w, sv.d]
+        })
     }
 
     pub fn evaluate<const ENABLE_MARGIN: bool>(&mut self, guess: Vec3A) -> GjkStatus {

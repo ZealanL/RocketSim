@@ -384,17 +384,15 @@ impl Epa2 {
             return EpaStatus::FallBack;
         }
 
-        let simplex = gjk.simplex();
-
         let mut status = EpaStatus::Valid;
         let mut sv_indices = [0usize; 4];
 
-        for (i, gjk_index) in simplex.c.into_iter().enumerate() {
+        for (i, [w, d]) in gjk.simplex_w_d().enumerate() {
             let sv_index = self.next_sv;
             self.next_sv += 1;
 
-            self.sv_store[sv_index].w = gjk.store[gjk_index].w;
-            self.sv_store[sv_index].d = gjk.store[gjk_index].d;
+            self.sv_store[sv_index].w = w;
+            self.sv_store[sv_index].d = d;
             self.sv_store[sv_index].support_a = Vec3A::ZERO;
             self.sv_store[sv_index].support_b = Vec3A::ZERO;
 
