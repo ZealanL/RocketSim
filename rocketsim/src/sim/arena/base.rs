@@ -568,6 +568,12 @@ impl Arena {
         &self.config.mutators
     }
 
+    pub fn set_mutator_config(&mut self, mutators: MutatorConfig) {
+        self.config.mutators = mutators;
+        self.bullet_world
+            .set_gravity(self.config.mutators.gravity * UU_TO_BT);
+    }
+
     pub fn set_ball_state(&mut self, ball_state: BallState) {
         self.ball.set_state(
             &mut self.bullet_world.bodies_mut()[self.ball.rigid_body_idx],
