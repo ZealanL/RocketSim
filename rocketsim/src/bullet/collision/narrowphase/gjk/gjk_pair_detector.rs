@@ -1,4 +1,4 @@
-use glam::Vec3A;
+use glam::{Affine3A, Vec3A};
 
 use super::{
     GjkResult, closest_point_input::ClosestPointInput, penetration::calc_pen_depth,
@@ -59,7 +59,13 @@ impl GjkPairDetector {
             check_simplex,
             mut degenerate_simplex,
             squared_distance,
-        } = self.update_separating_axis_and_simplex(input, shape_a, shape_b);
+        } = self.update_separating_axis_and_simplex(
+            &local_trans_a,
+            &local_trans_b,
+            shape_a,
+            shape_b,
+            input.maximum_distance_squared,
+        );
 
         let mut is_valid = false;
         let mut distance = 0.0;
@@ -167,35 +173,35 @@ impl GjkPairDetector {
 
     fn update_separating_axis_and_simplex(
         &mut self,
-        input: &ClosestPointInput<'_>,
+        transform_a: &Affine3A,
+        transform_b: &Affine3A,
         shape_a: &CollisionShapes,
         shape_b: &CollisionShapes,
+        maximum_distance_squared: f32,
     ) -> GjkIterationResult {
         let mut check_simplex = false;
         let mut degenerate_simplex = 0;
         let mut squared_distance = f32::MAX;
 
         for _ in 0..MAX_ITERATIONS {
-            let separating_axis_in_a = input
-                .transform_a
+            let separating_axis_in_a = transform_a
                 .matrix3
                 .mul_transpose_vec3a(-self.separating_axis);
-            let separating_axis_in_b = input
-                .transform_b
+            let separating_axis_in_b = transform_b
                 .matrix3
                 .mul_transpose_vec3a(self.separating_axis);
 
             let p_in_a = shape_a.local_get_support_vertex_without_margin(separating_axis_in_a);
-            let p_world = input.transform_a.transform_point3a(p_in_a);
+            let p_world = transform_a.transform_point3a(p_in_a);
 
             let q_in_b = shape_b.local_get_support_vertex_without_margin(separating_axis_in_b);
-            let q_world = input.transform_b.transform_point3a(q_in_b);
+            let q_world = transform_b.transform_point3a(q_in_b);
 
             let w = p_world - q_world;
             let delta = self.separating_axis.dot(w);
 
             // Potential exit: the shapes are separated far enough.
-            if delta > 0.0 && delta * delta > squared_distance * input.maximum_distance_squared {
+            if delta > 0.0 && delta * delta > squared_distance * maximum_distance_squared {
                 degenerate_simplex = 10;
                 check_simplex = true;
                 break;
