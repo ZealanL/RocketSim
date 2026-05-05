@@ -152,24 +152,20 @@ impl VisInst {
                 "ball",
                 Some("ball"),
                 None,
-                astate.ball_state.pos,
-                astate.ball_state.rot_mat,
+                astate.ball.pos,
+                astate.ball.rot_mat,
             );
 
             // Ball trail
             self.ball_ribbon
-                .update(true, astate.ball_state.pos, Vec3A::ZERO, dt);
+                .update(true, astate.ball.pos, Vec3A::ZERO, dt);
             self.ball_ribbon
-                .render(&mut new_render_state, astate.ball_state.pos);
+                .render(&mut new_render_state, astate.ball.pos);
 
             // Ball-to-ground line
             new_render_state.add_line_simple(
-                astate.ball_state.pos,
-                Vec3A::new(
-                    astate.ball_state.pos.x,
-                    astate.ball_state.pos.y,
-                    arena_aabb.min.z,
-                ),
+                astate.ball.pos,
+                Vec3A::new(astate.ball.pos.x, astate.ball.pos.y, arena_aabb.min.z),
                 Color::WHITE.with_alpha(0.15),
                 2.0,
             );
@@ -177,8 +173,7 @@ impl VisInst {
 
         // Render cars
         for i in 0..astate.num_cars() {
-            let car_info = &astate.car_infos[i];
-            let car_state = &astate.car_states[i];
+            let (car_info, car_state) = &astate.cars[i];
 
             if !car_state.is_demoed {
                 let car_texture_name = if car_info.team == Team::Blue {
@@ -228,8 +223,7 @@ impl VisInst {
         // Render boost pads
         if self.game_mode != GameMode::Heatseeker {
             for i in 0..astate.num_boost_pads() {
-                let pad_config = astate.boost_pad_configs[i];
-                let pad_state = astate.boost_pad_states[i];
+                let (pad_config, pad_state) = astate.boost_pads[i];
 
                 let pad_model = if pad_config.is_big {
                     if pad_state.is_active() {

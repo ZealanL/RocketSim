@@ -1,5 +1,4 @@
 #[derive(Clone, Copy, Debug)]
-
 pub struct BoostPadState {
     /// The last tick when we gave a car boost
     pub cooldown: f32,
