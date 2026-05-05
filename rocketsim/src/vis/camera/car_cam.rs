@@ -45,8 +45,8 @@ impl CarCam {
         pos: &mut Vec3A,
         dir: &mut Vec3A,
     ) {
-        let car_state = &arena_state.car_states[self.car_idx];
-        let ball_state = &arena_state.ball_state;
+        let car_state = &arena_state.cars[self.car_idx].1;
+        let ball_state = &arena_state.ball;
 
         let car_ball_dir = (ball_state.pos - car_state.pos).normalize_or_zero();
 

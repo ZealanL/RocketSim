@@ -3,11 +3,10 @@ use crate::{BallState, BoostPadConfig, BoostPadState, CarInfo, CarState, GameMod
 #[derive(Debug, Clone)]
 pub struct ArenaState {
     pub(crate) game_mode: GameMode,
-    pub car_infos: Vec<CarInfo>,
-    pub car_states: Vec<CarState>,
-    pub ball_state: BallState,
-    pub boost_pad_configs: Vec<BoostPadConfig>,
-    pub boost_pad_states: Vec<BoostPadState>,
+    pub tick_count: u64,
+    pub cars: Vec<(CarInfo, CarState)>,
+    pub ball: BallState,
+    pub boost_pads: Vec<(BoostPadConfig, BoostPadState)>,
 }
 
 impl ArenaState {
@@ -20,21 +19,20 @@ impl ArenaState {
     pub fn new_empty(game_mode: GameMode) -> Self {
         Self {
             game_mode,
-            car_infos: Vec::new(),
-            car_states: Vec::new(),
-            ball_state: BallState::default(),
-            boost_pad_states: Vec::new(),
-            boost_pad_configs: Vec::new(),
+            tick_count: 0,
+            cars: Vec::new(),
+            ball: BallState::default(),
+            boost_pads: Vec::new(),
         }
     }
 
     #[must_use]
     pub const fn num_cars(&self) -> usize {
-        self.car_infos.len()
+        self.cars.len()
     }
 
     #[must_use]
     pub const fn num_boost_pads(&self) -> usize {
-        self.boost_pad_configs.len()
+        self.boost_pads.len()
     }
 }

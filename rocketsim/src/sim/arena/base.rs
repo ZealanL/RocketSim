@@ -744,27 +744,26 @@ impl Arena {
 
     #[must_use]
     pub fn get_arena_state(&self) -> ArenaState {
-        let car_infos = self.cars.iter().map(|c| c.info).collect::<Vec<_>>();
-        let car_states = self.cars.iter().map(|c| c.state).collect::<Vec<_>>();
-        let ball_state = *self.get_ball_state();
+        let cars = self
+            .cars
+            .iter()
+            .map(|c| (c.info, c.state))
+            .collect::<Vec<_>>();
+        let ball = *self.get_ball_state();
 
-        let (boost_pad_states, boost_pad_configs) = match self.config.game_mode {
-            GameMode::Soccar | GameMode::Hoops | GameMode::Snowday => (
-                self.get_all_boost_pad_states(),
-                self.get_all_boost_pad_configs(),
-            ),
-            GameMode::Dropshot | GameMode::Heatseeker | GameMode::TheVoid => {
-                (Vec::new(), Vec::new())
-            }
+        let boost_pads = match self.config.game_mode {
+            GameMode::Soccar | GameMode::Hoops | GameMode::Snowday => (0..self.num_boost_pads())
+                .map(|i| (*self.get_boost_pad_config(i), self.get_boost_pad_state(i)))
+                .collect(),
+            GameMode::Dropshot | GameMode::Heatseeker | GameMode::TheVoid => Vec::new(),
         };
 
         ArenaState {
             game_mode: self.config.game_mode,
-            car_infos,
-            car_states,
-            ball_state,
-            boost_pad_states,
-            boost_pad_configs,
+            tick_count: self.tick_count,
+            cars,
+            ball,
+            boost_pads,
         }
     }
 
