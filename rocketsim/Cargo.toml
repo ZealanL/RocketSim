@@ -19,7 +19,7 @@ byteorder = "1.5.0"
 derive_hash_fast = "0.2.3"
 env_logger = "0.11.8"
 fastrand = "2.3.0"
-glam = { version = "0.32.1", features = ["debug-glam-assert"] }
+glam = { version = "0.33.0", features = ["debug-glam-assert"] }
 log = "0.4.29"
 rocketsim_derive = { path = "./rocketsim_derive" }
 zerocopy = { version = "0.8.34", features = ["derive"] }
@@ -42,7 +42,7 @@ test-case = "3.3.1"
 [target.'cfg(not(any(target_arch = "x86", target_arch = "x86_64")))'.dependencies]
 # use glam with experimental support for portable SIMD when not running on x86
 # architectures
-glam = { version = "0.32.1", features = ["core-simd", "debug-glam-assert"], optional = true }
+glam = { version = "0.33.0", features = ["core-simd", "debug-glam-assert"], optional = true }
 
 [features]
 # default = ["vis"]
