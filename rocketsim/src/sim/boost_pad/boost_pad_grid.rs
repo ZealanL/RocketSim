@@ -21,7 +21,8 @@ impl bvh::ProcessNode for BoostPadProcessor<'_> {
         let pad = &mut self.all_pads[pad_idx];
 
         if let Some(last_give_tick_count) = pad.gave_boost_tick_count
-            && ((self.tick_count - last_give_tick_count) as f32 * TICK_TIME) < pad.max_cooldown
+            && ((self.tick_count as i64 - last_give_tick_count) as f32 * TICK_TIME)
+                < pad.max_cooldown
         {
             return;
         }
@@ -37,7 +38,7 @@ impl bvh::ProcessNode for BoostPadProcessor<'_> {
             // Give boost
             self.car_state.boost = (self.car_state.boost + pad.boost_amount)
                 .min(self.mutator_config.car_max_boost_amount);
-            pad.gave_boost_tick_count = Some(self.tick_count);
+            pad.gave_boost_tick_count = Some(self.tick_count as i64);
             self.pad_idx = Some(pad_idx);
         }
     }

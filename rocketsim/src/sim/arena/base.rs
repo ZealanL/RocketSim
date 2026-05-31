@@ -670,7 +670,7 @@ impl Arena {
         let pad = self.boost_pads()[idx];
         let cooldown = pad.gave_boost_tick_count.map_or(0.0, |gave_boost_tick| {
             let max_cooldown = pad.max_cooldown;
-            let time_since = ((self.tick_count() - gave_boost_tick) as f32) * TICK_TIME;
+            let time_since = ((self.tick_count() as i64 - gave_boost_tick) as f32) * TICK_TIME;
             (max_cooldown - time_since).max(0.0)
         });
 
@@ -683,8 +683,8 @@ impl Arena {
         let pad = &mut boost_pad_grid.all_pads[idx];
         if state.cooldown > 0.0 {
             let time_since_pickup = (pad.max_cooldown - state.cooldown).max(0.0);
-            let ticks_since_pickup = (time_since_pickup * TICK_RATE).round() as u64;
-            pad.gave_boost_tick_count = Some(tick_count - ticks_since_pickup);
+            let ticks_since_pickup = (time_since_pickup * TICK_RATE).round() as i64;
+            pad.gave_boost_tick_count = Some(tick_count as i64 - ticks_since_pickup);
         } else {
             boost_pad_grid.all_pads[idx].gave_boost_tick_count = None;
         }
