@@ -19,7 +19,6 @@ pub struct ArenaConfig {
     pub max_aabb_len: f32,
     pub no_ball_rot: bool,
     /// Use a custom list of boost pads (`custom_boost_pads`) instead of the normal one
-    /// NOTE: This will disable the boost pad grid and will thus worsen performance
     pub custom_boost_pads: Option<Vec<BoostPadConfig>>,
     /// Optional RNG seed for deterministic behavior
     /// If None, a random seed will be used
