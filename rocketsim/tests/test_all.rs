@@ -4,16 +4,16 @@ mod comparison_test;
 
 use std::sync::OnceLock;
 
-use ahash::AHashMap;
+use rustc_hash::{FxBuildHasher, FxHashMap};
 use test_case::test_matrix;
 
 use crate::comparison_test::*;
 
 const FAIL_ERROR_THRESH: f32 = 0.5;
 
-fn init_for_test() -> &'static AHashMap<String, TestCase> {
+fn init_for_test() -> &'static FxHashMap<String, TestCase> {
     static INIT: OnceLock<()> = OnceLock::new();
-    static CASES: OnceLock<AHashMap<String, TestCase>> = OnceLock::new();
+    static CASES: OnceLock<FxHashMap<String, TestCase>> = OnceLock::new();
 
     INIT.get_or_init(|| {
         rocketsim::init("../collision_meshes", false).unwrap();

@@ -1,4 +1,6 @@
-use ahash::AHashMap;
+use std::collections::HashMap;
+
+use rustc_hash::{FxBuildHasher, FxHashMap};
 
 use crate::comparison_test::{TestResultState, state_compare::StateErrSet};
 
@@ -29,12 +31,13 @@ impl ValueErrorStat {
 #[derive(Debug, Clone)]
 pub struct TestResult {
     pub ticks: Vec<TestResultState>,
-    pub val_err_stats: AHashMap<String, ValueErrorStat>,
+    pub val_err_stats: FxHashMap<String, ValueErrorStat>,
 }
 
 impl TestResult {
     pub fn new(ticks: Vec<TestResultState>) -> Self {
-        let mut val_err_stats: AHashMap<String, ValueErrorStat> = AHashMap::new();
+        let mut val_err_stats: FxHashMap<String, ValueErrorStat> =
+            HashMap::with_hasher(FxBuildHasher::default());
         for tick in &ticks {
             let ball_err = if let Some(ball_err) = &tick.comparison.ball_err {
                 ball_err

@@ -1,6 +1,6 @@
-use std::mem;
+use std::{collections::HashMap, mem};
 
-use ahash::AHashMap;
+use rustc_hash::{FxBuildHasher, FxHashMap};
 
 use super::{BroadphasePair, BroadphaseProxy};
 use crate::bullet::{
@@ -13,7 +13,7 @@ use crate::bullet::{
 
 pub struct HashedOverlappingPairCache {
     overlapping_pair_array: Vec<BroadphasePair>,
-    hash_table: AHashMap<(u32, u32), usize>,
+    hash_table: FxHashMap<(u32, u32), usize>,
 }
 
 impl Default for HashedOverlappingPairCache {
@@ -23,7 +23,7 @@ impl Default for HashedOverlappingPairCache {
 
         Self {
             overlapping_pair_array,
-            hash_table: AHashMap::with_capacity(new_capacity),
+            hash_table: HashMap::with_capacity_and_hasher(new_capacity, FxBuildHasher::default()),
         }
     }
 }

@@ -1,4 +1,6 @@
-use ahash::AHashMap;
+use std::collections::HashMap;
+
+use rustc_hash::{FxBuildHasher, FxHashMap};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum GameMode {
@@ -35,7 +37,7 @@ impl GameMode {
         }
     }
 
-    pub(crate) fn get_hashes(self) -> AHashMap<u32, u32> {
+    pub(crate) fn get_hashes(self) -> FxHashMap<u32, u32> {
         macro_rules! zero_iter {
             ($($i:literal),+) => {
                 [
@@ -80,7 +82,7 @@ impl GameMode {
             ]
             .collect(),
             Self::Dropshot => zero_iter![0x7EB0_B2D3, 0x9110_41D2].collect(),
-            _ => AHashMap::new(),
+            _ => HashMap::with_hasher(FxBuildHasher::default()),
         }
     }
 }

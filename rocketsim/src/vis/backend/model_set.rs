@@ -1,20 +1,20 @@
-use ahash::AHashMap;
 use glam::{Vec3, Vec3A};
 use miniquad::{BufferId, BufferSource, BufferType, BufferUsage, RenderingBackend};
+use rustc_hash::{FxBuildHasher, FxHashMap};
 
 use crate::{shared::rsmath, vis::backend::Model};
 
 #[derive(Debug, Clone)]
 pub struct ModelSet {
     /// Maps each model name to the start offset and length in the buffers
-    index_map: AHashMap<String, (usize, usize)>,
+    index_map: FxHashMap<String, (usize, usize)>,
     /// Contains the data from all models concatenated
     concat_model: Model,
 }
 
 impl ModelSet {
     pub fn new(models: &[(&str, Model)]) -> Self {
-        let mut index_map = AHashMap::new();
+        let mut index_map = HashMap::with_hasher(FxBuildHasher::default());
         let mut concat_model = Model::empty();
         for (name_str, model) in models {
             let start_idx = concat_model.num_verts();
