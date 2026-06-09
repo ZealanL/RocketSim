@@ -1,6 +1,5 @@
 use std::{sync::Mutex, thread::JoinHandle};
 
-use ahash::AHashMap;
 use glam::{Mat4, Vec2, Vec3, Vec4};
 use miniquad::{
     Bindings, BlendFactor, BlendState, BlendValue, BufferId, BufferLayout, BufferSource,
@@ -9,6 +8,7 @@ use miniquad::{
     UniformDesc, UniformType, UniformsSource, VertexAttribute, VertexFormat, VertexStep, conf,
     window,
 };
+use rustc_hash::FxHashMap;
 
 use crate::vis::backend::{
     Color, ModelSet, ShaderSrc, ShaderSrcType, SharedVisRenderState, SharedWindowEvents,
@@ -121,7 +121,7 @@ pub struct VisRenderer {
     models: ModelSet,
     textures: TextureSet,
 
-    mesh_pipelines: AHashMap<String, Pipeline>,
+    mesh_pipelines: FxHashMap<String, Pipeline>,
     mesh_bindings: Bindings,
     mesh_texture_ids: Vec<TextureId>,
 
@@ -152,8 +152,8 @@ impl VisRenderer {
     ) -> VisRenderer {
         let mut ctx: Box<dyn RenderingBackend> = window::new_rendering_backend();
 
-        let mut mesh_shaders = AHashMap::new();
-        let mut line_shaders = AHashMap::new();
+        let mut mesh_shaders = FxHashMap::default();
+        let mut line_shaders = FxHashMap::default();
         for (shader_name, shader_src) in shader_srcs {
             match shader_src.src_type() {
                 ShaderSrcType::Model => {
@@ -206,7 +206,7 @@ impl VisRenderer {
                 images: vec![TextureId::from_raw_id(RawId::OpenGl(0))],
             };
 
-            let mut pipelines = AHashMap::new();
+            let mut pipelines = FxHashMap::default();
             for (shader_name, shader_id) in mesh_shaders {
                 let params = PipelineParams {
                     depth_test: miniquad::Comparison::LessOrEqual,

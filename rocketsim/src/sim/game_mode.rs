@@ -1,6 +1,4 @@
-use std::collections::HashMap;
-
-use rustc_hash::{FxBuildHasher, FxHashMap};
+use rustc_hash::FxHashMap;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum GameMode {
@@ -82,7 +80,7 @@ impl GameMode {
             ]
             .collect(),
             Self::Dropshot => zero_iter![0x7EB0_B2D3, 0x9110_41D2].collect(),
-            _ => HashMap::with_hasher(FxBuildHasher::default()),
+            _ => FxHashMap::default(),
         }
     }
 }
