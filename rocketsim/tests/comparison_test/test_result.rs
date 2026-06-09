@@ -36,8 +36,7 @@ pub struct TestResult {
 
 impl TestResult {
     pub fn new(ticks: Vec<TestResultState>) -> Self {
-        let mut val_err_stats: FxHashMap<String, ValueErrorStat> =
-            HashMap::with_hasher(FxBuildHasher::default());
+        let mut val_err_stats: FxHashMap<String, ValueErrorStat> = FxHashMap::default();
         for tick in &ticks {
             let ball_err = if let Some(ball_err) = &tick.comparison.ball_err {
                 ball_err

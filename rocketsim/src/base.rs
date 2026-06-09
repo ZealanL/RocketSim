@@ -1,5 +1,4 @@
 use std::{
-    collections::HashMap,
     fs,
     io::{Error as IoError, ErrorKind, Result as IoResult},
     path::Path,
@@ -8,7 +7,7 @@ use std::{
 };
 
 use log::{error, info, warn};
-use rustc_hash::{FxBuildHasher, FxHashMap};
+use rustc_hash::FxHashMap;
 
 use crate::{
     bullet::collision::shapes::bvh_triangle_mesh_shape::BvhTriangleMeshShape,
@@ -60,7 +59,7 @@ fn init_from_path(collision_meshes_folder: &Path, silent: bool) -> IoResult<()> 
         ));
     }
 
-    let mut mesh_file_map = HashMap::with_hasher(FxBuildHasher::default());
+    let mut mesh_file_map = FxHashMap::default();
 
     for game_mode in GAMEMODES_WITH_UNIQUE_MESHES {
         let folder = collision_meshes_folder.join(game_mode.name());
@@ -110,8 +109,8 @@ pub fn init_from_mem(
 
     // TODO: DropshotTiles::Init();
 
-    let mut arena_collision_shapes = HashMap::with_hasher(FxBuildHasher::default());
-    let mut arena_collision_mesh_files = HashMap::with_hasher(FxBuildHasher::default());
+    let mut arena_collision_shapes = FxHashMap::default();
+    let mut arena_collision_mesh_files = FxHashMap::default();
 
     for (game_mode, byte_mesh_files) in byte_mesh_file_map {
         info!("Loading arena meshes for {}...", game_mode.name());

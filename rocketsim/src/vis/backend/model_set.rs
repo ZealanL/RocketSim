@@ -1,6 +1,6 @@
 use glam::{Vec3, Vec3A};
 use miniquad::{BufferId, BufferSource, BufferType, BufferUsage, RenderingBackend};
-use rustc_hash::{FxBuildHasher, FxHashMap};
+use rustc_hash::FxHashMap;
 
 use crate::{shared::rsmath, vis::backend::Model};
 
@@ -14,7 +14,7 @@ pub struct ModelSet {
 
 impl ModelSet {
     pub fn new(models: &[(&str, Model)]) -> Self {
-        let mut index_map = HashMap::with_hasher(FxBuildHasher::default());
+        let mut index_map = FxHashMap::default();
         let mut concat_model = Model::empty();
         for (name_str, model) in models {
             let start_idx = concat_model.num_verts();
