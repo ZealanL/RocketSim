@@ -23,7 +23,7 @@ impl Default for HashedOverlappingPairCache {
 
         Self {
             overlapping_pair_array,
-            hash_table: HashMap::with_capacity_and_hasher(new_capacity, FxBuildHasher::default()),
+            hash_table: HashMap::with_capacity_and_hasher(new_capacity, FxBuildHasher),
         }
     }
 }
