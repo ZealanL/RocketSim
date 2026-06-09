@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     fs,
     io::{Error as IoError, ErrorKind, Result as IoResult},
     path::Path,
@@ -6,8 +7,8 @@ use std::{
     time::Instant,
 };
 
-use ahash::AHashMap;
 use log::{error, info, warn};
+use rustc_hash::{FxBuildHasher, FxHashMap};
 
 use crate::{
     bullet::collision::shapes::bvh_triangle_mesh_shape::BvhTriangleMeshShape,
@@ -23,10 +24,10 @@ use crate::{
 static HAS_INITIALIZED_LOCK: OnceLock<()> = OnceLock::new();
 
 pub(crate) static ARENA_COLLISION_SHAPES: RwLock<
-    Option<AHashMap<GameMode, Vec<Arc<BvhTriangleMeshShape>>>>,
+    Option<FxHashMap<GameMode, Vec<Arc<BvhTriangleMeshShape>>>>,
 > = RwLock::new(None);
 pub(crate) static ARENA_COLLISION_MESH_FILES: RwLock<
-    Option<AHashMap<GameMode, Vec<CollisionMeshFile>>>,
+    Option<FxHashMap<GameMode, Vec<CollisionMeshFile>>>,
 > = RwLock::new(None);
 
 pub fn is_initialized() -> bool {
@@ -59,7 +60,7 @@ fn init_from_path(collision_meshes_folder: &Path, silent: bool) -> IoResult<()> 
         ));
     }
 
-    let mut mesh_file_map = AHashMap::new();
+    let mut mesh_file_map = HashMap::with_hasher(FxBuildHasher::default());
 
     for game_mode in GAMEMODES_WITH_UNIQUE_MESHES {
         let folder = collision_meshes_folder.join(game_mode.name());
@@ -89,7 +90,7 @@ fn init_from_path(collision_meshes_folder: &Path, silent: bool) -> IoResult<()> 
 }
 
 pub fn init_from_mem(
-    byte_mesh_file_map: AHashMap<GameMode, Vec<Vec<u8>>>,
+    byte_mesh_file_map: FxHashMap<GameMode, Vec<Vec<u8>>>,
     silent: bool,
 ) -> IoResult<()> {
     if !silent {
@@ -109,8 +110,8 @@ pub fn init_from_mem(
 
     // TODO: DropshotTiles::Init();
 
-    let mut arena_collision_shapes = AHashMap::new();
-    let mut arena_collision_mesh_files = AHashMap::new();
+    let mut arena_collision_shapes = HashMap::with_hasher(FxBuildHasher::default());
+    let mut arena_collision_mesh_files = HashMap::with_hasher(FxBuildHasher::default());
 
     for (game_mode, byte_mesh_files) in byte_mesh_file_map {
         info!("Loading arena meshes for {}...", game_mode.name());

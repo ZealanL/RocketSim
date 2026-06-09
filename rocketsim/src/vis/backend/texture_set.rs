@@ -1,18 +1,18 @@
-use ahash::AHashMap;
 use miniquad::{
     RawId, RenderingBackend, TextureAccess, TextureFormat, TextureId, TextureParams, TextureSource,
 };
+use rustc_hash::{FxBuildHasher, FxHashMap};
 
 use crate::vis::backend::Texture;
 
 #[derive(Debug, Clone)]
 pub struct TextureSet {
-    map: AHashMap<String, (Texture, usize)>,
+    map: FxHashMap<String, (Texture, usize)>,
 }
 
 impl TextureSet {
     pub fn new(textures: &[(&str, Texture)]) -> Self {
-        let mut map = AHashMap::new();
+        let mut map = HashMap::with_hasher(FxBuildHasher::default());
         for (name_str, texture) in textures {
             let idx = map.len();
             map.insert(name_str.to_string(), (texture.clone(), idx));
