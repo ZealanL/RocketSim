@@ -1,5 +1,3 @@
-use std::debug_assert_matches;
-
 use glam::{Affine3A, Vec3A};
 
 use super::solver::{Epa2, EpaStatus, Gjk, GjkStatus, MinkowskiDiff};
@@ -27,8 +25,8 @@ fn penetration(
     }
 
     let mut epa = Epa2::new();
-    let status = epa.evaluate::<true>(gjk, guess);
-    debug_assert_matches!(status, EpaStatus::Valid | EpaStatus::AccuracyReached);
+    let status: EpaStatus = epa.evaluate::<true>(gjk, guess);
+    debug_assert!(status == EpaStatus::Valid || status == EpaStatus::AccuracyReached);
 
     let mut w0 = Vec3A::ZERO;
     for i in 0..epa.result.rank {
