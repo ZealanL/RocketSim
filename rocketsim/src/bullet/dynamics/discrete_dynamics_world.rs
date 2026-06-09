@@ -144,7 +144,7 @@ impl DiscreteDynamicsWorld {
         );
     }
 
-    fn integrate_transs_internal(&mut self, time_step: f32) {
+    fn integrate_trans_internal(&mut self, time_step: f32) {
         for &body in &self.non_static_rigid_bodies {
             let body = &mut self.collision_world.collision_objs[body];
 
@@ -158,9 +158,9 @@ impl DiscreteDynamicsWorld {
         }
     }
 
-    fn integrate_transs(&mut self, time_step: f32) {
+    fn integrate_trans(&mut self, time_step: f32) {
         if !self.non_static_rigid_bodies.is_empty() {
-            self.integrate_transs_internal(time_step);
+            self.integrate_trans_internal(time_step);
         }
     }
 
@@ -188,7 +188,7 @@ impl DiscreteDynamicsWorld {
             .perform_discrete_collision_detection(contact_added_callback);
 
         self.solve_constraints(time_step);
-        self.integrate_transs(time_step);
+        self.integrate_trans(time_step);
         self.update_activation_state(time_step);
     }
 
