@@ -38,7 +38,7 @@ use crate::{
     },
 };
 
-pub trait Vis {
+pub trait Vis: Send + Sync {
     fn update(&mut self, arena_state: &ArenaState, dt: f32);
 }
 

@@ -28,7 +28,7 @@ impl TextureSet {
             TextureId::from_raw_id(RawId::OpenGl(0)),
         );
 
-        for (_, (texture, texture_idx)) in &self.map {
+        for (texture, texture_idx) in self.map.values() {
             results[*texture_idx] = ctx.new_texture(
                 TextureAccess::Static,
                 TextureSource::Bytes(&texture.image_bytes),
