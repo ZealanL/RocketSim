@@ -10,27 +10,21 @@ byteorder = "1.5.0"
 derive_hash_fast = "0.2.3"
 fastrand = "2.3.0"
 fern = "0.7.1"
-glam = { version = "0.33.0", features = ["debug-glam-assert"] }
+glam.workspace = true
 include_dir = "0.7.4"
 log = "0.4.29"
 rocketsim_derive = { path = "../rocketsim_derive" }
-rustc-hash = "2.1.2"
+rustc-hash.workspace = true
 zerocopy = { version = "0.8.34", features = ["derive"] }
 
 [dev-dependencies]
 clap = { version = "4.6.0", features = ["derive"] }
-rocketsim_rs = "0.36.0"  # For comparing to original C++ RocketSim in tests
-rocketsim_test_utils = { path = "../rocketsim_test_utils" }
 test-case = "3.3.1"
 
 [target.'cfg(not(any(target_arch = "x86", target_arch = "x86_64")))'.dependencies]
 # use glam with experimental support for portable SIMD when not running on x86
 # architectures
-glam = {
-  version = "0.33.0",
-  features = ["core-simd", "debug-glam-assert"],
-  optional = true
-}
+glam = { workspace = true, features = ["core-simd"], optional = true }
 
 [lints.clippy]
 all = "warn"

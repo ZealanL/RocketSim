@@ -5,9 +5,12 @@ resolver = "3"
 members = [
   "rocketsim",
   "rocketsim_derive",
-  "rocketsim_test_utils",
   "rocketsim_vis",
 ]
+
+[workspace.dependencies]
+glam = { version = "0.33.0", features = ["debug-glam-assert"] }
+rustc-hash = "2.1.2"
 
 [profile.dev]
 opt-level = 1
