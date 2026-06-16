@@ -462,10 +462,16 @@ fn box_box_sat(obb1: &Obb, r1t: &Mat3A, obb2: &Obb) -> Option<Hit> {
     let p = obb2.center - obb1.center;
     let pp = r1t * p;
 
-    // Rij is R1'*R2, i.e. the relative rotation between R1 and R2
+    // Rij is R1'*R2, i.e. the relative rotation between R1 and R2.
+    // `Mat3A` is column-major, so `rij_cols[j][i]` is Bullet's R(i + 1, j + 1).
     let rij = r1t * obb2.axis;
+    let rij_cols = [rij.x_axis, rij.y_axis, rij.z_axis];
 
-    let mut q = rij.transpose().abs();
+    let q_cols_mat = rij.abs();
+    let mut q_cols = [q_cols_mat.x_axis, q_cols_mat.y_axis, q_cols_mat.z_axis];
+
+    let q_rows_mat = q_cols_mat.transpose();
+    let q_rows = [q_rows_mat.x_axis, q_rows_mat.y_axis, q_rows_mat.z_axis];
 
     // for all 15 possible separating axes:
     //   * see if the axis separates the boxes. if so, return 0.
@@ -501,59 +507,33 @@ fn box_box_sat(obb1: &Obb, r1t: &Mat3A, obb2: &Obb) -> Option<Hit> {
     };
 
     // separating axis = u1,u2,u3
-    if !tst(
-        pp.x,
-        obb1.extent.x + obb2.extent.dot(q.x_axis),
-        obb1.axis.x_axis,
-        1,
-    ) {
-        return None;
-    }
-
-    if !tst(
-        pp.y,
-        obb1.extent.y + obb2.extent.dot(q.y_axis),
-        obb1.axis.y_axis,
-        2,
-    ) {
-        return None;
-    }
-
-    if !tst(
-        pp.z,
-        obb1.extent.z + obb2.extent.dot(q.z_axis),
-        obb1.axis.z_axis,
-        3,
-    ) {
-        return None;
+    for (i, normal) in [obb1.axis.x_axis, obb1.axis.y_axis, obb1.axis.z_axis]
+        .into_iter()
+        .enumerate()
+    {
+        if !tst(
+            pp[i],
+            obb1.extent[i] + obb2.extent.dot(q_rows[i]),
+            normal,
+            i + 1,
+        ) {
+            return None;
+        }
     }
 
     // separating axis = v1,v2,v3
-    if !tst(
-        obb2.axis.x_axis.dot(p),
-        obb1.extent.dot(q.x_axis) + obb2.extent.x,
-        obb2.axis.x_axis,
-        4,
-    ) {
-        return None;
-    }
-
-    if !tst(
-        obb2.axis.y_axis.dot(p),
-        obb1.extent.dot(q.y_axis) + obb2.extent.y,
-        obb2.axis.y_axis,
-        5,
-    ) {
-        return None;
-    }
-
-    if !tst(
-        obb2.axis.z_axis.dot(p),
-        obb1.extent.dot(q.z_axis) + obb2.extent.z,
-        obb2.axis.z_axis,
-        6,
-    ) {
-        return None;
+    for (i, normal) in [obb2.axis.x_axis, obb2.axis.y_axis, obb2.axis.z_axis]
+        .into_iter()
+        .enumerate()
+    {
+        if !tst(
+            normal.dot(p),
+            obb1.extent.dot(q_cols[i]) + obb2.extent[i],
+            normal,
+            i + 4,
+        ) {
+            return None;
+        }
     }
 
     // note: cross product axes need to be scaled when s is computed.
@@ -579,119 +559,30 @@ fn box_box_sat(obb1: &Obb, r1t: &Mat3A, obb2: &Obb) -> Option<Hit> {
         true
     };
 
-    q.x_axis += FUDGE_2;
-    q.y_axis += FUDGE_2;
-    q.z_axis += FUDGE_2;
-
-    // separating axis = u1 x (v1,v2,v3)
-    if !tst(
-        pp.z * rij.y_axis.x - pp.y * rij.z_axis.x,
-        obb1.extent.y * q.x_axis.z
-            + obb1.extent.z * q.x_axis.y
-            + obb2.extent.y * q.z_axis.x
-            + obb2.extent.z * q.y_axis.x,
-        Vec3A::new(0.0, -rij.z_axis.x, rij.y_axis.x),
-        7,
-    ) {
-        return None;
+    for col in &mut q_cols {
+        *col += FUDGE_2;
     }
+    let q_rows_mat = Mat3A::from_cols(q_cols[0], q_cols[1], q_cols[2]).transpose();
+    let q_rows = [q_rows_mat.x_axis, q_rows_mat.y_axis, q_rows_mat.z_axis];
 
-    if !tst(
-        pp.z * rij.y_axis.y - pp.y * rij.z_axis.y,
-        obb1.extent.y * q.y_axis.z
-            + obb1.extent.z * q.y_axis.y
-            + obb2.extent.x * q.z_axis.x
-            + obb2.extent.z * q.x_axis.x,
-        Vec3A::new(0.0, -rij.z_axis.y, rij.y_axis.y),
-        8,
-    ) {
-        return None;
-    }
+    // separating axis = u_i x v_j
+    for (i, axis) in [Vec3A::X, Vec3A::Y, Vec3A::Z].into_iter().enumerate() {
+        let i1 = (i + 1) % 3;
+        let i2 = (i + 2) % 3;
 
-    if !tst(
-        pp.z * rij.y_axis.z - pp.y * rij.z_axis.z,
-        obb1.extent.y * q.z_axis.z
-            + obb1.extent.z * q.z_axis.y
-            + obb2.extent.x * q.y_axis.x
-            + obb2.extent.y * q.x_axis.x,
-        Vec3A::new(0.0, -rij.z_axis.z, rij.y_axis.z),
-        9,
-    ) {
-        return None;
-    }
+        for (j, r_col) in rij_cols.into_iter().enumerate() {
+            let j1 = (j + 1) % 3;
+            let j2 = (j + 2) % 3;
+            let n = axis.cross(r_col);
+            let expr2 = obb1.extent[i1] * q_cols[j][i2]
+                + obb1.extent[i2] * q_cols[j][i1]
+                + obb2.extent[j1] * q_rows[i][j2]
+                + obb2.extent[j2] * q_rows[i][j1];
 
-    // separating axis = u2 x (v1,v2,v3)
-    if !tst(
-        pp.x * rij.z_axis.x - pp.z * rij.x_axis.x,
-        obb1.extent.x * q.x_axis.z
-            + obb1.extent.z * q.x_axis.x
-            + obb2.extent.y * q.z_axis.y
-            + obb2.extent.z * q.y_axis.y,
-        Vec3A::new(rij.z_axis.x, 0.0, -rij.x_axis.x),
-        10,
-    ) {
-        return None;
-    }
-
-    if !tst(
-        pp.x * rij.z_axis.y - pp.z * rij.x_axis.y,
-        obb1.extent.x * q.y_axis.z
-            + obb1.extent.z * q.y_axis.x
-            + obb2.extent.x * q.z_axis.y
-            + obb2.extent.z * q.x_axis.y,
-        Vec3A::new(rij.z_axis.y, 0.0, -rij.x_axis.y),
-        11,
-    ) {
-        return None;
-    }
-
-    if !tst(
-        pp.x * rij.z_axis.z - pp.z * rij.x_axis.z,
-        obb1.extent.x * q.z_axis.z
-            + obb1.extent.z * q.z_axis.x
-            + obb2.extent.x * q.y_axis.y
-            + obb2.extent.y * q.x_axis.y,
-        Vec3A::new(rij.z_axis.z, 0.0, -rij.x_axis.z),
-        12,
-    ) {
-        return None;
-    }
-
-    // separating axis = u3 x (v1,v2,v3)
-    if !tst(
-        pp.y * rij.x_axis.x - pp.x * rij.y_axis.x,
-        obb1.extent.x * q.x_axis.y
-            + obb1.extent.y * q.x_axis.x
-            + obb2.extent.y * q.z_axis.z
-            + obb2.extent.z * q.y_axis.z,
-        Vec3A::new(-rij.y_axis.x, rij.x_axis.x, 0.0),
-        13,
-    ) {
-        return None;
-    }
-
-    if !tst(
-        pp.y * rij.x_axis.y - pp.x * rij.y_axis.y,
-        obb1.extent.x * q.y_axis.y
-            + obb1.extent.y * q.y_axis.x
-            + obb2.extent.x * q.z_axis.z
-            + obb2.extent.z * q.x_axis.z,
-        Vec3A::new(-rij.y_axis.y, rij.x_axis.y, 0.0),
-        14,
-    ) {
-        return None;
-    }
-
-    if !tst(
-        pp.y * rij.x_axis.z - pp.x * rij.y_axis.z,
-        obb1.extent.x * q.z_axis.y
-            + obb1.extent.y * q.z_axis.x
-            + obb2.extent.x * q.y_axis.z
-            + obb2.extent.y * q.x_axis.z,
-        Vec3A::new(-rij.y_axis.z, rij.x_axis.z, 0.0),
-        15,
-    ) {
-        return None;
+            if !tst(pp.dot(n), expr2, n, 7 + i * 3 + j) {
+                return None;
+            }
+        }
     }
 
     if code == 0 {
@@ -700,7 +591,7 @@ fn box_box_sat(obb1: &Obb, r1t: &Mat3A, obb2: &Obb) -> Option<Hit> {
 
     // if we get to this point, the boxes interpenetrate. compute the normal
     // in global coordinates.
-    let mut normal = normal_r.unwrap_or_else(|| r1t * normal_c);
+    let mut normal = normal_r.unwrap_or_else(|| obb1.axis * normal_c);
     if invert_normal {
         normal = -normal;
     }
@@ -712,4 +603,41 @@ fn box_box_sat(obb1: &Obb, r1t: &Mat3A, obb2: &Obb) -> Option<Hit> {
         normal,
         axis_idx: code,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use glam::{Mat3A, Vec3A};
+
+    use super::{Obb, box_box_sat};
+    use crate::{CarBodyConfig, consts::UU_TO_BT};
+
+    fn octane_obb(pos_uu: Vec3A, rot_mat: Mat3A) -> Obb {
+        let config = CarBodyConfig::OCTANE;
+        Obb::new(
+            (pos_uu + rot_mat * config.hitbox_pos_offset) * UU_TO_BT,
+            rot_mat,
+            config.hitbox_size * UU_TO_BT * 0.5,
+        )
+    }
+
+    #[test]
+    fn rotated_offset_octane_hitboxes_overlap() {
+        let car_a_rot = Mat3A::from_cols(
+            Vec3A::new(-0.197_008_49, -0.710_327_74, -0.675_738_2),
+            Vec3A::new(-0.328_847_1, -0.592_099, 0.735_586_46),
+            Vec3A::new(0.924_127_6, -0.364_699_04, 0.113_941_91),
+        );
+        let car_b_rot = Mat3A::from_cols(
+            Vec3A::new(0.031_831_503, 0.093_713_61, 0.995_090_25),
+            Vec3A::new(0.937_990_5, -0.346_187_98, 0.003_024_293_8),
+            Vec3A::new(0.344_967_37, 0.933_385_7, -0.098_937_63),
+        );
+
+        let car_a = octane_obb(Vec3A::new(161.537_67, -40.835_064, 366.293_03), car_a_rot);
+        let car_b = octane_obb(Vec3A::new(148.926_6, -160.566_18, 400.462_95), car_b_rot);
+
+        let hit = box_box_sat(&car_a, &car_a.axis.transpose(), &car_b);
+        assert!(hit.is_some());
+    }
 }
