@@ -1,4 +1,4 @@
-use glam::{EulerRot, IVec3, Mat3A};
+use glam::{EulerRot, IVec3, Mat3A, Vec3A};
 use rocketsim::{CarControls, GameMode, Team};
 
 use crate::comparison_test::{
@@ -83,6 +83,17 @@ fn make_ball_cases() -> Vec<TestCase> {
             (-20, 3500, 50),
             (0, 0, 0),
         ),
+        TestCase {
+            name: "ball_high_speed_wall".to_string(),
+            game_mode: GameMode::Soccar,
+            car_setups: Vec::new(),
+            ball_setup: Some(
+                BallSetup::new(Vec3A::new(2619.6133, 757.27295, 1245.125))
+                    .with_vel(Vec3A::new(3222.4766, -3332.0986, -2374.8315))
+                    .with_ang_vel(Vec3A::new(0.298_214_9, -4.800_81, -1.127_672_7)),
+            ),
+            duration_ticks: 120,
+        },
     ]
 }
 
@@ -231,6 +242,28 @@ fn make_car_cases() -> Vec<TestCase> {
             ControlSeq::new(),
             false,
         ),
+        TestCase {
+            name: "car_pogo_corner".to_string(),
+            game_mode: GameMode::Soccar,
+            car_setups: vec![
+                CarSetup::new(
+                    Team::Blue,
+                    glam::Vec3A::new(3110.3013, -4453.914, 381.41904),
+                )
+                .with_rot(Mat3A::from_euler(
+                    EulerRot::ZYX,
+                    -1.274_397_9,
+                    0.290_055_45,
+                    1.963_096_1,
+                ))
+                .with_vel(glam::Vec3A::new(-243.450_99, -592.967, -2326.8142))
+                .with_ang_vel(glam::Vec3A::new(1.894_568_4, -0.262_081_27, -0.402_835_25))
+                .with_control_seq(ControlSeq::new())
+                .with_on_ground(false),
+            ],
+            ball_setup: None,
+            duration_ticks: 120,
+        },
         simple_car_case(
             "double_jump",
             2,
@@ -354,6 +387,29 @@ fn make_car_ball_cases() -> Vec<TestCase> {
             ControlSeq::new_single(quick_air(-0.5, 0.8, 1.0, false, true)),
             true,
         ),
+        TestCase {
+            name: "car_ball_spinning_air_hit".to_string(),
+            game_mode: GameMode::Soccar,
+            car_setups: vec![
+                CarSetup::new(Team::Blue, Vec3A::new(1471.7051, -340.60132, 301.97357))
+                    .with_rot(Mat3A::from_euler(
+                        EulerRot::ZYX,
+                        -2.406_891_6,
+                        -0.059_030_056,
+                        0.494_189_74,
+                    ))
+                    .with_vel(Vec3A::new(-529.14624, -1781.6398, -1157.8341))
+                    .with_ang_vel(Vec3A::new(5.114_675_5, -4.939_43, -1.468_515_4))
+                    .with_control_seq(ControlSeq::new())
+                    .with_on_ground(false),
+            ],
+            ball_setup: Some(
+                BallSetup::new(Vec3A::new(1279.0969, -427.01538, 406.70615))
+                    .with_vel(Vec3A::new(772.5327, 947.9053, -760.2742))
+                    .with_ang_vel(Vec3A::new(4.382_030_5, 0.221_350_67, 2.986_855_5)),
+            ),
+            duration_ticks: 80,
+        },
     ]
 }
 
@@ -437,6 +493,34 @@ fn make_car_car_cases() -> Vec<TestCase> {
             (0, 0, 0),
             ControlSeq::new(),
         ),
+        TestCase {
+            name: "car_car_air_overlap".to_string(),
+            game_mode: GameMode::Soccar,
+            car_setups: vec![
+                CarSetup::new(Team::Blue, Vec3A::new(176.49292, -15.555908, 372.59656))
+                    .with_rot(Mat3A::from_euler(
+                        EulerRot::ZYX,
+                        -1.820_559_9,
+                        0.773_807_3,
+                        -1.268_840_9,
+                    ))
+                    .with_vel(Vec3A::new(-598.2096, -1011.16626, -241.30719))
+                    .with_ang_vel(Vec3A::new(-0.091_379_166, 5.100_671, 3.726_528_2))
+                    .with_control_seq(ControlSeq::new()),
+                CarSetup::new(Team::Orange, Vec3A::new(196.46584, -178.67627, 399.98947))
+                    .with_rot(Mat3A::from_euler(
+                        EulerRot::ZYX,
+                        -3.010_762_7,
+                        -1.644_297_4,
+                        1.026_696_9,
+                    ))
+                    .with_vel(Vec3A::new(-1901.5684, 724.4038, 29.772_827))
+                    .with_ang_vel(Vec3A::new(-3.380_295, -1.544_488_2, 2.699_977))
+                    .with_control_seq(ControlSeq::new()),
+            ],
+            ball_setup: None,
+            duration_ticks: 80,
+        },
     ]
 }
 

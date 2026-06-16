@@ -61,6 +61,7 @@ fn assert_test_result(test_case: &TestCase, test_result: &TestResult) {
     "ball_into_goal",
     "ball_crossbar_down",
     "ball_post_out",
+    "ball_high_speed_wall",
     "car_drive_forward",
     "car_drive_forward_boost",
     "car_drive_forward_turn",
@@ -72,14 +73,17 @@ fn assert_test_result(test_case: &TestCase, test_result: &TestResult) {
     "car_land_ground_complex",
     "car_land_ground_powerslide",
     "car_pogo",
+    "car_pogo_corner",
     "car_double_jump",
     "car_flip_simple",
     "car_flip_complex",
     "car_auto_roll",
     "car_ball_basic_air_hit",
     "car_ball_complex_air_hit",
+    "car_ball_spinning_air_hit",
     "car_car_basic_bump",
     "car_car_basic_demo",
+    "car_car_air_overlap",
 ])]
 fn run_case(case_name: &str) {
     let test_cases = init_for_test();
