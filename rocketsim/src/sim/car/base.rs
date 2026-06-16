@@ -859,7 +859,7 @@ impl Car {
         }
 
         if self.vel_impulse_cache != Vec3A::ZERO {
-            rb.lin_vel += self.vel_impulse_cache * UU_TO_BT;
+            rb.lin_vel += self.vel_impulse_cache;
             self.vel_impulse_cache = Vec3A::ZERO;
         }
 
