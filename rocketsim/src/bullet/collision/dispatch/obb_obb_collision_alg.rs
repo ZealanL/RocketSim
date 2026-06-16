@@ -25,13 +25,13 @@ pub fn process_collision<T: ContactAddedCallback>(
     let child_a_trans = &compound_a_shape.child_trans;
     let child_a_world_trans = org_0_trans * child_a_trans;
 
-    let child_b_trans = &compound_a_shape.child_trans;
+    let child_b_trans = &compound_b_shape.child_trans;
     let child_b_world_trans = org_1_trans * child_b_trans;
 
     let mut detector = BoxBoxDetector {
         box1: &compound_a_shape.child_shape,
         col1: compound_a_obj,
-        box2: &compound_a_shape.child_shape,
+        box2: &compound_b_shape.child_shape,
         col2: compound_b_obj,
         contact_added_callback,
     };
