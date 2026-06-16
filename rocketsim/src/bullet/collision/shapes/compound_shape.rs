@@ -140,6 +140,10 @@ impl CompoundShape {
             return;
         }
 
+        if tenter <= 0.0 {
+            return;
+        }
+
         let mut hit_normal = Vec3A::ZERO;
         hit_normal[hit_axis] = -dir[hit_axis].signum();
 
