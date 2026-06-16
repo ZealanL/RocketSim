@@ -959,9 +959,10 @@ impl Arena {
                 let upward_force = upward_vel_curve.get_output(speed_towards_other_car)
                     * self.config.mutators.bump_force_scale;
                 let bump_impulse = (vel_dir * base_scale) + (hit_up_dir * upward_force);
-
-                victim.vel_impulse_cache += bump_impulse;
+                victim.vel_impulse_cache += bump_impulse * UU_TO_BT;
             }
+
+            attacker.state.bump_cooldown_timer = self.config.mutators.bump_cooldown_time;
 
             let contact_point = if is_swapped {
                 manifold_point.pos_world_on_b

@@ -288,7 +288,7 @@ impl Ball {
                 consts::ball::car_hit_impulse::Z_SCALE_NORMAL
             };
 
-            let mut hit_dir = rel_pos * Vec3A::new(1.0, 1.0, z_scale).normalize_or_zero();
+            let mut hit_dir = (rel_pos * Vec3A::new(1.0, 1.0, z_scale)).normalize_or_zero();
             let forward_dir_adjustment = car_forward
                 * hit_dir.dot(car_forward)
                 * const { 1.0 - consts::ball::car_hit_impulse::FORWARD_SCALE };
