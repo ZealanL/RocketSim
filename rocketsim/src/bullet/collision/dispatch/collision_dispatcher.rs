@@ -38,6 +38,7 @@ impl CollisionDispatcher {
                         &RigidBodyWrapper {
                             obj: col_obj_b,
                             world_trans: *col_obj_b.get_world_trans(),
+                            child_shape_override: None,
                         },
                         col_obj_a,
                         plane,
@@ -58,6 +59,7 @@ impl CollisionDispatcher {
                         &RigidBodyWrapper {
                             obj: col_obj_a,
                             world_trans: *col_obj_a.get_world_trans(),
+                            child_shape_override: None,
                         },
                         col_obj_b,
                         plane,
@@ -84,6 +86,7 @@ impl CollisionDispatcher {
                     &RigidBodyWrapper {
                         obj: col_obj_a,
                         world_trans: *col_obj_a.get_world_trans(),
+                        child_shape_override: None,
                     },
                     col_obj_b,
                     contact_added_callback,
@@ -149,6 +152,7 @@ impl CollisionDispatcher {
                         &RigidBodyWrapper {
                             obj: col_obj_a,
                             world_trans: *col_obj_a.get_world_trans(),
+                            child_shape_override: None,
                         },
                         col_obj_b,
                         plane,
@@ -173,6 +177,7 @@ impl CollisionDispatcher {
                     &RigidBodyWrapper {
                         obj: col_obj_a,
                         world_trans: *col_obj_a.get_world_trans(),
+                        child_shape_override: None,
                     },
                     col_obj_b,
                     contact_added_callback,
