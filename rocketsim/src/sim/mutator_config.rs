@@ -33,7 +33,6 @@ pub struct MutatorConfig {
 
     pub ball_hit_extra_force_scale: f32,
     pub bump_force_scale: f32,
-    pub bump_requires_front_hit: bool,
     pub ball_radius: f32,
     pub unlimited_flips: bool,
     pub unlimited_double_jumps: bool,
@@ -86,7 +85,6 @@ impl MutatorConfig {
             boost_pad_cooldown_small: consts::boost_pads::COOLDOWN_SMALL,
             ball_hit_extra_force_scale: 1.,
             bump_force_scale: 1.,
-            bump_requires_front_hit: false, // No longer required in newer Rocket League versions
             ball_radius: consts::ball::get_radius(game_mode),
             unlimited_flips: false,
             unlimited_double_jumps: false,
