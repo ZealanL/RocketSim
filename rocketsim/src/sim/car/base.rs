@@ -313,7 +313,10 @@ impl Car {
 
             if self.state.handbrake_val != 0.0 {
                 let handbrake_amount = self.state.handbrake_val;
-                lat_friction *= 1.0 - curves::HANDBRAKE_LAT_FRICTION_FACTOR * handbrake_amount;
+                lat_friction *= 1.0
+                    + (curves::HANDBRAKE_LAT_FRICTION_FACTOR.get_output(friction_curve_input)
+                        - 1.0)
+                        * handbrake_amount;
                 long_friction *= 1.0
                     + (curves::HANDBRAKE_LONG_FRICTION_FACTOR.get_output(friction_curve_input)
                         - 1.0)
