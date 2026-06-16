@@ -213,8 +213,9 @@ impl GridBroadphase {
 
             self.handles[proxy_idx].cell_idx = new_idx;
             if new_idx != old_idx {
+                let old_indices = self.handles[proxy_idx].indices;
                 self.cell_grid
-                    .update_cells_dynamic::<false>(proxy_idx, new_indices);
+                    .update_cells_dynamic::<false>(proxy_idx, old_indices);
                 self.handles[proxy_idx].indices = new_indices;
                 self.cell_grid
                     .update_cells_dynamic::<true>(proxy_idx, new_indices);

@@ -241,11 +241,10 @@ impl WheelInfo {
 
         let mut wheels_suspension_force =
             force - (damping_vel_scale * raycast_info.suspension_relative_vel);
+        wheels_suspension_force *= self.suspsension_force_scale;
         if wheels_suspension_force <= 0.0 {
             return;
         }
-
-        wheels_suspension_force *= self.suspsension_force_scale;
         let base_force_scale = wheels_suspension_force * delta_time + self.extra_pushback;
         let contact_point_offset = raycast_info.contact_point - cb.get_world_trans().translation;
 
