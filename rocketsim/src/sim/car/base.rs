@@ -463,7 +463,7 @@ impl Car {
     ) {
         let up_dir = self.state.get_up_dir();
 
-        if self.state.is_on_ground && self.state.is_jumping {
+        if self.state.is_on_ground && !self.state.is_jumping {
             if self.state.has_jumped
                 && self.state.jump_time
                     < const { car_consts::jump::MIN_TIME + car_consts::jump::RESET_TIME_PAD }
