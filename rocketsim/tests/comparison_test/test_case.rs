@@ -170,7 +170,17 @@ impl TestCase {
             let ball_state_pair = if self.ball_setup.is_some() {
                 let new_ball_state = *new_arena.get_ball_state();
                 let old_ball_state = old_arena_ptr.pin_mut().get_ball();
-                let old_ball_state_conv = state_convert::conv_to_new_ball_state(&old_ball_state);
+                let last_extra_hit_tick = (0..self.car_setups.len())
+                    .filter_map(|i| {
+                        let old_car_idx = (i + 1) as u32;
+                        let old_car_state = old_arena_ptr.pin_mut().get_car(old_car_idx);
+                        state_convert::conv_to_new_last_extra_hit_tick(&old_car_state)
+                    })
+                    .max();
+                let old_ball_state_conv = state_convert::conv_to_new_ball_state_with_last_extra_hit(
+                    &old_ball_state,
+                    last_extra_hit_tick,
+                );
                 new_arena.set_ball_state(old_ball_state_conv);
                 Some((new_ball_state, old_ball_state_conv))
             } else {

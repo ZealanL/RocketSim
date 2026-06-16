@@ -177,6 +177,13 @@ pub fn conv_to_old_ball_state(ball_state: &BallState) -> OldBallState {
 }
 
 pub fn conv_to_new_ball_state(ball_state: &OldBallState) -> BallState {
+    conv_to_new_ball_state_with_last_extra_hit(ball_state, None)
+}
+
+pub fn conv_to_new_ball_state_with_last_extra_hit(
+    ball_state: &OldBallState,
+    last_extra_hit_tick: Option<u64>,
+) -> BallState {
     BallState {
         phys: PhysState {
             pos: vec3_to_new(ball_state.pos),
@@ -189,9 +196,20 @@ pub fn conv_to_new_ball_state(ball_state: &OldBallState) -> BallState {
         hs_info: Default::default(),
         ds_info: Default::default(),
 
-        // TODO: Implement
-        last_extra_hit_tick: None,
+        last_extra_hit_tick,
         tick_count_since_kickoff: 0,
+    }
+}
+
+pub const fn conv_to_new_last_extra_hit_tick(old_car_state: &OldCarState) -> Option<u64> {
+    if old_car_state.ball_hit_info.is_valid {
+        Some(
+            old_car_state
+                .ball_hit_info
+                .tick_count_when_extra_impulse_applied,
+        )
+    } else {
+        None
     }
 }
 
