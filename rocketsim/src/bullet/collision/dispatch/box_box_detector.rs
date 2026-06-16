@@ -286,11 +286,7 @@ impl<T: ContactAddedCallback> BoxBoxDetector<'_, T> {
             -hit.normal
         };
 
-        let nr = Vec3A::new(
-            normal_2.dot(r2t_axes[0]),
-            normal_2.dot(r2t_axes[1]),
-            normal_2.dot(r2t_axes[2]),
-        );
+        let nr = r2t.mul_transpose_vec3a(normal_2);
         let anr = nr.abs();
 
         // find the largest compontent of anr: this corresponds to the normal
