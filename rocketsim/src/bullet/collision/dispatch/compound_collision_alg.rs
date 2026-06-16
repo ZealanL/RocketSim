@@ -49,6 +49,7 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
         }
 
         let half_extents = self.box_shape.get_half_extents();
+        let contact_margin = self.box_shape.get_margin() + self.manifold.contact_breaking_threshold;
 
         let world_to_box = self.convex_obj.world_trans.inverse();
         let tri_to_world = self.tri_obj.get_world_trans();
@@ -77,12 +78,13 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
                 .max(tri_verts_rel[1][i])
                 .max(tri_verts_rel[2][i]);
 
-            if tri_max < -half_extents[i] || tri_min > half_extents[i] {
+            let axis_extent = half_extents[i] + contact_margin;
+            if tri_max < -axis_extent || tri_min > axis_extent {
                 return;
             }
 
-            let p_neg = tri_max + half_extents[i];
-            let p_pos = half_extents[i] - tri_min;
+            let p_neg = tri_max + axis_extent;
+            let p_pos = axis_extent - tri_min;
             let (penetration, side) = if p_neg < p_pos {
                 (p_neg, -1.0)
             } else {
@@ -104,7 +106,7 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
         let tri_normal = tri_edges_rel[0].cross(tri_edges_rel[1]);
         if let Some(norm_axis) = tri_normal.try_normalize() {
             let plane_dist = norm_axis.dot(tri_verts_rel[0]);
-            let proj_radius = half_extents.dot(norm_axis.abs());
+            let proj_radius = half_extents.dot(norm_axis.abs()) + contact_margin;
 
             if plane_dist.abs() > proj_radius {
                 return;
@@ -138,7 +140,7 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
                         norm_axis.dot(tri_verts_rel[2]),
                     );
                     let (tri_min, tri_max) = (p.min_element(), p.max_element());
-                    let proj_radius = half_extents.dot(norm_axis.abs());
+                    let proj_radius = half_extents.dot(norm_axis.abs()) + contact_margin;
 
                     if tri_max < -proj_radius || tri_min > proj_radius {
                         return;
