@@ -197,27 +197,21 @@ impl<T: ContactAddedCallback> BoxBoxDetector<'_, T> {
         transform_a: Affine3A,
         transform_b: Affine3A,
     ) -> Option<PersistentManifold> {
-        let xforma = transform_a.matrix3.transpose();
-        let xformb = transform_b.matrix3.transpose();
+        let axis_a = transform_a.matrix3;
+        let axis_b = transform_b.matrix3;
+        let axis_a_inv = axis_a.transpose();
 
-        let side1 = self.box1.get_half_extents();
-        let side2 = self.box2.get_half_extents();
+        let side1 = self.box1.get_half_extents() + self.box1.get_margin();
+        let side2 = self.box2.get_half_extents() + self.box2.get_margin();
 
-        let obb1 = Obb::new(transform_a.translation, xforma, side1);
-        let obb2 = Obb::new(transform_b.translation, xformb, side2);
+        let obb1 = Obb::new(transform_a.translation, axis_a, side1);
+        let obb2 = Obb::new(transform_b.translation, axis_b, side2);
 
-        let hit = box_box_sat(&obb1, &transform_a.matrix3, &obb2)?;
+        let hit = box_box_sat(&obb1, &axis_a_inv, &obb2)?;
 
         let mut manifold = PersistentManifold::new(self.col1, self.col2);
 
-        self.compute_contact_points(
-            &obb1,
-            &transform_a.matrix3,
-            &obb2,
-            &transform_b.matrix3,
-            &hit,
-            &mut manifold,
-        );
+        self.compute_contact_points(&obb1, &axis_a, &obb2, &axis_b, &hit, &mut manifold);
 
         if manifold.point_cache.is_empty() {
             return None;
@@ -292,7 +286,11 @@ impl<T: ContactAddedCallback> BoxBoxDetector<'_, T> {
             -hit.normal
         };
 
-        let nr = obb2.axis * normal_2;
+        let nr = Vec3A::new(
+            normal_2.dot(r2t_axes[0]),
+            normal_2.dot(r2t_axes[1]),
+            normal_2.dot(r2t_axes[2]),
+        );
         let anr = nr.abs();
 
         // find the largest compontent of anr: this corresponds to the normal
@@ -431,7 +429,7 @@ impl<T: ContactAddedCallback> BoxBoxDetector<'_, T> {
             .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
             .unwrap();
 
-        let iret = cull_points2(&ret[..cnum], maxc, i1);
+        let iret = cull_points2(&ret[..cnum], i1, maxc);
 
         for idx in iret.into_iter().take(maxc) {
             let pos_in_world = point[idx] + obb1.center;
