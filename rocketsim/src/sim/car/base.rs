@@ -751,7 +751,7 @@ impl Car {
             self.bullet_vehicle.get_num_wheels() == 4 || self.bullet_vehicle.get_num_wheels() == 3
         );
 
-        let forward_speed_uu = {
+        {
             let rb = &mut collision_world.bodies_mut()[self.rigid_body_idx];
             if self.state.is_demoed {
                 self.state.demo_respawn_timer =
@@ -768,13 +768,14 @@ impl Car {
             rb.force_activate();
             rb.collision_flags &= !(CollisionFlags::NoContactResponse as u8);
             self.state.controls = self.state.controls.clamp();
-
-            rb.get_forward_speed() * BT_TO_UU
-        };
+        }
 
         // Do first part of the btVehicleRL update (update wheel transforms, do traces, calculate friction impulses)
         self.bullet_vehicle
             .update_vehicle_first(collision_world, TICK_TIME);
+
+        let forward_speed_uu =
+            collision_world.bodies()[self.rigid_body_idx].get_forward_speed() * BT_TO_UU;
 
         let jump_pressed = self.state.controls.jump && !self.state.prev_controls.jump;
 
