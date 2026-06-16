@@ -128,6 +128,7 @@ impl Ball {
             rb.set_activation_state(ActivationState::Active);
         }
 
+        self.vel_impulse_cache = Vec3A::ZERO;
         self.state = state;
     }
 
