@@ -38,7 +38,7 @@ impl BoxShape {
     }
 
     pub fn calculate_local_intertia(&self, mass: f32) -> Vec3A {
-        let l = 2.0 * self.get_half_extents();
+        let l = 2.0 * (self.get_half_extents() + self.get_margin());
         let yxx = l.yxx();
         let zzy = l.zzy();
 
@@ -46,6 +46,6 @@ impl BoxShape {
     }
 
     pub fn local_get_supporting_vertex(&self, vec: Vec3A) -> Vec3A {
-        self.get_half_extents() * vec.signum()
+        (self.get_half_extents() + self.get_margin()) * Vec3A::ONE.copysign(vec)
     }
 }

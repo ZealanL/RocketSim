@@ -15,8 +15,7 @@ pub fn process_collision<T: ContactAddedCallback>(
     plane_shape: &StaticPlaneShape,
     contact_added_callback: &mut T,
 ) -> Option<PersistentManifold> {
-    let col_shape = convex_obj.obj.get_collision_shape();
-    let convex_aabb = col_shape.get_aabb(&convex_obj.world_trans);
+    let convex_aabb = convex_obj.get_aabb();
     if !convex_aabb.intersects(&plane_shape.aabb_cache) {
         return None;
     }
@@ -31,7 +30,7 @@ pub fn process_collision<T: ContactAddedCallback>(
             - plane_trans.translation,
     };
 
-    let vtx = col_shape.local_get_supporting_vertex(plane_in_convex * -plane_normal);
+    let vtx = convex_obj.local_get_supporting_vertex(plane_in_convex * -plane_normal);
     let vtx_in_plane = convex_in_plane_trans.transform_point3a(vtx);
     let distance = plane_normal.dot(vtx_in_plane);
 

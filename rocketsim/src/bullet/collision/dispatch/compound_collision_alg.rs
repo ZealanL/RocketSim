@@ -304,6 +304,7 @@ pub fn process_collision<T: ContactAddedCallback>(
     let compound_obj_wrap = RigidBodyWrapper {
         obj: compound_obj,
         world_trans: new_child_world_trans,
+        child_shape_override: Some(box_shape),
     };
 
     match other_col_shape {
