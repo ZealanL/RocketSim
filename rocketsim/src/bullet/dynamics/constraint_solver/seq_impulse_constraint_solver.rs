@@ -341,7 +341,8 @@ impl SeqImpulseConstraintSolver {
             (
                 lateral_friction_dir_1,
                 torque_axis,
-                body.inv_inertia_tensor_world * torque_axis,
+                body.inv_inertia_tensor_world
+                    .mul_transpose_vec3a(torque_axis),
             )
         };
 
