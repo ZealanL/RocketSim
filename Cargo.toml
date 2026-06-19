@@ -13,3 +13,8 @@ panic = "abort"
 
 [profile.dev]
 opt-level = 1
+
+# TODO: Temporary
+[profile.test]
+opt-level = 0
+debug = true

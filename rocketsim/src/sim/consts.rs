@@ -25,10 +25,10 @@ impl CarSpawnPos {
 //////////////////////////
 
 /// `BulletPhysics` Units (1m) to Unreal Units (2cm) conversion scale
-pub(crate) const BT_TO_UU: f32 = 50.0;
+pub const BT_TO_UU: f32 = 50.0;
 
 /// Unreal Units (2cm) to `BulletPhysics` Units (1m) conversion scale
-pub(crate) const UU_TO_BT: f32 = 1.0 / 50.0;
+pub const UU_TO_BT: f32 = 1.0 / 50.0;
 
 /// How many ticks occur in one second
 pub const TICK_RATE: f32 = 120.0;
