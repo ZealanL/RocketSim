@@ -1,15 +1,9 @@
 use crate::rl_comparison_test::recording::Recording;
 use crate::rl_comparison_test::recording::cpp_records::TickRecord;
-use include_dir::{Dir, include_dir};
-use rocketsim::{
-    Arena, CarBodyConfig, CarControls, CarState, GameMode, PhysState, Team,
-};
+use rocketsim::{Arena, CarBodyConfig, CarControls, CarState, GameMode, PhysState, Team};
 
 mod compare;
 mod recording;
-
-const TESTS_DIR: Dir<'static> = include_dir!("rocketsim/tests/rl_comparison_test/test_recordings");
-const TEST_RECORDING_EXTENSION_LOWER: &'static str = ".rlpr";
 
 pub fn set_state_to_record_tick(
     arena: &mut Arena,
@@ -75,28 +69,12 @@ fn test_recording(recording: &Recording) {
     }
 }
 
-pub fn run_all() {
-    println!("Running RL comparison tests...");
-    let mut recordings = Vec::new();
-    for file in TESTS_DIR.files() {
-        let file_name = file.path().file_name().unwrap().to_str().unwrap();
-        let file_name_lower = file_name.to_lowercase();
-        if file_name_lower.ends_with(TEST_RECORDING_EXTENSION_LOWER) {
-            let recording_name = file_name_lower.replace(TEST_RECORDING_EXTENSION_LOWER, "");
-            let recording = Recording::from_bytes(&recording_name, file.contents()).unwrap();
-            recordings.push(recording);
-        } else {
-            eprintln!("WARNING: Non-recording file in recordings folder: {file_name}");
-        }
+// This will be called from each test file
+fn run_comparison_test(name: &str, recording_bytes: &[u8]) {
+    if !rocketsim::is_initialized() {
+        rocketsim::init_from_default(true).unwrap();
     }
-
-    println!(
-        " > Loaded {} recording files: {:?}",
-        recordings.len(),
-        recordings.iter().map(|r| &r.name).collect::<Vec<&String>>()
-    );
-
-    for record in recordings {
-        test_recording(&record);
-    }
+    let recording = Recording::from_bytes(name, recording_bytes).unwrap();
+    test_recording(&recording);
 }
+include!(concat!(env!("OUT_DIR"), "/gen_comparison_tests.rs"));

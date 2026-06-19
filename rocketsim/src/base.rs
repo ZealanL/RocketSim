@@ -1,3 +1,6 @@
+use log::{error, info, warn};
+use rustc_hash::FxHashMap;
+use std::sync::Mutex;
 use std::{
     fs,
     io::{Error as IoError, ErrorKind, Result as IoResult},
@@ -5,9 +8,6 @@ use std::{
     sync::{Arc, OnceLock, RwLock},
     time::Instant,
 };
-
-use log::{error, info, warn};
-use rustc_hash::FxHashMap;
 
 use crate::{
     bullet::collision::shapes::bvh_triangle_mesh_shape::BvhTriangleMeshShape,
@@ -21,6 +21,7 @@ use crate::{
 };
 
 static HAS_INITIALIZED_LOCK: OnceLock<()> = OnceLock::new();
+static INITIALIZING_MUTEX: Mutex<()> = Mutex::new(());
 
 pub(crate) static ARENA_COLLISION_SHAPES: RwLock<
     Option<FxHashMap<GameMode, Vec<Arc<BvhTriangleMeshShape>>>>,
@@ -95,6 +96,8 @@ pub fn init_from_mem(
     if !silent {
         let _ = logging::try_init();
     }
+
+    let _initializing_lock = INITIALIZING_MUTEX.lock();
 
     if HAS_INITIALIZED_LOCK.set(()).is_ok() {
         // Initialization locked successfully
