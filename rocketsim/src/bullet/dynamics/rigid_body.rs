@@ -408,4 +408,14 @@ impl RigidBody {
     pub const fn get_world_pos(&self) -> Vec3A {
         self.get_world_trans().translation
     }
+
+    pub fn limit_vels(&mut self, max_lin_speed: f32, max_ang_speed: f32) {
+        if self.lin_vel.length_squared() > max_lin_speed.powi(2) {
+            self.lin_vel = self.lin_vel.normalize_or_zero() * max_lin_speed;
+        }
+
+        if self.ang_vel.length_squared() > max_ang_speed.powi(2) {
+            self.ang_vel = self.ang_vel.normalize_or_zero() * max_ang_speed;
+        }
+    }
 }
