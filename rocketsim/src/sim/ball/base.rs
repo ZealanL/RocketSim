@@ -179,7 +179,7 @@ impl Ball {
                     .clamp(-heatseeker::MAX_TURN_PITCH, heatseeker::MAX_TURN_PITCH);
 
                 // Apply aggressive UE3 rotator rounding
-                // (This is suprisingly important for accuracy)
+                // (This is surprisingly important for accuracy)
                 new_angle = new_angle.round_ue3();
 
                 // Determine new interpolated speed
