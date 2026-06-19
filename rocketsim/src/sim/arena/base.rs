@@ -493,6 +493,7 @@ impl Arena {
         self.ball.pre_tick_update(
             &mut self.bullet_world.bodies_mut()[self.ball.rigid_body_idx],
             self.config.game_mode,
+            &self.config.mutators,
         );
 
         self.bullet_world
@@ -565,8 +566,7 @@ impl Arena {
         }
 
         let ball_rb = &mut self.bullet_world.bodies_mut()[self.ball.rigid_body_idx];
-        self.ball
-            .finish_physics_tick(ball_rb, &self.config.mutators);
+        self.ball.finish_physics_tick(ball_rb);
 
         if self.config.game_mode == GameMode::Dropshot
             && self.ball.state.ds_info.last_damage_tick == Some(self.tick_count)

@@ -132,7 +132,12 @@ impl Ball {
         self.state = state;
     }
 
-    pub(crate) fn pre_tick_update(&mut self, rb: &mut RigidBody, game_mode: GameMode) {
+    pub(crate) fn pre_tick_update(
+        &mut self,
+        rb: &mut RigidBody,
+        game_mode: GameMode,
+        mutator_config: &MutatorConfig,
+    ) {
         match game_mode {
             GameMode::Heatseeker => {
                 if self.state.hs_info.y_target_dir == 0 {
@@ -226,32 +231,24 @@ impl Ball {
             }
             _ => {}
         }
+
+        rb.limit_vels(
+            mutator_config.ball_max_speed * UU_TO_BT,
+            consts::ball::MAX_ANG_SPEED,
+        );
     }
 
-    pub(crate) fn finish_physics_tick(
-        &mut self,
-        rb: &mut RigidBody,
-        mutator_config: &MutatorConfig,
-    ) {
+    pub(crate) fn finish_physics_tick(&mut self, rb: &mut RigidBody) {
         if self.vel_impulse_cache.length_squared() != 0.0 {
             rb.lin_vel += self.vel_impulse_cache * UU_TO_BT;
             self.vel_impulse_cache = Vec3A::ZERO;
         }
 
-        let ball_max_speed_bt = mutator_config.ball_max_speed * UU_TO_BT;
-        if rb.lin_vel.length_squared() > ball_max_speed_bt * ball_max_speed_bt {
-            rb.lin_vel = rb.lin_vel.normalize_or_zero() * ball_max_speed_bt;
-        }
-
-        if rb.ang_vel.length_squared() > consts::ball::MAX_ANG_SPEED * consts::ball::MAX_ANG_SPEED {
-            rb.ang_vel = rb.ang_vel.normalize_or_zero() * consts::ball::MAX_ANG_SPEED;
-        }
-
-        self.state.phys.vel = rb.lin_vel * consts::BT_TO_UU;
+        self.state.phys.vel = rb.lin_vel * BT_TO_UU;
         self.state.phys.ang_vel = rb.ang_vel;
 
         let trans = *rb.get_world_trans();
-        self.state.phys.pos = trans.translation * consts::BT_TO_UU;
+        self.state.phys.pos = trans.translation * BT_TO_UU;
         self.state.phys.rot_mat = trans.matrix3;
 
         self.state.tick_count_since_kickoff += 1;
