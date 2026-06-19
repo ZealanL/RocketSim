@@ -11,3 +11,4 @@ heaptrack*
 # Anything starting with 3 underscores
 ___*
 *.blend1
+*.cmf
