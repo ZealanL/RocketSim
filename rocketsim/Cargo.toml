@@ -4,51 +4,33 @@ version.workspace = true
 edition = "2024"
 license-file.workspace = true
 
-[[example]]
-name = "rocket_sim_vis_compare"
-required-features = ["vis"]
-
-[[example]]
-name = "vis"
-required-features = ["vis"]
-
 [dependencies]
-rustc-hash = "2.1.2"
 arrayvec = "0.7.6"
 byteorder = "1.5.0"
 derive_hash_fast = "0.2.3"
-fern = "0.7.1"
 fastrand = "2.3.0"
+fern = "0.7.1"
 glam = { version = "0.33.0", features = ["debug-glam-assert"] }
+include_dir = "0.7.4"
 log = "0.4.29"
-rocketsim_derive = { path = "./rocketsim_derive" }
+rocketsim_derive = { path = "../rocketsim_derive" }
+rustc-hash = "2.1.2"
 zerocopy = { version = "0.8.34", features = ["derive"] }
-egui = { version = "0.33.3", optional = true }
-egui-miniquad = { git = "https://github.com/not-fl3/egui-miniquad.git", rev = "62c7d23", optional = true }
-miniquad = { version = "0.4.8", optional = true }
-png = { version = "0.18.0", optional = true }
-raw-window-handle = { version = "0.6.2", optional = true }
 
 [dev-dependencies]
 clap = { version = "4.6.0", features = ["derive"] }
-device_query = "4.0.1"  # For the RocketSimVis example
-serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1.0.148"
+rocketsim_rs = "0.36.0"  # For comparing to original C++ RocketSim in tests
+rocketsim_test_utils = { path = "../rocketsim_test_utils" }
+test-case = "3.3.1"
 
 [target.'cfg(not(any(target_arch = "x86", target_arch = "x86_64")))'.dependencies]
 # use glam with experimental support for portable SIMD when not running on x86
 # architectures
-glam = { version = "0.33.0", features = ["core-simd", "debug-glam-assert"], optional = true }
-
-[features]
-# default = ["vis"]
-vis = [
-  "dep:egui",
-  "dep:egui-miniquad",
-  "dep:miniquad",
-  "dep:png",
-  "dep:raw-window-handle"
-]
+glam = {
+  version = "0.33.0",
+  features = ["core-simd", "debug-glam-assert"],
+  optional = true
+}
 
 [lints.clippy]
 all = "warn"

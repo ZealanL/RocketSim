@@ -4,11 +4,7 @@ use device_query::{DeviceQuery, DeviceState, Keycode};
 use rocketsim::{Arena, CarBodyConfig, CarControls, GameMode, PhysState, Team, init_from_default};
 use serde::Serialize;
 
-// TODO: Pretty sure this is bad practice
-#[path = "../tests/comparison_test/state_convert.rs"]
-mod state_convert;
-
-use crate::state_convert::{
+use rocketsim_test_utils::state_convert::{
     OldArena, OldArenaConfig, OldCarConfig, OldGameMode, OldTeam, conv_to_new_car_state,
     conv_to_old_ball_state, conv_to_old_car_controls, conv_to_old_car_state,
 };

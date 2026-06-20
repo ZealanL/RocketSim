@@ -1,9 +1,7 @@
 use glam::Vec3A;
+use rocketsim::{ArenaState, GameMode};
 
-use crate::{
-    ArenaState, GameMode,
-    vis::camera::{CameraConfig, CarCam},
-};
+use crate::camera::{CameraConfig, CarCam};
 
 enum CameraViewMode {
     BirdsEye,

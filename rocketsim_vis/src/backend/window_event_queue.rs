@@ -3,11 +3,17 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use crate::vis::backend::WindowEvent;
+use crate::backend::WindowEvent;
 
 #[derive(Debug, Clone)]
 pub struct WindowEventQueue {
     queue: VecDeque<WindowEvent>,
+}
+
+impl Default for WindowEventQueue {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl WindowEventQueue {

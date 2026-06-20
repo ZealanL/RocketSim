@@ -34,6 +34,11 @@ pub fn is_initialized() -> bool {
     HAS_INITIALIZED_LOCK.get().is_some()
 }
 
+pub fn get_arena_collision_mesh_files(game_mode: GameMode) -> Vec<CollisionMeshFile> {
+    let collision_mesh_files = ARENA_COLLISION_MESH_FILES.read().unwrap();
+    collision_mesh_files.as_ref().unwrap()[&game_mode].clone()
+}
+
 pub fn init_from_default(silent: bool) -> IoResult<()> {
     init(COLLISION_MESH_BASE_PATH, silent)
 }

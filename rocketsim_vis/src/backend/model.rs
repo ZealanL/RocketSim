@@ -1,6 +1,5 @@
 use glam::{Affine3A, Mat3, UVec3, Vec2, Vec3, Vec3A};
-
-use crate::{consts::BT_TO_UU, shared::rsmath, sim::collision_mesh_file::CollisionMeshFile};
+use rocketsim::{CollisionMeshFile, consts::BT_TO_UU, shared::rsmath};
 
 #[derive(Debug, Clone)]
 pub struct Model {

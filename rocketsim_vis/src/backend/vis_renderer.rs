@@ -10,7 +10,7 @@ use miniquad::{
 };
 use rustc_hash::FxHashMap;
 
-use crate::vis::backend::{
+use crate::backend::{
     Color, ModelSet, ShaderSrc, ShaderSrcType, SharedVisRenderState, SharedWindowEvents,
     TextureSet, WindowEvent, WindowEventQueue,
 };

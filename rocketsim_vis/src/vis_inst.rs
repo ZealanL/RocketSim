@@ -2,19 +2,18 @@ use std::{sync::RwLock, thread::JoinHandle};
 
 use glam::{Mat3A, Vec3A};
 use miniquad::KeyCode;
+use rocketsim::{
+    ArenaState, CarBodyConfig, CarInfo, CollisionMeshFile, GameMode, Team, Vis, consts,
+};
 
 use crate::{
-    ArenaState, CarBodyConfig, CarInfo, GameMode, Team, consts,
-    sim::collision_mesh_file::CollisionMeshFile,
-    vis::{
-        backend::{
-            Color, ShaderSrc, ShaderSrcType, SharedVisRenderState, SharedWindowEvents,
-            VisRenderState, VisRenderer, WindowEvent,
-        },
-        camera::{CameraConfig, CameraMan},
-        ribbon_emitter::{RibbonConfig, RibbonEmitter},
-        vis_asset_loader,
+    backend::{
+        Color, ShaderSrc, ShaderSrcType, SharedVisRenderState, SharedWindowEvents, VisRenderState,
+        VisRenderer, WindowEvent,
     },
+    camera::{CameraConfig, CameraMan},
+    ribbon_emitter::{RibbonConfig, RibbonEmitter},
+    vis_asset_loader,
 };
 
 pub struct VisInst {
@@ -98,7 +97,7 @@ impl VisInst {
         }
     }
 
-    pub fn update_camera(
+    fn update_camera(
         &mut self,
         new_render_state: &mut VisRenderState,
         arena_state: &ArenaState,
@@ -110,9 +109,11 @@ impl VisInst {
             new_render_state.camera_pos + self.camera_man.cur_dir() * 10.0;
         new_render_state.camera_fov_deg = self.camera_man.config().fov_degrees;
     }
+}
 
-    pub fn update(&mut self, astate: &ArenaState, dt: f32) {
-        assert_eq!(astate.game_mode, self.game_mode);
+impl Vis for VisInst {
+    fn update(&mut self, astate: &ArenaState, dt: f32) {
+        assert_eq!(astate.game_mode(), self.game_mode);
 
         let arena_aabb = consts::arena::get_aabb(self.game_mode);
         let mut new_render_state = VisRenderState::default();
@@ -253,13 +254,12 @@ impl VisInst {
         {
             let window_events = self.shared_window_events.lock().unwrap().pop_all();
             for event in window_events {
-                match event {
-                    WindowEvent::KeyDown { key } => match key {
+                if let WindowEvent::KeyDown { key } = event {
+                    match key {
                         KeyCode::C => self.camera_man.cycle_target(astate),
                         KeyCode::Space => self.camera_man.try_toggle_ball_cam(),
                         _ => {}
-                    },
-                    _ => {}
+                    }
                 }
             }
         }

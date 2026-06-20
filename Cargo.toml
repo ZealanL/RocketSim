@@ -1,18 +1,21 @@
 [workspace]
-members = ["rocketsim", "rocketsim/rocketsim_derive"]
-default-members = ["rocketsim"]
-resolver = "3"
-package.license-file = "LICENSE"
 package.version = "0.2.0"
+package.license-file = "LICENSE"
+resolver = "3"
+members = [
+  "rocketsim",
+  "rocketsim_derive",
+  "rocketsim_test_utils",
+  "rocketsim_vis",
+]
+
+[profile.dev]
+opt-level = 1
 
 [profile.release]
 debug = true
 lto = true
-codegen-units = 1
 panic = "abort"
-
-[profile.dev]
-opt-level = 1
 
 # TODO: Temporary
 [profile.test]
