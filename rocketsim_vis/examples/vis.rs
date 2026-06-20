@@ -3,6 +3,7 @@ use glam::Vec3A;
 use rocketsim::{
     Arena, ArenaConfig, CarBodyConfig, CarControls, GameMode, Team, init_from_default,
 };
+use rocketsim_vis::ArenaVisExt;
 
 fn determine_controls(device: &DeviceState) -> CarControls {
     let keys = device.get_keys();

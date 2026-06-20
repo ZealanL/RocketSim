@@ -1,8 +1,9 @@
 use glam::{Vec3, Vec3A};
 use miniquad::{BufferId, BufferSource, BufferType, BufferUsage, RenderingBackend};
+use rocketsim::shared::rsmath;
 use rustc_hash::FxHashMap;
 
-use crate::{shared::rsmath, vis::backend::Model};
+use crate::backend::Model;
 
 #[derive(Debug, Clone)]
 pub struct ModelSet {

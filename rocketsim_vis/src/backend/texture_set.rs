@@ -3,7 +3,7 @@ use miniquad::{
 };
 use rustc_hash::FxHashMap;
 
-use crate::vis::backend::Texture;
+use crate::backend::Texture;
 
 #[derive(Debug, Clone)]
 pub struct TextureSet {

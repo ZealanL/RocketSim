@@ -2,7 +2,7 @@ use std::sync::{Arc, RwLock};
 
 use glam::{Mat3A, Vec3A};
 
-use crate::vis::backend::Color;
+use crate::backend::Color;
 
 #[derive(Debug, Copy, Clone)]
 pub struct VisRenderLinePoint {

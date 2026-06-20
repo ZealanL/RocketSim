@@ -38,6 +38,10 @@ use crate::{
     },
 };
 
+pub trait Vis {
+    fn update(&mut self, arena_state: &ArenaState, dt: f32);
+}
+
 pub struct Arena {
     pub(crate) bullet_world: DiscreteDynamicsWorld,
     pub(crate) rng: Rng,
@@ -51,8 +55,7 @@ pub struct Arena {
     pub(crate) contact_tracker: ArenaContactTracker,
     pub(crate) events: ArenaEventList,
 
-    #[cfg(feature = "vis")]
-    vis_inst: Option<VisInst>,
+    vis: Option<Box<dyn Vis>>,
 }
 
 impl Arena {
@@ -140,8 +143,7 @@ impl Arena {
             contact_tracker: ArenaContactTracker::new(),
             events: ArenaEventList::new(),
 
-            #[cfg(feature = "vis")]
-            vis_inst: None,
+            vis: None,
         }
     }
 
@@ -580,13 +582,11 @@ impl Arena {
 
         self.tick_count += 1;
 
-        #[cfg(feature = "vis")]
-        if self.vis_inst.is_some() {
+        if self.vis.is_some() {
             let arena_state = self.get_arena_state();
-            self.vis_inst
-                .as_mut()
-                .unwrap()
-                .update(&arena_state, TICK_TIME);
+            if let Some(vis) = self.vis.as_mut() {
+                vis.update(&arena_state, TICK_TIME);
+            }
         };
 
         self.get_last_step_events()
@@ -820,29 +820,15 @@ impl Arena {
 
     #[cfg(feature = "vis")]
     pub fn get_vis_enabled(&self) -> bool {
-        self.vis_inst.is_some()
+        self.vis.is_some()
     }
 
-    #[cfg(feature = "vis")]
-    pub fn set_vis_enabled(&mut self, vis_enabled: bool) {
-        if vis_enabled && self.vis_inst.is_none() {
-            // Create visualizer
+    pub fn set_vis(&mut self, vis: Option<Box<dyn Vis>>) {
+        self.vis = vis;
+    }
 
-            let mesh_game_mode = match self.config.game_mode {
-                GameMode::Heatseeker | GameMode::Snowday => GameMode::Soccar,
-                _ => self.config.game_mode,
-            };
-            let collision_mesh_files = crate::ARENA_COLLISION_MESH_FILES.read().unwrap();
-            let game_mode_mesh_files = &collision_mesh_files.as_ref().unwrap()[&mesh_game_mode];
-
-            self.vis_inst = Some(VisInst::new(
-                self.config.game_mode,
-                game_mode_mesh_files.as_slice(),
-            ));
-        } else if !vis_enabled && self.vis_inst.is_some() {
-            unimplemented!(); // TODO: Stop render loop properly
-            // self.vis_inst = None;
-        }
+    pub fn take_vis(&mut self) -> Option<Box<dyn Vis>> {
+        self.vis.take()
     }
 }
 

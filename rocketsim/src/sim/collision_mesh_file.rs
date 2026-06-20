@@ -112,13 +112,11 @@ impl CollisionMeshFile {
         TriangleMesh::new(&self.vertices, &self.indices)
     }
 
-    #[cfg(feature = "vis")]
-    pub fn get_vertices(&self) -> &Vec<Vec3A> {
+    pub fn get_vertices(&self) -> &[Vec3A] {
         &self.vertices
     }
 
-    #[cfg(feature = "vis")]
-    pub fn get_indices(&self) -> &Vec<usize> {
+    pub fn get_indices(&self) -> &[usize] {
         &self.indices
     }
 }
