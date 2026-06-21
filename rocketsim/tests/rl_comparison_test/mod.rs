@@ -1,6 +1,6 @@
-use crate::rl_comparison_test::recording::Recording;
-use crate::rl_comparison_test::recording::cpp_records::TickRecord;
 use rocketsim::{Arena, CarBodyConfig, CarControls, CarState, GameMode, PhysState, Team};
+
+use crate::rl_comparison_test::recording::{Recording, cpp_records::TickRecord};
 
 mod compare;
 mod recording;
