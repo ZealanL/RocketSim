@@ -8,8 +8,6 @@ use super::ArenaContactTracker;
 use crate::bullet::collision::dispatch::quad_ray_callbacks::{
     ClosestQuadRayResultCallback, QuadRayResultCallback,
 };
-#[cfg(feature = "vis")]
-use crate::vis::VisInst;
 use crate::{
     ARENA_COLLISION_SHAPES, ArenaConfig,
     ArenaEvent::{BallHitWorld, CarPickupBoost},
@@ -818,7 +816,6 @@ impl Arena {
         results
     }
 
-    #[cfg(feature = "vis")]
     pub fn get_vis_enabled(&self) -> bool {
         self.vis.is_some()
     }
