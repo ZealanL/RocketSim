@@ -5,34 +5,25 @@ use fastrand::Rng;
 use glam::{Affine3A, EulerRot, Mat3A, Vec3A};
 
 use super::ArenaContactTracker;
+use crate::bullet::collision::dispatch::quad_ray_callbacks::{ClosestQuadRayResultCallback, QuadRayResultCallback};
 #[cfg(feature = "vis")]
 use crate::vis::VisInst;
-use crate::{
-    ARENA_COLLISION_SHAPES, ArenaConfig,
-    ArenaEvent::{BallHitWorld, CarPickupBoost},
-    ArenaMemWeightMode, ArenaState, BallHitWorldEvent, BoostPadConfig, BoostPadGrid, BoostPadState,
-    Car, CarBodyConfig, CarControls, CarInfo, CarPickupBoostEvent, CarState, GameMode,
-    MutatorConfig, PhysState, Team, TileDamageState, TileStates,
-    bullet::{
-        collision::{
-            broadphase::{CollisionFilterGroups, GridBroadphase},
-            narrowphase::manifold_point::ManifoldPoint,
-            shapes::{collision_shape::CollisionShapes, static_plane_shape::StaticPlaneShape},
-        },
-        dynamics::{
-            discrete_dynamics_world::DiscreteDynamicsWorld,
-            rigid_body::{ActivationState, CollisionFlags, RigidBody, RigidBodyConstructionInfo},
-        },
+use crate::{ARENA_COLLISION_SHAPES, ArenaConfig, ArenaEvent::{BallHitWorld, CarPickupBoost}, ArenaMemWeightMode, ArenaState, BallHitWorldEvent, BoostPadConfig, BoostPadGrid, BoostPadState, Car, CarBodyConfig, CarControls, CarInfo, CarPickupBoostEvent, CarState, GameMode, MutatorConfig, PhysState, RaycastQuery, RaycastResult, Team, TileDamageState, TileStates, bullet::{
+    collision::{
+        broadphase::{CollisionFilterGroups, GridBroadphase},
+        narrowphase::manifold_point::ManifoldPoint,
+        shapes::{collision_shape::CollisionShapes, static_plane_shape::StaticPlaneShape},
     },
-    consts::{self, BT_TO_UU, TICK_RATE, TICK_TIME, UU_TO_BT},
-    make_tile_shapes,
-    sim::{
-        ArenaEvent::{self, CarHitBall},
-        Ball, BallState, BoostPad, CarHitBallEvent, CarHitCarEvent, CarHitWorldEvent, DemoMode,
-        UserInfoTypes,
-        arena::ArenaEventList,
+    dynamics::{
+        discrete_dynamics_world::DiscreteDynamicsWorld,
+        rigid_body::{ActivationState, CollisionFlags, RigidBody, RigidBodyConstructionInfo},
     },
-};
+}, consts::{self, BT_TO_UU, TICK_RATE, TICK_TIME, UU_TO_BT}, make_tile_shapes, sim::{
+    ArenaEvent::{self, CarHitBall},
+    Ball, BallState, BoostPad, CarHitBallEvent, CarHitCarEvent, CarHitWorldEvent, DemoMode,
+    UserInfoTypes,
+    arena::ArenaEventList,
+}, RaycastHitInfo};
 
 pub struct Arena {
     pub(crate) bullet_world: DiscreteDynamicsWorld,
@@ -771,6 +762,41 @@ impl Arena {
     /// Returns the events generated during the last stepped tick
     pub fn get_last_step_events(&self) -> &[ArenaEvent] {
         self.events.events()
+    }
+
+    #[must_use]
+    /// Cast N rays in the arena
+    ///
+    /// Note that rays are batch-casted 4 at a time for SIMD speed,
+    /// so doing multiples of 4 at once is most efficient
+    pub fn cast_rays(&self, ray_queries: &[RaycastQuery]) -> Vec<RaycastResult> {
+        let mut results = Vec::with_capacity(ray_queries.len());
+        for query_batch in ray_queries.chunks(4) {
+            let (mut froms, mut tos) = ([Vec3A::ZERO; 4], [Vec3A::ZERO; 4]);
+            for (i, query) in query_batch.iter().enumerate() {
+                froms[i] = query.from;
+                tos[i] = query.to;
+            }
+
+            let mut callback = ClosestQuadRayResultCallback::new(&froms, &tos, None);
+            self.bullet_world.ray_test(&froms, &tos, &mut callback);
+
+            for i in 0..query_batch.len() {
+                let hit_info = if callback.has_hit(i) {
+                    Some(RaycastHitInfo {
+                        hit_point: callback.hit_point_world[i],
+                        hit_normal: callback.hit_normal_world[i],
+                        hit_fraction: callback.base.closest_hit_fraction[i],
+                    })
+                } else {
+                    None
+                };
+
+                results.push(RaycastResult { hit_info })
+            }
+        }
+
+        results
     }
 
     #[cfg(feature = "vis")]
