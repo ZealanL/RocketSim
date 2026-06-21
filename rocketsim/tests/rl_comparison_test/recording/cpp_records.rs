@@ -18,9 +18,9 @@ impl VecRecord {
         (self.x.powi(2) + self.y.powi(2) + self.z.powi(2)).sqrt()
     }
 }
-impl Into<Vec3A> for VecRecord {
-    fn into(self) -> Vec3A {
-        Vec3A::new(self.x, self.y, self.z)
+impl From<VecRecord> for Vec3A {
+    fn from(val: VecRecord) -> Self {
+        Vec3A::new(val.x, val.y, val.z)
     }
 }
 impl Index<usize> for VecRecord {
@@ -95,17 +95,17 @@ pub struct ControlsRecord {
     pub boost: bool,
     pub handbrake: bool,
 }
-impl Into<CarControls> for ControlsRecord {
-    fn into(self) -> CarControls {
+impl From<ControlsRecord> for CarControls {
+    fn from(val: ControlsRecord) -> Self {
         CarControls {
-            throttle: self.throttle,
-            steer: self.steer,
-            pitch: self.pitch,
-            yaw: self.yaw,
-            roll: self.roll,
-            jump: self.jump,
-            boost: self.boost,
-            handbrake: self.handbrake,
+            throttle: val.throttle,
+            steer: val.steer,
+            pitch: val.pitch,
+            yaw: val.yaw,
+            roll: val.roll,
+            jump: val.jump,
+            boost: val.boost,
+            handbrake: val.handbrake,
         }
     }
 }
@@ -120,30 +120,34 @@ pub struct PhysRecord {
     pub lin_vel: VecRecord,
     pub ang_vel: VecRecord,
 }
-impl Into<PhysState> for PhysRecord {
-    fn into(self) -> PhysState {
+impl From<PhysRecord> for PhysState {
+    fn from(phys_record: PhysRecord) -> Self {
         // Verify rotation matrix is sane
         {
             for i in 0..3 {
-                let c_len = self.rot.rows[i].length();
+                let c_len = phys_record.rot.rows[i].length();
                 assert!((1.0 - c_len).abs() < 1e-6);
 
                 // Dirs should be 90 degrees from other row dirs
                 assert!(
-                    Vec3A::dot(self.rot.rows[i].into(), self.rot.rows[(i + 1) % 3].into()).abs()
+                    Vec3A::dot(
+                        phys_record.rot.rows[i].into(),
+                        phys_record.rot.rows[(i + 1) % 3].into()
+                    )
+                    .abs()
                         < 1e-6
                 );
             }
         }
 
         PhysState {
-            pos: self.pos.into(),
-            vel: self.lin_vel.into(),
-            ang_vel: self.ang_vel.into(),
+            pos: phys_record.pos.into(),
+            vel: phys_record.lin_vel.into(),
+            ang_vel: phys_record.ang_vel.into(),
             rot_mat: Mat3A::from_cols(
-                self.rot.column(0).into(),
-                self.rot.column(1).into(),
-                self.rot.column(2).into(),
+                phys_record.rot.column(0).into(),
+                phys_record.rot.column(1).into(),
+                phys_record.rot.column(2).into(),
             ),
         }
     }
@@ -167,20 +171,19 @@ pub struct CarRecord {
 
     pub wheels: [WheelRecord; 4],
 }
-impl Into<CarState> for CarRecord {
-    fn into(self) -> CarState {
-        let mut result = CarState::default();
-        result.phys = self.phys.into();
-
-        result.boost = self.boost_amount;
-        result.controls = self.prev_controls.into();
-        result.is_on_ground = self.is_on_ground;
-        result.is_jumping = self.is_jumping;
-        result.is_flipping = self.is_flipping;
-        result.jump_time = self.jump_time;
-        result.flip_time = self.flip_time;
-
-        result
+impl From<CarRecord> for CarState {
+    fn from(phys_record: CarRecord) -> Self {
+        Self {
+            phys: phys_record.phys.into(),
+            boost: phys_record.boost_amount,
+            controls: phys_record.prev_controls.into(),
+            is_on_ground: phys_record.is_on_ground,
+            is_jumping: phys_record.is_jumping,
+            is_flipping: phys_record.is_flipping,
+            jump_time: phys_record.jump_time,
+            flip_time: phys_record.flip_time,
+            ..Default::default()
+        }
     }
 }
 

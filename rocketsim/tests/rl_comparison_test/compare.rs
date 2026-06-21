@@ -28,13 +28,13 @@ impl<T: Copy + Debug> ComparisonData<T> {
 
 #[derive(Copy, Clone, Debug)]
 pub enum Comparison {
-    FloatComparison(ComparisonData<f32>),
-    BoolComparison(ComparisonData<bool>),
-    VecComparison(ComparisonData<Vec3A>),
+    Float(ComparisonData<f32>),
+    Bool(ComparisonData<bool>),
+    Vec(ComparisonData<Vec3A>),
 }
 impl Comparison {
     pub fn new_float(pred: f32, real: f32, error_thresh: f32) -> Self {
-        Comparison::FloatComparison(ComparisonData::new(
+        Comparison::Float(ComparisonData::new(
             pred,
             real,
             (pred - real).abs(),
@@ -43,7 +43,7 @@ impl Comparison {
     }
 
     pub fn new_bool(pred: bool, real: bool) -> Self {
-        Comparison::BoolComparison(ComparisonData::new(
+        Comparison::Bool(ComparisonData::new(
             pred,
             real,
             (pred != real) as u8 as f32,
@@ -52,7 +52,7 @@ impl Comparison {
     }
 
     pub fn new_vec(pred: Vec3A, real: Vec3A, error_thresh: f32) -> Self {
-        Comparison::VecComparison(ComparisonData::new(
+        Comparison::Vec(ComparisonData::new(
             pred,
             real,
             (pred - real).length(),
@@ -63,9 +63,9 @@ impl Comparison {
     pub fn rel_error(&self) -> f32 {
         use Comparison::*;
         match self {
-            FloatComparison(d) => d.rel_error,
-            BoolComparison(d) => d.rel_error,
-            VecComparison(d) => d.rel_error,
+            Float(d) => d.rel_error,
+            Bool(d) => d.rel_error,
+            Vec(d) => d.rel_error,
         }
     }
 }

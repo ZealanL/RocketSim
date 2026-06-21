@@ -12,7 +12,7 @@ pub fn set_state_to_record_tick(
     car_controls: &CarControls,
 ) {
     let mut cs = *arena.get_car_state(car_idx);
-    let rep_cs: CarState = tick.car_record.clone().into();
+    let rep_cs: CarState = tick.car_record.into();
     cs.phys = rep_cs.phys;
     cs.is_jumping = rep_cs.is_jumping;
     cs.is_flipping = rep_cs.is_flipping;
@@ -22,7 +22,7 @@ pub fn set_state_to_record_tick(
 
     arena.set_car_state(car_idx, cs);
 
-    let rep_bs_phys: PhysState = tick.ball_record.clone().into();
+    let rep_bs_phys: PhysState = tick.ball_record.into();
     let mut bs = *arena.get_ball_state();
     bs.phys = rep_bs_phys;
     arena.set_ball_state(bs);
