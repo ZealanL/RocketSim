@@ -40,7 +40,6 @@ pub trait Vis: Send + Sync {
 
 pub struct Arena {
     pub(crate) bullet_world: DiscreteDynamicsWorld,
-    pub(crate) rng: Rng,
     config: ArenaConfig,
 
     pub(crate) ball: Ball,
@@ -51,7 +50,8 @@ pub struct Arena {
     pub(crate) contact_tracker: ArenaContactTracker,
     pub(crate) events: ArenaEventList,
 
-    vis: Option<Box<dyn Vis>>,
+    pub rng: Rng,
+    pub vis: Option<Box<dyn Vis>>,
 }
 
 impl Arena {
@@ -814,16 +814,8 @@ impl Arena {
         results
     }
 
-    pub fn get_vis_enabled(&self) -> bool {
+    pub fn is_vis_enabled(&self) -> bool {
         self.vis.is_some()
-    }
-
-    pub fn set_vis(&mut self, vis: Option<Box<dyn Vis>>) {
-        self.vis = vis;
-    }
-
-    pub fn take_vis(&mut self) -> Option<Box<dyn Vis>> {
-        self.vis.take()
     }
 }
 

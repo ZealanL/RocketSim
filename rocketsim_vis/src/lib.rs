@@ -13,7 +13,7 @@ pub trait ArenaVisExt {
 
 impl ArenaVisExt for Arena {
     fn set_vis_enabled(&mut self, vis_enabled: bool) {
-        match (vis_enabled, self.get_vis_enabled()) {
+        match (vis_enabled, self.is_vis_enabled()) {
             (true, false) => {
                 let game_mode = self.game_mode();
                 let mesh_game_mode = match game_mode {
@@ -22,13 +22,13 @@ impl ArenaVisExt for Arena {
                 };
 
                 let game_mode_mesh_files = get_arena_collision_mesh_files(mesh_game_mode);
-                self.set_vis(Some(Box::new(VisInst::new(
+                self.vis = Some(Box::new(VisInst::new(
                     game_mode,
                     game_mode_mesh_files.as_slice(),
-                ))));
+                )));
             }
             (false, true) => {
-                let _ = self.take_vis();
+                self.vis = None;
             }
             _ => {}
         }
