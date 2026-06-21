@@ -1,4 +1,4 @@
-use crate::{BallState, BoostPadConfig, BoostPadState, CarInfo, CarState, GameMode};
+use crate::{BallState, BoostPadConfig, BoostPadState, CarInfo, CarState, GameMode, TileStates};
 
 #[derive(Debug, Clone)]
 pub struct ArenaState {
@@ -7,6 +7,7 @@ pub struct ArenaState {
     pub cars: Vec<(CarInfo, CarState)>,
     pub ball: BallState,
     pub boost_pads: Vec<(BoostPadConfig, BoostPadState)>,
+    pub tile_states: Option<TileStates>,
 }
 
 impl ArenaState {
@@ -23,6 +24,7 @@ impl ArenaState {
             cars: Vec::new(),
             ball: BallState::default(),
             boost_pads: Vec::new(),
+            tile_states: None,
         }
     }
 

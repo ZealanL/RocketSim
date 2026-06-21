@@ -773,6 +773,7 @@ impl Arena {
             cars,
             ball,
             boost_pads,
+            tile_states: self.tile_states,
         }
     }
 
