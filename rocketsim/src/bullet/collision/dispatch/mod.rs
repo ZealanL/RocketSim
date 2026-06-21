@@ -8,7 +8,7 @@ mod convex_convex_collision_alg;
 mod convex_plane_collision_alg;
 pub mod internal_edge_utility;
 mod obb_obb_collision_alg;
-pub mod ray_packet_callbacks;
+pub mod quad_ray_callbacks;
 mod sphere_concave_collision_alg;
 mod sphere_obb_collision_alg;
 pub mod tri_bvh_util;

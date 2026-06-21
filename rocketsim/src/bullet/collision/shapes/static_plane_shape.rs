@@ -1,10 +1,10 @@
 use glam::{Affine3A, Vec3A, Vec4};
 
 use crate::{
-    bullet::collision::dispatch::ray_packet_callbacks::{
-        BridgeTriRayPacketCallback, QuadRayResultCallback,
+    bullet::collision::dispatch::quad_ray_callbacks::{
+        BridgeTriQuadRayCallback, QuadRayResultCallback,
     },
-    shared::{Aabb, RayPacketInfo},
+    shared::{Aabb, QuadRayInfo},
 };
 
 pub struct StaticPlaneShape {
@@ -80,8 +80,8 @@ impl StaticPlaneShape {
 
     pub fn perform_quad_raycast<T: QuadRayResultCallback>(
         &self,
-        result_callback: &mut BridgeTriRayPacketCallback<T>,
-        ray_info: &RayPacketInfo,
+        result_callback: &mut BridgeTriQuadRayCallback<T>,
+        ray_info: &QuadRayInfo,
     ) {
         let plane = &self.aabb_ident_cache;
         if !ray_info.aabb.intersects(plane) {
@@ -107,7 +107,7 @@ impl StaticPlaneShape {
         let inv_delta_y = Vec4::ONE / delta_y;
         let inv_delta_z = Vec4::ONE / delta_z;
 
-        let ray_mask = RayPacketInfo::intersect_ray_aabb_packet(
+        let ray_mask = QuadRayInfo::intersect_quad_ray_aabb(
             &[source_x, source_y, source_z],
             &[inv_delta_x, inv_delta_y, inv_delta_z],
             plane,

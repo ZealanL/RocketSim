@@ -4,7 +4,7 @@ use super::collision_world::CollisionWorld;
 use crate::bullet::{
     collision::{
         broadphase::{BroadphaseAabbCallback, BroadphaseProxy, CollisionFilterGroups},
-        shapes::{triangle_callback::ProcessRayPacketTriangle, triangle_shape::TriangleShape},
+        shapes::{triangle_callback::ProcessQuadRayTriangle, triangle_shape::TriangleShape},
     },
     dynamics::rigid_body::RigidBody,
     linear_math::interpolate_3,
@@ -146,7 +146,7 @@ impl<T: QuadRayResultCallback> BroadphaseAabbCallback for QuadRayCallback<'_, T>
     }
 }
 
-pub struct BridgeTriRayPacketCallback<'a, T: QuadRayResultCallback> {
+pub struct BridgeTriQuadRayCallback<'a, T: QuadRayResultCallback> {
     pub to: &'a [Vec3A; 4],
     pub from: &'a [Vec3A; 4],
     pub hit_fraction: Vec4,
@@ -155,7 +155,7 @@ pub struct BridgeTriRayPacketCallback<'a, T: QuadRayResultCallback> {
     pub result_callback: &'a mut T,
 }
 
-impl<T: QuadRayResultCallback> BridgeTriRayPacketCallback<'_, T> {
+impl<T: QuadRayResultCallback> BridgeTriQuadRayCallback<'_, T> {
     fn internal_report_hit(&mut self, hit_normal_local: Vec3A, hit_fraction: f32, ray_idx: usize) {
         let hit_normal_world = self.collision_obj.get_world_trans().matrix3 * hit_normal_local;
 
@@ -220,8 +220,8 @@ impl<T: QuadRayResultCallback> BridgeTriRayPacketCallback<'_, T> {
     }
 }
 
-impl<T: QuadRayResultCallback> ProcessRayPacketTriangle for BridgeTriRayPacketCallback<'_, T> {
-    fn process_packet_node(
+impl<T: QuadRayResultCallback> ProcessQuadRayTriangle for BridgeTriQuadRayCallback<'_, T> {
+    fn process_node(
         &mut self,
         triangle: &TriangleShape,
         active_mask: u8,

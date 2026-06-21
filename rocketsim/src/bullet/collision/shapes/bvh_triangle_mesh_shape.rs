@@ -6,11 +6,11 @@ use crate::{
     bullet::collision::{
         dispatch::{
             internal_edge_utility::generate_internal_edge_info,
-            tri_bvh_util::{NodeOverlapCallback, RayPacketNodeOverlapCallback},
+            tri_bvh_util::{NodeOverlapCallback, QuadRayNodeOverlapCallback},
         },
-        shapes::{optimized_bvh::create_bvh, triangle_callback::ProcessRayPacketTriangle},
+        shapes::{optimized_bvh::create_bvh, triangle_callback::ProcessQuadRayTriangle},
     },
-    shared::{Aabb, RayPacketInfo, bvh::Tree},
+    shared::{Aabb, QuadRayInfo, bvh::Tree},
 };
 
 pub struct BvhTriangleMeshShape {
@@ -56,14 +56,14 @@ impl BvhTriangleMeshShape {
         self.bvh.check_overlap_with(aabb)
     }
 
-    pub fn perform_quad_raycast<T: ProcessRayPacketTriangle>(
+    pub fn perform_quad_raycast<T: ProcessQuadRayTriangle>(
         &self,
         callback: &mut T,
-        ray_info: &mut RayPacketInfo,
+        ray_info: &mut QuadRayInfo,
     ) {
         let mut my_node_callback =
-            RayPacketNodeOverlapCallback::new(self.get_mesh_interface(), callback);
+            QuadRayNodeOverlapCallback::new(self.get_mesh_interface(), callback);
         self.bvh
-            .report_ray_packet_overlapping_node(&mut my_node_callback, ray_info);
+            .report_quad_ray_overlapping_node(&mut my_node_callback, ray_info);
     }
 }

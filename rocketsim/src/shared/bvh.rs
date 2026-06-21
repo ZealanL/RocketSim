@@ -2,14 +2,14 @@ use std::{iter::repeat_n, mem};
 
 use glam::{Vec3A, Vec4};
 
-use super::{Aabb, RayPacketInfo};
+use super::{Aabb, QuadRayInfo};
 
 pub trait ProcessNode {
     fn process_node(&mut self, leaf_idx: usize);
 }
 
-pub trait ProcessRayPacketNode {
-    fn process_packet_node(&mut self, leaf_idx: usize, active_mask: u8, lambda_max: &mut Vec4);
+pub trait ProcessQuadRayNode {
+    fn process_node(&mut self, leaf_idx: usize, active_mask: u8, lambda_max: &mut Vec4);
 }
 
 #[derive(Debug, Default, Clone)]
@@ -255,10 +255,10 @@ impl Tree {
         }
     }
 
-    fn walk_stackless_tree_against_ray_packet<T: ProcessRayPacketNode>(
+    fn walk_stackless_tree_against_quad_ray<T: ProcessQuadRayNode>(
         &self,
         node_callback: &mut T,
-        ray_info: &mut RayPacketInfo,
+        ray_info: &mut QuadRayInfo,
         origins: &[Vec4; 3],
         inv_dir: &[Vec4; 3],
         start_node_idx: usize,
@@ -272,7 +272,7 @@ impl Tree {
             match root_node.node_type {
                 BvhNodeType::Leaf { leaf_idx } => {
                     if overlap {
-                        let mask = RayPacketInfo::intersect_ray_aabb_packet(
+                        let mask = QuadRayInfo::intersect_quad_ray_aabb(
                             origins,
                             inv_dir,
                             &root_node.aabb,
@@ -280,7 +280,7 @@ impl Tree {
                         );
 
                         if mask != 0 {
-                            node_callback.process_packet_node(
+                            node_callback.process_node(
                                 leaf_idx,
                                 mask,
                                 &mut ray_info.lambda_max,
@@ -296,17 +296,17 @@ impl Tree {
         }
     }
 
-    pub fn report_ray_packet_overlapping_node<T: ProcessRayPacketNode>(
+    pub fn report_quad_ray_overlapping_node<T: ProcessQuadRayNode>(
         &self,
         node_callback: &mut T,
-        ray_info: &mut RayPacketInfo,
+        ray_info: &mut QuadRayInfo,
     ) {
         if !ray_info.aabb.intersects(&self.aabb) {
             return;
         }
 
         let (origins, inv_dirs) = ray_info.calc_pos_dir();
-        self.walk_stackless_tree_against_ray_packet(
+        self.walk_stackless_tree_against_quad_ray(
             node_callback,
             ray_info,
             &origins,

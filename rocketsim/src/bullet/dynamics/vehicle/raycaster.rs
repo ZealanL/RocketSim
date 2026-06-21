@@ -1,7 +1,7 @@
 use glam::Vec3A;
 
 use crate::bullet::{
-    collision::dispatch::ray_packet_callbacks::{ClosestQuadRayResultCallback, QuadRayResultCallback},
+    collision::dispatch::quad_ray_callbacks::{ClosestQuadRayResultCallback, QuadRayResultCallback},
     dynamics::{discrete_dynamics_world::DiscreteDynamicsWorld, rigid_body::RigidBody},
 };
 

@@ -4,14 +4,14 @@ use super::polyhedral_convex_shape::PolyhedralConvexShape;
 use crate::{
     bullet::{
         collision::{
-            dispatch::ray_packet_callbacks::{
-                BridgeTriRayPacketCallback, QuadRayResultCallback,
+            dispatch::quad_ray_callbacks::{
+                BridgeTriQuadRayCallback, QuadRayResultCallback,
             },
             narrowphase::gjk::calc_time_of_impact,
         },
         linear_math::max_dot,
     },
-    shared::{Aabb, RayPacketInfo},
+    shared::{Aabb, QuadRayInfo},
 };
 
 pub struct ConvexHullShape {
@@ -107,8 +107,8 @@ impl ConvexHullShape {
 
     pub fn perform_quad_raycast<T: QuadRayResultCallback>(
         &self,
-        result_callback: &mut BridgeTriRayPacketCallback<'_, T>,
-        ray_info: &RayPacketInfo<'_>,
+        result_callback: &mut BridgeTriQuadRayCallback<'_, T>,
+        ray_info: &QuadRayInfo<'_>,
     ) {
         let hull_aabb = self.get_ident_aabb();
         if !ray_info.aabb.intersects(hull_aabb) {
@@ -116,7 +116,7 @@ impl ConvexHullShape {
         }
 
         let (origins, inv_dirs) = ray_info.calc_pos_dir();
-        let mask = RayPacketInfo::intersect_ray_aabb_packet(
+        let mask = QuadRayInfo::intersect_quad_ray_aabb(
             &origins,
             &inv_dirs,
             hull_aabb,
@@ -139,7 +139,7 @@ impl ConvexHullShape {
 
     fn internal_perform_raycast<T: QuadRayResultCallback>(
         &self,
-        result_callback: &mut BridgeTriRayPacketCallback<'_, T>,
+        result_callback: &mut BridgeTriQuadRayCallback<'_, T>,
         ray_source: Vec3A,
         ray_target: Vec3A,
         ray_idx: usize,

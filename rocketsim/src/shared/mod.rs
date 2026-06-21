@@ -1,8 +1,8 @@
 mod aabb;
 pub(crate) mod bvh;
 pub mod rand;
-mod ray_packet;
+mod quad_ray;
 pub mod rsmath;
 
 pub use aabb::*;
-pub use ray_packet::*;
+pub use quad_ray::*;

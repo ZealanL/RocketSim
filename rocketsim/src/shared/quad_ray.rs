@@ -2,14 +2,14 @@ use glam::{Vec3A, Vec4};
 
 use super::Aabb;
 
-pub struct RayPacketInfo<'a> {
+pub struct QuadRayInfo<'a> {
     pub ray_sources: &'a [Vec3A; 4],
     pub ray_targets: &'a [Vec3A; 4],
     pub lambda_max: Vec4,
     pub aabb: Aabb,
 }
 
-impl<'a> RayPacketInfo<'a> {
+impl<'a> QuadRayInfo<'a> {
     #[must_use]
     pub fn new(ray_sources: &'a [Vec3A; 4], ray_targets: &'a [Vec3A; 4]) -> Self {
         // Union AABB of the 4 segments for quick root rejection.
@@ -92,9 +92,9 @@ impl<'a> RayPacketInfo<'a> {
     #[must_use]
     /// Packet slab test for 4 rays using Vec4 lanes.
     ///
-    /// Returns a bitmask (bit i set if ray i overlaps the AABB).
+    /// Returns a bitmask (bit `i` set if ray `i` overlaps the AABB).
     /// Only the lowest 4 bits are set.
-    pub fn intersect_ray_aabb_packet(
+    pub fn intersect_quad_ray_aabb(
         origins: &[Vec4; 3],
         inv_dir: &[Vec4; 3],
         bounds: &Aabb,

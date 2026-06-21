@@ -9,7 +9,7 @@ use crate::bullet::{
         broadphase::{CollisionFilterGroups, GridBroadphase},
         dispatch::{
             collision_world::CollisionWorld,
-            ray_packet_callbacks::{QuadRayCallback, QuadRayResultCallback},
+            quad_ray_callbacks::{QuadRayCallback, QuadRayResultCallback},
         },
         narrowphase::persistent_manifold::ContactAddedCallback,
     },

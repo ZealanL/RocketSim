@@ -2,10 +2,10 @@ use glam::{Affine3A, Vec3A};
 
 use super::box_shape::BoxShape;
 use crate::{
-    bullet::collision::dispatch::ray_packet_callbacks::{
-        BridgeTriRayPacketCallback, QuadRayResultCallback,
+    bullet::collision::dispatch::quad_ray_callbacks::{
+        BridgeTriQuadRayCallback, QuadRayResultCallback,
     },
-    shared::{Aabb, RayPacketInfo},
+    shared::{Aabb, QuadRayInfo},
 };
 
 pub struct CompoundShape {
@@ -51,8 +51,8 @@ impl CompoundShape {
 
     pub fn perform_quad_raycast<T: QuadRayResultCallback>(
         &self,
-        result_callback: &mut BridgeTriRayPacketCallback<T>,
-        ray_info: &RayPacketInfo,
+        result_callback: &mut BridgeTriQuadRayCallback<T>,
+        ray_info: &QuadRayInfo,
     ) {
         let box_aabb = self.get_ident_aabb();
         if !ray_info.aabb.intersects(box_aabb) {
@@ -60,7 +60,7 @@ impl CompoundShape {
         }
 
         let (origins, inv_dirs) = ray_info.calc_pos_dir();
-        let mask = RayPacketInfo::intersect_ray_aabb_packet(
+        let mask = QuadRayInfo::intersect_quad_ray_aabb(
             &origins,
             &inv_dirs,
             box_aabb,
@@ -83,7 +83,7 @@ impl CompoundShape {
 
     fn internal_perform_raycast<T: QuadRayResultCallback>(
         &self,
-        result_callback: &mut BridgeTriRayPacketCallback<T>,
+        result_callback: &mut BridgeTriQuadRayCallback<T>,
         ray_source: Vec3A,
         ray_target: Vec3A,
         ray_idx: usize,

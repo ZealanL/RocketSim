@@ -2,10 +2,10 @@ use glam::{Affine3A, Vec3A, Vec4};
 
 use super::convex_internal_shape::ConvexInternalShape;
 use crate::{
-    bullet::collision::dispatch::ray_packet_callbacks::{
-        BridgeTriRayPacketCallback, QuadRayResultCallback,
+    bullet::collision::dispatch::quad_ray_callbacks::{
+        BridgeTriQuadRayCallback, QuadRayResultCallback,
     },
-    shared::{Aabb, RayPacketInfo},
+    shared::{Aabb, QuadRayInfo},
 };
 
 pub const SPHERE_RADIUS_MARGIN: f32 = 0.08;
@@ -56,8 +56,8 @@ impl SphereShape {
 
     pub fn perform_quad_raycast<T: QuadRayResultCallback>(
         &self,
-        result_callback: &mut BridgeTriRayPacketCallback<T>,
-        ray_info: &RayPacketInfo,
+        result_callback: &mut BridgeTriQuadRayCallback<T>,
+        ray_info: &QuadRayInfo,
     ) {
         let sources = ray_info.ray_sources;
         let targets = ray_info.ray_targets;

@@ -11,10 +11,10 @@ use super::{
     triangle_shape::TriangleShape,
 };
 use crate::{
-    bullet::collision::dispatch::ray_packet_callbacks::{
-        BridgeTriRayPacketCallback, QuadRayResultCallback,
+    bullet::collision::dispatch::quad_ray_callbacks::{
+        BridgeTriQuadRayCallback, QuadRayResultCallback,
     },
-    shared::{Aabb, RayPacketInfo},
+    shared::{Aabb, QuadRayInfo},
 };
 
 pub enum CollisionShapes {
@@ -114,8 +114,8 @@ impl CollisionShapes {
 
     pub fn perform_quad_raycast<T: QuadRayResultCallback>(
         &self,
-        result_callback: &mut BridgeTriRayPacketCallback<T>,
-        ray_info: &mut RayPacketInfo,
+        result_callback: &mut BridgeTriQuadRayCallback<T>,
+        ray_info: &mut QuadRayInfo,
     ) {
         match self {
             Self::Compound(compound) => {
