@@ -7,10 +7,5 @@ pub trait ProcessTriangle {
 }
 
 pub trait ProcessQuadRayTriangle {
-    fn process_node(
-        &mut self,
-        triangle: &TriangleShape,
-        active_mask: u8,
-        lambda_max: &mut Vec4,
-    );
+    fn process_node(&mut self, triangle: &TriangleShape, active_mask: u8, lambda_max: &mut Vec4);
 }

@@ -4,9 +4,7 @@ use super::polyhedral_convex_shape::PolyhedralConvexShape;
 use crate::{
     bullet::{
         collision::{
-            dispatch::quad_ray_callbacks::{
-                BridgeTriQuadRayCallback, QuadRayResultCallback,
-            },
+            dispatch::quad_ray_callbacks::{BridgeTriQuadRayCallback, QuadRayResultCallback},
             narrowphase::gjk::calc_time_of_impact,
         },
         linear_math::max_dot,

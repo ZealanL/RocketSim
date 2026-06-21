@@ -280,11 +280,7 @@ impl Tree {
                         );
 
                         if mask != 0 {
-                            node_callback.process_node(
-                                leaf_idx,
-                                mask,
-                                &mut ray_info.lambda_max,
-                            );
+                            node_callback.process_node(leaf_idx, mask, &mut ray_info.lambda_max);
                         }
                     }
                     cur_idx += 1;

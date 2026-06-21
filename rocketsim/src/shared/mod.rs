@@ -1,7 +1,7 @@
 mod aabb;
 pub(crate) mod bvh;
-pub mod rand;
 mod quad_ray;
+pub mod rand;
 pub mod rsmath;
 
 pub use aabb::*;
