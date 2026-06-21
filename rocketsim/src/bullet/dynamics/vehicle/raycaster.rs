@@ -1,7 +1,9 @@
 use glam::Vec3A;
 
 use crate::bullet::{
-    collision::dispatch::quad_ray_callbacks::{ClosestQuadRayResultCallback, QuadRayResultCallback},
+    collision::dispatch::quad_ray_callbacks::{
+        ClosestQuadRayResultCallback, QuadRayResultCallback,
+    },
     dynamics::{discrete_dynamics_world::DiscreteDynamicsWorld, rigid_body::RigidBody},
 };
 
@@ -28,7 +30,7 @@ impl VehicleRaycaster {
         to: &[Vec3A; 4],
         ignore_obj: &RigidBody,
     ) -> [Option<VehicleRaycasterResult<'a>>; 4] {
-        let mut ray_callback = ClosestQuadRayResultCallback::new(from, to, ignore_obj);
+        let mut ray_callback = ClosestQuadRayResultCallback::new(from, to, Some(ignore_obj));
         ray_callback.base.collision_filter_group |= self.added_filter_mask;
         collision_world.ray_test(from, to, &mut ray_callback);
 

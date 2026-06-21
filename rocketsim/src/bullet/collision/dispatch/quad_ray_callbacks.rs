@@ -66,11 +66,11 @@ impl<'a> ClosestQuadRayResultCallback<'a> {
     pub fn new(
         ray_from_world: &'a [Vec3A; 4],
         ray_to_world: &'a [Vec3A; 4],
-        ignore_obj: &RigidBody,
+        ignore_obj: Option<&RigidBody>,
     ) -> Self {
         Self {
             base: QuadRayResultCallbackBase {
-                ignore_obj_world_idx: Some(ignore_obj.world_array_idx),
+                ignore_obj_world_idx: ignore_obj.map(|r| r.world_array_idx),
                 ..Default::default()
             },
             ray_from_world,
@@ -221,12 +221,7 @@ impl<T: QuadRayResultCallback> BridgeTriQuadRayCallback<'_, T> {
 }
 
 impl<T: QuadRayResultCallback> ProcessQuadRayTriangle for BridgeTriQuadRayCallback<'_, T> {
-    fn process_node(
-        &mut self,
-        triangle: &TriangleShape,
-        active_mask: u8,
-        lambda_max: &mut Vec4,
-    ) {
+    fn process_node(&mut self, triangle: &TriangleShape, active_mask: u8, lambda_max: &mut Vec4) {
         for i in 0..4 {
             if (active_mask & (1 << i)) != 0 {
                 self.process_triangle(triangle, &mut lambda_max[i], i);
