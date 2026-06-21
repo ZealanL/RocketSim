@@ -137,7 +137,7 @@ impl StaticPlaneShape {
 
         let t = -normal_start / dir_align;
 
-        let t_mask = t.cmpge(Vec4::ZERO) & t.cmplt(Vec4::splat(1.0));
+        let t_mask = t.cmpge(Vec4::ZERO) & t.cmplt(dist);
         let hit_mask = ray_mask & (dir_align_mask & t_mask).bitmask() as u8;
         if hit_mask == 0 {
             return;
