@@ -1,5 +1,4 @@
-use std::fs;
-use std::path::Path;
+use std::{fs, path::Path};
 
 fn generate_comparison_tests() {
     println!("cargo:rerun-if-changed=tests/rl_comparison_tests/test_recordings");

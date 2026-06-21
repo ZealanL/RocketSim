@@ -1,8 +1,9 @@
 #![allow(dead_code)]
 
+use std::ops::{Index, IndexMut};
+
 use glam::{Mat3A, Vec3A};
 use rocketsim::{CarControls, CarState, PhysState};
-use std::ops::{Index, IndexMut};
 #[repr(C)]
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct VecRecord {

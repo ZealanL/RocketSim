@@ -7,11 +7,27 @@ use crate::bullet::{
     collision::{
         broadphase::{BroadphaseProxy, GridBroadphase},
         dispatch::convex_convex_collision_alg,
-        narrowphase::persistent_manifold::{ContactAddedCallback, PersistentManifold},
+        narrowphase::{
+            manifold_point::ManifoldPoint,
+            persistent_manifold::{ContactAddedCallback, PersistentManifold},
+        },
         shapes::collision_shape::CollisionShapes,
     },
     dynamics::rigid_body::RigidBody,
 };
+
+struct NoOpCallback;
+
+impl ContactAddedCallback for NoOpCallback {
+    fn callback(
+        &mut self,
+        _contact_point: &mut ManifoldPoint,
+        _body_a: &RigidBody,
+        _body_b: &RigidBody,
+        _idx: Option<usize>,
+    ) {
+    }
+}
 
 pub struct CollisionDispatcher {
     pub manifolds: Vec<PersistentManifold>,
@@ -26,6 +42,10 @@ impl Default for CollisionDispatcher {
 }
 
 impl CollisionDispatcher {
+    pub fn test_collision(body_a: &RigidBody, body_b: &RigidBody) -> bool {
+        Self::process_collision(body_a, body_b, &mut NoOpCallback).is_some()
+    }
+
     fn process_collision<'a, T: ContactAddedCallback>(
         col_obj_a: &'a RigidBody,
         col_obj_b: &'a RigidBody,

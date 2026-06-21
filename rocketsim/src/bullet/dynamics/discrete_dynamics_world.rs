@@ -2,18 +2,25 @@ use glam::Vec3A;
 
 use super::{
     constraint_solver::seq_impulse_constraint_solver::SeqImpulseConstraintSolver,
-    rigid_body::{ActivationState, RigidBody},
+    rigid_body::{ActivationState, RigidBody, RigidBodyConstructionInfo},
 };
-use crate::bullet::{
-    collision::{
-        broadphase::{CollisionFilterGroups, GridBroadphase},
-        dispatch::{
-            collision_world::CollisionWorld,
-            ray_packet_callbacks::{QuadRayCallback, RayResultCallback},
+use crate::{
+    bullet::{
+        collision::{
+            broadphase::{CollisionFilterGroups, GridBroadphase},
+            dispatch::{
+                collision_dispatcher::CollisionDispatcher,
+                collision_world::CollisionWorld,
+                ray_packet_callbacks::{
+                    ClosestRayResultCallback, QuadRayCallback, RayResultCallback,
+                },
+            },
+            narrowphase::persistent_manifold::ContactAddedCallback,
+            shapes::{collision_shape::CollisionShapes, sphere_shape::SphereShape},
         },
-        narrowphase::persistent_manifold::ContactAddedCallback,
+        dynamics::rigid_body::CollisionFlags,
     },
-    dynamics::rigid_body::CollisionFlags,
+    shared::Aabb,
 };
 
 pub struct DiscreteDynamicsWorld {
@@ -41,6 +48,66 @@ impl DiscreteDynamicsWorld {
     #[inline]
     pub fn bodies(&self) -> &[RigidBody] {
         &self.collision_world.collision_objs
+    }
+
+    pub fn test_collision(&self, body_a: &RigidBody, body_b: &RigidBody) -> bool {
+        CollisionDispatcher::test_collision(body_a, body_b)
+    }
+
+    /// Test a packet of 4 rays against all static bodies, returning whether each ray hit anything.
+    pub fn test_ray_packet(&self, ray_from: &[Vec3A; 4], ray_to: &[Vec3A; 4]) -> [bool; 4] {
+        let mut query_body = RigidBody::new(RigidBodyConstructionInfo::new(
+            0.0,
+            CollisionShapes::Sphere(SphereShape::new(0.0)),
+        ));
+        query_body.world_array_idx = usize::MAX;
+
+        let ray_min = ray_from[0]
+            .min(ray_from[1])
+            .min(ray_from[2])
+            .min(ray_from[3])
+            .min(ray_to[0])
+            .min(ray_to[1])
+            .min(ray_to[2])
+            .min(ray_to[3]);
+        let ray_max = ray_from[0]
+            .max(ray_from[1])
+            .max(ray_from[2])
+            .max(ray_from[3])
+            .max(ray_to[0])
+            .max(ray_to[1])
+            .max(ray_to[2])
+            .max(ray_to[3]);
+        let ray_aabb = Aabb::new(ray_min, ray_max);
+
+        let mut callback = ClosestRayResultCallback::new(ray_from, ray_to, &query_body);
+
+        for body in &self.collision_world.collision_objs {
+            if !body.is_static_obj() {
+                continue;
+            }
+
+            let body_aabb = body.get_collision_shape().get_aabb(body.get_world_trans());
+
+            if !ray_aabb.intersects(&body_aabb) {
+                continue;
+            }
+
+            CollisionWorld::quad_ray_test(
+                ray_from,
+                ray_to,
+                body,
+                body.world_array_idx,
+                &mut callback,
+            );
+        }
+
+        [
+            callback.has_hit(0),
+            callback.has_hit(1),
+            callback.has_hit(2),
+            callback.has_hit(3),
+        ]
     }
 
     pub fn ray_test<T: RayResultCallback>(

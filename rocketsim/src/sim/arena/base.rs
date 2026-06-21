@@ -17,7 +17,10 @@ use crate::{
         collision::{
             broadphase::{CollisionFilterGroups, GridBroadphase},
             narrowphase::manifold_point::ManifoldPoint,
-            shapes::{collision_shape::CollisionShapes, static_plane_shape::StaticPlaneShape},
+            shapes::{
+                box_shape::BoxShape, collision_shape::CollisionShapes,
+                compound_shape::CompoundShape, static_plane_shape::StaticPlaneShape,
+            },
         },
         dynamics::{
             discrete_dynamics_world::DiscreteDynamicsWorld,
@@ -324,6 +327,95 @@ impl Arena {
             GameMode::Dropshot => ball_pos.z < -self.config.mutators.ball_radius * 1.75,
             GameMode::TheVoid => false,
         }
+    }
+
+    /// Returns true if the given object is within the arena bounds and not touching any static geometry.
+    ///
+    /// If `car_config` is `None`, the object is treated as a ball using the arena's current ball
+    /// configuration (including game mode and mutators).
+    ///
+    /// NOTE: Car wheels are not included in the collision test.
+    #[must_use]
+    pub fn is_inside(&self, phys: PhysState, car_config: Option<CarBodyConfig>) -> bool {
+        let game_mode = self.config.game_mode;
+        if game_mode == GameMode::TheVoid {
+            return true;
+        }
+
+        let arena_aabb = consts::arena::get_aabb(game_mode);
+        let pos_bt = phys.pos * UU_TO_BT;
+        let world_trans = Affine3A {
+            matrix3: phys.rot_mat,
+            translation: pos_bt,
+        };
+
+        let (query_shape, query_aabb) = if let Some(config) = car_config {
+            let box_shape = BoxShape::new(config.hitbox_size * UU_TO_BT * 0.5);
+            let hitbox_offset = Affine3A {
+                matrix3: Mat3A::IDENTITY,
+                translation: config.hitbox_pos_offset * UU_TO_BT,
+            };
+            let compound_shape = CompoundShape::new(box_shape, hitbox_offset);
+            let aabb = compound_shape.get_aabb(&world_trans);
+            (CollisionShapes::Compound(compound_shape), aabb)
+        } else {
+            let (shape, _) = Ball::make_ball_collision_shape(game_mode, &self.config.mutators);
+            let aabb = shape.get_aabb(&world_trans);
+            (shape, aabb)
+        };
+
+        // Check if query AABB is fully contained within the arena AABB
+        if !arena_aabb.min.cmple(query_aabb.min).all()
+            || !arena_aabb.max.cmpge(query_aabb.max).all()
+        {
+            return false;
+        }
+
+        let mut rb_info = RigidBodyConstructionInfo::new(0.0, query_shape);
+        rb_info.start_world_trans = world_trans;
+        let mut query_body = RigidBody::new(rb_info);
+        query_body.world_array_idx = usize::MAX;
+
+        for body in self.bullet_world.bodies() {
+            if !body.is_static_obj() {
+                continue;
+            }
+
+            let body_aabb = body.get_collision_shape().get_aabb(body.get_world_trans());
+            if !query_aabb.intersects(&body_aabb) {
+                continue;
+            }
+
+            if self.bullet_world.test_collision(&query_body, body) {
+                return false;
+            }
+        }
+
+        // 6-directional ray cast to verify the point is fully enclosed by static geometry
+        const RAY_LENGTH: f32 = 100_000.0 * UU_TO_BT;
+        let ray_from = [pos_bt; 4];
+
+        let ray_to_1 = [
+            pos_bt + Vec3A::X * RAY_LENGTH,
+            pos_bt + Vec3A::NEG_X * RAY_LENGTH,
+            pos_bt + Vec3A::Y * RAY_LENGTH,
+            pos_bt + Vec3A::NEG_Y * RAY_LENGTH,
+        ];
+        let hits_1 = self.bullet_world.test_ray_packet(&ray_from, &ray_to_1);
+
+        let ray_to_2 = [
+            pos_bt + Vec3A::Z * RAY_LENGTH,
+            pos_bt + Vec3A::NEG_Z * RAY_LENGTH,
+            pos_bt + Vec3A::Z * RAY_LENGTH,
+            pos_bt + Vec3A::NEG_Z * RAY_LENGTH,
+        ];
+        let hits_2 = self.bullet_world.test_ray_packet(&ray_from, &ray_to_2);
+
+        if !hits_1[0] || !hits_1[1] || !hits_1[2] || !hits_1[3] || !hits_2[0] || !hits_2[1] {
+            return false;
+        }
+
+        true
     }
 
     pub fn reset_to_random_kickoff(&mut self, rng_seed: Option<u64>) {
