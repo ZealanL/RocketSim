@@ -692,7 +692,9 @@ impl Arena {
 
     #[must_use]
     pub fn num_boost_pads(&self) -> usize {
-        self.boost_pads().len()
+        self.boost_pad_grid
+            .as_ref()
+            .map_or(0, |grid| grid.all_pads.len())
     }
 
     #[must_use]
@@ -731,6 +733,12 @@ impl Arena {
     pub fn set_tile_states(&mut self, tile_states: TileStates) {
         self.tile_states = Some(tile_states);
         self.update_tile_states();
+    }
+
+    pub fn num_tiles(&self) -> usize {
+        self.tile_states
+            .as_ref()
+            .map_or(0, |ts| ts.states[0].len() * ts.states.len())
     }
 
     #[must_use]
