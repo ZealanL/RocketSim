@@ -5,25 +5,38 @@ use fastrand::Rng;
 use glam::{Affine3A, EulerRot, Mat3A, Vec3A};
 
 use super::ArenaContactTracker;
-use crate::bullet::collision::dispatch::quad_ray_callbacks::{ClosestQuadRayResultCallback, QuadRayResultCallback};
+use crate::bullet::collision::dispatch::quad_ray_callbacks::{
+    ClosestQuadRayResultCallback, QuadRayResultCallback,
+};
 #[cfg(feature = "vis")]
 use crate::vis::VisInst;
-use crate::{ARENA_COLLISION_SHAPES, ArenaConfig, ArenaEvent::{BallHitWorld, CarPickupBoost}, ArenaMemWeightMode, ArenaState, BallHitWorldEvent, BoostPadConfig, BoostPadGrid, BoostPadState, Car, CarBodyConfig, CarControls, CarInfo, CarPickupBoostEvent, CarState, GameMode, MutatorConfig, PhysState, RaycastQuery, RaycastResult, Team, TileDamageState, TileStates, bullet::{
-    collision::{
-        broadphase::{CollisionFilterGroups, GridBroadphase},
-        narrowphase::manifold_point::ManifoldPoint,
-        shapes::{collision_shape::CollisionShapes, static_plane_shape::StaticPlaneShape},
+use crate::{
+    ARENA_COLLISION_SHAPES, ArenaConfig,
+    ArenaEvent::{BallHitWorld, CarPickupBoost},
+    ArenaMemWeightMode, ArenaState, BallHitWorldEvent, BoostPadConfig, BoostPadGrid, BoostPadState,
+    Car, CarBodyConfig, CarControls, CarInfo, CarPickupBoostEvent, CarState, GameMode,
+    MutatorConfig, PhysState, RaycastHitInfo, RaycastQuery, RaycastResult, Team, TileDamageState,
+    TileStates,
+    bullet::{
+        collision::{
+            broadphase::{CollisionFilterGroups, GridBroadphase},
+            narrowphase::manifold_point::ManifoldPoint,
+            shapes::{collision_shape::CollisionShapes, static_plane_shape::StaticPlaneShape},
+        },
+        dynamics::{
+            discrete_dynamics_world::DiscreteDynamicsWorld,
+            rigid_body::{ActivationState, CollisionFlags, RigidBody, RigidBodyConstructionInfo},
+        },
     },
-    dynamics::{
-        discrete_dynamics_world::DiscreteDynamicsWorld,
-        rigid_body::{ActivationState, CollisionFlags, RigidBody, RigidBodyConstructionInfo},
+    consts::{self, BT_TO_UU, TICK_RATE, TICK_TIME, UU_TO_BT},
+    make_tile_shapes,
+    sim::{
+        ArenaEvent::{self, CarHitBall},
+        Ball, BallState, BoostPad, CarHitBallEvent, CarHitCarEvent, CarHitWorldEvent, DemoMode,
+        UserInfoTypes,
+        arena::ArenaEventList,
     },
-}, consts::{self, BT_TO_UU, TICK_RATE, TICK_TIME, UU_TO_BT}, make_tile_shapes, sim::{
-    ArenaEvent::{self, CarHitBall},
-    Ball, BallState, BoostPad, CarHitBallEvent, CarHitCarEvent, CarHitWorldEvent, DemoMode,
-    UserInfoTypes,
-    arena::ArenaEventList,
-}, RaycastHitInfo};
+};
 
 pub struct Arena {
     pub(crate) bullet_world: DiscreteDynamicsWorld,
@@ -750,12 +763,9 @@ impl Arena {
             .collect::<Vec<_>>();
         let ball = *self.get_ball_state();
 
-        let boost_pads = match self.config.game_mode {
-            GameMode::Soccar | GameMode::Hoops | GameMode::Snowday => (0..self.num_boost_pads())
-                .map(|i| (*self.get_boost_pad_config(i), self.get_boost_pad_state(i)))
-                .collect(),
-            GameMode::Dropshot | GameMode::Heatseeker | GameMode::TheVoid => Vec::new(),
-        };
+        let boost_pads = (0..self.num_boost_pads())
+            .map(|i| (*self.get_boost_pad_config(i), self.get_boost_pad_state(i)))
+            .collect();
 
         ArenaState {
             game_mode: self.config.game_mode,
