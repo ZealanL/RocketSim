@@ -12,7 +12,7 @@ use super::{
 };
 use crate::{
     bullet::collision::dispatch::ray_packet_callbacks::{
-        BridgeTriangleRaycastPacketCallback, RayResultCallback,
+        BridgeTriRayPacketCallback, QuadRayResultCallback,
     },
     shared::{Aabb, RayPacketInfo},
 };
@@ -112,26 +112,26 @@ impl CollisionShapes {
         }
     }
 
-    pub fn perform_raycast<T: RayResultCallback>(
+    pub fn perform_quad_raycast<T: QuadRayResultCallback>(
         &self,
-        result_callback: &mut BridgeTriangleRaycastPacketCallback<T>,
+        result_callback: &mut BridgeTriRayPacketCallback<T>,
         ray_info: &mut RayPacketInfo,
     ) {
         match self {
             Self::Compound(compound) => {
-                compound.perform_raycast(result_callback, ray_info);
+                compound.perform_quad_raycast(result_callback, ray_info);
             }
             Self::Sphere(sphere) => {
-                sphere.perform_raycast(result_callback, ray_info);
+                sphere.perform_quad_raycast(result_callback, ray_info);
             }
             Self::StaticPlane(plane) => {
-                plane.perform_raycast(result_callback, ray_info);
+                plane.perform_quad_raycast(result_callback, ray_info);
             }
             Self::TriangleMesh(mesh) => {
-                mesh.perform_raycast(result_callback, ray_info);
+                mesh.perform_quad_raycast(result_callback, ray_info);
             }
             Self::ConvexHull(hull) => {
-                hull.perform_raycast(result_callback, ray_info);
+                hull.perform_quad_raycast(result_callback, ray_info);
             }
             Self::Triangle(_) => unreachable!(),
         }

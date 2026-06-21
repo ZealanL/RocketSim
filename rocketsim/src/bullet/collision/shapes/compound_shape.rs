@@ -3,7 +3,7 @@ use glam::{Affine3A, Vec3A};
 use super::box_shape::BoxShape;
 use crate::{
     bullet::collision::dispatch::ray_packet_callbacks::{
-        BridgeTriangleRaycastPacketCallback, RayResultCallback,
+        BridgeTriRayPacketCallback, QuadRayResultCallback,
     },
     shared::{Aabb, RayPacketInfo},
 };
@@ -49,9 +49,9 @@ impl CompoundShape {
         self.child_shape.get_margin()
     }
 
-    pub fn perform_raycast<T: RayResultCallback>(
+    pub fn perform_quad_raycast<T: QuadRayResultCallback>(
         &self,
-        result_callback: &mut BridgeTriangleRaycastPacketCallback<T>,
+        result_callback: &mut BridgeTriRayPacketCallback<T>,
         ray_info: &RayPacketInfo,
     ) {
         let box_aabb = self.get_ident_aabb();
@@ -81,9 +81,9 @@ impl CompoundShape {
         }
     }
 
-    fn internal_perform_raycast<T: RayResultCallback>(
+    fn internal_perform_raycast<T: QuadRayResultCallback>(
         &self,
-        result_callback: &mut BridgeTriangleRaycastPacketCallback<T>,
+        result_callback: &mut BridgeTriRayPacketCallback<T>,
         ray_source: Vec3A,
         ray_target: Vec3A,
         ray_idx: usize,

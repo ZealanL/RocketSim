@@ -17,7 +17,7 @@ pub struct LocalRayResult {
 }
 
 #[derive(Clone, Copy)]
-pub struct RayResultCallbackBase {
+pub struct QuadRayResultCallbackBase {
     pub closest_hit_fraction: Vec4,
     pub collision_obj_idx: [Option<usize>; 4],
     pub ignore_obj_world_idx: Option<usize>,
@@ -25,7 +25,7 @@ pub struct RayResultCallbackBase {
     pub collision_filter_mask: u8,
 }
 
-impl Default for RayResultCallbackBase {
+impl Default for QuadRayResultCallbackBase {
     fn default() -> Self {
         Self {
             closest_hit_fraction: Vec4::ONE,
@@ -37,8 +37,8 @@ impl Default for RayResultCallbackBase {
     }
 }
 
-pub trait RayResultCallback {
-    fn get_base(&self) -> &RayResultCallbackBase;
+pub trait QuadRayResultCallback {
+    fn get_base(&self) -> &QuadRayResultCallbackBase;
     fn has_hit(&self, ray_idx: usize) -> bool {
         self.get_base().collision_obj_idx[ray_idx].is_some()
     }
@@ -54,22 +54,22 @@ pub trait RayResultCallback {
     fn add_single_result(&mut self, ray_result: LocalRayResult, ray_idx: usize);
 }
 
-pub struct ClosestRayResultCallback<'a> {
-    pub base: RayResultCallbackBase,
+pub struct ClosestQuadRayResultCallback<'a> {
+    pub base: QuadRayResultCallbackBase,
     ray_from_world: &'a [Vec3A; 4],
     ray_to_world: &'a [Vec3A; 4],
     pub hit_normal_world: [Vec3A; 4],
     pub hit_point_world: [Vec3A; 4],
 }
 
-impl<'a> ClosestRayResultCallback<'a> {
+impl<'a> ClosestQuadRayResultCallback<'a> {
     pub fn new(
         ray_from_world: &'a [Vec3A; 4],
         ray_to_world: &'a [Vec3A; 4],
         ignore_obj: &RigidBody,
     ) -> Self {
         Self {
-            base: RayResultCallbackBase {
+            base: QuadRayResultCallbackBase {
                 ignore_obj_world_idx: Some(ignore_obj.world_array_idx),
                 ..Default::default()
             },
@@ -81,9 +81,9 @@ impl<'a> ClosestRayResultCallback<'a> {
     }
 }
 
-impl RayResultCallback for ClosestRayResultCallback<'_> {
+impl QuadRayResultCallback for ClosestQuadRayResultCallback<'_> {
     #[inline]
-    fn get_base(&self) -> &RayResultCallbackBase {
+    fn get_base(&self) -> &QuadRayResultCallbackBase {
         &self.base
     }
 
@@ -104,14 +104,14 @@ impl RayResultCallback for ClosestRayResultCallback<'_> {
     }
 }
 
-pub struct QuadRayCallback<'a, T: RayResultCallback> {
+pub struct QuadRayCallback<'a, T: QuadRayResultCallback> {
     ray_from_world: &'a [Vec3A; 4],
     ray_to_world: &'a [Vec3A; 4],
     world: &'a CollisionWorld,
     result_callback: &'a mut T,
 }
 
-impl<'a, T: RayResultCallback> QuadRayCallback<'a, T> {
+impl<'a, T: QuadRayResultCallback> QuadRayCallback<'a, T> {
     pub const fn new(
         ray_from_world: &'a [Vec3A; 4],
         ray_to_world: &'a [Vec3A; 4],
@@ -127,7 +127,7 @@ impl<'a, T: RayResultCallback> QuadRayCallback<'a, T> {
     }
 }
 
-impl<T: RayResultCallback> BroadphaseAabbCallback for QuadRayCallback<'_, T> {
+impl<T: QuadRayResultCallback> BroadphaseAabbCallback for QuadRayCallback<'_, T> {
     fn process(&mut self, proxy: &BroadphaseProxy) -> bool {
         let rb = &self.world.collision_objs[proxy.client_obj_idx];
         let handle = &self.world.broadphase_pair_cache.handles[rb.get_broadphase_handle()];
@@ -146,7 +146,7 @@ impl<T: RayResultCallback> BroadphaseAabbCallback for QuadRayCallback<'_, T> {
     }
 }
 
-pub struct BridgeTriangleRaycastPacketCallback<'a, T: RayResultCallback> {
+pub struct BridgeTriRayPacketCallback<'a, T: QuadRayResultCallback> {
     pub to: &'a [Vec3A; 4],
     pub from: &'a [Vec3A; 4],
     pub hit_fraction: Vec4,
@@ -155,7 +155,7 @@ pub struct BridgeTriangleRaycastPacketCallback<'a, T: RayResultCallback> {
     pub result_callback: &'a mut T,
 }
 
-impl<T: RayResultCallback> BridgeTriangleRaycastPacketCallback<'_, T> {
+impl<T: QuadRayResultCallback> BridgeTriRayPacketCallback<'_, T> {
     fn internal_report_hit(&mut self, hit_normal_local: Vec3A, hit_fraction: f32, ray_idx: usize) {
         let hit_normal_world = self.collision_obj.get_world_trans().matrix3 * hit_normal_local;
 
@@ -220,7 +220,7 @@ impl<T: RayResultCallback> BridgeTriangleRaycastPacketCallback<'_, T> {
     }
 }
 
-impl<T: RayResultCallback> ProcessRayPacketTriangle for BridgeTriangleRaycastPacketCallback<'_, T> {
+impl<T: QuadRayResultCallback> ProcessRayPacketTriangle for BridgeTriRayPacketCallback<'_, T> {
     fn process_packet_node(
         &mut self,
         triangle: &TriangleShape,

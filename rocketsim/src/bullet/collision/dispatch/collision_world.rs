@@ -2,7 +2,7 @@ use glam::Vec3A;
 
 use super::{
     collision_dispatcher::CollisionDispatcher,
-    ray_packet_callbacks::{BridgeTriangleRaycastPacketCallback, RayResultCallback},
+    ray_packet_callbacks::{BridgeTriRayPacketCallback, QuadRayResultCallback},
 };
 use crate::{
     bullet::{
@@ -114,7 +114,7 @@ impl CollisionWorld {
         );
     }
 
-    pub(crate) fn quad_ray_test<T: RayResultCallback>(
+    pub(crate) fn quad_ray_test<T: QuadRayResultCallback>(
         ray_from: &[Vec3A; 4],
         ray_to: &[Vec3A; 4],
         co: &RigidBody,
@@ -137,7 +137,7 @@ impl CollisionWorld {
             world_to_co.transform_point3a(ray_to[3]),
         ];
 
-        let mut rcb = BridgeTriangleRaycastPacketCallback {
+        let mut rcb = BridgeTriRayPacketCallback {
             from: &ray_from_local,
             to: &ray_to_local,
             hit_fraction: result_callback.get_base().closest_hit_fraction,
@@ -150,6 +150,6 @@ impl CollisionWorld {
         ray_info.lambda_max = rcb.hit_fraction;
 
         co.get_collision_shape()
-            .perform_raycast(&mut rcb, &mut ray_info);
+            .perform_quad_raycast(&mut rcb, &mut ray_info);
     }
 }

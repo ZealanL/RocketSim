@@ -9,7 +9,7 @@ use crate::bullet::{
         broadphase::{CollisionFilterGroups, GridBroadphase},
         dispatch::{
             collision_world::CollisionWorld,
-            ray_packet_callbacks::{QuadRayCallback, RayResultCallback},
+            ray_packet_callbacks::{QuadRayCallback, QuadRayResultCallback},
         },
         narrowphase::persistent_manifold::ContactAddedCallback,
     },
@@ -43,7 +43,7 @@ impl DiscreteDynamicsWorld {
         &self.collision_world.collision_objs
     }
 
-    pub fn ray_test<T: RayResultCallback>(
+    pub fn ray_test<T: QuadRayResultCallback>(
         &self,
         ray_from_world: &[Vec3A; 4],
         ray_to_world: &[Vec3A; 4],

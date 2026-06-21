@@ -2,7 +2,7 @@ use glam::{Affine3A, Vec3A, Vec4};
 
 use crate::{
     bullet::collision::dispatch::ray_packet_callbacks::{
-        BridgeTriangleRaycastPacketCallback, RayResultCallback,
+        BridgeTriRayPacketCallback, QuadRayResultCallback,
     },
     shared::{Aabb, RayPacketInfo},
 };
@@ -78,9 +78,9 @@ impl StaticPlaneShape {
         self.plane_normal
     }
 
-    pub fn perform_raycast<T: RayResultCallback>(
+    pub fn perform_quad_raycast<T: QuadRayResultCallback>(
         &self,
-        result_callback: &mut BridgeTriangleRaycastPacketCallback<T>,
+        result_callback: &mut BridgeTriRayPacketCallback<T>,
         ray_info: &RayPacketInfo,
     ) {
         let plane = &self.aabb_ident_cache;
