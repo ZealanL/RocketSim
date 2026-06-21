@@ -1,4 +1,4 @@
-use std::{f32::consts::PI, iter::repeat_n, mem};
+use std::{any::Any, f32::consts::PI, iter::repeat_n, mem};
 
 use arrayvec::ArrayVec;
 use fastrand::Rng;
@@ -27,14 +27,12 @@ use crate::{
     consts::{self, BT_TO_UU, TICK_RATE, TICK_TIME, UU_TO_BT},
     make_tile_shapes,
     sim::{
-        ArenaEvent,
-        Ball, BallState, BoostPad, CarHitBallEvent, CarHitCarEvent, CarHitWorldEvent, DemoMode,
-        UserInfoTypes,
-        arena::ArenaEventList,
+        ArenaEvent, Ball, BallState, BoostPad, CarHitBallEvent, CarHitCarEvent, CarHitWorldEvent,
+        DemoMode, UserInfoTypes, arena::ArenaEventList,
     },
 };
 
-pub trait Vis: Send + Sync {
+pub trait Vis: Send + Sync + Any {
     fn update(&mut self, arena_state: &ArenaState, dt: f32);
 }
 
