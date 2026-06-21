@@ -5,9 +5,6 @@ use fastrand::Rng;
 use glam::{Affine3A, EulerRot, Mat3A, Vec3A};
 
 use super::ArenaContactTracker;
-use crate::bullet::collision::dispatch::quad_ray_callbacks::{
-    ClosestQuadRayResultCallback, QuadRayResultCallback,
-};
 use crate::{
     ARENA_COLLISION_SHAPES, ArenaConfig,
     ArenaEvent::{BallHitWorld, CarPickupBoost},
@@ -18,6 +15,7 @@ use crate::{
     bullet::{
         collision::{
             broadphase::{CollisionFilterGroups, GridBroadphase},
+            dispatch::quad_ray_callbacks::{ClosestQuadRayResultCallback, QuadRayResultCallback},
             narrowphase::manifold_point::ManifoldPoint,
             shapes::{collision_shape::CollisionShapes, static_plane_shape::StaticPlaneShape},
         },
@@ -29,7 +27,7 @@ use crate::{
     consts::{self, BT_TO_UU, TICK_RATE, TICK_TIME, UU_TO_BT},
     make_tile_shapes,
     sim::{
-        ArenaEvent::{self, CarHitBall},
+        ArenaEvent,
         Ball, BallState, BoostPad, CarHitBallEvent, CarHitCarEvent, CarHitWorldEvent, DemoMode,
         UserInfoTypes,
         arena::ArenaEventList,
@@ -874,7 +872,7 @@ impl Arena {
         // TODO: Somewhat hacky
         let extra_hit_vel = self.ball.vel_impulse_cache;
 
-        self.events.push(CarHitBall(CarHitBallEvent {
+        self.events.push(ArenaEvent::CarHitBall(CarHitBallEvent {
             car_idx,
             contact_point,
             extra_hit_vel,

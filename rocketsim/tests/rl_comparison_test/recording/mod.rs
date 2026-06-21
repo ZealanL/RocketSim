@@ -1,9 +1,10 @@
 pub mod cpp_records;
 mod data_reader;
 
+use std::io::{BufReader, ErrorKind};
+
 use cpp_records::*;
 use data_reader::DataReader;
-use std::io::{BufReader, ErrorKind};
 
 const RLPR_MAGIC_BYTES: [u8; 4] = [82, 76, 80, 82];
 const RLPR_VERSION: u32 = 0;

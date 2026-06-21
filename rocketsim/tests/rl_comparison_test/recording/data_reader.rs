@@ -1,5 +1,6 @@
-use byteorder::{LittleEndian, ReadBytesExt};
-use std::io::{self, ErrorKind, Read}; // Or BigEndian, matching your C++ export
+use std::io::{self, ErrorKind, Read};
+
+use byteorder::{LittleEndian, ReadBytesExt}; // Or BigEndian, matching your C++ export
 
 pub struct DataReader<R: Read> {
     stream: R,
