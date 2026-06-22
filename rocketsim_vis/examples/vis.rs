@@ -33,7 +33,7 @@ fn determine_controls(device: &DeviceState) -> CarControls {
     controls.handbrake = keys.contains(&Keycode::LShift);
 
     controls.jump = mouse_state.button_pressed[1];
-    controls.boost = mouse_state.button_pressed[3];
+    controls.boost = mouse_state.button_pressed[2];
 
     controls.yaw = controls.steer;
     controls.pitch = -controls.throttle;
