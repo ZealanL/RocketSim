@@ -6,6 +6,8 @@ use std::{
 use fastrand::Rng;
 use glam::{Affine3A, EulerRot, Mat3A, Vec3A};
 
+use crate::bullet::dynamics::rigid_body::Impulse;
+use crate::consts::GRAVITY_Z;
 use crate::{
     CarBodyConfig, CarControls, CarState, GameMode, MutatorConfig, PhysState, Team,
     bullet::{
@@ -23,7 +25,7 @@ use crate::{
         },
     },
     consts::{
-        self, BT_TO_UU, TICK_TIME, UU_TO_BT, bullet_vehicle as vehicle_consts,
+        BT_TO_UU, TICK_TIME, UU_TO_BT, bullet_vehicle as vehicle_consts,
         car::{self as car_consts, drive as drive_consts},
         curves,
     },
@@ -203,6 +205,8 @@ impl Car {
         self.state = *state;
     }
 
+    /////////////////////////////
+
     fn update_wheels(
         &mut self,
         rb: &mut RigidBody,
@@ -351,10 +355,13 @@ impl Car {
                 sticky_force_scale += 1.0 - upwards_dir.z.abs();
             }
 
-            rb.apply_central_force(
-                upwards_dir
-                    * sticky_force_scale
-                    * const { consts::GRAVITY_Z * UU_TO_BT * car_consts::MASS_BT },
+            // TODO: Should we be using the mutator config for gravity?
+            rb.add_impulse(
+                Impulse::Linear(
+                    upwards_dir * sticky_force_scale * const { GRAVITY_Z * TICK_TIME * UU_TO_BT },
+                ),
+                false,
+                true,
             );
         }
     }
@@ -391,12 +398,14 @@ impl Car {
 
                 rel_dodge_torque.y *= pitch_scale;
                 let dodge_torque = rel_dodge_torque
-                    * const { Vec3A::new(car_consts::flip::TORQUE_X, car_consts::flip::TORQUE_Y, 0.0) };
+                    * Vec3A::new(car_consts::flip::TORQUE_X, car_consts::flip::TORQUE_Y, 0.0)
+                    * TICK_TIME;
 
-                let rb_torque = rb.inv_inertia_tensor_world.inverse()
-                    * rb.get_world_trans().matrix3
-                    * dodge_torque;
-                rb.apply_torque(rb_torque);
+                rb.add_impulse(
+                    Impulse::Angular(rb.get_world_trans().matrix3 * dodge_torque),
+                    false,
+                    true,
+                );
             }
         } else {
             do_air_control = true;
@@ -443,18 +452,18 @@ impl Car {
 
             let damping = dir_yaw * damp_yaw + dir_pitch * damp_pitch + dir_roll * damp_roll;
 
-            let rb_torque = rb.inv_inertia_tensor_world.inverse()
-                * (torque - damping)
-                * car_consts::air_control::TORQUE_APPLY_SCALE;
-            rb.apply_torque(rb_torque);
+            let rb_torque = (torque - damping)
+                * const { car_consts::air_control::TORQUE_APPLY_SCALE * TICK_TIME };
+
+            rb.add_impulse(Impulse::Angular(rb_torque), false, true);
         }
 
         if self.state.controls.throttle != 0.0 {
-            rb.apply_central_force(
-                forward_dir
-                    * self.state.controls.throttle
-                    * const { car_consts::drive::THROTTLE_AIR_ACCEL * UU_TO_BT * car_consts::MASS_BT },
-            );
+            // TODO: Fix air-throttle not respecting boost
+            let throttle_force = forward_dir
+                * self.state.controls.throttle
+                * const { car_consts::drive::THROTTLE_AIR_ACCEL * UU_TO_BT * TICK_TIME };
+            rb.add_impulse(Impulse::Linear(throttle_force), false, true);
         }
     }
 
@@ -470,14 +479,12 @@ impl Car {
         if self.state.is_jumping {
             // Jump started, apply initial boost force
             if self.state.jump_time == 0.0 {
-                let jump_start_force = up_dir
-                    * mutator_config.jump_immediate_force
-                    * const { UU_TO_BT * car_consts::MASS_BT };
-                rb.apply_central_impulse(jump_start_force);
+                let jump_start_force = up_dir * mutator_config.jump_immediate_force * UU_TO_BT;
+                rb.add_impulse(Impulse::Linear(jump_start_force), false, false);
             }
-            rb.apply_central_force(
-                up_dir * mutator_config.jump_accel * const { UU_TO_BT * car_consts::MASS_BT },
-            );
+
+            let jump_force = up_dir * mutator_config.jump_accel * const { UU_TO_BT * TICK_TIME };
+            rb.add_impulse(Impulse::Linear(jump_force), false, true);
         }
 
         if self.state.has_jumped {
@@ -525,10 +532,9 @@ impl Car {
                 self.state.auto_flip_torque_scale = roll.signum();
                 self.state.is_auto_flipping = true;
 
-                rb.apply_central_impulse(
-                    -self.state.get_up_dir()
-                        * const { car_consts::autoflip::IMPULSE * UU_TO_BT * car_consts::MASS_BT },
-                );
+                let force =
+                    -self.state.get_up_dir() * const { car_consts::autoflip::IMPULSE * UU_TO_BT };
+                rb.add_impulse(Impulse::Linear(force), false, false);
             }
         }
 
@@ -644,14 +650,12 @@ impl Car {
                         let final_delta_vel = initial_dodge_vel.x * forward_dir_2d
                             + initial_dodge_vel.y * right_dir_2d;
 
-                        rb.apply_central_impulse(
-                            final_delta_vel * const { UU_TO_BT * car_consts::MASS_BT },
-                        );
+                        rb.add_impulse(Impulse::Linear(final_delta_vel * UU_TO_BT), false, false);
                     }
                 } else {
                     let jump_start_force = self.state.get_up_dir()
-                        * const { car_consts::jump::IMMEDIATE_FORCE * UU_TO_BT * car_consts::MASS_BT };
-                    rb.apply_central_impulse(jump_start_force);
+                        * const { car_consts::jump::IMMEDIATE_FORCE * UU_TO_BT * TICK_TIME };
+                    rb.add_impulse(Impulse::Linear(jump_start_force), false, false);
                     self.state.has_double_jumped = true;
                 }
             }
@@ -694,15 +698,22 @@ impl Car {
         let torque_right = torque_dir_right * right_torque_factor;
         let torque_forward = torque_dir_forward * forward_torque_factor;
 
-        rb.apply_central_force(
-            ground_down_dir
-                * const { car_consts::autoroll::FORCE * UU_TO_BT * car_consts::MASS_BT },
+        rb.add_impulse(
+            Impulse::Linear(
+                ground_down_dir * const { car_consts::autoroll::FORCE * UU_TO_BT * TICK_TIME },
+            ),
+            false,
+            true,
         );
 
-        let rb_torque = rb.inv_inertia_tensor_world.inverse()
-            * (torque_forward + torque_right)
-            * car_consts::autoroll::TORQUE;
-        rb.apply_torque(rb_torque);
+        rb.add_impulse(
+            Impulse::Angular(
+                (torque_forward + torque_right)
+                    * const { car_consts::autoroll::TORQUE * TICK_TIME },
+            ),
+            false,
+            true,
+        );
     }
 
     fn update_boost(&mut self, rb: &mut RigidBody, mutator_config: &MutatorConfig) {
@@ -725,8 +736,10 @@ impl Car {
                 mutator_config.boost_accel_air
             };
 
-            rb.apply_central_force(
-                accel * self.state.get_forward_dir() * (UU_TO_BT * car_consts::MASS_BT),
+            rb.add_impulse(
+                Impulse::Linear(accel * self.state.get_forward_dir() * (UU_TO_BT * TICK_TIME)),
+                false,
+                true,
             );
         } else {
             self.state.boosting_time = 0.0;

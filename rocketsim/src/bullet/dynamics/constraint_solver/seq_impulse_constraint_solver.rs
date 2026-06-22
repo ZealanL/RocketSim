@@ -75,17 +75,16 @@ impl Default for SeqImpulseConstraintSolver {
 }
 
 impl SeqImpulseConstraintSolver {
-    fn get_or_init_solver_body(&mut self, rb: &mut RigidBody, time_step: f32) -> usize {
+    fn get_or_init_solver_body(&mut self, rb: &mut RigidBody) -> usize {
         if let Some(companion_id) = rb.companion_id {
             return companion_id;
         }
 
-        if !rb.is_static_obj() && rb.inverse_mass != 0.0 {
+        if !rb.is_static_obj() && rb.inv_mass != 0.0 {
             let solver_body_id = self.tmp_solver_body_pool.len();
             rb.companion_id = Some(solver_body_id);
 
-            self.tmp_solver_body_pool
-                .push(SolverBody::new(rb, time_step));
+            self.tmp_solver_body_pool.push(SolverBody::new(rb));
             return solver_body_id;
         }
 
@@ -120,7 +119,7 @@ impl SeqImpulseConstraintSolver {
         manifolds: &mut Vec<PersistentManifold>,
         time_step: f32,
     ) {
-        self.setup_solver_bodies(collision_objs, non_static_bodies, time_step);
+        self.setup_solver_bodies(collision_objs, non_static_bodies);
 
         for manifold in manifolds.iter_mut() {
             debug_assert!(manifold.body0_idx < collision_objs.len());
@@ -130,8 +129,8 @@ impl SeqImpulseConstraintSolver {
                 collision_objs.get_disjoint_unchecked_mut([manifold.body0_idx, manifold.body1_idx])
             };
 
-            let solver_body_id_a = self.get_or_init_solver_body(body0, time_step);
-            let solver_body_id_b = self.get_or_init_solver_body(body1, time_step);
+            let solver_body_id_a = self.get_or_init_solver_body(body0);
+            let solver_body_id_b = self.get_or_init_solver_body(body1);
 
             debug_assert!(solver_body_id_a < self.tmp_solver_body_pool.len());
             debug_assert!(solver_body_id_b < self.tmp_solver_body_pool.len());
@@ -202,7 +201,6 @@ impl SeqImpulseConstraintSolver {
         &mut self,
         collision_objs: &mut [RigidBody],
         non_static_bodies: &[usize],
-        time_step: f32,
     ) {
         self.fixed_body_id = None;
 
@@ -219,7 +217,7 @@ impl SeqImpulseConstraintSolver {
 
         for &rb_idx in non_static_bodies {
             let rb = &mut collision_objs[rb_idx];
-            debug_assert_ne!(rb.inverse_mass, 0.0);
+            debug_assert_ne!(rb.inv_mass, 0.0);
 
             if !rb.is_active() {
                 continue;
@@ -228,8 +226,7 @@ impl SeqImpulseConstraintSolver {
             let solver_body_id = self.tmp_solver_body_pool.len();
             rb.companion_id = Some(solver_body_id);
 
-            self.tmp_solver_body_pool
-                .push(SolverBody::new(rb, time_step));
+            self.tmp_solver_body_pool.push(SolverBody::new(rb));
         }
     }
 
@@ -267,7 +264,7 @@ impl SeqImpulseConstraintSolver {
 
         let denom = {
             let vec = angular_component_a.cross(rel_pos1);
-            body.inverse_mass + normal_world_on_b.dot(vec)
+            body.inv_mass + normal_world_on_b.dot(vec)
         };
         let jac_diag_ab_inv = relaxation / denom;
 
@@ -348,7 +345,7 @@ impl SeqImpulseConstraintSolver {
 
         let denom = {
             let vec = angular_component_a.cross(rel_pos1);
-            body.inverse_mass + lateral_friction_dir_1.dot(vec)
+            body.inv_mass + lateral_friction_dir_1.dot(vec)
         };
         let jac_diag_ab_inv = relaxation / denom;
 

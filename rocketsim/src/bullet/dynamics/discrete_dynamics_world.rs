@@ -4,17 +4,15 @@ use super::{
     constraint_solver::seq_impulse_constraint_solver::SeqImpulseConstraintSolver,
     rigid_body::{ActivationState, RigidBody},
 };
-use crate::bullet::{
-    collision::{
-        broadphase::{CollisionFilterGroups, GridBroadphase},
-        dispatch::{
-            collision_world::CollisionWorld,
-            quad_ray_callbacks::{QuadRayCallback, QuadRayResultCallback},
-        },
-        narrowphase::persistent_manifold::ContactAddedCallback,
+use crate::bullet::collision::{
+    broadphase::{CollisionFilterGroups, GridBroadphase},
+    dispatch::{
+        collision_world::CollisionWorld,
+        quad_ray_callbacks::{QuadRayCallback, QuadRayResultCallback},
     },
-    dynamics::rigid_body::CollisionFlags,
+    narrowphase::persistent_manifold::ContactAddedCallback,
 };
+use crate::bullet::dynamics::rigid_body::Impulse;
 
 pub struct DiscreteDynamicsWorld {
     collision_world: CollisionWorld,
@@ -68,11 +66,7 @@ impl DiscreteDynamicsWorld {
         self.collision_world.add_collision_obj(body, group, mask)
     }
 
-    pub fn add_rigid_body_default(&mut self, mut body: RigidBody) -> usize {
-        if !body.is_static_obj() && (body.collision_flags & CollisionFlags::NoWorldGravity) == 0 {
-            body.set_gravity(self.gravity);
-        }
-
+    pub fn add_rigid_body_default(&mut self, body: RigidBody) -> usize {
         let (group, mask) = if body.is_static_obj() {
             (
                 CollisionFilterGroups::Static as u8,
@@ -97,11 +91,7 @@ impl DiscreteDynamicsWorld {
         rb_idx
     }
 
-    pub fn add_rigid_body(&mut self, mut body: RigidBody, group: u8, mask: u8) -> usize {
-        if !body.is_static_obj() && (body.collision_flags & CollisionFlags::NoWorldGravity) == 0 {
-            body.set_gravity(self.gravity);
-        }
-
+    pub fn add_rigid_body(&mut self, body: RigidBody, group: u8, mask: u8) -> usize {
         let rb_idx = self.add_collision_obj(body, group, mask);
 
         let rb = &mut self.collision_world.collision_objs[rb_idx];
@@ -114,11 +104,11 @@ impl DiscreteDynamicsWorld {
         rb_idx
     }
 
-    fn apply_gravity(&mut self) {
+    fn apply_gravity(&mut self, time_step: f32) {
         for &body in &self.dynamic_body_idcs {
             let body = &mut self.collision_world.collision_objs[body];
             if body.is_active() {
-                body.apply_gravity();
+                body.add_impulse(Impulse::Linear(self.gravity * time_step), false, true);
             }
         }
     }
@@ -173,7 +163,7 @@ impl DiscreteDynamicsWorld {
 
     fn clear_forces(&mut self) {
         for &body in &self.dynamic_body_idcs {
-            self.collision_world.collision_objs[body].clear_forces();
+            self.collision_world.collision_objs[body].clear_accum_vels();
         }
     }
 
@@ -197,7 +187,7 @@ impl DiscreteDynamicsWorld {
         time_step: f32,
         contact_added_callback: &mut T,
     ) {
-        self.apply_gravity();
+        self.apply_gravity(time_step);
         self.internal_single_step_simulation(time_step, contact_added_callback);
 
         self.clear_forces();

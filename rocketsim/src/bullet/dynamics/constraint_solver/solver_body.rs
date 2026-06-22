@@ -33,19 +33,19 @@ impl SolverBody {
         original_body: None,
     };
 
-    pub fn new(rb: &RigidBody, time_step: f32) -> Self {
+    pub fn new(rb: &RigidBody) -> Self {
         Self {
             world_trans: *rb.get_world_trans(),
             world_rot: rb.get_world_rot(),
             delta_lin_vel: Vec3A::ZERO,
             delta_ang_vel: Vec3A::ZERO,
-            inv_mass: rb.inv_mass,
+            inv_mass: rb.inv_mass_splat,
             push_vel: Vec3A::ZERO,
             turn_vel: Vec3A::ZERO,
             lin_vel: rb.lin_vel,
             ang_vel: rb.ang_vel,
-            external_force_impulse: rb.total_force * rb.inverse_mass * time_step,
-            external_torque_impulse: rb.inv_inertia_tensor_world * rb.total_torque * time_step,
+            external_force_impulse: rb.accum_lin_vel,
+            external_torque_impulse: rb.accum_ang_vel,
             original_body: Some(rb.world_array_idx),
         }
     }

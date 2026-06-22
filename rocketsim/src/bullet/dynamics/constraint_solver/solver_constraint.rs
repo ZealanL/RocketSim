@@ -116,7 +116,7 @@ impl SolverConstraint {
             let torque_axis = rel_pos1.cross(cp.normal_world_on_b);
             self.angular_component_a = rb.inv_inertia_tensor_world.mul_transpose_vec3a(torque_axis);
             let vec = self.angular_component_a.cross(rel_pos1);
-            let denom = rb.inverse_mass + cp.normal_world_on_b.dot(vec);
+            let denom = rb.inv_mass + cp.normal_world_on_b.dot(vec);
             let vel = rb.get_vel_in_local_point(rel_pos1);
 
             self.contact_normal_1 = cp.normal_world_on_b;
@@ -144,7 +144,7 @@ impl SolverConstraint {
                 .inv_inertia_tensor_world
                 .mul_transpose_vec3a(-torque_axis);
             let vec = (-self.angular_component_b).cross(rel_pos2);
-            let denom = rb.inverse_mass + cp.normal_world_on_b.dot(vec);
+            let denom = rb.inv_mass + cp.normal_world_on_b.dot(vec);
             let vel = rb.get_vel_in_local_point(rel_pos2);
             self.contact_normal_2 = -cp.normal_world_on_b;
             self.rel_pos2_cross_normal = -torque_axis;
@@ -207,7 +207,7 @@ impl SolverConstraint {
                 .mul_transpose_vec3a(self.rel_pos1_cross_normal);
 
             let vec = self.angular_component_a.cross(rel_pos1);
-            let denom = rb.inverse_mass + normal_axis.dot(vec);
+            let denom = rb.inv_mass + normal_axis.dot(vec);
 
             let vel_dot_n = self
                 .contact_normal_1
@@ -225,7 +225,7 @@ impl SolverConstraint {
                 .mul_transpose_vec3a(self.rel_pos2_cross_normal);
 
             let vec = (-self.angular_component_b).cross(rel_pos2);
-            let denom = rb.inverse_mass + normal_axis.dot(vec);
+            let denom = rb.inv_mass + normal_axis.dot(vec);
 
             let vel_dot_n = self
                 .contact_normal_2

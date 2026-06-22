@@ -59,14 +59,14 @@ pub fn resolve_single_bilateral(
         world: &body1_comt.matrix3,
         rel_pos: rel_pos1,
         inertia_inv: body1.inv_inertia_local,
-        mass_inv: body1.inverse_mass,
+        mass_inv: body1.inv_mass,
     };
 
     let jac_body_b = JacbobianBody {
         world: &body2_comt.matrix3,
         rel_pos: rel_pos2,
         inertia_inv: body2.inv_inertia_local,
-        mass_inv: body2.inverse_mass,
+        mass_inv: body2.inv_mass,
     };
 
     let jac_diag_ab = get_jacobian_diagonal(&jac_body_a, &jac_body_b, normal);

@@ -2,6 +2,8 @@ use std::f32::consts::TAU;
 
 use glam::{Affine3A, Vec2, Vec3A};
 
+use crate::bullet::dynamics::rigid_body::Impulse;
+use crate::consts::TICK_TIME;
 use crate::{
     BallState, Car, GameMode, MutatorConfig, Team, TileDamageState, TileStates,
     bullet::{
@@ -222,8 +224,10 @@ impl Ball {
                             consts::ball::HOOPS_LAUNCH_Z_VEL
                         };
 
-                        rb.apply_central_impulse(
-                            Vec3A::new(0.0, 0.0, launch_vel_z) * rb.get_mass() * UU_TO_BT,
+                        rb.add_impulse(
+                            Impulse::Linear(Vec3A::new(0.0, 0.0, launch_vel_z) * UU_TO_BT),
+                            false,
+                            false,
                         );
                         rb.set_activation_state(ActivationState::Active);
                     }
@@ -374,7 +378,8 @@ impl Ball {
                 }
             }
             GameMode::Snowday if !self.ground_stick_applied => {
-                rb.apply_central_force(-normal * snowday::PUCK_GROUND_STICK_FORCE);
+                let force = -normal * snowday::PUCK_GROUND_STICK_FORCE * TICK_TIME;
+                rb.add_impulse(Impulse::Linear(force), true, true);
                 self.ground_stick_applied = true;
             }
             _ => {}

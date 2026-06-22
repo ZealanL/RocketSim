@@ -1,6 +1,7 @@
 use glam::{Affine3A, Quat, Vec3A};
 
 use super::{NUM_WHEELS, raycaster::VehicleRaycasterResult};
+use crate::bullet::dynamics::rigid_body::Impulse;
 use crate::{
     bullet::{
         dynamics::{
@@ -249,7 +250,11 @@ impl WheelInfo {
         let contact_point_offset = raycast_info.contact_point - cb.get_world_trans().translation;
 
         let force = raycast_info.contact_normal * base_force_scale;
-        cb.apply_impulse(force, contact_point_offset);
+        cb.add_impulse(
+            Impulse::LinearRelPos(force, contact_point_offset),
+            true,
+            false,
+        );
     }
 
     pub fn apply_friction_impulses(&self, cb: &mut RigidBody, time_step: f32) {
@@ -261,6 +266,10 @@ impl WheelInfo {
         let wheel_contact_offset = raycast_info.contact_point - trans.translation;
         let contact_up_dot = trans.matrix3.z_axis.dot(wheel_contact_offset);
         let wheel_rel_pos = wheel_contact_offset - trans.matrix3.z_axis * contact_up_dot;
-        cb.apply_impulse(raycast_info.impulse * time_step, wheel_rel_pos);
+        cb.add_impulse(
+            Impulse::LinearRelPos(raycast_info.impulse * time_step, wheel_rel_pos),
+            true,
+            false,
+        );
     }
 }
