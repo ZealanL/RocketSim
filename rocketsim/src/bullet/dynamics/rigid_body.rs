@@ -409,6 +409,10 @@ impl RigidBody {
         self.get_world_trans().translation
     }
 
+    pub fn set_world_pos(&mut self, pos: Vec3A) {
+        self.world_trans.translation = pos;
+    }
+
     pub fn limit_vels(&mut self, max_lin_speed: f32, max_ang_speed: f32) {
         if self.lin_vel.length_squared() > max_lin_speed.powi(2) {
             self.lin_vel = self.lin_vel.normalize_or_zero() * max_lin_speed;

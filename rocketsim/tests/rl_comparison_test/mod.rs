@@ -80,7 +80,7 @@ fn test_recording(recording: &Recording) {
             ];
 
             lines.push(format!(
-                "Inaccurate state fields (of {}):",
+                "Notable state fields (of {}):",
                 comparison.map().len()
             ));
             for (k, v) in comparison.map() {

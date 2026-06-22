@@ -19,7 +19,7 @@ use crate::bullet::{
 pub struct DiscreteDynamicsWorld {
     collision_world: CollisionWorld,
     solver: SeqImpulseConstraintSolver,
-    non_static_rigid_bodies: Vec<usize>,
+    dynamic_body_idcs: Vec<usize>,
     gravity: Vec3A,
 }
 
@@ -28,7 +28,7 @@ impl DiscreteDynamicsWorld {
         Self {
             collision_world: CollisionWorld::new(pair_cache),
             solver: SeqImpulseConstraintSolver::default(),
-            non_static_rigid_bodies: Vec::new(),
+            dynamic_body_idcs: Vec::new(),
             gravity,
         }
     }
@@ -91,7 +91,7 @@ impl DiscreteDynamicsWorld {
         if rb.is_static_obj() {
             rb.set_activation_state(ActivationState::Sleeping);
         } else {
-            self.non_static_rigid_bodies.push(rb_idx);
+            self.dynamic_body_idcs.push(rb_idx);
         }
 
         rb_idx
@@ -108,14 +108,14 @@ impl DiscreteDynamicsWorld {
         if rb.is_static_obj() {
             rb.set_activation_state(ActivationState::Sleeping);
         } else {
-            self.non_static_rigid_bodies.push(rb_idx);
+            self.dynamic_body_idcs.push(rb_idx);
         }
 
         rb_idx
     }
 
     fn apply_gravity(&mut self) {
-        for &body in &self.non_static_rigid_bodies {
+        for &body in &self.dynamic_body_idcs {
             let body = &mut self.collision_world.collision_objs[body];
             if body.is_active() {
                 body.apply_gravity();
@@ -124,7 +124,7 @@ impl DiscreteDynamicsWorld {
     }
 
     fn predict_unconstraint_motion(&mut self, time_step: f32) {
-        for &body in &self.non_static_rigid_bodies {
+        for &body in &self.dynamic_body_idcs {
             let body = &mut self.collision_world.collision_objs[body];
             debug_assert!(!body.is_static_obj());
 
@@ -138,14 +138,14 @@ impl DiscreteDynamicsWorld {
     fn solve_constraints(&mut self, time_step: f32) {
         self.solver.solve_group(
             &mut self.collision_world.collision_objs,
-            &self.non_static_rigid_bodies,
+            &self.dynamic_body_idcs,
             &mut self.collision_world.dispatcher1.manifolds,
             time_step,
         );
     }
 
     fn integrate_trans_internal(&mut self, time_step: f32) {
-        for &body in &self.non_static_rigid_bodies {
+        for &body in &self.dynamic_body_idcs {
             let body = &mut self.collision_world.collision_objs[body];
 
             debug_assert!(!body.is_static_obj());
@@ -159,20 +159,20 @@ impl DiscreteDynamicsWorld {
     }
 
     fn integrate_trans(&mut self, time_step: f32) {
-        if !self.non_static_rigid_bodies.is_empty() {
+        if !self.dynamic_body_idcs.is_empty() {
             self.integrate_trans_internal(time_step);
         }
     }
 
     fn update_activation_state(&mut self, time_step: f32) {
-        for &body in &self.non_static_rigid_bodies {
+        for &body in &self.dynamic_body_idcs {
             let body = &mut self.collision_world.collision_objs[body];
             body.update_activation_state(time_step);
         }
     }
 
     fn clear_forces(&mut self) {
-        for &body in &self.non_static_rigid_bodies {
+        for &body in &self.dynamic_body_idcs {
             self.collision_world.collision_objs[body].clear_forces();
         }
     }

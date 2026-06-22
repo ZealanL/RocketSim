@@ -2,7 +2,7 @@ pub mod cpp_records;
 mod data_reader;
 pub mod tick_record;
 
-use std::io::{BufReader, ErrorKind};
+use std::io::ErrorKind;
 
 use crate::rl_comparison_test::recording::tick_record::TickRecord;
 use cpp_records::*;
@@ -21,8 +21,7 @@ pub struct Recording {
 
 impl Recording {
     pub fn from_bytes(name: &str, bytes: &[u8]) -> Result<Recording, std::io::Error> {
-        let buffered_stream = BufReader::new(bytes);
-        let mut reader = DataReader::new(buffered_stream);
+        let mut reader = DataReader::new(bytes);
 
         for magic_byte in RLPR_MAGIC_BYTES {
             if reader.read_u8()? != magic_byte {
@@ -73,6 +72,16 @@ impl Recording {
                 car_records,
                 ball_record,
             });
+        }
+
+        if reader.num_bytes_left() > 0 {
+            return Err(std::io::Error::new(
+                ErrorKind::InvalidData,
+                format!(
+                    "RLPR recording still has {} bytes left after reading all ticks",
+                    reader.num_bytes_left()
+                ),
+            ));
         }
 
         Ok(Self {

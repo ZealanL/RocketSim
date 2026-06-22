@@ -110,7 +110,7 @@ fn compare_phys(phys_state: &PhysState, phys_record: &PhysRecord, comparisons: &
     );
     comparisons.insert(
         "vel",
-        Comparison::new_vec(phys_state.vel, phys_record.lin_vel.into(), 20.0),
+        Comparison::new_vec(phys_state.vel, phys_record.lin_vel.into(), 3.0),
     );
     comparisons.insert(
         "ang_vel",
@@ -157,10 +157,7 @@ fn compare_car(car_state: &CarState, car_record: &CarRecord, comparisons: &mut C
         "is_flipping",
         Comparison::new_bool(car_state.is_flipping, car_record.is_flipping),
     );
-    comparisons.insert(
-        "flip_time",
-        Comparison::new_float(car_state.flip_time, car_record.flip_time, TICK_TIME * 2.0),
-    );
+
     if car_state.is_flipping {
         comparisons.insert(
             "flip_time",
@@ -171,7 +168,7 @@ fn compare_car(car_state: &CarState, car_record: &CarRecord, comparisons: &mut C
             Comparison::new_vec(
                 car_state.flip_rel_torque,
                 car_record.flip_rel_torque.into(),
-                0.1,
+                0.05,
             ),
         );
     }

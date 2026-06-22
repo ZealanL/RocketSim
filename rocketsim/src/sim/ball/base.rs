@@ -81,7 +81,7 @@ impl Ball {
         info.linear_damping = mutator_config.ball_drag;
 
         let coefs = if game_mode == GameMode::Snowday {
-            consts::snowday::PUCK_COEFS
+            snowday::PUCK_COEFS
         } else {
             consts::ball::COEFS
         };
@@ -136,7 +136,7 @@ impl Ball {
         &mut self,
         rb: &mut RigidBody,
         game_mode: GameMode,
-        mutator_config: &MutatorConfig,
+        _mutator_config: &MutatorConfig, // TODO: Remove
     ) {
         match game_mode {
             GameMode::Heatseeker => {
@@ -231,11 +231,6 @@ impl Ball {
             }
             _ => {}
         }
-
-        rb.limit_vels(
-            mutator_config.ball_max_speed * UU_TO_BT,
-            consts::ball::MAX_ANG_SPEED,
-        );
     }
 
     pub(crate) fn finish_physics_tick(&mut self, rb: &mut RigidBody) {

@@ -324,7 +324,7 @@ impl Car {
             }
 
             if real_throttle == 0.0 {
-                // contact is not sticky
+                // Contact is not sticky
                 let non_sticky_scale =
                     curves::NON_STICKY_FRICTION_FACTOR.get_output(raycast_info.contact_normal.z);
                 lat_friction *= non_sticky_scale;
@@ -466,48 +466,47 @@ impl Car {
     ) {
         let up_dir = self.state.get_up_dir();
 
-        if self.state.is_on_ground && !self.state.is_jumping {
-            if self.state.has_jumped
+        // Apply forces
+        if self.state.is_jumping {
+            // Jump started, apply initial boost force
+            if self.state.jump_time == 0.0 {
+                let jump_start_force = up_dir
+                    * mutator_config.jump_immediate_force
+                    * const { UU_TO_BT * car_consts::MASS_BT };
+                rb.apply_central_impulse(jump_start_force);
+            }
+            rb.apply_central_force(
+                up_dir * mutator_config.jump_accel * const { UU_TO_BT * car_consts::MASS_BT },
+            );
+        }
+
+        if self.state.has_jumped {
+            self.state.jump_time += TICK_TIME;
+
+            // Update is_jumping
+            self.state.is_jumping = self.state.jump_time < car_consts::jump::MIN_TIME
+                || (self.state.controls.jump && self.state.jump_time < car_consts::jump::MAX_TIME);
+
+            // Possibly reset `has_jumped`
+            if self.state.is_on_ground
                 && self.state.jump_time
-                    < const { car_consts::jump::MIN_TIME + car_consts::jump::RESET_TIME_PAD }
+                    > const { car_consts::jump::MIN_TIME + car_consts::jump::RESET_TIME_PAD }
             {
                 // Don't reset the jump just yet, we might still be leaving the ground
                 // This fixes the bug where jump is reset before we actually leave the ground after a minimum-time jump
                 // TODO: RL does something similar to this time-pad, but not exactly the same
-            } else {
                 self.state.has_jumped = false;
                 self.state.jump_time = 0.0;
             }
         }
 
-        if self.state.is_jumping {
-            self.state.is_jumping = self.state.jump_time < car_consts::jump::MIN_TIME
-                || (self.state.controls.jump && self.state.jump_time < car_consts::jump::MAX_TIME);
-        } else if self.state.is_on_ground && jump_pressed {
+        // Check jump activation at the end
+        if !self.state.has_jumped && self.state.is_on_ground && jump_pressed {
             self.state.is_jumping = true;
             self.state.jump_time = 0.0;
-            let jump_start_force = up_dir
-                * mutator_config.jump_immediate_force
-                * const { UU_TO_BT * car_consts::MASS_BT };
-            rb.apply_central_impulse(jump_start_force);
         }
 
-        if self.state.is_jumping {
-            self.state.has_jumped = true;
-
-            let mut total_jump_force = up_dir * mutator_config.jump_accel;
-            if self.state.jump_time < car_consts::jump::MIN_TIME {
-                // TODO: Temporary fix for unknown accuracy issue (thus not in constants)
-                const JUMP_PRE_MIN_ACCEL_SCALE: f32 = 0.62;
-                total_jump_force *= JUMP_PRE_MIN_ACCEL_SCALE;
-            }
-
-            rb.apply_central_force(total_jump_force * const { UU_TO_BT * car_consts::MASS_BT });
-        }
-
-        if self.state.is_jumping || self.state.has_jumped {
-            self.state.jump_time += TICK_TIME;
-        }
+        self.state.has_jumped |= self.state.is_jumping;
     }
 
     fn update_auto_flip(&mut self, rb: &mut RigidBody, jump_pressed: bool) {
@@ -821,8 +820,6 @@ impl Car {
 
         self.bullet_vehicle.update_vehicle_second(rb, TICK_TIME);
         self.update_boost(rb, mutator_config);
-
-        rb.limit_vels(car_consts::MAX_SPEED * UU_TO_BT, car_consts::MAX_ANG_SPEED);
     }
 
     pub(crate) fn post_tick_update(&mut self, rb: &RigidBody) {

@@ -2,7 +2,7 @@ use std::ops::{Deref, DerefMut};
 
 use glam::{Mat3A, Vec3A};
 
-use crate::{CarControls, PhysState};
+use crate::{CarControls, PhysState, consts};
 
 #[derive(Clone, Copy, Debug)]
 pub struct CarState {
@@ -77,7 +77,7 @@ impl Default for CarState {
 impl CarState {
     pub const DEFAULT: Self = Self {
         phys: PhysState {
-            pos: Vec3A::new(0.0, 0.0, crate::sim::consts::car::spawn::REST_Z),
+            pos: Vec3A::new(0.0, 0.0, consts::car::spawn::REST_Z),
             rot_mat: Mat3A::IDENTITY,
             vel: Vec3A::ZERO,
             ang_vel: Vec3A::ZERO,
@@ -96,7 +96,7 @@ impl CarState {
         is_jumping: false,
         air_time: 0.0,
         air_time_since_jump: 0.0,
-        boost: crate::sim::consts::car::boost::SPAWN_AMOUNT,
+        boost: consts::car::boost::SPAWN_AMOUNT,
         time_since_boosted: 0.0,
         is_boosting: false,
         boosting_time: 0.0,
@@ -117,7 +117,7 @@ impl CarState {
         self.is_on_ground
             || (!self.has_flipped
                 && !self.has_double_jumped
-                && self.air_time_since_jump < crate::sim::consts::car::jump::DOUBLEJUMP_MAX_DELAY)
+                && self.air_time_since_jump < consts::car::jump::DOUBLEJUMP_MAX_DELAY)
     }
 
     #[must_use]

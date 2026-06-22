@@ -145,7 +145,7 @@ pub mod car {
         pub const ACCEL: f32 = 4375.0 / 3.0;
         pub const IMMEDIATE_FORCE: f32 = 875.0 / 3.0;
         pub const MIN_TIME: f32 = 0.025;
-        pub const RESET_TIME_PAD: f32 = 1.0 / 40.0;
+        pub const RESET_TIME_PAD: f32 = 0.25;
         pub const MAX_TIME: f32 = 0.2;
         /// Can be at most 1.25 seconds after the jump is finished
         pub const DOUBLEJUMP_MAX_DELAY: f32 = 1.25;
@@ -596,4 +596,10 @@ pub mod boost_pads {
             }
         }
     }
+}
+
+pub mod quantize {
+    pub const POS_SCALE: f32 = 100.0;
+    pub const VEL_SCALE: f32 = 100.0;
+    pub const ANG_VEL_SCALE: f32 = 10000.0;
 }
