@@ -120,6 +120,10 @@ pub struct PhysRecord {
     pub rot: Mat3Record,
     pub lin_vel: VecRecord,
     pub ang_vel: VecRecord,
+
+    pub has_world_contact: bool,
+    pub world_contact_point: VecRecord,
+    pub world_contact_normal: VecRecord,
 }
 impl From<PhysRecord> for PhysState {
     fn from(phys_record: PhysRecord) -> Self {
@@ -164,9 +168,14 @@ pub struct CarRecord {
     pub is_flipping: bool,
     pub jump_time: f32,
     pub flip_time: f32,
+    pub has_jumped: bool,
     pub double_jumped_or_flipped: bool,
+    pub has_flip: bool,
+    pub flip_rel_torque: VecRecord,
 
     pub boost_amount: f32,
+
+    pub is_touching_ball: bool,
 
     pub prev_controls: ControlsRecord,
 
@@ -181,8 +190,10 @@ impl From<CarRecord> for CarState {
             is_on_ground: phys_record.is_on_ground,
             is_jumping: phys_record.is_jumping,
             is_flipping: phys_record.is_flipping,
+            flip_rel_torque: phys_record.flip_rel_torque.into(),
             jump_time: phys_record.jump_time,
             flip_time: phys_record.flip_time,
+            has_jumped: phys_record.has_jumped,
             ..Default::default()
         }
     }
@@ -190,14 +201,8 @@ impl From<CarRecord> for CarState {
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, PartialEq)]
-pub struct TickRecord {
-    pub car_record: CarRecord,
-    pub ball_record: PhysRecord,
-}
-
-#[repr(C)]
-#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct RecordingInfo {
+    pub num_cars: u32,
     pub hitbox_rel_min_bt: VecRecord,
     pub hitbox_rel_max_bt: VecRecord,
 }

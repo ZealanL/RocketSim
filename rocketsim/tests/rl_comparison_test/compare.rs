@@ -3,7 +3,8 @@ use std::{collections::HashMap, fmt::Debug};
 use glam::Vec3A;
 use rocketsim::{BallState, CarState, PhysState, consts::TICK_TIME};
 
-use crate::rl_comparison_test::recording::cpp_records::{CarRecord, PhysRecord, TickRecord};
+use crate::rl_comparison_test::recording::cpp_records::{CarRecord, PhysRecord};
+use crate::rl_comparison_test::recording::tick_record::TickRecord;
 
 #[derive(Copy, Clone, Debug)]
 #[allow(dead_code)]
@@ -143,9 +144,15 @@ fn compare_car(car_state: &CarState, car_record: &CarRecord, comparisons: &mut C
         Comparison::new_bool(car_state.is_jumping, car_record.is_jumping),
     );
     comparisons.insert(
-        "jump_time",
-        Comparison::new_float(car_state.jump_time, car_record.jump_time, TICK_TIME * 2.0),
+        "has_jumped",
+        Comparison::new_bool(car_state.has_jumped, car_record.has_jumped),
     );
+    if car_state.has_jumped {
+        comparisons.insert(
+            "jump_time",
+            Comparison::new_float(car_state.jump_time, car_record.jump_time, TICK_TIME * 2.0),
+        );
+    }
     comparisons.insert(
         "is_flipping",
         Comparison::new_bool(car_state.is_flipping, car_record.is_flipping),
@@ -154,20 +161,45 @@ fn compare_car(car_state: &CarState, car_record: &CarRecord, comparisons: &mut C
         "flip_time",
         Comparison::new_float(car_state.flip_time, car_record.flip_time, TICK_TIME * 2.0),
     );
+    if car_state.is_flipping {
+        comparisons.insert(
+            "flip_time",
+            Comparison::new_float(car_state.flip_time, car_record.flip_time, TICK_TIME * 2.0),
+        );
+        comparisons.insert(
+            "flip_rel_torque",
+            Comparison::new_vec(
+                car_state.flip_rel_torque,
+                car_record.flip_rel_torque.into(),
+                0.1,
+            ),
+        );
+    }
 }
 
 pub fn compare_states_to_tick(
-    car_state: &CarState,
+    car_states: &[CarState],
     ball_state: &BallState,
     tick: &TickRecord,
 ) -> ComparisonSet {
-    let mut car_comparisons = ComparisonSet::new();
-    compare_car(car_state, &tick.car_record, &mut car_comparisons);
+    let mut car_comparisons_all: Vec<ComparisonSet> = Vec::new();
+    for i in 0..car_states.len() {
+        let mut car_comparison_set = ComparisonSet::new();
+        compare_car(
+            &car_states[i],
+            &tick.car_records[i],
+            &mut car_comparison_set,
+        );
+        car_comparisons_all.push(car_comparison_set);
+    }
+
     let mut ball_comparisons = ComparisonSet::new();
     compare_phys(&ball_state.phys, &tick.ball_record, &mut ball_comparisons);
 
     let mut all_comparisons = ComparisonSet::new();
-    all_comparisons.append_with_prefix(&car_comparisons, "car_");
+    for (i, car_comparison_set) in car_comparisons_all.iter().enumerate() {
+        all_comparisons.append_with_prefix(&car_comparison_set, &format!("car_{i}_"));
+    }
     all_comparisons.append_with_prefix(&ball_comparisons, "ball_");
     all_comparisons
 }
