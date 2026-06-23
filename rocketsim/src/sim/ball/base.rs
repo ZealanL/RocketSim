@@ -32,7 +32,7 @@ pub(crate) struct Ball {
 }
 
 impl Ball {
-    fn make_ball_collision_shape(
+    pub(crate) fn make_ball_collision_shape(
         game_mode: GameMode,
         mutator_config: &MutatorConfig,
     ) -> (CollisionShapes, Vec3A) {

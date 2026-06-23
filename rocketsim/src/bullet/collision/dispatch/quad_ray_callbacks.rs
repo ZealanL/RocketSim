@@ -11,9 +11,9 @@ use crate::bullet::{
 };
 
 pub struct LocalRayResult {
-    collision_obj_idx: usize,
-    hit_normal_world: Vec3A,
-    hit_fraction: f32,
+    pub collision_obj_idx: usize,
+    pub hit_normal_world: Vec3A,
+    pub hit_fraction: f32,
 }
 
 #[derive(Clone, Copy)]

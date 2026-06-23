@@ -1,6 +1,6 @@
 use super::ArenaContactTracker;
-use crate::shared::rsmath;
 use crate::shared::rsmath::VecQuantizeMode;
+use crate::shared::{Aabb, rsmath};
 use crate::{
     ARENA_COLLISION_SHAPES, ArenaConfig,
     ArenaEvent::{BallHitWorld, CarPickupBoost},
@@ -11,9 +11,21 @@ use crate::{
     bullet::{
         collision::{
             broadphase::{CollisionFilterGroups, GridBroadphase},
-            dispatch::quad_ray_callbacks::{ClosestQuadRayResultCallback, QuadRayResultCallback},
-            narrowphase::manifold_point::ManifoldPoint,
-            shapes::{collision_shape::CollisionShapes, static_plane_shape::StaticPlaneShape},
+            dispatch::{
+                collision_dispatcher::CollisionDispatcher,
+                collision_world::CollisionWorld,
+                quad_ray_callbacks::{
+                    ClosestQuadRayResultCallback, LocalRayResult, QuadRayResultCallback,
+                    QuadRayResultCallbackBase,
+                },
+            },
+            narrowphase::{
+                manifold_point::ManifoldPoint, persistent_manifold::ContactAddedCallback,
+            },
+            shapes::{
+                box_shape::BoxShape, collision_shape::CollisionShapes,
+                compound_shape::CompoundShape, static_plane_shape::StaticPlaneShape,
+            },
         },
         dynamics::{
             discrete_dynamics_world::DiscreteDynamicsWorld,
@@ -36,6 +48,44 @@ use std::{any::Any, f32::consts::PI, iter::repeat_n, mem};
 
 pub trait Vis: Send + Sync + Any {
     fn update(&mut self, arena_state: &ArenaState, dt: f32);
+}
+
+/// A simple ray callback that only records whether each ray hit something,
+/// without tracking the closest hit.
+struct GlobalRayResultCallback {
+    base: QuadRayResultCallbackBase,
+    /// Bitmask of which rays hit: bit 0 = ray 0, bit 1 = ray 1, etc.
+    hit_mask: u8,
+}
+
+impl QuadRayResultCallback for GlobalRayResultCallback {
+    fn get_base(&self) -> &QuadRayResultCallbackBase {
+        &self.base
+    }
+
+    fn add_single_result(&mut self, ray_result: LocalRayResult, ray_idx: usize) {
+        let bit = 1u8 << ray_idx;
+
+        if self.hit_mask & bit == 0 {
+            self.hit_mask |= bit;
+            self.base.closest_hit_fraction[ray_idx] = ray_result.hit_fraction;
+            self.base.collision_obj_idx[ray_idx] = Some(ray_result.collision_obj_idx);
+        }
+    }
+}
+
+/// A no-op contact callback used when only checking for collision existence.
+struct NopContactAddedCallback;
+
+impl ContactAddedCallback for NopContactAddedCallback {
+    fn callback(
+        &mut self,
+        _contact_point: &mut ManifoldPoint,
+        _body_a: &RigidBody,
+        _body_b: &RigidBody,
+        _idx: Option<usize>,
+    ) {
+    }
 }
 
 pub struct Arena {
@@ -822,11 +872,15 @@ impl Arena {
         self.events.events()
     }
 
-    #[must_use]
-    /// Cast N rays in the arena
+    /// Cast N rays in the arena and returns detailed hit information.
     ///
     /// Note that rays are batch-casted 4 at a time for SIMD speed,
-    /// so doing multiples of 4 at once is most efficient
+    /// so doing multiples of 4 at once is most efficient.
+    ///
+    /// This is limited by the broadphase grid cell size — each ray must be
+    /// shorter than one grid cell side (typically several hundred UU).
+    /// For arbitrarily long rays use [`global_cast_rays`](Self::global_cast_rays)
+    #[must_use]
     pub fn cast_rays(&self, ray_queries: &[RaycastQuery]) -> Vec<RaycastResult> {
         let mut results = Vec::with_capacity(ray_queries.len());
         for query_batch in ray_queries.chunks(4) {
@@ -859,6 +913,119 @@ impl Arena {
 
     pub fn is_vis_enabled(&self) -> bool {
         self.vis.is_some()
+    }
+
+    /// Casts 4 rays in world-space and returns a bitmask of which rays hit something.
+    ///
+    /// Unlike [`cast_rays`](Self::cast_rays), this does not return hit positions or normals and
+    /// tests against every body instead of using the broadphase grid, so it works with rays of
+    /// any length at the cost of iterating all bodies every call.
+    /// Rays are processed in batches of 4 for SIMD efficiency.
+    ///
+    /// Only static bodies are tested against. Set `INCLUDE_DYNAMICS` to `true`
+    /// to also test against dynamic bodies.
+    ///
+    /// # Returns
+    /// A `u8` bitmask where:
+    /// - bit 0 → ray 0 hit
+    /// - bit 1 → ray 1 hit
+    /// - bit 2 → ray 2 hit
+    /// - bit 3 → ray 3 hit
+    #[must_use]
+    pub fn global_cast_rays<const INCLUDE_DYNAMICS: bool>(
+        &self,
+        ray_from: &[Vec3A; 4],
+        ray_to: &[Vec3A; 4],
+    ) -> u8 {
+        let mut callback = GlobalRayResultCallback {
+            base: QuadRayResultCallbackBase::default(),
+            hit_mask: 0,
+        };
+
+        for body in self.bullet_world.bodies() {
+            if !body.is_static_obj() && !INCLUDE_DYNAMICS {
+                continue;
+            }
+
+            CollisionWorld::quad_ray_test(
+                ray_from,
+                ray_to,
+                body,
+                body.world_array_idx,
+                &mut callback,
+            );
+
+            if callback.hit_mask == 0b1111 {
+                break;
+            }
+        }
+
+        callback.hit_mask
+    }
+
+    /// Tests whether an object at the given position collides with any body in the arena.
+    ///
+    /// If `car_config` is `Some`, the object is treated as a car with the given body config.
+    /// If `car_config` is `None`, the object is treated as a ball using the arena's current
+    /// ball configuration (including game mode and mutators).
+    ///
+    /// When `INCLUDE_DYNAMICS` is true, dynamic (non-static) bodies are also tested;
+    /// otherwise only static arena geometry is tested against.
+    #[must_use]
+    pub fn test_collision<const INCLUDE_DYNAMICS: bool>(
+        &self,
+        phys: PhysState,
+        car_config: Option<CarBodyConfig>,
+    ) -> bool {
+        let game_mode = self.config.game_mode;
+        let pos_bt = phys.pos * UU_TO_BT;
+        let world_trans = Affine3A {
+            matrix3: phys.rot_mat,
+            translation: pos_bt,
+        };
+
+        let (query_shape, query_aabb) = if let Some(config) = car_config {
+            let box_shape = BoxShape::new(config.hitbox_size * UU_TO_BT * 0.5);
+            let hitbox_offset = Affine3A {
+                matrix3: Mat3A::IDENTITY,
+                translation: config.hitbox_pos_offset * UU_TO_BT,
+            };
+            let compound_shape = CompoundShape::new(box_shape, hitbox_offset);
+            let aabb = compound_shape.get_aabb(&world_trans);
+            (CollisionShapes::Compound(compound_shape), aabb)
+        } else {
+            let (shape, _) = Ball::make_ball_collision_shape(game_mode, &self.config.mutators);
+            let aabb = shape.get_aabb(&world_trans);
+            (shape, aabb)
+        };
+
+        let arena_aabb = Aabb::new(self.config.min_pos, self.config.max_pos);
+        if !arena_aabb.intersects(&query_aabb) {
+            return false;
+        }
+
+        let mut rb_info = RigidBodyConstructionInfo::new(0.0, query_shape);
+        rb_info.start_world_trans = world_trans;
+        let mut query_body = RigidBody::new(rb_info);
+        query_body.world_array_idx = usize::MAX;
+        let mut callback = NopContactAddedCallback;
+
+        for body in self.bullet_world.bodies() {
+            if !body.is_static_obj() && !INCLUDE_DYNAMICS {
+                continue;
+            }
+
+            let body_aabb = body.get_collision_shape().get_aabb(body.get_world_trans());
+            if !query_aabb.intersects(&body_aabb) {
+                continue;
+            }
+
+            if CollisionDispatcher::process_collision(&query_body, body, &mut callback).is_some() {
+                return true;
+            }
+        }
+
+        false
     }
 }
 
