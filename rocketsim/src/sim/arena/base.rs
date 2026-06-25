@@ -590,8 +590,8 @@ impl Arena {
         self.contact_tracker.clear_records();
 
         for car in &mut self.cars {
+            car.post_tick_update(&mut self.bullet_world);
             let rb = &mut self.bullet_world.bodies_mut()[car.rigid_body_idx];
-            car.post_tick_update(rb);
             car.finish_physics_tick(rb);
 
             if let Some(boost_pad_grid) = self.boost_pad_grid.as_mut() {

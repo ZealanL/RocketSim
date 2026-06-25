@@ -210,7 +210,7 @@ impl Car {
     fn update_wheels(
         &mut self,
         rb: &mut RigidBody,
-        num_wheels_in_contact: u8,
+        num_wheels_in_contact: usize,
         forward_speed_uu: f32,
     ) {
         let handbrake_delta = if self.state.controls.handbrake {
@@ -691,7 +691,7 @@ impl Car {
         }
     }
 
-    fn update_auto_roll(&self, rb: &mut RigidBody, num_wheels_in_contact: u8) {
+    fn update_auto_roll(&self, rb: &mut RigidBody, num_wheels_in_contact: usize) {
         let ground_up_dir = if num_wheels_in_contact > 0 {
             self.bullet_vehicle.get_upwards_dir_from_wheel_contacts(rb)
         } else {
@@ -805,30 +805,15 @@ impl Car {
             self.state.controls = self.state.controls.clamp();
         }
 
-        // Do first part of the btVehicleRL update (update wheel transforms, do traces, calculate friction impulses)
-        self.bullet_vehicle
-            .update_vehicle_first(collision_world, TICK_TIME);
-
         let forward_speed_uu =
             collision_world.bodies()[self.rigid_body_idx].get_forward_speed() * BT_TO_UU;
 
         let jump_pressed = self.state.controls.jump && !self.state.prev_controls.jump;
 
-        let mut num_wheels_in_contact = 0u8;
-        for (wheel, has_contact) in self
-            .bullet_vehicle
-            .wheels
-            .iter()
-            .zip(&mut self.state.wheels_with_contact)
-        {
-            let in_contact = wheel.raycast_info.is_some();
-            *has_contact = in_contact;
-            num_wheels_in_contact += u8::from(in_contact);
-        }
-
-        self.state.is_on_ground = num_wheels_in_contact >= 3;
-
         let rb = &mut collision_world.bodies_mut()[self.rigid_body_idx];
+
+        // TODO: Refactor and move
+        let num_wheels_in_contact = self.state.num_wheels_in_contact();
 
         self.update_wheels(rb, num_wheels_in_contact, forward_speed_uu);
 
@@ -851,12 +836,11 @@ impl Car {
 
         self.state.world_contact_normal = None;
 
-        self.bullet_vehicle.update_vehicle_second(rb, TICK_TIME);
         self.update_boost(rb, mutator_config);
     }
 
-    pub(crate) fn post_tick_update(&mut self, rb: &RigidBody) {
-        debug_assert_eq!(rb.world_array_idx, self.rigid_body_idx);
+    pub(crate) fn post_tick_update(&mut self, collision_world: &mut DiscreteDynamicsWorld) {
+        let rb = &collision_world.bodies()[self.rigid_body_idx];
         if self.state.is_demoed {
             return;
         }
@@ -881,6 +865,24 @@ impl Car {
         } else {
             self.state.supersonic_time = 0.0;
         }
+
+        self.bullet_vehicle
+            .update_vehicle_first(collision_world, TICK_TIME);
+        self.bullet_vehicle
+            .update_vehicle_second(collision_world, TICK_TIME);
+        let mut num_wheels_in_contact = 0u8;
+        for (wheel, has_contact) in self
+            .bullet_vehicle
+            .wheels
+            .iter()
+            .zip(&mut self.state.wheels_with_contact)
+        {
+            let in_contact = wheel.raycast_info.is_some();
+            *has_contact = in_contact;
+            num_wheels_in_contact += u8::from(in_contact);
+        }
+
+        self.state.is_on_ground = num_wheels_in_contact >= 3;
 
         self.state.bump_cooldown_timer = (self.state.bump_cooldown_timer - TICK_TIME).max(0.0);
         self.state.prev_controls = self.state.controls;

@@ -129,6 +129,17 @@ impl CarState {
     pub const fn got_flip_reset(&self) -> bool {
         !self.is_on_ground && !self.has_jumped
     }
+
+    #[must_use]
+    pub fn num_wheels_in_contact(&self) -> usize {
+        let mut result = 0;
+        for b in self.wheels_with_contact {
+            if b {
+                result += 1;
+            }
+        }
+        result
+    }
 }
 
 impl Deref for CarState {

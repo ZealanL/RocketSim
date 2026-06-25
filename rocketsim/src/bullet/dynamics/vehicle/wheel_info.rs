@@ -38,7 +38,7 @@ pub struct WheelInfo {
     pub vel_at_contact_point: Vec3A,
     pub lat_friction: f32,
     pub long_friction: f32,
-    pub suspsension_force_scale: f32,
+    pub suspension_force_scale: f32,
     pub extra_pushback: f32,
     pub real_ray_length: f32,
 }
@@ -57,7 +57,7 @@ impl WheelInfo {
         vel_at_contact_point: Vec3A::ZERO,
         lat_friction: 1.0,
         long_friction: 1.0,
-        suspsension_force_scale: 1.0,
+        suspension_force_scale: 1.0,
         extra_pushback: 0.0,
         real_ray_length: 0.0,
     };
@@ -72,7 +72,7 @@ impl WheelInfo {
         self.chassis_connection_point_cs = chassis_connection_cs;
         self.suspension_rest_length_1 = suspension_rest_length;
         self.wheels_radius = wheel_radius;
-        self.suspsension_force_scale = suspsension_force_scale;
+        self.suspension_force_scale = suspsension_force_scale;
 
         let suspension_travel = bullet_vehicle::MAX_SUSPENSION_TRAVEL * UU_TO_BT;
         self.real_ray_length =
@@ -242,7 +242,11 @@ impl WheelInfo {
 
         let mut wheels_suspension_force =
             force - (damping_vel_scale * raycast_info.suspension_relative_vel);
-        wheels_suspension_force *= self.suspsension_force_scale;
+        wheels_suspension_force *= self.suspension_force_scale;
+        println!(
+            "{}, body vel: {}",
+            raycast_info.suspension_relative_vel, cb.lin_vel
+        );
         if wheels_suspension_force <= 0.0 {
             return;
         }
