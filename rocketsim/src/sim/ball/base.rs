@@ -29,7 +29,6 @@ pub(crate) struct Ball {
     pub state: BallState,
     pub rigid_body_idx: usize,
     pub ground_stick_applied: bool,
-    pub vel_impulse_cache: Vec3A,
 }
 
 impl Ball {
@@ -109,7 +108,6 @@ impl Ball {
             state: BallState::DEFAULT,
             rigid_body_idx,
             ground_stick_applied: false,
-            vel_impulse_cache: Vec3A::ZERO,
         }
     }
 
@@ -130,7 +128,6 @@ impl Ball {
             rb.set_activation_state(ActivationState::Active);
         }
 
-        self.vel_impulse_cache = Vec3A::ZERO;
         self.state = state;
     }
 
@@ -238,11 +235,6 @@ impl Ball {
     }
 
     pub(crate) fn finish_physics_tick(&mut self, rb: &mut RigidBody) {
-        if self.vel_impulse_cache.length_squared() != 0.0 {
-            rb.lin_vel += self.vel_impulse_cache * UU_TO_BT;
-            self.vel_impulse_cache = Vec3A::ZERO;
-        }
-
         self.state.phys.vel = rb.lin_vel * BT_TO_UU;
         self.state.phys.ang_vel = rb.ang_vel;
 
@@ -259,6 +251,7 @@ impl Ball {
         game_mode: GameMode,
         mutator_config: &MutatorConfig,
         tick_count: u64,
+        rb: &mut RigidBody,
     ) {
         let car_forward = car.state.phys.rot_mat.x_axis;
         let rel_pos = self.state.phys.pos - car.state.phys.pos;
@@ -291,11 +284,15 @@ impl Ball {
                 * const { 1.0 - consts::ball::car_hit_impulse::FORWARD_SCALE };
             hit_dir = (hit_dir - forward_dir_adjustment).normalize_or_zero();
 
-            let added_vel = hit_dir
+            let added_hit_impulse = hit_dir
                 * rel_speed
                 * consts::curves::BALL_CAR_EXTRA_IMPULSE_FACTOR.get_output(rel_speed)
                 * mutator_config.ball_hit_extra_force_scale;
-            self.vel_impulse_cache += added_vel;
+            rb.add_impulse(
+                Impulse::Linear(added_hit_impulse * UU_TO_BT),
+                false, true
+            );
+
             self.state.last_extra_hit_tick = Some(tick_count);
         }
 
@@ -374,7 +371,10 @@ impl Ball {
                     let bounce_impulse = bounce_dir
                         * self.state.phys.vel.length()
                         * heatseeker::WALL_BOUNCE_FORCE_SCALE;
-                    self.vel_impulse_cache += bounce_impulse * UU_TO_BT;
+                    rb.add_impulse(
+                        Impulse::Linear(bounce_impulse * UU_TO_BT),
+                        false, true
+                    );
                 }
             }
             GameMode::Snowday if !self.ground_stick_applied => {

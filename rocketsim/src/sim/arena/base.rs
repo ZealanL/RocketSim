@@ -887,11 +887,14 @@ impl Arena {
         manifold_point: &ManifoldPoint,
         ball_is_body_a: bool,
     ) {
+        let ball_rb = &mut self.bullet_world.bodies_mut()[self.ball.rigid_body_idx];
+        let ball_accum_vel_before = ball_rb.accum_lin_vel;
         self.ball.on_hit(
             &self.cars[car_idx],
             self.config.game_mode,
             &self.config.mutators,
             self.tick_count,
+            ball_rb
         );
 
         let contact_point = if ball_is_body_a {
@@ -900,9 +903,7 @@ impl Arena {
             manifold_point.pos_world_on_b
         } * BT_TO_UU;
 
-        // TODO: Somewhat hacky
-        let extra_hit_vel = self.ball.vel_impulse_cache;
-
+        let extra_hit_vel = (ball_rb.accum_lin_vel - ball_accum_vel_before) * BT_TO_UU;
         self.events.push(ArenaEvent::CarHitBall(CarHitBallEvent {
             car_idx,
             contact_point,
