@@ -129,10 +129,10 @@ pub struct RigidBody {
     world_quat: Quat,
     shape: CollisionShapes,
     activation: ActivationState,
+    broadphase_handle: usize,
 
     pub interp_world_trans: Affine3A,
     pub contact_processing_threshold: f32,
-    broadphase_handle: usize,
 
     pub collision_flags: u8,
     pub companion_id: Option<usize>,
@@ -159,6 +159,12 @@ pub struct RigidBody {
     pub linear_sleeping_threshold: f32,
     pub angular_sleeping_threshold: f32,
     pub inv_mass_splat: Vec3A,
+
+    /// For debugging physics, this tracks every impulse applied during a tick
+    ///
+    /// The storage format is (lin_vel, ang_vel, is_accum)
+    #[cfg(debug_assertions)]
+    pub dbg_tick_impulse_history: Vec<(Vec3A, Vec3A, bool)>,
 }
 
 impl RigidBody {
@@ -212,6 +218,9 @@ impl RigidBody {
             linear_sleeping_threshold,
             angular_sleeping_threshold,
             inv_mass_splat: Vec3A::splat(inverse_mass),
+
+            #[cfg(debug_assertions)]
+            dbg_tick_impulse_history: Vec::new()
         }
     }
 
@@ -332,6 +341,11 @@ impl RigidBody {
         } else {
             self.ang_vel += ang_impulse;
         }
+
+        #[cfg(debug_assertions)]
+        self.dbg_tick_impulse_history.push(
+            (lin_impulse, ang_impulse, accum)
+        );
     }
 
     pub fn apply_damping(&mut self, time_step: f32) {
@@ -381,9 +395,11 @@ impl RigidBody {
         }
     }
 
-    pub const fn clear_accum_vels(&mut self) {
+    pub fn clear_accum_vels(&mut self) {
         self.accum_lin_vel = Vec3A::ZERO;
         self.accum_ang_vel = Vec3A::ZERO;
+        #[cfg(debug_assertions)]
+        self.dbg_tick_impulse_history.clear();
     }
 
     pub fn get_mass(&self) -> f32 {
