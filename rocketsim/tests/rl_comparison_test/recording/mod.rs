@@ -9,7 +9,7 @@ use cpp_records::*;
 use data_reader::DataReader;
 
 const RLPR_MAGIC_BYTES: [u8; 4] = [82, 76, 80, 82];
-const RLPR_VERSION: u32 = 1;
+const RLPR_VERSION: u32 = 2;
 const RLPR_MAX_CARS: usize = 2;
 
 #[allow(dead_code)]
@@ -45,7 +45,7 @@ impl Recording {
         if version != RLPR_VERSION {
             return Err(std::io::Error::new(
                 ErrorKind::InvalidData,
-                format!("RLPR Version mismatch (expected: {version}, got: {version})"),
+                format!("RLPR Version mismatch (expected: {RLPR_VERSION}, got: {version})"),
             ));
         }
 

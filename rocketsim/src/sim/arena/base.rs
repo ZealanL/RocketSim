@@ -1,9 +1,3 @@
-use std::{any::Any, f32::consts::PI, iter::repeat_n, mem};
-
-use arrayvec::ArrayVec;
-use fastrand::Rng;
-use glam::{Affine3A, EulerRot, Mat3A, Vec3A};
-
 use super::ArenaContactTracker;
 use crate::shared::rsmath;
 use crate::shared::rsmath::VecQuantizeMode;
@@ -33,6 +27,12 @@ use crate::{
         DemoMode, UserInfoTypes, arena::ArenaEventList,
     },
 };
+use arrayvec::ArrayVec;
+use fastrand::Rng;
+use glam::{Affine3A, EulerRot, Mat3A, Vec3A};
+#[cfg(debug_assertions)]
+use indexmap::IndexMap;
+use std::{any::Any, f32::consts::PI, iter::repeat_n, mem};
 
 pub trait Vis: Send + Sync + Any {
     fn update(&mut self, arena_state: &ArenaState, dt: f32);
@@ -470,6 +470,10 @@ impl Arena {
     pub fn step_tick(&mut self) -> &[ArenaEvent] {
         self.events.clear();
 
+        // NOTE: This needs to be called manually
+        // TODO: Make it not need to be called manually
+        self.bullet_world.clear_accum_forces();
+
         // Limit velocities, then quantize physics values
         {
             use consts::{ball, car, quantize};
@@ -894,7 +898,7 @@ impl Arena {
             self.config.game_mode,
             &self.config.mutators,
             self.tick_count,
-            ball_rb
+            ball_rb,
         );
 
         let contact_point = if ball_is_body_a {
@@ -1033,5 +1037,15 @@ impl Arena {
                 is_demo,
             }));
         }
+    }
+
+    #[cfg(debug_assertions)]
+    pub fn get_car_impulse_history(
+        &self,
+        car_idx: usize,
+    ) -> &IndexMap<(&'static str, bool), (Vec3A, Vec3A)> {
+        let car_rb_index = self.cars[car_idx].rigid_body_idx;
+        let rb = &self.bullet_world.bodies()[car_rb_index];
+        &rb.dbg_tick_impulse_history
     }
 }

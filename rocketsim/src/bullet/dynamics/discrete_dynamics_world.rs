@@ -108,7 +108,7 @@ impl DiscreteDynamicsWorld {
         for &body in &self.dynamic_body_idcs {
             let body = &mut self.collision_world.collision_objs[body];
             if body.is_active() {
-                body.add_impulse(Impulse::Linear(self.gravity * time_step), false, true);
+                body.add_impulse(None, Impulse::Linear(self.gravity * time_step), false, true);
             }
         }
     }
@@ -161,7 +161,7 @@ impl DiscreteDynamicsWorld {
         }
     }
 
-    fn clear_forces(&mut self) {
+    pub fn clear_accum_forces(&mut self) {
         for &body in &self.dynamic_body_idcs {
             self.collision_world.collision_objs[body].clear_accum_vels();
         }
@@ -189,7 +189,5 @@ impl DiscreteDynamicsWorld {
     ) {
         self.apply_gravity(time_step);
         self.internal_single_step_simulation(time_step, contact_added_callback);
-
-        self.clear_forces();
     }
 }

@@ -16,10 +16,10 @@ log = "0.4.29"
 rocketsim_derive = { path = "../rocketsim_derive" }
 rustc-hash.workspace = true
 zerocopy = { version = "0.8.34", features = ["derive"] }
+indexmap = "2.14.0"
 
 [dev-dependencies]
 clap = { version = "4.6.0", features = ["derive"] }
-test-case = "3.3.1"
 
 [target.'cfg(not(any(target_arch = "x86", target_arch = "x86_64")))'.dependencies]
 # use glam with experimental support for portable SIMD when not running on x86

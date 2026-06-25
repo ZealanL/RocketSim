@@ -111,6 +111,28 @@ impl From<ControlsRecord> for CarControls {
     }
 }
 
+#[repr(u8)]
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub enum ImpulseRecordType {
+    WheelsSuspension,
+    WheelsFriction,
+    StickyForce,
+    Jump,
+    DoubleJump,
+    DodgeImpulse,
+    DodgeTorque,
+    AirControl,
+    Boost,
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub struct ImpulseRecord {
+    pub lin_impulse: VecRecord,
+    pub ang_impulse: VecRecord,
+    pub impulse_type: ImpulseRecordType,
+    pub is_accum: bool,
+}
+
 #[repr(C)]
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct PhysRecord {
@@ -124,6 +146,14 @@ pub struct PhysRecord {
     pub has_world_contact: bool,
     pub world_contact_point: VecRecord,
     pub world_contact_normal: VecRecord,
+
+    impulse_records_data: [ImpulseRecord; 8],
+    num_impulse_records: u32,
+}
+impl PhysRecord {
+    pub fn impulse_records(&self) -> &[ImpulseRecord] {
+        &self.impulse_records_data[..self.num_impulse_records as usize]
+    }
 }
 impl From<PhysRecord> for PhysState {
     fn from(phys_record: PhysRecord) -> Self {

@@ -222,6 +222,7 @@ impl Ball {
                         };
 
                         rb.add_impulse(
+                            None,
                             Impulse::Linear(Vec3A::new(0.0, 0.0, launch_vel_z) * UU_TO_BT),
                             false,
                             false,
@@ -289,8 +290,10 @@ impl Ball {
                 * consts::curves::BALL_CAR_EXTRA_IMPULSE_FACTOR.get_output(rel_speed)
                 * mutator_config.ball_hit_extra_force_scale;
             rb.add_impulse(
+                None,
                 Impulse::Linear(added_hit_impulse * UU_TO_BT),
-                false, true
+                false,
+                true,
             );
 
             self.state.last_extra_hit_tick = Some(tick_count);
@@ -372,14 +375,16 @@ impl Ball {
                         * self.state.phys.vel.length()
                         * heatseeker::WALL_BOUNCE_FORCE_SCALE;
                     rb.add_impulse(
+                        None,
                         Impulse::Linear(bounce_impulse * UU_TO_BT),
-                        false, true
+                        false,
+                        true,
                     );
                 }
             }
             GameMode::Snowday if !self.ground_stick_applied => {
                 let force = -normal * snowday::PUCK_GROUND_STICK_FORCE * TICK_TIME;
-                rb.add_impulse(Impulse::Linear(force), true, true);
+                rb.add_impulse(None, Impulse::Linear(force), true, true);
                 self.ground_stick_applied = true;
             }
             _ => {}

@@ -1,7 +1,8 @@
-use rocketsim::{Arena, CarBodyConfig, CarControls, CarState, GameMode, PhysState, Team};
-
 use crate::rl_comparison_test::recording::Recording;
 use crate::rl_comparison_test::recording::tick_record::TickRecord;
+use glam::Vec3A;
+use rocketsim::consts::BT_TO_UU;
+use rocketsim::{Arena, CarBodyConfig, CarControls, CarState, GameMode, PhysState, Team};
 
 mod compare;
 mod recording;
@@ -70,7 +71,7 @@ fn test_recording(recording: &Recording) {
 
         let comparison = compare::compare_states_to_tick(&car_states, ball_state, to_tick);
         let norm_error = comparison.calc_norm_error();
-        if norm_error > 1.0 {
+        if norm_error >= 1.0 {
             let recording_name = &recording.name;
             let mut lines: Vec<String> = vec![
                 "=".repeat(50),
@@ -89,6 +90,45 @@ fn test_recording(recording: &Recording) {
                     lines.push(format!(" > (e={rel_error}) \"{k}\": {v:#?}"));
                 }
             }
+            lines.push("CAR CONTROLS DURING TICK:".to_string());
+            for j in 0..num_cars {
+                lines.push(format!(" > Car [{j}]: {:?}", car_states[j].controls));
+            }
+            lines.push("CAR IMPULSES DURING TICK:".to_string());
+            for j in 0..num_cars {
+                lines.push(format!(" > Car [{j}]:"));
+                let pred_impulses = arena.get_car_impulse_history(j);
+                let real_impulses = to_tick.car_records[j].phys.impulse_records();
+
+                if pred_impulses.len() + real_impulses.len() > 0 {
+                    for ((name, is_accum), (lin_impulse, ang_impulse)) in pred_impulses {
+                        let lin_impulse = lin_impulse * BT_TO_UU;
+                        let ang_impulse = ang_impulse * BT_TO_UU;
+                        lines.push(format!(
+                            "\tPRED: {{ \
+                            name: {name}, lin_impulse: {lin_impulse}, ang_impulse: {ang_impulse}, is_accum: {is_accum} \
+                            }}"
+                        ));
+                    }
+                    lines.push(String::new());
+                    for real_impulse in real_impulses {
+                        let impulse_type = real_impulse.impulse_type;
+                        let lin_impulse: Vec3A = real_impulse.lin_impulse.into();
+                        let ang_impulse: Vec3A = real_impulse.ang_impulse.into();
+                        let lin_impulse = lin_impulse * BT_TO_UU;
+                        let ang_impulse = ang_impulse * BT_TO_UU;
+                        let is_accum = real_impulse.is_accum;
+                        lines.push(format!(
+                            "\tREAL: {{ \
+                            name: {impulse_type:?}, lin_impulse: {lin_impulse}, ang_impulse: {ang_impulse}, is_accum: {is_accum} \
+                            }}"
+                        ));
+                    }
+                } else {
+                    lines.push("\t(None)".to_string());
+                }
+            }
+
             panic!("{}", lines.join("\n"));
         }
     }
