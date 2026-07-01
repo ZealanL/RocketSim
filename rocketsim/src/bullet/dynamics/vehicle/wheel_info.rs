@@ -243,10 +243,6 @@ impl WheelInfo {
         let mut wheels_suspension_force =
             force - (damping_vel_scale * raycast_info.suspension_relative_vel);
         wheels_suspension_force *= self.suspension_force_scale;
-        println!(
-            "{}, body vel: {}",
-            raycast_info.suspension_relative_vel, cb.lin_vel
-        );
         if wheels_suspension_force <= 0.0 {
             return;
         }
