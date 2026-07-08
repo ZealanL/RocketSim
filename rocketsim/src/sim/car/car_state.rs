@@ -53,8 +53,9 @@ pub struct CarState {
     pub is_boosting: bool,
     pub boosting_time: f32,
     pub is_supersonic: bool,
-    /// Time spent supersonic, for checking with the supersonic maintain time
-    pub supersonic_time: f32,
+    /// Time since the car's speed dropped below `START_SPEED` while still supersonic,
+    /// used for the supersonic maintain grace period
+    pub supersonic_grace_timer: f32,
     /// This is a state variable due to the rise/fall rate of handbrake inputs
     pub handbrake_val: f32,
     pub is_auto_flipping: bool,
@@ -101,7 +102,7 @@ impl CarState {
         is_boosting: false,
         boosting_time: 0.0,
         is_supersonic: false,
-        supersonic_time: 0.0,
+        supersonic_grace_timer: 0.0,
         handbrake_val: 0.0,
         is_auto_flipping: false,
         world_contact_normal: None,
