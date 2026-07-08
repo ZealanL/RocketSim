@@ -266,7 +266,7 @@ impl Ball {
         let can_accel = self
             .state
             .last_extra_hit_tick
-            .is_none_or(|last_hit_tick| last_hit_tick < tick_count - 1);
+            .is_none_or(|last_hit_tick| last_hit_tick + 1 < tick_count);
 
         if rel_speed > 0.0 && can_accel {
             let extra_z_scale = game_mode == GameMode::Hoops
