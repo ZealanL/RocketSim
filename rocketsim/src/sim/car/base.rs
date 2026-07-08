@@ -840,6 +840,11 @@ impl Car {
     }
 
     pub(crate) fn post_tick_update(&mut self, collision_world: &mut DiscreteDynamicsWorld) {
+        const START_SPEED_SQ: f32 =
+            car_consts::supersonic::START_SPEED * car_consts::supersonic::START_SPEED;
+        const MAINTAIN_MIN_SPEED_SQ: f32 =
+            car_consts::supersonic::MAINTAIN_MIN_SPEED * car_consts::supersonic::MAINTAIN_MIN_SPEED;
+
         let rb = &collision_world.bodies()[self.rigid_body_idx];
         if self.state.is_demoed {
             return;
@@ -848,22 +853,27 @@ impl Car {
         self.state.phys.rot_mat = rb.get_world_trans().matrix3;
 
         let speed_squared = (rb.lin_vel * BT_TO_UU).length_squared();
-        self.state.is_supersonic = speed_squared
-            >= if self.state.is_supersonic
-                && self.state.supersonic_time < car_consts::supersonic::MAINTAIN_MAX_TIME
-            {
-                const {
-                    car_consts::supersonic::MAINTAIN_MIN_SPEED
-                        * car_consts::supersonic::MAINTAIN_MIN_SPEED
-                }
-            } else {
-                const { car_consts::supersonic::START_SPEED * car_consts::supersonic::START_SPEED }
-            };
-
         if self.state.is_supersonic {
-            self.state.supersonic_time += TICK_TIME;
+            if speed_squared >= START_SPEED_SQ {
+                // Back above start speed: reset the maintain timer.
+                self.state.supersonic_grace_timer = 0.0;
+            } else if speed_squared < MAINTAIN_MIN_SPEED_SQ {
+                // Dropped below the minimum maintain speed: lose supersonic immediately.
+                self.state.is_supersonic = false;
+                self.state.supersonic_grace_timer = 0.0;
+            } else {
+                // Between maintain min and start speed: keep supersonic for the grace period.
+                self.state.supersonic_grace_timer += TICK_TIME;
+                if self.state.supersonic_grace_timer >= car_consts::supersonic::MAINTAIN_MAX_TIME {
+                    self.state.is_supersonic = false;
+                    self.state.supersonic_grace_timer = 0.0;
+                }
+            }
+        } else if speed_squared >= START_SPEED_SQ {
+            self.state.is_supersonic = true;
+            self.state.supersonic_grace_timer = 0.0;
         } else {
-            self.state.supersonic_time = 0.0;
+            self.state.supersonic_grace_timer = 0.0;
         }
 
         self.bullet_vehicle
