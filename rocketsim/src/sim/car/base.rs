@@ -475,6 +475,9 @@ impl Car {
         mutator_config: &MutatorConfig,
         jump_pressed: bool,
     ) {
+        const GROUND_JUMP_BUFFER: f32 =
+            car_consts::jump::MIN_TIME + car_consts::jump::RESET_TIME_PAD;
+
         let up_dir = self.state.get_up_dir();
 
         // Check jump activation
