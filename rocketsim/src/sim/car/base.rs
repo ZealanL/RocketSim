@@ -665,8 +665,8 @@ impl Car {
                         );
                     }
                 } else {
-                    let jump_start_force = self.state.get_up_dir()
-                        * const { car_consts::jump::IMMEDIATE_FORCE * UU_TO_BT * TICK_TIME };
+                    let jump_start_force =
+                        self.state.get_up_dir() * mutator_config.jump_immediate_force * UU_TO_BT;
                     rb.add_impulse(
                         Some("double_jump"),
                         Impulse::Linear(jump_start_force),
