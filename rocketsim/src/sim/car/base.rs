@@ -499,15 +499,17 @@ impl Car {
 
             let jump_force = up_dir * mutator_config.jump_accel * const { UU_TO_BT * TICK_TIME };
             rb.add_impulse(Some("Jump"), Impulse::Linear(jump_force), false, true);
+
+            self.state.jump_time += TICK_TIME;
+            self.state.is_jumping = self.state.jump_time < car_consts::jump::MIN_TIME
+                || (self.state.controls.jump && self.state.jump_time < car_consts::jump::MAX_TIME);
         }
 
         // Update jump state
         if self.state.has_jumped {
-            self.state.jump_time += TICK_TIME;
-
-            // Update is_jumping
-            self.state.is_jumping = self.state.jump_time < car_consts::jump::MIN_TIME
-                || (self.state.controls.jump && self.state.jump_time < car_consts::jump::MAX_TIME);
+            if !self.state.is_jumping {
+                self.state.jump_time += TICK_TIME;
+            }
 
             // Possibly reset `has_jumped`
             if self.state.is_on_ground
@@ -518,6 +520,7 @@ impl Car {
                 // This fixes the bug where jump is reset before we actually leave the ground after a minimum-time jump
                 // TODO: RL does something similar to this time-pad, but not exactly the same
                 self.state.has_jumped = false;
+                self.state.is_jumping = false;
                 self.state.jump_time = 0.0;
             }
         }
