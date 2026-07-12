@@ -1,15 +1,6 @@
 use glam::Vec3A;
 
 #[must_use]
-/// An extension of `Vec3A::signum` that keeps zero-components as zero (regardless of sign bit)
-///
-/// Example: `sign_3([-3.0, 0.0, 0.5])` -> `[-1.0, 0.0, 1.0]`
-pub fn vec3a_sign_3(v: Vec3A) -> Vec3A {
-    let signum = v.signum();
-    Vec3A::select(v.cmpeq(Vec3A::ZERO), Vec3A::ZERO, signum)
-}
-
-#[must_use]
 pub fn try_calc_tri_normal(points: &[Vec3A; 3]) -> Option<Vec3A> {
     (points[1] - points[0])
         .cross(points[2] - points[0])
@@ -77,37 +68,4 @@ pub fn closest_points_between_segments(
 #[must_use]
 pub fn to_2d(v: Vec3A) -> Vec3A {
     v.truncate().extend(0.0).to_vec3a()
-}
-
-pub enum VecQuantizeMode {
-    Position,
-    Velocity,
-}
-#[must_use]
-/// UE3-networking-style quantization of vectors
-pub fn quantize_vec_ue3(vec: Vec3A, scale: f32, quantize_mode: VecQuantizeMode) -> Vec3A {
-    match quantize_mode {
-        VecQuantizeMode::Position => {
-            // Simple rounding method
-            //
-            // NOTE: Rocket League does something that's slightly different *sometimes*,
-            //  possibly due to fast math float optimizations or something of that sort,
-            //  but since a simple round is already perfect in 95% of cases, and the
-            //  occasional errors are so tiny (e.g. 0.0001uu), I can't be bothered lol
-            (vec * scale).round() / scale
-        }
-        VecQuantizeMode::Velocity => {
-            let inv_scale = 1.0 / scale;
-            let mut rounded = Vec3A::ZERO;
-            for i in 0..3 {
-                let i_val = (vec[i] * scale) as i32;
-                rounded[i] = (i_val as f32) * inv_scale;
-            }
-
-            const OFFSET_CORRECT_FRAC: f32 = 0.1;
-            let offset_mag = OFFSET_CORRECT_FRAC * inv_scale;
-
-            rounded + (vec3a_sign_3(rounded) * offset_mag)
-        }
-    }
 }

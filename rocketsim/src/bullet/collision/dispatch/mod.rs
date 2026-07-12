@@ -1,5 +1,5 @@
 mod box_box_detector;
-pub mod collision_dispatcher;
+pub(super) mod collision_dispatcher;
 mod collision_obj_wrapper;
 pub mod collision_world;
 mod compound_collision_alg;
@@ -11,4 +11,4 @@ mod obb_obb_collision_alg;
 pub mod quad_ray_callbacks;
 mod sphere_concave_collision_alg;
 mod sphere_obb_collision_alg;
-pub mod tri_bvh_util;
+pub(super) mod tri_bvh_util;

@@ -1,14 +1,13 @@
 use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not};
 
 use glam::{Affine3A, Mat3A, Quat, Vec3A};
-
 #[cfg(debug_assertions)]
 use indexmap::IndexMap;
 
 use crate::{
     bullet::{
         collision::shapes::collision_shape::CollisionShapes,
-        linear_math::transform_util::{integrate_trans, integrate_trans_no_rot},
+        linear_math::{integrate_trans, integrate_trans_no_rot},
     },
     sim::UserInfoTypes,
 };
@@ -339,13 +338,9 @@ impl RigidBody {
 
         if accum {
             self.accum_lin_vel += lin_impulse;
-        } else {
-            self.lin_vel += lin_impulse;
-        }
-
-        if accum {
             self.accum_ang_vel += ang_impulse;
         } else {
+            self.lin_vel += lin_impulse;
             self.ang_vel += ang_impulse;
         }
 

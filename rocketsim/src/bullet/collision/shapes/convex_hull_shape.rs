@@ -20,8 +20,12 @@ pub struct ConvexHullShape {
 
 impl ConvexHullShape {
     pub fn new(unscaled_points: Box<[Vec3A]>) -> Self {
+        debug_assert!(unscaled_points.len().is_multiple_of(4));
+
         let simd_unscaled_points: Box<_> = unscaled_points
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .map(|chunk| {
                 [
                     Vec4::new(chunk[0].x, chunk[1].x, chunk[2].x, chunk[3].x),

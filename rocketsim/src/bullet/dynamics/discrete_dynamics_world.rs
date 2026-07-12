@@ -4,15 +4,17 @@ use super::{
     constraint_solver::seq_impulse_constraint_solver::SeqImpulseConstraintSolver,
     rigid_body::{ActivationState, RigidBody},
 };
-use crate::bullet::collision::{
-    broadphase::{CollisionFilterGroups, GridBroadphase},
-    dispatch::{
-        collision_world::CollisionWorld,
-        quad_ray_callbacks::{QuadRayCallback, QuadRayResultCallback},
+use crate::bullet::{
+    collision::{
+        broadphase::{CollisionFilterGroups, GridBroadphase},
+        dispatch::{
+            collision_world::CollisionWorld,
+            quad_ray_callbacks::{QuadRayCallback, QuadRayResultCallback},
+        },
+        narrowphase::persistent_manifold::ContactAddedCallback,
     },
-    narrowphase::persistent_manifold::ContactAddedCallback,
+    dynamics::rigid_body::Impulse,
 };
-use crate::bullet::dynamics::rigid_body::Impulse;
 
 pub struct DiscreteDynamicsWorld {
     collision_world: CollisionWorld,

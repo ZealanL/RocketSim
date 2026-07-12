@@ -4,9 +4,10 @@ pub mod tick_record;
 
 use std::io::ErrorKind;
 
-use crate::rl_comparison_test::recording::tick_record::TickRecord;
 use cpp_records::*;
 use data_reader::DataReader;
+
+use crate::rl_comparison_test::recording::tick_record::TickRecord;
 
 const RLPR_MAGIC_BYTES: [u8; 4] = [82, 76, 80, 82];
 const RLPR_VERSION: u32 = 2;

@@ -1,8 +1,9 @@
-use crate::rl_comparison_test::recording::Recording;
-use crate::rl_comparison_test::recording::tick_record::TickRecord;
 use glam::Vec3A;
-use rocketsim::consts::BT_TO_UU;
-use rocketsim::{Arena, CarBodyConfig, CarControls, CarState, GameMode, PhysState, Team};
+use rocketsim::{
+    Arena, CarBodyConfig, CarControls, CarState, GameMode, PhysState, Team, consts::BT_TO_UU,
+};
+
+use crate::rl_comparison_test::recording::{Recording, tick_record::TickRecord};
 
 mod compare;
 mod recording;

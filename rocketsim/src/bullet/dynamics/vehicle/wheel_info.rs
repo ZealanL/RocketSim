@@ -1,14 +1,13 @@
 use glam::{Affine3A, Quat, Vec3A};
 
 use super::{NUM_WHEELS, raycaster::VehicleRaycasterResult};
-use crate::bullet::dynamics::rigid_body::Impulse;
 use crate::{
     bullet::{
         dynamics::{
             constraint_solver::contact_constraint::{
                 resolve_single_bilateral, resolve_single_collision,
             },
-            rigid_body::RigidBody,
+            rigid_body::{Impulse, RigidBody},
         },
         linear_math::QuatExt,
     },
@@ -126,16 +125,12 @@ impl WheelInfo {
         let proj_vel = contact_normal.dot(self.vel_at_contact_point);
         let denom = contact_normal.dot(up);
 
-        let suspension_relative_vel;
-        let clipped_inv_contact_dot_suspension;
-        if denom > 0.1 {
+        let (suspension_relative_vel, clipped_inv_contact_dot_suspension) = if denom > 0.1 {
             let inv = 1.0 / denom;
-            suspension_relative_vel = proj_vel * inv;
-            clipped_inv_contact_dot_suspension = inv;
+            (proj_vel * inv, inv)
         } else {
-            suspension_relative_vel = 0.0;
-            clipped_inv_contact_dot_suspension = 10.0;
-        }
+            (0.0, 10.0)
+        };
 
         if is_in_contact_with_world {
             let ray_pushback_thresh = self.suspension_rest_length_1 + self.wheels_radius

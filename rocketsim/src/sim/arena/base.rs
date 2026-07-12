@@ -1,6 +1,12 @@
+use std::{any::Any, f32::consts::PI, iter::repeat_n, mem};
+
+use arrayvec::ArrayVec;
+use fastrand::Rng;
+use glam::{Affine3A, EulerRot, Mat3A, Vec3A};
+#[cfg(debug_assertions)]
+use indexmap::IndexMap;
+
 use super::ArenaContactTracker;
-use crate::shared::rsmath;
-use crate::shared::rsmath::VecQuantizeMode;
 use crate::{
     ARENA_COLLISION_SHAPES, ArenaConfig,
     ArenaEvent::{BallHitWorld, CarPickupBoost},
@@ -22,17 +28,12 @@ use crate::{
     },
     consts::{self, BT_TO_UU, TICK_RATE, TICK_TIME, UU_TO_BT},
     make_tile_shapes,
+    shared::quantize,
     sim::{
         ArenaEvent, Ball, BallState, BoostPad, CarHitBallEvent, CarHitCarEvent, CarHitWorldEvent,
         DemoMode, UserInfoTypes, arena::ArenaEventList,
     },
 };
-use arrayvec::ArrayVec;
-use fastrand::Rng;
-use glam::{Affine3A, EulerRot, Mat3A, Vec3A};
-#[cfg(debug_assertions)]
-use indexmap::IndexMap;
-use std::{any::Any, f32::consts::PI, iter::repeat_n, mem};
 
 pub trait Vis: Send + Sync + Any {
     fn update(&mut self, arena_state: &ArenaState, dt: f32);
@@ -476,41 +477,20 @@ impl Arena {
 
         // Limit velocities, then quantize physics values
         {
-            use consts::{ball, car, quantize};
-
-            fn quantize_rb(rb: &mut RigidBody) {
-                let new_pos = rsmath::quantize_vec_ue3(
-                    rb.get_world_pos() * BT_TO_UU,
-                    quantize::POS_SCALE,
-                    VecQuantizeMode::Position,
-                ) * UU_TO_BT;
-                let new_vel = rsmath::quantize_vec_ue3(
-                    rb.lin_vel * BT_TO_UU,
-                    quantize::VEL_SCALE,
-                    VecQuantizeMode::Velocity,
-                ) * UU_TO_BT;
-                let new_ang_vel = rsmath::quantize_vec_ue3(
-                    rb.ang_vel * BT_TO_UU,
-                    quantize::ANG_VEL_SCALE,
-                    VecQuantizeMode::Velocity,
-                ) * UU_TO_BT;
-
-                rb.set_world_pos(new_pos);
-                rb.set_lin_vel(new_vel);
-                rb.set_ang_vel(new_ang_vel);
-            }
+            use consts::{ball, car};
 
             for car_idx in 0..self.cars.len() {
                 let car_rb = &mut self.bullet_world.bodies_mut()[self.cars[car_idx].rigid_body_idx];
                 car_rb.limit_vels(car::MAX_SPEED * UU_TO_BT, car::MAX_ANG_SPEED);
-                quantize_rb(car_rb);
+                quantize::quantize(car_rb);
             }
+
             let ball_rb = &mut self.bullet_world.bodies_mut()[self.ball.rigid_body_idx];
             ball_rb.limit_vels(
                 self.config.mutators.ball_max_speed * UU_TO_BT,
                 ball::MAX_ANG_SPEED,
             );
-            quantize_rb(ball_rb);
+            quantize::quantize(ball_rb);
         }
 
         // Update ball activation
@@ -538,7 +518,6 @@ impl Arena {
         self.ball.pre_tick_update(
             &mut self.bullet_world.bodies_mut()[self.ball.rigid_body_idx],
             self.config.game_mode,
-            &self.config.mutators,
         );
 
         self.bullet_world

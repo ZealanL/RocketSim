@@ -13,8 +13,11 @@ impl TriangleMesh {
 
         Self {
             triangles: ids
-                .chunks_exact(3)
-                .map(|ids| TriangleShape::from_points_iter(ids.iter().map(|&j| verts[j])))
+                .as_chunks::<3>()
+                .0
+                .iter()
+                .map(|&[id0, id1, id2]| [verts[id0], verts[id1], verts[id2]])
+                .map(TriangleShape::new)
                 .collect(),
         }
     }

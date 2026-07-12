@@ -3,8 +3,10 @@ use std::{collections::HashMap, fmt::Debug};
 use glam::Vec3A;
 use rocketsim::{BallState, CarState, PhysState, consts::TICK_TIME};
 
-use crate::rl_comparison_test::recording::cpp_records::{CarRecord, PhysRecord};
-use crate::rl_comparison_test::recording::tick_record::TickRecord;
+use crate::rl_comparison_test::recording::{
+    cpp_records::{CarRecord, PhysRecord},
+    tick_record::TickRecord,
+};
 
 #[derive(Copy, Clone, Debug)]
 #[allow(dead_code)]
@@ -195,7 +197,7 @@ pub fn compare_states_to_tick(
 
     let mut all_comparisons = ComparisonSet::new();
     for (i, car_comparison_set) in car_comparisons_all.iter().enumerate() {
-        all_comparisons.append_with_prefix(&car_comparison_set, &format!("car_{i}_"));
+        all_comparisons.append_with_prefix(car_comparison_set, &format!("car_{i}_"));
     }
     all_comparisons.append_with_prefix(&ball_comparisons, "ball_");
     all_comparisons

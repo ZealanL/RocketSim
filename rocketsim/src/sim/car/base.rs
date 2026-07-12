@@ -6,8 +6,6 @@ use std::{
 use fastrand::Rng;
 use glam::{Affine3A, EulerRot, Mat3A, Vec3A};
 
-use crate::bullet::dynamics::rigid_body::Impulse;
-use crate::consts::GRAVITY_Z;
 use crate::{
     CarBodyConfig, CarControls, CarState, GameMode, MutatorConfig, PhysState, Team,
     bullet::{
@@ -20,12 +18,14 @@ use crate::{
         },
         dynamics::{
             discrete_dynamics_world::DiscreteDynamicsWorld,
-            rigid_body::{ActivationState, CollisionFlags, RigidBody, RigidBodyConstructionInfo},
+            rigid_body::{
+                ActivationState, CollisionFlags, Impulse, RigidBody, RigidBodyConstructionInfo,
+            },
             vehicle::{NUM_WHEELS, VehicleRL, WheelInfo},
         },
     },
     consts::{
-        BT_TO_UU, TICK_TIME, UU_TO_BT, bullet_vehicle as vehicle_consts,
+        BT_TO_UU, GRAVITY_Z, TICK_TIME, UU_TO_BT, bullet_vehicle as vehicle_consts,
         car::{self as car_consts, drive as drive_consts},
         curves,
     },
