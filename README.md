@@ -62,6 +62,16 @@ Feel free to make issues and pull requests if you encounter any issues!
 
 You can also contact me on Discord if you have questions, my username is `zealanl`.
 
-## Legal Notice
-RocketSim was written to replicate Rocket League's game logic, but does not actually contain any code from the game.
-To Epic Games/Psyonix: If any of you guys have an issue with this, let me know on Discord and we can resolve it.
+## Usage & Legal Notice
+RocketSim was written to replicate Rocket League's game logic, but **does not** actually contain any code from the game whatsoever.
+
+RocketSim is intended to be used for creating machine learning environments, as well as other hobby projects (provided they don't violate Rocket League's terms of use/service).
+The use of RocketSim to create and sell a playable Rocket League clone is *heavily* discouraged. Please do not do this!
+
+### Cheating & Bots
+RocketSim is widely used to train machine learning bots for Rocket League, and unfortunately some of these bots are being used to cheat in Rocket League in ranked matches.
+
+As the creator and owner of RocketSim, I, `ZealanL`, am *strongly* against cheating/botting in Rocket League and avoid supporting anyone or anything I suspect to be involved with malicious activity.
+
+### To Epic Games & Psyonix
+If any of you guys have an issue with this project, let me know on Discord and we can resolve it! I will be happy to make changes if needed.
