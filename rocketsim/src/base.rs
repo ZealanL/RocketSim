@@ -125,18 +125,18 @@ where
     for (game_mode, byte_mesh_files) in byte_mesh_file_map {
         info!("Loading arena meshes for {}...", game_mode.name());
 
-        let byte_mesh_files = byte_mesh_files.into_iter().collect::<Vec<_>>();
+        let mut byte_mesh_files = byte_mesh_files.into_iter().peekable();
 
-        if byte_mesh_files.is_empty() {
+        if byte_mesh_files.peek().is_none() {
             info!("\tNo meshes, skipping");
             continue;
         }
 
-        let mut meshes = Vec::with_capacity(byte_mesh_files.len());
-        let mut mesh_files = Vec::with_capacity(byte_mesh_files.len());
+        let mut meshes = Vec::new();
+        let mut mesh_files = Vec::new();
         let mut target_hashes = game_mode.get_hashes();
 
-        for (i, entry) in byte_mesh_files.into_iter().enumerate() {
+        for (i, entry) in byte_mesh_files.enumerate() {
             let mesh_file = CollisionMeshFile::read_from_bytes(entry.as_ref())?;
             let hash = mesh_file.get_hash();
             let Some(hash_count) = target_hashes.get_mut(&hash) else {
