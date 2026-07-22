@@ -202,9 +202,8 @@ impl WheelInfo {
 
                 let car_rel_contact_point = contact_point - chassis.get_world_trans().translation;
 
-                let v1 = chassis.get_vel_in_local_point(car_rel_contact_point);
-                let v2 = ground_rb.get_vel_in_local_point(car_rel_contact_point);
-                let contact_vel = v1 - v2;
+                let contact_vel = self.vel_at_contact_point
+                    - ground_rb.get_vel_in_local_point(car_rel_contact_point);
                 let mut rel_vel = contact_vel.dot(forward_dir);
 
                 if time_step > 1.0 / 80.0 {
