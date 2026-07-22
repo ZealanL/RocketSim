@@ -9,6 +9,7 @@ use crate::{
         collision::{
             broadphase::GridBroadphase,
             narrowphase::persistent_manifold::{CONTACT_BREAKING_THRESHOLD, ContactAddedCallback},
+            shapes::collision_shape::CollisionShapes,
         },
         dynamics::rigid_body::RigidBody,
         linear_math::AffineExt,
@@ -121,21 +122,26 @@ impl CollisionWorld {
         obj_idx: usize,
         result_callback: &mut T,
     ) {
-        let world_to_co = co.get_world_trans().transpose();
-
-        let ray_from_local = [
-            world_to_co.transform_point3a(ray_from[0]),
-            world_to_co.transform_point3a(ray_from[1]),
-            world_to_co.transform_point3a(ray_from[2]),
-            world_to_co.transform_point3a(ray_from[3]),
-        ];
-
-        let ray_to_local = [
-            world_to_co.transform_point3a(ray_to[0]),
-            world_to_co.transform_point3a(ray_to[1]),
-            world_to_co.transform_point3a(ray_to[2]),
-            world_to_co.transform_point3a(ray_to[3]),
-        ];
+        let (ray_from_local, ray_to_local) =
+            if matches!(co.get_collision_shape(), CollisionShapes::TriangleMesh(_)) {
+                (*ray_from, *ray_to)
+            } else {
+                let world_to_co = co.get_world_trans().transpose();
+                (
+                    [
+                        world_to_co.transform_point3a(ray_from[0]),
+                        world_to_co.transform_point3a(ray_from[1]),
+                        world_to_co.transform_point3a(ray_from[2]),
+                        world_to_co.transform_point3a(ray_from[3]),
+                    ],
+                    [
+                        world_to_co.transform_point3a(ray_to[0]),
+                        world_to_co.transform_point3a(ray_to[1]),
+                        world_to_co.transform_point3a(ray_to[2]),
+                        world_to_co.transform_point3a(ray_to[3]),
+                    ],
+                )
+            };
 
         let mut rcb = BridgeTriQuadRayCallback {
             from: &ray_from_local,
