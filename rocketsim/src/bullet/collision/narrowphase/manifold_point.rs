@@ -1,7 +1,7 @@
 use glam::Vec3A;
 
 use crate::bullet::{
-    dynamics::constraint_solver::solver_body::SolverBody, linear_math::plane_space_2,
+    dynamics::constraint_solver::solver_body::SolverBody, linear_math::plane_space_1,
 };
 
 #[derive(Debug, Default, Copy, Clone)]
@@ -55,7 +55,7 @@ impl ManifoldPoint {
         if lat_rel_vel > f32::EPSILON {
             self.lateral_friction_dir_1 *= 1.0 / lat_rel_vel.sqrt();
         } else {
-            self.lateral_friction_dir_1 = plane_space_2(self.normal_world_on_b).0;
+            self.lateral_friction_dir_1 = plane_space_1(self.normal_world_on_b);
         }
     }
 }

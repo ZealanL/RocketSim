@@ -8,4 +8,4 @@ pub(super) use affine_ext::AffineExt;
 pub(super) use obb::Obb;
 pub(super) use quat_ext::QuatExt;
 pub(super) use transform_util::{integrate_trans, integrate_trans_no_rot};
-pub(super) use util::{interpolate_3, max_dot, plane_space_1, plane_space_2};
+pub(super) use util::{interpolate_3, max_dot, plane_space_1};
