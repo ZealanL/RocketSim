@@ -8,7 +8,7 @@ use indexmap::IndexMap;
 use crate::{
     bullet::{
         collision::shapes::collision_shape::CollisionShapes,
-        linear_math::transform_util::{integrate_trans, integrate_trans_no_rot},
+        linear_math::{integrate_trans, integrate_trans_no_rot},
     },
     sim::UserInfoTypes,
 };
