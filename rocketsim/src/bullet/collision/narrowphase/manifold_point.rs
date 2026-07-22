@@ -16,7 +16,6 @@ pub struct ManifoldPoint {
     pub combined_restitution: f32,
     pub applied_impulse: f32,
     pub lateral_friction_dir_1: Vec3A,
-    pub lateral_friction_dir_2: Vec3A,
     pub is_special: bool,
 }
 
@@ -33,7 +32,6 @@ impl ManifoldPoint {
             combined_restitution: 0.0,
             applied_impulse: 0.0,
             lateral_friction_dir_1: Vec3A::ZERO,
-            lateral_friction_dir_2: Vec3A::ZERO,
             is_special: false,
         }
     }
@@ -57,8 +55,7 @@ impl ManifoldPoint {
         if lat_rel_vel > f32::EPSILON {
             self.lateral_friction_dir_1 *= 1.0 / lat_rel_vel.sqrt();
         } else {
-            (self.lateral_friction_dir_1, self.lateral_friction_dir_2) =
-                plane_space_2(self.normal_world_on_b);
+            self.lateral_friction_dir_1 = plane_space_2(self.normal_world_on_b).0;
         }
     }
 }

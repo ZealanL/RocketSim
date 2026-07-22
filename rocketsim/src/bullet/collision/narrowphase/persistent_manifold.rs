@@ -201,8 +201,7 @@ impl PersistentManifold {
         new_pt.combined_friction = Self::calculate_combined_friction(body0, body1);
         new_pt.combined_restitution = Self::calculate_combined_restitution(body0, body1);
 
-        (new_pt.lateral_friction_dir_1, new_pt.lateral_friction_dir_2) =
-            plane_space_2(new_pt.normal_world_on_b);
+        new_pt.lateral_friction_dir_1 = plane_space_2(new_pt.normal_world_on_b).0;
 
         let insert_idx = self.add_manifold_point(new_pt);
 

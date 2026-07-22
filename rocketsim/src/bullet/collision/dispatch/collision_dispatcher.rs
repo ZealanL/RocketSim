@@ -195,8 +195,8 @@ impl CollisionDispatcher {
         proxy1: &BroadphaseProxy,
         contact_added_callback: &mut T,
     ) {
-        let rb0 = &collision_objs[proxy0.client_obj_idx];
-        let rb1 = &collision_objs[proxy1.client_obj_idx];
+        let rb0 = &collision_objs[proxy0.client_obj_idx as usize];
+        let rb1 = &collision_objs[proxy1.client_obj_idx as usize];
 
         if !rb0.is_active() && !rb1.is_active()
             || !rb0.has_contact_response()

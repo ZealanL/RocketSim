@@ -12,14 +12,28 @@ pub struct ContactInfo {
 #[derive(Clone, Copy, Debug, Default)]
 pub struct TriangleShape {
     pub points: [Vec3A; 3],
-    /// `edges` = \[`p1 - p0`, `p2 - p1`, `p0 - p2`]
-    pub edges: [Vec3A; 3],
+
     pub normal: Vec3A,
     pub normal_length: f32,
-    pub aabb: Aabb,
 }
 
 impl TriangleShape {
+    pub fn edge(&self, index: usize) -> Vec3A {
+        match index {
+            0 => self.points[1] - self.points[0],
+            1 => self.points[2] - self.points[1],
+            2 => self.points[0] - self.points[2],
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn aabb(&self) -> Aabb {
+        Aabb {
+            min: self.points[0].min(self.points[1]).min(self.points[2]),
+            max: self.points[0].max(self.points[1]).max(self.points[2]),
+        }
+    }
+
     /// Create a new triangle from 3 points.
     pub fn new(points: [Vec3A; 3]) -> Self {
         let edges = [
@@ -30,17 +44,10 @@ impl TriangleShape {
 
         let (normal, normal_length) = edges[0].cross(-edges[2]).normalize_and_length();
 
-        let aabb = Aabb {
-            min: points[0].min(points[1]).min(points[2]),
-            max: points[0].max(points[1]).max(points[2]),
-        };
-
         Self {
             points,
-            edges,
             normal,
             normal_length,
-            aabb,
         }
     }
 
@@ -57,17 +64,17 @@ impl TriangleShape {
     /// Check if a point projected onto the same place as the triangle
     /// is within the bounds of it.
     pub fn face_contains(&self, n: Vec3A, obj_to_points: &[Vec3A; 3]) -> bool {
-        let c0 = self.edges[0].cross(obj_to_points[0]);
+        let c0 = self.edge(0).cross(obj_to_points[0]);
         if c0.dot(n) < 0. {
             return false;
         }
 
-        let c1 = self.edges[1].cross(obj_to_points[1]);
+        let c1 = self.edge(1).cross(obj_to_points[1]);
         if c1.dot(n) < 0. {
             return false;
         }
 
-        let c2 = self.edges[2].cross(obj_to_points[2]);
+        let c2 = self.edge(2).cross(obj_to_points[2]);
         c2.dot(n) >= 0.
     }
 
@@ -75,8 +82,8 @@ impl TriangleShape {
     /// we use the method described here which is much faster:
     /// <https://stackoverflow.com/a/74395029/10930209>
     pub fn closest_point(&self, obj_to_points: &[Vec3A; 3]) -> Vec3A {
-        let ab = self.edges[0];
-        let ac = -self.edges[2];
+        let ab = self.edge(0);
+        let ac = -self.edge(2);
 
         let d1 = ab.dot(obj_to_points[0]);
         let d2 = ac.dot(obj_to_points[0]);
@@ -111,7 +118,7 @@ impl TriangleShape {
         let va = d3 * d6 - d5 * d4;
         if va <= 0. && (d4 - d3) >= 0. && (d5 - d6) >= 0. {
             let v = (d4 - d3) / ((d4 - d3) + (d5 - d6));
-            return self.points[1] + v * self.edges[1];
+            return self.points[1] + v * self.edge(1);
         }
 
         let denom = 1. / (va + vb + vc);

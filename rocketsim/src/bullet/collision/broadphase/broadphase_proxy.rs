@@ -1,7 +1,5 @@
 use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor};
 
-use glam::USizeVec3;
-
 use crate::shared::Aabb;
 
 pub enum CollisionFilterGroups {
@@ -74,13 +72,13 @@ impl BitOr for CollisionFilterGroups {
 
 pub struct BroadphaseProxy {
     /// The index of the client `RigidBody` in `CollisionWorld`
-    pub client_obj_idx: usize,
+    pub client_obj_idx: u32,
     pub collision_filter_group: u8,
     pub collision_filter_mask: u8,
     pub unique_id: u32,
     pub aabb: Aabb,
-    pub cell_idx: usize,
-    pub indices: USizeVec3,
+    pub cell_idx: u32,
+    pub indices: [u32; 3],
 }
 
 pub struct BroadphasePair {
@@ -90,4 +88,24 @@ pub struct BroadphasePair {
 
 pub trait BroadphaseAabbCallback {
     fn process(&mut self, proxy: &BroadphaseProxy) -> bool;
+}
+
+#[cfg(test)]
+mod layout_tests {
+    use std::mem::size_of;
+
+    use crate::bullet::collision::{
+        narrowphase::{manifold_point::ManifoldPoint, persistent_manifold::PersistentManifold},
+        shapes::triangle_shape::TriangleShape,
+    };
+
+    use super::BroadphaseProxy;
+
+    #[test]
+    fn compact_layouts() {
+        assert_eq!(size_of::<BroadphaseProxy>(), 64);
+        assert_eq!(size_of::<TriangleShape>(), 80);
+        assert_eq!(size_of::<ManifoldPoint>(), 128);
+        assert_eq!(size_of::<PersistentManifold>(), 560);
+    }
 }
