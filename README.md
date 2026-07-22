@@ -11,3 +11,15 @@ It does not care for Bullet compatibility, and removes as many abstrations as po
 
 This project is currently a massive WIP, and highly experimental.
 Lots of features found in RocketSim are currently missing.
+
+## Arena memory modes
+
+`ArenaConfig::mem_weight_mode` controls the broadphase memory/performance tradeoff. In the `stress_v3` benchmark:
+
+| Mode | 1v1 memory per arena | 1v1 performance | 3v3 memory per arena | 3v3 performance |
+| --- | ---: | ---: | ---: | ---: |
+| `Heavy` (default) | ~915 KiB | Baseline | ~946 KiB | Baseline |
+| `Balanced` | ~108 KiB | ~1–2% slower | ~123 KiB | ~3% slower |
+| `Light` | ~66 KiB | ~9% slower | ~91 KiB | ~12% slower |
+
+Balanced reduces marginal memory while retaining most of Heavy's performance. Light effectively disables grid partitioning by using a single broadphase cell, prioritizing minimum memory over performance. Results may vary by platform and workload.

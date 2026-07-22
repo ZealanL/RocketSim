@@ -6,6 +6,7 @@ use crate::{BoostPadConfig, GameMode, MutatorConfig};
 pub enum ArenaMemWeightMode {
     #[default]
     Heavy,
+    Balanced,
     Light,
 }
 
@@ -51,5 +52,53 @@ impl ArenaConfig {
             mutators: MutatorConfig::new(game_mode),
             ..Self::DEFAULT
         }
+    }
+
+    #[must_use]
+    pub fn with_mutators(mut self, mutators: MutatorConfig) -> Self {
+        self.mutators = mutators;
+        self
+    }
+
+    #[must_use]
+    pub fn with_mem_weight_mode(mut self, mem_weight_mode: ArenaMemWeightMode) -> Self {
+        self.mem_weight_mode = mem_weight_mode;
+        self
+    }
+
+    #[must_use]
+    pub fn with_min_pos(mut self, min_pos: Vec3A) -> Self {
+        self.min_pos = min_pos;
+        self
+    }
+
+    #[must_use]
+    pub fn with_max_pos(mut self, max_pos: Vec3A) -> Self {
+        self.max_pos = max_pos;
+        self
+    }
+
+    #[must_use]
+    pub fn with_max_aabb_len(mut self, max_aabb_len: f32) -> Self {
+        self.max_aabb_len = max_aabb_len;
+        self
+    }
+
+    #[must_use]
+    pub fn with_no_ball_rot(mut self, no_ball_rot: bool) -> Self {
+        self.no_ball_rot = no_ball_rot;
+        self
+    }
+
+    #[must_use]
+    pub fn with_custom_boost_pads(mut self, custom_boost_pads: Vec<BoostPadConfig>) -> Self {
+        self.custom_boost_pads = Some(custom_boost_pads);
+        self
+    }
+
+    #[must_use]
+    pub fn with_rng_seed(mut self, rng_seed: u64) -> Self {
+        self.rng_seed = Some(rng_seed);
+        self
     }
 }

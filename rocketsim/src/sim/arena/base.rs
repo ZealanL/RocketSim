@@ -60,15 +60,16 @@ impl Arena {
     }
 
     pub fn new_with_config(config: ArenaConfig) -> Self {
-        let (cell_size_multiplier, initial_handle_size) = match config.mem_weight_mode {
-            ArenaMemWeightMode::Light => (3.0, 1),
-            ArenaMemWeightMode::Heavy => (1.0, 8),
+        let (cell_size, initial_handle_size) = match config.mem_weight_mode {
+            ArenaMemWeightMode::Light => ((config.max_pos - config.min_pos).max_element(), 1),
+            ArenaMemWeightMode::Balanced => (config.max_aabb_len * 3.0, 1),
+            ArenaMemWeightMode::Heavy => (config.max_aabb_len, 8),
         };
 
         let broadphase = GridBroadphase::new(
             config.min_pos * UU_TO_BT,
             config.max_pos * UU_TO_BT,
-            config.max_aabb_len * UU_TO_BT * cell_size_multiplier,
+            cell_size * UU_TO_BT,
             initial_handle_size,
         );
 

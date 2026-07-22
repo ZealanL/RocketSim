@@ -21,12 +21,24 @@ pub enum GameModeArg {
     TheVoid,
 }
 
+#[derive(Clone, Copy, Debug, ValueEnum)]
+#[clap(rename_all = "kebab-case")]
+pub enum MemWeightModeArg {
+    Light,
+    Balanced,
+    Heavy,
+}
+
 #[derive(Parser)]
 pub struct Args {
     #[arg(short, long, default_value_t = NUM_CARS)]
     pub num_cars: u8,
     #[arg(short, long, value_enum, default_value_t = GameModeArg::Soccar)]
     pub game_mode: GameModeArg,
+    #[arg(long, value_enum, default_value_t = MemWeightModeArg::Heavy)]
+    pub mem_weight_mode: MemWeightModeArg,
+    #[arg(long, default_value_t = 1)]
+    pub num_arenas: usize,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
