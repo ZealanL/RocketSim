@@ -339,13 +339,9 @@ impl RigidBody {
 
         if accum {
             self.accum_lin_vel += lin_impulse;
-        } else {
-            self.lin_vel += lin_impulse;
-        }
-
-        if accum {
             self.accum_ang_vel += ang_impulse;
         } else {
+            self.lin_vel += lin_impulse;
             self.ang_vel += ang_impulse;
         }
 
