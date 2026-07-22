@@ -13,7 +13,7 @@ use crate::bullet::{
 
 pub struct HashedOverlappingPairCache {
     overlapping_pair_array: Vec<BroadphasePair>,
-    hash_table: FxHashMap<(u32, u32), usize>,
+    hash_table: FxHashMap<u64, usize>,
 }
 
 impl Default for HashedOverlappingPairCache {
@@ -41,8 +41,9 @@ impl HashedOverlappingPairCache {
             mem::swap(&mut proxy0_idx, &mut proxy1_idx);
         }
 
+        let pair_key = (u64::from(proxy0_id) << 32) | u64::from(proxy1_id);
         self.hash_table
-            .insert((proxy0_id, proxy1_id), self.overlapping_pair_array.len());
+            .insert(pair_key, self.overlapping_pair_array.len());
 
         self.overlapping_pair_array.push(BroadphasePair {
             proxy0: proxy0_idx,
@@ -78,8 +79,8 @@ impl HashedOverlappingPairCache {
             mem::swap(&mut proxy0, &mut proxy1);
         }
 
-        self.hash_table
-            .contains_key(&(proxy0.unique_id, proxy1.unique_id))
+        let pair_key = (u64::from(proxy0.unique_id) << 32) | u64::from(proxy1.unique_id);
+        self.hash_table.contains_key(&pair_key)
     }
 
     #[inline]
