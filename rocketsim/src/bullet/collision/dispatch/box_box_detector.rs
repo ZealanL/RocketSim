@@ -14,7 +14,7 @@ use crate::bullet::{
         shapes::box_shape::BoxShape,
     },
     dynamics::rigid_body::RigidBody,
-    linear_math::obb::Obb,
+    linear_math::Obb,
 };
 
 fn line_closest_approach(pa: Vec3A, ua: Vec3A, pb: Vec3A, ub: Vec3A) -> f32 {
