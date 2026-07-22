@@ -1,6 +1,9 @@
 use std::{sync::Mutex, thread::JoinHandle};
 
-use glam::{Mat4, Vec2, Vec3, Vec4};
+use glam::{
+    Mat4, Vec2, Vec3, Vec4,
+    camera::lh::{proj::directx, view::look_at_mat4},
+};
 use miniquad::{
     Bindings, BlendFactor, BlendState, BlendValue, BufferId, BufferLayout, BufferSource,
     BufferType, BufferUsage, Equation, EventHandler, KeyCode, KeyMods, MouseButton, Pipeline,
@@ -362,7 +365,7 @@ impl EventHandler for VisRenderer {
             fov_degrees: f32,
             cur_window_size: Vec2,
         ) -> (Mat4, Mat4) {
-            let view = Mat4::look_at_lh(pos, look_target, Vec3::Z);
+            let view = look_at_mat4(pos, look_target, Vec3::Z);
 
             let aspect = cur_window_size.x / cur_window_size.y;
 
@@ -370,7 +373,7 @@ impl EventHandler for VisRenderer {
             const Z_RANGE_FAR: f32 = 50_000.0;
 
             let proj =
-                Mat4::perspective_lh(fov_degrees.to_radians(), aspect, Z_RANGE_NEAR, Z_RANGE_FAR);
+                directx::perspective(fov_degrees.to_radians(), aspect, Z_RANGE_NEAR, Z_RANGE_FAR);
 
             (view, proj)
         }

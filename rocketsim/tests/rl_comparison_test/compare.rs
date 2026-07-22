@@ -180,13 +180,9 @@ pub fn compare_states_to_tick(
     tick: &TickRecord,
 ) -> ComparisonSet {
     let mut car_comparisons_all: Vec<ComparisonSet> = Vec::new();
-    for i in 0..car_states.len() {
+    for (car_state, car_record) in car_states.iter().zip(&tick.car_records) {
         let mut car_comparison_set = ComparisonSet::new();
-        compare_car(
-            &car_states[i],
-            &tick.car_records[i],
-            &mut car_comparison_set,
-        );
+        compare_car(car_state, car_record, &mut car_comparison_set);
         car_comparisons_all.push(car_comparison_set);
     }
 
@@ -195,7 +191,7 @@ pub fn compare_states_to_tick(
 
     let mut all_comparisons = ComparisonSet::new();
     for (i, car_comparison_set) in car_comparisons_all.iter().enumerate() {
-        all_comparisons.append_with_prefix(&car_comparison_set, &format!("car_{i}_"));
+        all_comparisons.append_with_prefix(car_comparison_set, &format!("car_{i}_"));
     }
     all_comparisons.append_with_prefix(&ball_comparisons, "ball_");
     all_comparisons

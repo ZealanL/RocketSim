@@ -91,8 +91,8 @@ fn test_recording(recording: &Recording) {
                 }
             }
             lines.push("CAR CONTROLS DURING TICK:".to_string());
-            for j in 0..num_cars {
-                lines.push(format!(" > Car [{j}]: {:?}", car_states[j].controls));
+            for (j, car_state) in car_states.iter().enumerate().take(num_cars) {
+                lines.push(format!(" > Car [{j}]: {:?}", car_state.controls));
             }
             lines.push("CAR IMPULSES DURING TICK:".to_string());
             for j in 0..num_cars {
