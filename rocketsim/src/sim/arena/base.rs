@@ -538,7 +538,6 @@ impl Arena {
         self.ball.pre_tick_update(
             &mut self.bullet_world.bodies_mut()[self.ball.rigid_body_idx],
             self.config.game_mode,
-            &self.config.mutators,
         );
 
         self.bullet_world

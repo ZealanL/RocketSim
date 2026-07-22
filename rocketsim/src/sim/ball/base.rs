@@ -131,12 +131,7 @@ impl Ball {
         self.state = state;
     }
 
-    pub(crate) fn pre_tick_update(
-        &mut self,
-        rb: &mut RigidBody,
-        game_mode: GameMode,
-        _mutator_config: &MutatorConfig, // TODO: Remove
-    ) {
+    pub(crate) fn pre_tick_update(&mut self, rb: &mut RigidBody, game_mode: GameMode) {
         match game_mode {
             GameMode::Heatseeker => {
                 if self.state.hs_info.y_target_dir == 0 {
