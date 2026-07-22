@@ -1,3 +1,3 @@
-pub mod gjk;
+pub(super) mod gjk;
 pub mod manifold_point;
 pub mod persistent_manifold;
