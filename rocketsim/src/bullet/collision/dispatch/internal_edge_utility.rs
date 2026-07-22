@@ -110,7 +110,7 @@ impl ProcessTriangle for ConnectivityProcessor<'_> {
 
             match sum_verts_a {
                 1 => {
-                    let edge = (-self.shape.edges[0]).normalize();
+                    let edge = (-self.shape.edge(0)).normalize();
                     let orn = Quat::from_axis_angle_simd(edge, -corrected_angle);
                     let mut computed_normal_b = orn * self.shape.normal;
                     if computed_normal_b.dot(tri.normal) < 0.0 {
@@ -124,7 +124,7 @@ impl ProcessTriangle for ConnectivityProcessor<'_> {
                     }
                 }
                 2 => {
-                    let edge = (-self.shape.edges[2]).normalize();
+                    let edge = (-self.shape.edge(2)).normalize();
                     let orn = Quat::from_axis_angle_simd(edge, -corrected_angle);
                     let mut computed_normal_b = orn * self.shape.normal;
                     if computed_normal_b.dot(tri.normal) < 0.0 {
@@ -138,7 +138,7 @@ impl ProcessTriangle for ConnectivityProcessor<'_> {
                     }
                 }
                 3 => {
-                    let edge = (-self.shape.edges[1]).normalize();
+                    let edge = (-self.shape.edge(1)).normalize();
                     let orn = Quat::from_axis_angle_simd(edge, -corrected_angle);
                     let mut computed_normal_b = orn * self.shape.normal;
                     if computed_normal_b.dot(tri.normal) < 0.0 {
@@ -169,7 +169,7 @@ pub fn generate_internal_edge_info(bvh: &Tree, mesh_interface: &TriangleMesh) ->
 
         let mut my_node_callback =
             NodeOverlapCallback::new(mesh_interface, &mut connectivity_processor);
-        bvh.report_aabb_overlapping_node(&mut my_node_callback, &triangle_a.aabb);
+        bvh.report_aabb_overlapping_node(&mut my_node_callback, &triangle_a.aabb());
     }
 
     triangle_info_map
@@ -276,7 +276,7 @@ pub fn adjust_internal_edge_contacts(
                 let is_edge_convex = (info.flags & TriInfoFlag::V0V1Convex) != 0;
                 let swap_factor = f32::from(is_edge_convex) * 2.0 - 1.0;
 
-                let edge = -tri.edges[0];
+                let edge = -tri.edge(0);
                 let n_a = swap_factor * tri.normal;
                 let orn = Quat::from_axis_angle_simd(edge.normalize(), info.edge_v0_v1_angle);
                 let mut computed_normal_b = orn * tri.normal;
@@ -322,7 +322,7 @@ pub fn adjust_internal_edge_contacts(
                 let is_edge_convex = (info.flags & TriInfoFlag::V1V2Convex) != 0;
                 let swap_factor = f32::from(is_edge_convex) * 2.0 - 1.0;
 
-                let edge = -tri.edges[1];
+                let edge = -tri.edge(1);
                 let n_a = swap_factor * tri.normal;
                 let orn = Quat::from_axis_angle_simd(edge.normalize(), info.edge_v1_v2_angle);
                 let mut computed_normal_b = orn * tri.normal;
@@ -368,7 +368,7 @@ pub fn adjust_internal_edge_contacts(
                 let is_edge_convex = (info.flags & TriInfoFlag::V2V0Convex) != 0;
                 let swap_factor = f32::from(is_edge_convex) * 2.0 - 1.0;
 
-                let edge = -tri.edges[2];
+                let edge = -tri.edge(2);
                 let n_a = swap_factor * tri.normal;
                 let orn = Quat::from_axis_angle_simd(edge.normalize(), info.edge_v2_v0_angle);
                 let mut computed_normal_b = orn * tri.normal;

@@ -44,7 +44,7 @@ struct ConvexTriangleCallback<'a, T: ContactAddedCallback> {
 
 impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> {
     fn process_triangle(&mut self, triangle: &TriangleShape, triangle_idx: usize) {
-        if !triangle.aabb.intersects(self.local_convex_aabb) {
+        if !triangle.aabb().intersects(self.local_convex_aabb) {
             return;
         }
 

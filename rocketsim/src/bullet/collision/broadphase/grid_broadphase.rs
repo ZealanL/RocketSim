@@ -207,16 +207,18 @@ impl GridBroadphase {
         if (sbp.collision_filter_group & CollisionFilterGroups::Static) != 0 {
             self.cell_grid.update_cells_static(sbp, col_obj, proxy_idx);
         } else {
-            let old_idx = sbp.cell_idx;
+            let old_idx = sbp.cell_idx as usize;
             let new_indices = self.cell_grid.get_cell_indices(aabb.min);
             let new_idx = self.cell_grid.cell_indices_to_idx(new_indices);
 
-            self.handles[proxy_idx].cell_idx = new_idx;
+            self.handles[proxy_idx].cell_idx = u32::try_from(new_idx).unwrap();
             if new_idx != old_idx {
-                let old_indices = self.handles[proxy_idx].indices;
-                self.cell_grid
-                    .update_cells_dynamic::<false>(proxy_idx, old_indices);
-                self.handles[proxy_idx].indices = new_indices;
+                let [x, y, z] = self.handles[proxy_idx].indices;
+                self.cell_grid.update_cells_dynamic::<false>(
+                    proxy_idx,
+                    USizeVec3::new(x as usize, y as usize, z as usize),
+                );
+                self.handles[proxy_idx].indices = new_indices.as_uvec3().to_array();
                 self.cell_grid
                     .update_cells_dynamic::<true>(proxy_idx, new_indices);
             }
@@ -239,12 +241,12 @@ impl GridBroadphase {
 
         let new_handle = BroadphaseProxy {
             aabb,
-            client_obj_idx: co.world_array_idx,
+            client_obj_idx: u32::try_from(co.world_array_idx).unwrap(),
             collision_filter_group,
             collision_filter_mask,
             unique_id: u32::try_from(new_handle_idx).unwrap(),
-            cell_idx,
-            indices,
+            cell_idx: u32::try_from(cell_idx).unwrap(),
+            indices: indices.as_uvec3().to_array(),
         };
 
         if is_static {
@@ -278,7 +280,7 @@ impl GridBroadphase {
                 (proxy.collision_filter_group & CollisionFilterGroups::Static) == 0
             })
         {
-            let cell = &self.cell_grid.cells[proxy.cell_idx];
+            let cell = &self.cell_grid.cells[proxy.cell_idx as usize];
             for &other_proxy_idx in &cell.static_handles {
                 let other_proxy = &self.handles[other_proxy_idx];
 

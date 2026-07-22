@@ -49,7 +49,7 @@ impl CollisionShapes {
                 debug_assert!(fast_compare_trans(t, &Affine3A::IDENTITY));
                 shape.aabb_ident_cache
             }
-            Self::Triangle(shape) => shape.aabb,
+            Self::Triangle(shape) => shape.aabb(),
         }
     }
 
@@ -62,7 +62,12 @@ impl CollisionShapes {
             Self::StaticPlane(shape) => &shape.aabb_ident_cache,
             Self::TriangleMesh(shape) => &shape.aabb_ident_cache,
             Self::ConvexHull(shape) => shape.get_ident_aabb(),
-            Self::Triangle(shape) => &shape.aabb,
+            Self::Triangle(shape) => {
+                let aabb = shape.aabb();
+                let center = (aabb.min + aabb.max) * 0.5;
+                let radius = (aabb.max - aabb.min).length() * 0.5;
+                return (center, radius);
+            }
         };
 
         let center = (aabb.min + aabb.max) * 0.5;
