@@ -200,6 +200,11 @@ impl GridBroadphase {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) const fn num_cells(&self) -> USizeVec3 {
+        self.cell_grid.num_cells
+    }
+
     pub fn set_aabb(&mut self, col_obj: &RigidBody, proxy_idx: usize, aabb: Aabb) {
         let sbp = &mut self.handles[proxy_idx];
         sbp.aabb = aabb;
@@ -344,5 +349,22 @@ impl GridBroadphase {
                 ray_callback.process(other_proxy);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use glam::{USizeVec3, Vec3A};
+
+    use super::GridBroadphase;
+
+    #[test]
+    fn arena_sized_cell_disables_grid_partitioning() {
+        let min_pos = Vec3A::new(-5600.0, -6000.0, 0.0);
+        let max_pos = Vec3A::new(5600.0, 6000.0, 2200.0);
+        let cell_size = (max_pos - min_pos).max_element();
+        let broadphase = GridBroadphase::new(min_pos, max_pos, cell_size, 1);
+
+        assert_eq!(broadphase.num_cells(), USizeVec3::ONE);
     }
 }
