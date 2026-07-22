@@ -331,10 +331,16 @@ impl GridBroadphase {
         debug_assert!(ray_from[2].distance_squared(ray_to[2]) < self.cell_grid.cell_size_sq);
         debug_assert!(ray_from[3].distance_squared(ray_to[3]) < self.cell_grid.cell_size_sq);
         let cell = &self.cell_grid.cells[self.cell_grid.get_cell_idx(ray_from[0])];
+        let ray_aabb = ray_from.iter().zip(ray_to).skip(1).fold(
+            Aabb::new(ray_from[0].min(ray_to[0]), ray_from[0].max(ray_to[0])),
+            |bounds, (from, to)| bounds.combine(&Aabb::new(from.min(*to), from.max(*to))),
+        );
 
         for &other_proxy_idx in cell.static_handles.iter().chain(&cell.dyn_handles) {
             let other_proxy = &self.handles[other_proxy_idx];
-            ray_callback.process(other_proxy);
+            if ray_aabb.intersects(&other_proxy.aabb) {
+                ray_callback.process(other_proxy);
+            }
         }
     }
 }
