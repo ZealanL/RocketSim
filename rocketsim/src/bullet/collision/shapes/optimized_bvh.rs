@@ -48,10 +48,5 @@ pub fn create_bvh(triangles: &TriangleMesh, aabb: Aabb) -> Tree {
         })
         .collect();
 
-    let num_leaf_nodes = leaf_nodes.len();
-
-    let mut bvh = Tree::new(aabb, num_leaf_nodes);
-    bvh.build_tree(&mut leaf_nodes, 0, num_leaf_nodes);
-
-    bvh
+    Tree::build(aabb, &mut leaf_nodes)
 }

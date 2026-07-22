@@ -84,8 +84,6 @@ impl BoostPadGrid {
             all_aabb_accum.unwrap()
         };
 
-        let mut bvh_tree = bvh::Tree::new(all_aabb, pad_configs.len());
-
         let mut aabb_nodes = Vec::new();
         for (i, pad) in all_pads.iter().enumerate() {
             let node = bvh::Node {
@@ -95,8 +93,7 @@ impl BoostPadGrid {
             aabb_nodes.push(node);
         }
 
-        let num_nodes = aabb_nodes.len();
-        bvh_tree.build_tree(&mut aabb_nodes, 0, num_nodes);
+        let bvh_tree = bvh::Tree::build(all_aabb, &mut aabb_nodes);
 
         Self {
             bvh_tree,
