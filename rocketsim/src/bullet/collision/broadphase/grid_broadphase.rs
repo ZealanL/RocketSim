@@ -296,7 +296,7 @@ impl GridBroadphase {
             }
 
             for &other_proxy_idx in &cell.dyn_handles {
-                if i == other_proxy_idx {
+                if i >= other_proxy_idx {
                     continue;
                 }
 
