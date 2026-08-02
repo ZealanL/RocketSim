@@ -207,6 +207,7 @@ impl Tree {
             let mask = node.intersection_mask(aabb);
             for lane in (0..node.child_count as usize).rev() {
                 if mask & (1 << lane) != 0 {
+                    std::hint::cold_path();
                     stack[stack_len] = node.children[lane];
                     stack_len += 1;
                 }
@@ -248,6 +249,7 @@ impl Tree {
             let mask = node.intersection_mask(&ray_info.aabb);
             for lane in (0..node.child_count as usize).rev() {
                 if mask & (1 << lane) != 0 {
+                    std::hint::cold_path();
                     stack[stack_len] = node.children[lane];
                     stack_len += 1;
                 }
