@@ -1,4 +1,7 @@
-use std::{collections::HashMap, mem};
+use std::{
+    collections::{HashMap, hash_map::Entry},
+    mem,
+};
 
 use rustc_hash::{FxBuildHasher, FxHashMap};
 
@@ -29,29 +32,7 @@ impl Default for HashedOverlappingPairCache {
 }
 
 impl HashedOverlappingPairCache {
-    fn internal_add_pair(
-        &mut self,
-        mut proxy0_id: u32,
-        mut proxy0_idx: usize,
-        mut proxy1_id: u32,
-        mut proxy1_idx: usize,
-    ) {
-        if proxy0_id > proxy1_id {
-            mem::swap(&mut proxy0_id, &mut proxy1_id);
-            mem::swap(&mut proxy0_idx, &mut proxy1_idx);
-        }
-
-        let pair_key = (u64::from(proxy0_id) << 32) | u64::from(proxy1_id);
-        self.hash_table
-            .insert(pair_key, self.overlapping_pair_array.len());
-
-        self.overlapping_pair_array.push(BroadphasePair {
-            proxy0: proxy0_idx,
-            proxy1: proxy1_idx,
-        });
-    }
-
-    pub fn add_overlapping_pair(
+    pub(crate) fn add_overlapping_pair(
         &mut self,
         proxy0: &BroadphaseProxy,
         proxy0_idx: usize,
@@ -62,25 +43,28 @@ impl HashedOverlappingPairCache {
             return;
         }
 
-        self.internal_add_pair(proxy0.unique_id, proxy0_idx, proxy1.unique_id, proxy1_idx);
+        let (mut proxy0_id, mut proxy0_idx) = (proxy0.unique_id, proxy0_idx);
+        let (mut proxy1_id, mut proxy1_idx) = (proxy1.unique_id, proxy1_idx);
+        if proxy0_id > proxy1_id {
+            mem::swap(&mut proxy0_id, &mut proxy1_id);
+            mem::swap(&mut proxy0_idx, &mut proxy1_idx);
+        }
+
+        let pair_key = (u64::from(proxy0_id) << 32) | u64::from(proxy1_id);
+        let pair_idx = self.overlapping_pair_array.len();
+        let Entry::Vacant(entry) = self.hash_table.entry(pair_key) else {
+            return;
+        };
+        entry.insert(pair_idx);
+        self.overlapping_pair_array.push(BroadphasePair {
+            proxy0: proxy0_idx,
+            proxy1: proxy1_idx,
+        });
     }
 
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.hash_table.is_empty()
-    }
-
-    pub fn contains_pair<'a>(
-        &self,
-        mut proxy0: &'a BroadphaseProxy,
-        mut proxy1: &'a BroadphaseProxy,
-    ) -> bool {
-        if proxy0.unique_id > proxy1.unique_id {
-            mem::swap(&mut proxy0, &mut proxy1);
-        }
-
-        let pair_key = (u64::from(proxy0.unique_id) << 32) | u64::from(proxy1.unique_id);
-        self.hash_table.contains_key(&pair_key)
     }
 
     #[inline]
