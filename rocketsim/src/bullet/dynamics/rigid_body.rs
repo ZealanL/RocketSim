@@ -19,7 +19,6 @@ pub struct RigidBodyConstructionInfo {
     pub collision_shape: CollisionShapes,
     pub local_inertia: Vec3A,
     pub linear_damping: f32,
-    pub angular_damping: f32,
     pub friction: f32,
     pub restitution: f32,
     pub linear_sleeping_threshold: f32,
@@ -33,7 +32,6 @@ impl RigidBodyConstructionInfo {
             collision_shape,
             local_inertia: Vec3A::ZERO,
             linear_damping: 0.0,
-            angular_damping: 0.0,
             friction: 0.5,
             restitution: 0.0,
             linear_sleeping_threshold: 0.0,
@@ -158,7 +156,6 @@ pub struct RigidBody {
     pub accum_ang_vel: Vec3A,
 
     pub linear_damping: f32,
-    pub angular_damping: f32,
     pub linear_sleeping_threshold: f32,
     pub angular_sleeping_threshold: f32,
     pub inv_mass_splat: Vec3A,
@@ -177,7 +174,6 @@ impl RigidBody {
         };
 
         let linear_damping = info.linear_damping.clamp(0.0, 1.0);
-        let angular_damping = info.angular_damping.clamp(0.0, 1.0);
         let linear_sleeping_threshold = info.linear_sleeping_threshold;
         let angular_sleeping_threshold = info.angular_sleeping_threshold;
 
@@ -215,7 +211,6 @@ impl RigidBody {
             accum_lin_vel: Vec3A::ZERO,
             accum_ang_vel: Vec3A::ZERO,
             linear_damping,
-            angular_damping,
             linear_sleeping_threshold,
             angular_sleeping_threshold,
             inv_mass_splat: Vec3A::splat(inverse_mass),
@@ -358,10 +353,12 @@ impl RigidBody {
     }
 
     pub fn apply_damping(&mut self, time_step: f32) {
-        self.lin_vel *= (1.0 - self.linear_damping).powf(time_step);
-        self.ang_vel *= (1.0 - self.angular_damping).powf(time_step);
+        if self.linear_damping != 0.0 {
+            self.lin_vel *= (1.0 - self.linear_damping).powf(time_step);
+        }
     }
 
+    #[inline]
     pub fn predict_integration_trans(&self, time_step: f32) -> Affine3A {
         let mut trans = self.world_trans;
         let mut quat = self.world_quat;
