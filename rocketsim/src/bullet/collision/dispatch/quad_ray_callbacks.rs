@@ -131,9 +131,8 @@ impl<T: QuadRayResultCallback> BroadphaseAabbCallback for QuadRayCallback<'_, T>
     fn process(&mut self, proxy: &BroadphaseProxy) -> bool {
         let obj_idx = proxy.client_obj_idx as usize;
         let rb = &self.world.collision_objs[obj_idx];
-        let handle = &self.world.broadphase_pair_cache.handles[rb.get_broadphase_handle()];
 
-        if self.result_callback.needs_collision(handle) {
+        if self.result_callback.needs_collision(proxy) {
             CollisionWorld::quad_ray_test(
                 self.ray_from_world,
                 self.ray_to_world,

@@ -289,9 +289,7 @@ impl GridBroadphase {
             for &other_proxy_idx in &cell.static_handles {
                 let other_proxy = &self.handles[other_proxy_idx];
 
-                if proxy.aabb.intersects(&other_proxy.aabb)
-                    && !self.pair_cache.contains_pair(proxy, other_proxy)
-                {
+                if proxy.aabb.intersects(&other_proxy.aabb) {
                     self.pair_cache
                         .add_overlapping_pair(proxy, i, other_proxy, other_proxy_idx);
                 }
@@ -303,9 +301,7 @@ impl GridBroadphase {
                 }
 
                 let other_proxy = &self.handles[other_proxy_idx];
-                if proxy.aabb.intersects(&other_proxy.aabb)
-                    && !self.pair_cache.contains_pair(proxy, other_proxy)
-                {
+                if proxy.aabb.intersects(&other_proxy.aabb) {
                     self.pair_cache
                         .add_overlapping_pair(proxy, i, other_proxy, other_proxy_idx);
                 }
