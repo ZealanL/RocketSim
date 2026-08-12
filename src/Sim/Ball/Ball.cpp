@@ -316,10 +316,8 @@ void Ball::_OnHit(
 				chargeLevel = 3;
 		}
 		
-		if (chargeLevel > 1) {
-			float newTargetDir = (car->team == Team::BLUE) ? 1 : -1;
-			_internalState.dsInfo.yTargetDir = newTargetDir;
-		}
+		float newTargetDir = (car->team == Team::BLUE) ? 1 : -1;
+		_internalState.dsInfo.yTargetDir = newTargetDir;
 	}
 }
 
@@ -371,6 +369,10 @@ bool Ball::_OnDropshotTileCollision(
 	Vec tilePos = DropshotTiles::GetTilePos(teamIdx, tileIdx);
 	auto& dsInfo = _internalState.dsInfo;
 
+	// No team has touched the ball yet
+	if (dsInfo.yTargetDir == 0)
+		return false;
+
 	// This should be possible in rare circumstances where two tiles are hit simultaneously
 	if (tileState.damageState == DropshotTileState::STATE_BROKEN)
 		return false;
@@ -385,9 +387,8 @@ bool Ball::_OnDropshotTileCollision(
 	if (vel.z > -RLConst::Dropshot::MIN_DOWNWARD_SPEED_TO_DAMAGE)
 		return false;
 
-	if (dsInfo.chargeLevel > 1 && dsInfo.yTargetDir != 0)
-		if (RS_SGN(tilePos.y) != dsInfo.yTargetDir)
-			return false; // Wrong side of the arena
+	if (RS_SGN(tilePos.y) != dsInfo.yTargetDir)
+		return false; // Wrong side of the arena
 
 	// All checks passed
 
