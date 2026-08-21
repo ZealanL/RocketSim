@@ -382,7 +382,7 @@ impl Car {
         }
 
         let mut do_air_control = false;
-        if self.state.is_flipping {
+        if self.state.is_flipping && update_air_control {
             if self.state.flip_rel_torque == Vec3A::ZERO {
                 do_air_control = true;
             } else {
