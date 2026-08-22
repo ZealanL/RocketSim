@@ -489,9 +489,12 @@ impl Car {
         self.state.jump_ticks += 1;
 
         if self.state.is_jumping {
-            let jump_t = self.state.jump_time();
-            self.state.is_jumping = jump_t < jump::MIN_TIME
-                || (self.state.controls.jump && jump_t - jump::MAX_TIME <= f32::EPSILON);
+            // Compare in whole ticks: RL keeps the jump alive through
+            // MIN_TICKS even if jump was released, and ends it once the hold
+            // exceeds MAX_TICKS. A time-based check misses the minimum-hold
+            // boundary because `3 * TICK_TIME` rounds above `0.025` in f32.
+            self.state.is_jumping = self.state.jump_ticks <= jump::MIN_TICKS
+                || (self.state.controls.jump && self.state.jump_ticks <= jump::MAX_TICKS);
             if !self.state.is_jumping {
                 // Jump ended this tick: counter restarts (RL parity).
                 self.state.jump_ticks = 1;
@@ -830,6 +833,29 @@ impl Car {
         self.state.world_contact_normal = None;
 
         self.update_boost(rb, mutator_config);
+
+        // Wheel raycasts and the resulting suspension/friction impulses are
+        // evaluated from the PRE-integration pose, matching RL (and stock
+        // Bullet's action update): recorded wheel data at frame t reflects
+        // geometry(t-1), and takeoff/landing contact shifts by one tick
+        // otherwise.
+        self.bullet_vehicle
+            .update_vehicle_first(collision_world, TICK_TIME);
+        self.bullet_vehicle
+            .update_vehicle_second(collision_world, TICK_TIME);
+
+        let mut num_wheels_in_contact = 0u8;
+        for (wheel, has_contact) in self
+            .bullet_vehicle
+            .wheels
+            .iter()
+            .zip(&mut self.state.wheels_with_contact)
+        {
+            let in_contact = wheel.raycast_info.is_some();
+            *has_contact = in_contact;
+            num_wheels_in_contact += u8::from(in_contact);
+        }
+        self.state.is_on_ground = num_wheels_in_contact >= 3;
     }
 
     pub(crate) fn post_tick_update(&mut self, collision_world: &mut DiscreteDynamicsWorld) {
@@ -869,24 +895,8 @@ impl Car {
             self.state.supersonic_grace_timer = 0.0;
         }
 
-        self.bullet_vehicle
-            .update_vehicle_first(collision_world, TICK_TIME);
-        self.bullet_vehicle
-            .update_vehicle_second(collision_world, TICK_TIME);
-        let mut num_wheels_in_contact = 0u8;
-        for (wheel, has_contact) in self
-            .bullet_vehicle
-            .wheels
-            .iter()
-            .zip(&mut self.state.wheels_with_contact)
-        {
-            let in_contact = wheel.raycast_info.is_some();
-            *has_contact = in_contact;
-            num_wheels_in_contact += u8::from(in_contact);
-        }
-
-        self.state.is_on_ground = num_wheels_in_contact >= 3;
-
+        // is_on_ground was recorded from this tick's pre-integration wheel
+        // raycasts (see pre_tick_update); used here for jump re-arming.
         // Re-arm the jump once the car is grounded again, no
         // longer holding a jump, and its suspension is no longer extending.
         if self.state.has_jumped && !self.state.is_jumping && self.state.is_on_ground {
