@@ -19,7 +19,7 @@ pub fn set_state_to_record_tick(
         cs.phys = rep_cs.phys;
         cs.is_jumping = rep_cs.is_jumping;
         cs.is_flipping = rep_cs.is_flipping;
-        cs.jump_time = rep_cs.jump_time;
+        cs.jump_ticks = rep_cs.jump_ticks;
         cs.flip_time = rep_cs.flip_time;
         cs.has_jumped = rep_cs.has_jumped;
 
@@ -52,6 +52,34 @@ fn test_recording(recording: &Recording) {
         })
         .collect();
 
+    // Warm-up: step once to establish contact constraints after teleport
+    let warmup_controls: Vec<CarControls> = recording.ticks[0]
+        .car_records
+        .iter()
+        .map(|cr| cr.prev_controls.into())
+        .collect();
+    set_state_to_record_tick(&mut arena, &car_idcs, &recording.ticks[0], &warmup_controls);
+    arena.step_tick();
+
+    // Recording sampling skew: RL stores wheel-raycast results (incl.
+    // is_on_ground) from the PRE-bullet raycast of frame t next to post-bullet
+    // phys data. Verified against recordings: REAL len(t) == geometry(pos(t-1)).
+    // RS's post-step raycasts therefore align with recording index t+1, so
+    // is_on_ground is compared against the NEXT tick's value.
+    let shifted_on_ground: Vec<Vec<bool>> = {
+        let n = recording.ticks.len();
+        (0..num_cars)
+            .map(|c| {
+                (0..n)
+                    .map(|t| {
+                        let nxt = (t + 1).min(n - 1);
+                        recording.ticks[nxt].car_records[c].is_on_ground
+                    })
+                    .collect()
+            })
+            .collect()
+    };
+
     for i in 0..(recording.ticks.len() - 1) {
         let from_tick = &recording.ticks[i];
         let to_tick = &recording.ticks[i + 1];
@@ -63,14 +91,20 @@ fn test_recording(recording: &Recording) {
         set_state_to_record_tick(&mut arena, &car_idcs, from_tick, &controls_during);
         arena.step_tick();
 
+        let mut to_tick = to_tick.clone();
+        for (c, cr) in to_tick.car_records.iter_mut().enumerate() {
+            cr.is_on_ground = shifted_on_ground[c][i + 1];
+        }
+
         let ball_state = arena.get_ball_state();
         let car_states: Vec<CarState> = car_idcs
             .iter()
             .map(|&car_idx| *arena.get_car_state(car_idx))
             .collect();
 
-        let comparison = compare::compare_states_to_tick(&car_states, ball_state, to_tick);
+        let comparison = compare::compare_states_to_tick(&car_states, ball_state, &to_tick);
         let norm_error = comparison.calc_norm_error();
+
         if norm_error >= 1.0 {
             let recording_name = &recording.name;
             let mut lines: Vec<String> = vec![
@@ -137,9 +171,12 @@ fn test_recording(recording: &Recording) {
 // This will be called from each test file
 #[allow(unused)]
 fn run_comparison_test(name: &str, recording_bytes: &[u8]) {
-    if !rocketsim::is_initialized() {
+    // Tests run in parallel threads; racing the global init corrupts
+    // lookup tables for latecomers (nondeterministic physics failures).
+    static INIT: std::sync::Once = std::sync::Once::new();
+    INIT.call_once(|| {
         rocketsim::init_from_default(true).unwrap();
-    }
+    });
     let recording = Recording::from_bytes(name, recording_bytes).unwrap();
     test_recording(&recording);
 }
