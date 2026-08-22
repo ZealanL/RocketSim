@@ -7,7 +7,6 @@ use fastrand::Rng;
 use glam::{Affine3A, EulerRot, Mat3A, Vec3A};
 
 use crate::bullet::dynamics::rigid_body::Impulse;
-use crate::consts::GRAVITY_Z;
 use crate::{
     CarBodyConfig, CarControls, CarState, GameMode, MutatorConfig, PhysState, Team,
     bullet::{
@@ -212,6 +211,7 @@ impl Car {
         rb: &mut RigidBody,
         num_wheels_in_contact: usize,
         forward_speed_uu: f32,
+        mutator_config: &MutatorConfig,
     ) {
         let handbrake_delta = if self.state.controls.handbrake {
             drive_consts::POWERSLIDE_RISE_RATE
@@ -355,11 +355,14 @@ impl Car {
                 sticky_force_scale += 1.0 - upwards_dir.z.abs();
             }
 
-            // TODO: Should we be using the mutator config for gravity?
             rb.add_impulse(
                 Some("StickyForce"),
                 Impulse::Linear(
-                    upwards_dir * sticky_force_scale * const { GRAVITY_Z * TICK_TIME * UU_TO_BT },
+                    upwards_dir
+                        * sticky_force_scale
+                        * mutator_config.gravity.z
+                        * TICK_TIME
+                        * UU_TO_BT,
                 ),
                 false,
                 true,
@@ -368,6 +371,8 @@ impl Car {
     }
 
     fn update_air_torque(&mut self, rb: &mut RigidBody, update_air_control: bool) {
+        use car_consts::{air_control, flip};
+
         let forward_dir = self.state.get_forward_dir();
         let right_dir = self.state.get_right_dir();
         let up_dir = self.state.get_up_dir();
@@ -378,7 +383,7 @@ impl Car {
 
         if self.state.is_flipping {
             self.state.is_flipping =
-                self.state.has_flipped && self.state.flip_time < car_consts::flip::TORQUE_TIME;
+                self.state.has_flipped && self.state.flip_time < flip::TORQUE_TIME;
         }
 
         let mut do_air_control = false;
@@ -398,9 +403,7 @@ impl Car {
                 }
 
                 rel_dodge_torque.y *= pitch_scale;
-                let dodge_torque = rel_dodge_torque
-                    * Vec3A::new(car_consts::flip::TORQUE_X, car_consts::flip::TORQUE_Y, 0.0)
-                    * TICK_TIME;
+                let dodge_torque = rel_dodge_torque * flip::TORQUE * TICK_TIME;
 
                 rb.add_impulse(
                     None,
@@ -424,46 +427,43 @@ impl Car {
                 if self.state.is_flipping
                     || self.state.has_flipped
                         && self.state.flip_time
-                            < const {
-                                car_consts::flip::TORQUE_TIME
-                                    + car_consts::flip::PITCHLOCK_EXTRA_TIME
-                            }
+                            < const { flip::TORQUE_TIME + flip::PITCHLOCK_EXTRA_TIME }
                 {
                     pitch_torque_scale = 0.0;
                 }
 
-                self.state.controls.pitch
-                    * dir_pitch
-                    * pitch_torque_scale
-                    * car_consts::air_control::TORQUE.x
-                    + self.state.controls.yaw * dir_yaw * car_consts::air_control::TORQUE.y
-                    + self.state.controls.roll * dir_roll * car_consts::air_control::TORQUE.z
+                self.state.controls.pitch * dir_pitch * pitch_torque_scale * air_control::TORQUE.x
+                    + self.state.controls.yaw * dir_yaw * air_control::TORQUE.y
+                    + self.state.controls.roll * dir_roll * air_control::TORQUE.z
             } else {
                 Vec3A::ZERO
             };
 
-            let ang_vel = rb.ang_vel;
-
-            let damp_pitch = dir_pitch.dot(ang_vel)
-                * car_consts::air_control::DAMPING.x
+            let damp_pitch = dir_pitch.dot(rb.ang_vel)
+                * air_control::DAMPING.x
                 * (1.0 - (self.state.controls.pitch * pitch_torque_scale).abs());
-            let damp_yaw = dir_yaw.dot(ang_vel)
-                * car_consts::air_control::DAMPING.y
+            let damp_yaw = dir_yaw.dot(rb.ang_vel)
+                * air_control::DAMPING.y
                 * (1.0 - self.state.controls.yaw.abs());
-            let damp_roll = dir_roll.dot(ang_vel) * car_consts::air_control::DAMPING.z;
+            let damp_roll = dir_roll.dot(rb.ang_vel) * air_control::DAMPING.z;
 
             let damping = dir_yaw * damp_yaw + dir_pitch * damp_pitch + dir_roll * damp_roll;
 
-            let rb_torque = (torque - damping)
-                * const { car_consts::air_control::TORQUE_APPLY_SCALE * TICK_TIME };
+            let rb_torque =
+                (torque - damping) * const { air_control::TORQUE_APPLY_SCALE * TICK_TIME };
 
             rb.add_impulse(None, Impulse::Angular(rb_torque), false, true);
         }
 
-        if self.state.controls.throttle != 0.0 {
-            // TODO: Fix air-throttle not respecting boost
+        // When boosting, air throttle is always full regardless of throttle input.
+        let throttle_scale = if self.state.controls.boost {
+            1.0
+        } else {
+            self.state.controls.throttle
+        };
+        if throttle_scale != 0.0 {
             let throttle_force = forward_dir
-                * self.state.controls.throttle
+                * throttle_scale
                 * const { car_consts::drive::THROTTLE_AIR_ACCEL * UU_TO_BT * TICK_TIME };
             rb.add_impulse(None, Impulse::Linear(throttle_force), false, true);
         }
@@ -484,10 +484,19 @@ impl Car {
             self.state.jump_time = 0.0;
         }
 
-        // Apply forces
+        // Update is_jumping FIRST: prevents one extra tick of hold force
+        // when the player releases the jump button (RL parity fix).
         if self.state.is_jumping {
-            // Jump started, apply initial boost force
-            if self.state.jump_time == 0.0 {
+            self.state.jump_time += TICK_TIME;
+            self.state.is_jumping = self.state.jump_time < car_consts::jump::MIN_TIME
+                || (self.state.controls.jump && self.state.jump_time < car_consts::jump::MAX_TIME);
+        }
+
+        // Apply forces (only if still jumping after state update)
+        if self.state.is_jumping {
+            if self.state.jump_time == TICK_TIME {
+                // First tick of jumping: apply initial impulse.
+                // NOTE: uses TICK_TIME not 0.0 because we incremented above.
                 let jump_start_force = up_dir * mutator_config.jump_immediate_force * UU_TO_BT;
                 rb.add_impulse(
                     Some("Jump"),
@@ -499,10 +508,6 @@ impl Car {
 
             let jump_force = up_dir * mutator_config.jump_accel * const { UU_TO_BT * TICK_TIME };
             rb.add_impulse(Some("Jump"), Impulse::Linear(jump_force), false, true);
-
-            self.state.jump_time += TICK_TIME;
-            self.state.is_jumping = self.state.jump_time < car_consts::jump::MIN_TIME
-                || (self.state.controls.jump && self.state.jump_time < car_consts::jump::MAX_TIME);
         }
 
         // Update jump state
@@ -818,7 +823,7 @@ impl Car {
         // TODO: Refactor and move
         let num_wheels_in_contact = self.state.num_wheels_in_contact();
 
-        self.update_wheels(rb, num_wheels_in_contact, forward_speed_uu);
+        self.update_wheels(rb, num_wheels_in_contact, forward_speed_uu, mutator_config);
 
         if self.state.is_on_ground {
             self.state.is_flipping = false;
