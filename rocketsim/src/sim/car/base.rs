@@ -475,28 +475,33 @@ impl Car {
         mutator_config: &MutatorConfig,
         jump_pressed: bool,
     ) {
+        use car_consts::jump;
+
         let up_dir = self.state.get_up_dir();
 
         // Check jump activation
         if !self.state.has_jumped && self.state.is_on_ground && jump_pressed {
             self.state.is_jumping = true;
             self.state.has_jumped = true;
-            self.state.jump_time = 0.0;
+            self.state.jump_ticks = 0;
         }
 
-        // Update is_jumping FIRST: prevents one extra tick of hold force
-        // when the player releases the jump button (RL parity fix).
+        self.state.jump_ticks += 1;
+
         if self.state.is_jumping {
-            self.state.jump_time += TICK_TIME;
-            self.state.is_jumping = self.state.jump_time < car_consts::jump::MIN_TIME
-                || (self.state.controls.jump && self.state.jump_time < car_consts::jump::MAX_TIME);
+            let jump_t = self.state.jump_time();
+            self.state.is_jumping = jump_t < jump::MIN_TIME
+                || (self.state.controls.jump && jump_t - jump::MAX_TIME <= f32::EPSILON);
+            if !self.state.is_jumping {
+                // Jump ended this tick: counter restarts (RL parity).
+                self.state.jump_ticks = 1;
+            }
         }
 
-        // Apply forces (only if still jumping after state update)
+        // Apply forces (only if still jumping)
         if self.state.is_jumping {
-            if self.state.jump_time == TICK_TIME {
+            if self.state.jump_ticks == 1 {
                 // First tick of jumping: apply initial impulse.
-                // NOTE: uses TICK_TIME not 0.0 because we incremented above.
                 let jump_start_force = up_dir * mutator_config.jump_immediate_force * UU_TO_BT;
                 rb.add_impulse(
                     Some("Jump"),
@@ -508,26 +513,6 @@ impl Car {
 
             let jump_force = up_dir * mutator_config.jump_accel * const { UU_TO_BT * TICK_TIME };
             rb.add_impulse(Some("Jump"), Impulse::Linear(jump_force), false, true);
-        }
-
-        // Update jump state
-        if self.state.has_jumped {
-            if !self.state.is_jumping {
-                self.state.jump_time += TICK_TIME;
-            }
-
-            // Possibly reset `has_jumped`
-            if self.state.is_on_ground
-                && self.state.jump_time
-                    > const { car_consts::jump::MIN_TIME + car_consts::jump::RESET_TIME_PAD }
-            {
-                // Don't reset the jump just yet, we might still be leaving the ground
-                // This fixes the bug where jump is reset before we actually leave the ground after a minimum-time jump
-                // TODO: RL does something similar to this time-pad, but not exactly the same
-                self.state.has_jumped = false;
-                self.state.is_jumping = false;
-                self.state.jump_time = 0.0;
-            }
         }
     }
 
@@ -901,6 +886,19 @@ impl Car {
         }
 
         self.state.is_on_ground = num_wheels_in_contact >= 3;
+
+        // Re-arm the jump once the car is grounded again, no
+        // longer holding a jump, and its suspension is no longer extending.
+        if self.state.has_jumped && !self.state.is_jumping && self.state.is_on_ground {
+            let susp_extending = self.bullet_vehicle.wheels.iter().any(|w| {
+                w.raycast_info
+                    .as_ref()
+                    .is_some_and(|ri| ri.suspension_relative_vel > 1.0)
+            });
+            if !susp_extending {
+                self.state.has_jumped = false;
+            }
+        }
 
         self.state.bump_cooldown_timer = (self.state.bump_cooldown_timer - TICK_TIME).max(0.0);
         self.state.prev_controls = self.state.controls;
