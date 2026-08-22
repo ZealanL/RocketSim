@@ -130,3 +130,44 @@ Plugin-source confirmations (rl_phys_record/src):
 - Game wheel info includes `suspensionSubractionIdk` (validates our 0.05
   subtraction constant) and an RE-unidentified `always1_groundStickIdk_D0`
   flag worth investigating for contact persistence semantics.
+
+## SOLVED-model addendum: contact hysteresis (Schmitt trigger)
+
+Instrumented `update_suspension` firing site + raycast traces resolved all
+contradictions. Constraint set (hardpoint heights above ground, Octane):
+
+- RL does NOT engage at pos_191 of simple_jump_land: hardpoint height
+  1.023732 BT, free-fall continues (vel_191 = -392, no impulse).
+- RL DOES engage at pos_192: hardpoint height 0.963098 (vel_192 = -363,
+  braking present; recorded len 0.76386).
+- RL HOLDS contact through single_jump pos_26: hardpoint height 1.049076 —
+  ABOVE the landing non-engage bound!
+- Released by pos_27: height 1.094323.
+
+A single ray threshold cannot satisfy "miss at 1.0237" + "hit/hold at
+1.0491". RL therefore uses **contact hysteresis**, matching the SDK field
+`always1_groundStickIdk_D0` ("ground stick"):
+
+- ENGAGE (airborne -> contact): requires trace <= E, E in [0.9631, 1.0237).
+- HOLD (already in contact): persists while trace <= D, D in [1.0491, 1.0943).
+
+Implementation sketch (baseline ordering, post-integration vehicle phase):
+
+```rust
+// prepare_for_raycast:
+let reach = if self.raycast_info.is_some() { HOLD_REACH } else { ENGAGE_REACH };
+let target = hard_point - up * reach;
+// HOLD_REACH ~= 1.06 BT, ENGAGE_REACH ~= 1.01 BT (mid-band, refine empirically)
+```
+
+Open detail: RL's first-contact stored length (0.76386) equals neither
+geo(pos_192)=0.71262 nor geo(pos_191)=0.77326 — it sits between, suggesting
+either mid-step sampling of the integrating length or the 0.977-relaxation
+applied from the clamped carry-over. If hysteresis alone leaves small len
+residuals, revisit the srv-integration rule ONLY for the contact-persistent
+branch (settle-time srv divergence must be fixed first — see srv notes above).
+
+Also verify `always1_groundStickIdk_D0` semantics against game memory: if it
+is a literal stick flag rather than a scalar, HOLD may persist regardless of
+trace until wheels_with_contact would drop for another reason (e.g. jump),
+bounded only by the observed 1.0943 release.
