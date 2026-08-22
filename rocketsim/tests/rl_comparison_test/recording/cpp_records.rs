@@ -3,7 +3,7 @@
 use std::ops::{Index, IndexMut};
 
 use glam::{Mat3A, Vec3A};
-use rocketsim::{CarControls, CarState, PhysState};
+use rocketsim::{CarControls, CarState, PhysState, consts::TICK_RATE};
 #[repr(C)]
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct VecRecord {
@@ -221,7 +221,10 @@ impl From<CarRecord> for CarState {
             is_jumping: phys_record.is_jumping,
             is_flipping: phys_record.is_flipping,
             flip_rel_torque: phys_record.flip_rel_torque.into(),
-            jump_time: phys_record.jump_time,
+            // NOTE: must round, NOT truncate — RL's accumulated f32 lands
+            // below the integer multiple on ~54% of recorded ticks
+            // (e.g. 41.99999928), and truncating would drop a whole tick.
+            jump_ticks: (phys_record.jump_time * TICK_RATE).round() as u32,
             flip_time: phys_record.flip_time,
             has_jumped: phys_record.has_jumped,
             ..Default::default()
