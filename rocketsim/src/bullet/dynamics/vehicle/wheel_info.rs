@@ -76,8 +76,7 @@ impl WheelInfo {
 
         let suspension_travel = bullet_vehicle::MAX_SUSPENSION_TRAVEL * UU_TO_BT;
         self.real_ray_length =
-            self.suspension_rest_length_1 + suspension_travel + self.wheels_radius
-                - bullet_vehicle::SUSPENSION_SUBTRACTION;
+            self.suspension_rest_length_1 + suspension_travel + self.wheels_radius;
     }
 
     pub fn prepare_for_raycast(&mut self, chassis_trans: &Affine3A) -> (Vec3A, Vec3A) {
@@ -113,12 +112,10 @@ impl WheelInfo {
 
         let up = chassis_trans.matrix3.z_axis;
         let wheel_trace_len_sq = (self.hard_point - contact_point).dot(up);
-        let mut suspension_length = wheel_trace_len_sq - self.wheels_radius;
 
         let suspension_travel = bullet_vehicle::MAX_SUSPENSION_TRAVEL * UU_TO_BT;
         let min_suspension_len = self.suspension_rest_length_1 - suspension_travel;
         let max_suspension_len = self.suspension_rest_length_1 + suspension_travel;
-        suspension_length = suspension_length.clamp(min_suspension_len, max_suspension_len);
 
         let rel_pos = contact_point - chassis_trans.translation;
         self.vel_at_contact_point = chassis.get_vel_in_local_point(rel_pos);
@@ -132,6 +129,9 @@ impl WheelInfo {
         } else {
             (0.0, 10.0)
         };
+
+        let suspension_length =
+            (wheel_trace_len_sq - self.wheels_radius).clamp(min_suspension_len, max_suspension_len);
 
         if is_in_contact_with_world {
             let ray_pushback_thresh = self.suspension_rest_length_1 + self.wheels_radius

@@ -29,8 +29,11 @@ pub struct CarState {
     ///
     /// Forward flip will have positive Y
     pub flip_rel_torque: Vec3A,
-    /// When currently jumping, the time since we started jumping, else 0
-    pub jump_time: f32,
+    /// Integer-exact tick counter driving [`Self::jump_time()`].
+    ///
+    /// Counts ticks since the current jump phase began; reset to 0 on jump
+    /// activation and to 1 on the tick the jump ends.
+    pub jump_ticks: u32,
     /// When currently flipping, the time since we started flipping, else 0
     pub flip_time: f32,
     /// True during a flip (not an auto-flip, and not after a flip)
@@ -91,7 +94,7 @@ impl CarState {
         has_double_jumped: false,
         has_flipped: false,
         flip_rel_torque: Vec3A::ZERO,
-        jump_time: 0.0,
+        jump_ticks: 0,
         flip_time: 0.0,
         is_flipping: false,
         is_jumping: false,
@@ -140,6 +143,11 @@ impl CarState {
             }
         }
         result
+    }
+
+    #[must_use]
+    pub const fn jump_time(&self) -> f32 {
+        self.jump_ticks as f32 * consts::TICK_TIME
     }
 }
 
