@@ -94,3 +94,39 @@ landings plus possibly aerial_ascent/front_flip/side_dodge.
   fixed, try removing the shift — landing bools then align unshifted.
 - Test init races without the `Once` guard produce nondeterministic
   pass/fail flips across the suite; keep the guard.
+
+## 2024 session addendum — chaos confirmed, thresholds ruled out
+
+Instrumented RS's raycast directly (`RAY hit/miss pz=... trace=...`) during
+simple_jump_land's flight:
+
+- At the marginal tick: `RAY miss pz=32.3138` while RL's recorded pos_26 is
+  `31.6988` — a **0.62 uu trajectory divergence** by tick 26 of a ~146-tick
+  flight, far below the harness position tolerance.
+- That drift flips the marginal contact decision (RS trace ≈ 1.0615 vs
+  R = 1.0551), which produces the 34 uu/s landing velocity error.
+- Parameter sweep over ray-subtraction {0, 0.025} × engage-margin
+  {0, 0.01, 0.02}: **identical results for every combo** — trio fails at
+  exactly i=190/i=127/i=127, all takeoff tests pass. Contact-boundary
+  parameters cannot fix a chaotic input difference.
+- Removing the comparison shift makes ALL jump tests fail at their takeoff
+  bool instead — confirming the shift compensates real sub-tolerance
+  trajectory noise at the disengage boundary.
+
+**Conclusion**: the landing failures are chaotic amplification of airborne
+force differences that are individually below comparison tolerance. The fix
+is not in wheel/suspension code at all — it is eliminating per-tick
+airborne-phase force deltas (candidates: AirControl impulse rounding, angular
+damping removal follow-ups from v3-rust, gravity/damping application order)
+until flight trajectories match to near-ulp level. Only then do contact
+events align and the trio can pass.
+
+Plugin-source confirmations (rl_phys_record/src):
+- TickRecord[t] snapshots at PreBullet of frame t ("Record FIRST ... PREVIOUS
+  tick's bullet step" comment in hooks.cpp) — phys is end-of-frame t-1,
+  impulses listed are from tick t-1's execution.
+- RL has separate `bt_vehicle_update_susp_forces` and
+  `bt_vehicle_update_friction` phases inside its vehicle update.
+- Game wheel info includes `suspensionSubractionIdk` (validates our 0.05
+  subtraction constant) and an RE-unidentified `always1_groundStickIdk_D0`
+  flag worth investigating for contact persistence semantics.
