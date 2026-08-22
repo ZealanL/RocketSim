@@ -152,6 +152,8 @@ pub mod car {
     }
 
     pub mod flip {
+        use glam::Vec3A;
+
         pub const Z_DAMP_120: f32 = 0.35;
         pub const Z_DAMP_START: f32 = 0.15;
         pub const Z_DAMP_END: f32 = 0.21;
@@ -160,10 +162,9 @@ pub mod car {
         pub const PITCHLOCK_TIME: f32 = 1.0;
         pub const PITCHLOCK_EXTRA_TIME: f32 = 0.3;
         pub const INITIAL_VEL_SCALE: f32 = 500.0;
-        /// Left/Right
-        pub const TORQUE_X: f32 = 260.0;
-        /// Forward/backward
-        pub const TORQUE_Y: f32 = 224.0;
+        /// X: Left/Right
+        /// Y: Forward/Backward
+        pub const TORQUE: Vec3A = Vec3A::new(260.0, 224.0, 0.0);
         pub const FORWARD_IMPULSE_MAX_SPEED_SCALE: f32 = 1.0;
         pub const SIDE_IMPULSE_MAX_SPEED_SCALE: f32 = 1.9;
         pub const BACKWARD_IMPULSE_MAX_SPEED_SCALE: f32 = 2.5;
