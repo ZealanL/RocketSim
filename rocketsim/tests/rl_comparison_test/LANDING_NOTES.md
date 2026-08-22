@@ -171,3 +171,34 @@ Also verify `always1_groundStickIdk_D0` semantics against game memory: if it
 is a literal stick flag rather than a scalar, HOLD may persist regardless of
 trace until wheels_with_contact would drop for another reason (e.g. jump),
 bounded only by the observed 1.0943 release.
+
+## Post-rebase addendum: divergence isolated to extra_pushback
+
+After merging da64013 (vehicle phase pre-integration) + b6f2632 (shift
+drop), suite jumped to **10/21** and the landing trio's failures moved
+PAST touchdown: they now fail ~10 ticks later during the settle bounce
+(sjl i=199 e=1.50, hjrl/dwj i=139 e=1.07-1.08). Landing impact itself is
+correct under the new ordering.
+
+Per-tick waveform comparison through hjrl's post-landing bounce shows
+len, srv and vel matching to 3-4 decimals until i=137, then:
+
+```
+        RS pushF/pushB      RL pushF/pushB     excess
+i=137   23.145 / 28.963     21.559 / 27.247    +1.59/+1.72
+i=138    12.218 /  17.326    9.862 / 14.433    +2.36/+2.89
+i=139     6.462 /   9.911    3.944 /  6.654    +2.52/+3.26
+```
+
+The diverging component is **extra_pushback** (resolve_single_collision
+output when chassis trace < rest1+radius-SUBTRACTION). len and srv match
+exactly; the resolver produces different output for the same inputs.
+Suspects: RL's resolver ERP (RS uses 0.2), its velocity basis, or an
+additional clamp. Determining RL's constants requires game-memory
+experiments (ztour hooks can set penetration and read output) or deeper
+RE of the game's modified resolve function.
+
+Note: an acceptance-filter variant of hysteresis was also tested
+(ENGAGE=1.02/HOLD=1.06 applied in apply_ray_cast) - suite-neutral (10)
+but shifted sjl's failure tick, so reverted. Re-run this experiment only
+after the resolver question is answered.
