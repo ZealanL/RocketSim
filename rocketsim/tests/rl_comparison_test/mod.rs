@@ -61,28 +61,19 @@ fn test_recording(recording: &Recording) {
     set_state_to_record_tick(&mut arena, &car_idcs, &recording.ticks[0], &warmup_controls);
     arena.step_tick();
 
-    // Recording sampling skew: RL stores wheel-raycast results (incl.
-    // is_on_ground) from the PRE-bullet raycast of frame t next to post-bullet
-    // phys data. Verified against recordings: REAL len(t) == geometry(pos(t-1)).
-    // RS's post-step raycasts therefore align with recording index t+1, so
-    // is_on_ground is compared against the NEXT tick's value.
-    let shifted_on_ground: Vec<Vec<bool>> = {
-        let n = recording.ticks.len();
-        (0..num_cars)
-            .map(|c| {
-                (0..n)
-                    .map(|t| {
-                        let nxt = (t + 1).min(n - 1);
-                        recording.ticks[nxt].car_records[c].is_on_ground
-                    })
-                    .collect()
-            })
-            .collect()
-    };
-
     for i in 0..(recording.ticks.len() - 1) {
         let from_tick = &recording.ticks[i];
         let to_tick = &recording.ticks[i + 1];
+
+        // The recorder occasionally drops a physics frame (game hitch), so a
+        // recorded tick can be the result of TWO sim steps. Comparing one RS
+        // step against a double step can never match; skip that transition.
+        let frame_delta =
+            to_tick.car_records[0].phys.physics_frame - from_tick.car_records[0].phys.physics_frame;
+        if frame_delta != 1 {
+            continue;
+        }
+
         let controls_during: Vec<CarControls> = to_tick
             .car_records
             .iter()
@@ -90,11 +81,6 @@ fn test_recording(recording: &Recording) {
             .collect();
         set_state_to_record_tick(&mut arena, &car_idcs, from_tick, &controls_during);
         arena.step_tick();
-
-        let mut to_tick = to_tick.clone();
-        for (c, cr) in to_tick.car_records.iter_mut().enumerate() {
-            cr.is_on_ground = shifted_on_ground[c][i + 1];
-        }
 
         let ball_state = arena.get_ball_state();
         let car_states: Vec<CarState> = car_idcs
