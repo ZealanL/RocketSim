@@ -91,6 +91,28 @@ fn test_recording(recording: &Recording) {
         let comparison = compare::compare_states_to_tick(&car_states, ball_state, &to_tick);
         let norm_error = comparison.calc_norm_error();
 
+        if std::env::var("RS_TRACE").is_ok() {
+            let cs = &car_states[0];
+            let rt = &to_tick.car_records[0];
+            let r = &cs.phys.rot_mat;
+            println!(
+                "i={i} PRED p=({:+9.3},{:+9.3},{:+9.3}) v=({:+9.3},{:+9.3},{:+9.3}) fwd_z={:+.4}",
+                cs.phys.pos.x, cs.phys.pos.y, cs.phys.pos.z,
+                cs.phys.vel.x, cs.phys.vel.y, cs.phys.vel.z,
+                r.row(2)[2],
+            );
+            println!(
+                "     REAL p=({:+9.3},{:+9.3},{:+9.3}) v=({:+9.3},{:+9.3},{:+9.3})",
+                rt.phys.pos[0], rt.phys.pos[1], rt.phys.pos[2],
+                rt.phys.lin_vel[0], rt.phys.lin_vel[1], rt.phys.lin_vel[2],
+            );
+            let wd = arena.get_car_wheel_debug(0);
+            println!(
+                "     W lenF={:.5} srvF={:+.3} lenB={:.5} srvB={:+.3}",
+                wd[0].1, wd[0].2, wd[2].1, wd[2].2
+            );
+        }
+
         if norm_error >= 1.0 {
             let recording_name = &recording.name;
             let mut lines: Vec<String> = vec![

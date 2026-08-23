@@ -15,7 +15,7 @@ use crate::{
         },
         dynamics::{
             discrete_dynamics_world::DiscreteDynamicsWorld,
-            rigid_body::{ActivationState, CollisionFlags, RigidBody, RigidBodyConstructionInfo},
+            rigid_body::{CollisionFlags, RigidBody, RigidBodyConstructionInfo},
         },
     },
     consts::{self, BT_TO_UU, TICK_RATE, TICK_TIME, UU_TO_BT},
@@ -491,18 +491,9 @@ impl Arena {
             quantize::quantize(ball_rb);
         }
 
-        // Update ball activation
-        {
-            let ball_rb = &mut self.bullet_world.bodies_mut()[self.ball.rigid_body_idx];
-            let should_sleep =
-                ball_rb.lin_vel.length_squared() == 0.0 && ball_rb.ang_vel.length_squared() == 0.0;
-
-            ball_rb.set_activation_state(if should_sleep {
-                ActivationState::Sleeping
-            } else {
-                ActivationState::Active
-            });
-        }
+        // NOTE: no ball sleep-on-zero-velocity here - the game integrates
+        // gravity on an exactly-at-rest mid-air ball (see LANDING_NOTES.md);
+        // sleeping it freezes freefall and breaks idle/freefall parity.
 
         for car in &mut self.cars {
             car.pre_tick_update(
@@ -654,6 +645,22 @@ impl Arena {
 
     pub fn get_car_controls(&self, car_idx: usize) -> &CarControls {
         &self.cars[car_idx].state.controls
+    }
+
+    /// Debug access: per-wheel `(in_contact, suspension_length, suspension_rel_vel)`.
+    pub fn get_car_wheel_debug(&self, car_idx: usize) -> [(bool, f32, f32); 4] {
+        let mut out = [(false, 0.0f32, 0.0f32); 4];
+        for (w, o) in self.cars[car_idx]
+            .bullet_vehicle
+            .wheels
+            .iter()
+            .zip(out.iter_mut())
+        {
+            if let Some(ri) = &w.raycast_info {
+                *o = (true, ri.suspension_length, ri.suspension_relative_vel);
+            }
+        }
+        out
     }
 
     pub fn get_car_info_and_state(&self, car_idx: usize) -> (&CarInfo, &CarState) {
