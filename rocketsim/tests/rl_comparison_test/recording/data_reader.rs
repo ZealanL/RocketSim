@@ -1,5 +1,6 @@
-use byteorder::{LittleEndian, ReadBytesExt};
 use std::io::{self, ErrorKind, Read};
+
+use byteorder::{LittleEndian, ReadBytesExt};
 
 pub struct DataReader<'a> {
     bytes: &'a [u8],

@@ -6,7 +6,6 @@ use std::{
 use fastrand::Rng;
 use glam::{Affine3A, EulerRot, Mat3A, Vec3A};
 
-use crate::bullet::dynamics::rigid_body::Impulse;
 use crate::{
     CarBodyConfig, CarControls, CarState, GameMode, MutatorConfig, PhysState, Team,
     bullet::{
@@ -19,7 +18,9 @@ use crate::{
         },
         dynamics::{
             discrete_dynamics_world::DiscreteDynamicsWorld,
-            rigid_body::{ActivationState, CollisionFlags, RigidBody, RigidBodyConstructionInfo},
+            rigid_body::{
+                ActivationState, CollisionFlags, Impulse, RigidBody, RigidBodyConstructionInfo,
+            },
             vehicle::{NUM_WHEELS, VehicleRL, WheelInfo},
         },
     },
@@ -667,10 +668,6 @@ impl Car {
         }
 
         if self.state.is_flipping {
-            // Z-damp gate uses the PRE-increment flip_time: the game applies
-            // the damp one tick later than a post-increment check would
-            // (recorded front_flip: first damp lands at flip_time 0.15
-            // counted from the tick AFTER the trigger).
             let flip_time_pre = self.state.flip_time;
             self.state.flip_time = flip_time_pre + TICK_TIME;
             if flip_time_pre <= car_consts::flip::TORQUE_TIME
@@ -818,10 +815,6 @@ impl Car {
         self.update_auto_flip(rb, jump_pressed);
         self.update_double_jump_or_flip(rb, mutator_config, jump_pressed, forward_speed_uu);
 
-        // NOTE: air/dodge torque runs AFTER the dodge trigger so a flip's
-        // first torque impulse lands on its own trigger tick (the game does
-        // this: recorded omega jumps by one full torque increment on the
-        // tick the second jump is registered).
         if !self.state.is_on_ground {
             self.update_air_torque(rb, num_wheels_in_contact == 0);
         }

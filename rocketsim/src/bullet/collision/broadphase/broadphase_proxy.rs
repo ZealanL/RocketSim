@@ -94,12 +94,11 @@ pub trait BroadphaseAabbCallback {
 mod layout_tests {
     use std::mem::size_of;
 
+    use super::BroadphaseProxy;
     use crate::bullet::collision::{
         narrowphase::{manifold_point::ManifoldPoint, persistent_manifold::PersistentManifold},
         shapes::triangle_shape::TriangleShape,
     };
-
-    use super::BroadphaseProxy;
 
     #[test]
     fn compact_layouts() {

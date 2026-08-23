@@ -1,14 +1,13 @@
 use glam::{Affine3A, Quat, Vec3A};
 
 use super::{NUM_WHEELS, raycaster::VehicleRaycasterResult};
-use crate::bullet::dynamics::rigid_body::Impulse;
 use crate::{
     bullet::{
         dynamics::{
             constraint_solver::contact_constraint::{
                 resolve_single_bilateral, resolve_single_collision,
             },
-            rigid_body::RigidBody,
+            rigid_body::{Impulse, RigidBody},
         },
         linear_math::QuatExt,
     },

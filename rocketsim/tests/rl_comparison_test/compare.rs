@@ -3,8 +3,10 @@ use std::{collections::HashMap, fmt::Debug};
 use glam::Vec3A;
 use rocketsim::{BallState, CarState, PhysState, consts::TICK_TIME};
 
-use crate::rl_comparison_test::recording::cpp_records::{CarRecord, PhysRecord};
-use crate::rl_comparison_test::recording::tick_record::TickRecord;
+use crate::rl_comparison_test::recording::{
+    cpp_records::{CarRecord, PhysRecord},
+    tick_record::TickRecord,
+};
 
 #[derive(Copy, Clone, Debug)]
 #[allow(dead_code)]
