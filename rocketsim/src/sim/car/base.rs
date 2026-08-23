@@ -284,7 +284,6 @@ impl Car {
         self.bullet_vehicle.wheels[0].steer_angle = steer_angle;
         self.bullet_vehicle.wheels[1].steer_angle = steer_angle;
 
-
         // fresh raycast contact must not produce sticky force within its own tick
         if self.sticky_gate_prev {
             let upwards_dir = self.bullet_vehicle.get_upwards_dir_from_wheel_contacts(rb);
@@ -354,7 +353,9 @@ impl Car {
                 let damping = dir_yaw * damp_yaw + dir_pitch * damp_pitch + dir_roll * damp_roll;
                 rb.add_impulse(
                     None,
-                    Impulse::Angular(damping * const { air_control::TORQUE_APPLY_SCALE * TICK_TIME }),
+                    Impulse::Angular(
+                        damping * const { air_control::TORQUE_APPLY_SCALE * TICK_TIME },
+                    ),
                     false,
                     true,
                 );
