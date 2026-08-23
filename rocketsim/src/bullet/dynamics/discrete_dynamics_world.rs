@@ -128,23 +128,6 @@ impl DiscreteDynamicsWorld {
 
     #[inline]
     fn solve_constraints(&mut self, time_step: f32) {
-        if std::env::var("RS_MANIFOLD").is_ok() {
-            for m in &self.collision_world.dispatcher1.manifolds {
-                if !m.point_cache.is_empty() {
-                    eprintln!(
-                        "MF b{}-b{} n={} d={:?} p0z={:+.3}",
-                        m.body0_idx,
-                        m.body1_idx,
-                        m.point_cache.len(),
-                        m.point_cache
-                            .iter()
-                            .map(|c| c.distance_1)
-                            .collect::<Vec<_>>(),
-                        m.point_cache[0].pos_world_on_b.z,
-                    );
-                }
-            }
-        }
         self.solver.solve_group(
             &mut self.collision_world.collision_objs,
             &self.dynamic_body_idcs,
