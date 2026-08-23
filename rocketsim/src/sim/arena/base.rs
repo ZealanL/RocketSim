@@ -15,7 +15,7 @@ use crate::{
         },
         dynamics::{
             discrete_dynamics_world::DiscreteDynamicsWorld,
-            rigid_body::{CollisionFlags, RigidBody, RigidBodyConstructionInfo},
+            rigid_body::{ActivationState, CollisionFlags, RigidBody, RigidBodyConstructionInfo},
         },
     },
     consts::{self, BT_TO_UU, TICK_RATE, TICK_TIME, UU_TO_BT},
@@ -491,9 +491,14 @@ impl Arena {
             quantize::quantize(ball_rb);
         }
 
-        // NOTE: no ball sleep-on-zero-velocity here - the game integrates
-        // gravity on an exactly-at-rest mid-air ball (see LANDING_NOTES.md);
-        // sleeping it freezes freefall and breaks idle/freefall parity.
+        {
+            let ball_rb = &mut self.bullet_world.bodies_mut()[self.ball.rigid_body_idx];
+            if ball_rb.lin_vel.length_squared() == 0.0 && ball_rb.ang_vel.length_squared() == 0.0 {
+                ball_rb.set_activation_state(ActivationState::Sleeping);
+            } else {
+                ball_rb.set_activation_state(ActivationState::Active);
+            }
+        }
 
         for car in &mut self.cars {
             car.pre_tick_update(
