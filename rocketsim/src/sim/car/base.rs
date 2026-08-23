@@ -667,10 +667,15 @@ impl Car {
         }
 
         if self.state.is_flipping {
-            self.state.flip_time += TICK_TIME;
-            if self.state.flip_time <= car_consts::flip::TORQUE_TIME
-                && self.state.flip_time >= car_consts::flip::Z_DAMP_START
-                && (rb.lin_vel.z < 0.0 || self.state.flip_time < car_consts::flip::Z_DAMP_END)
+            // Z-damp gate uses the PRE-increment flip_time: the game applies
+            // the damp one tick later than a post-increment check would
+            // (recorded front_flip: first damp lands at flip_time 0.15
+            // counted from the tick AFTER the trigger).
+            let flip_time_pre = self.state.flip_time;
+            self.state.flip_time = flip_time_pre + TICK_TIME;
+            if flip_time_pre <= car_consts::flip::TORQUE_TIME
+                && flip_time_pre >= car_consts::flip::Z_DAMP_START
+                && (rb.lin_vel.z < 0.0 || flip_time_pre < car_consts::flip::Z_DAMP_END)
             {
                 rb.lin_vel.z *= 1.0 - car_consts::flip::Z_DAMP_120;
             }
@@ -807,13 +812,19 @@ impl Car {
 
         if self.state.is_on_ground {
             self.state.is_flipping = false;
-        } else {
-            self.update_air_torque(rb, num_wheels_in_contact == 0);
         }
 
         self.update_jump(rb, mutator_config, jump_pressed);
         self.update_auto_flip(rb, jump_pressed);
         self.update_double_jump_or_flip(rb, mutator_config, jump_pressed, forward_speed_uu);
+
+        // NOTE: air/dodge torque runs AFTER the dodge trigger so a flip's
+        // first torque impulse lands on its own trigger tick (the game does
+        // this: recorded omega jumps by one full torque increment on the
+        // tick the second jump is registered).
+        if !self.state.is_on_ground {
+            self.update_air_torque(rb, num_wheels_in_contact == 0);
+        }
 
         if self.state.controls.throttle != 0.0
             && ((0 < num_wheels_in_contact && num_wheels_in_contact < 4)
