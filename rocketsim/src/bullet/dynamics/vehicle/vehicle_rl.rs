@@ -38,7 +38,14 @@ impl VehicleRL {
         self.wheels.len()
     }
 
-    pub fn update(&mut self, collision_world: &mut DiscreteDynamicsWorld, time_step: f32) {
+    pub fn update(
+        &mut self,
+        collision_world: &mut DiscreteDynamicsWorld,
+        time_step: f32,
+        handbrake_val: f32,
+        real_throttle: f32,
+        three_wheels: bool,
+    ) {
         let chassis = &collision_world.bodies()[self.chassis_body_idx];
         let chassis_trans = chassis.get_world_trans();
 
@@ -55,7 +62,15 @@ impl VehicleRL {
 
         for (i, wheel) in self.wheels.iter_mut().enumerate() {
             if let Some(ray_result) = ray_results[i] {
-                wheel.apply_ray_cast(chassis, ray_result, time_step, i < 2);
+                wheel.apply_ray_cast(
+                chassis,
+                ray_result,
+                time_step,
+                i < 2,
+                handbrake_val,
+                real_throttle,
+                three_wheels,
+            );
             } else {
                 wheel.reset_wheel_suspension();
             }

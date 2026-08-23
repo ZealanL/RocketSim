@@ -11,7 +11,7 @@ use crate::{
         },
         linear_math::QuatExt,
     },
-    consts::{UU_TO_BT, bullet_vehicle},
+    consts::{BT_TO_UU, UU_TO_BT, bullet_vehicle, curves},
 };
 
 pub struct RaycastInfo {
@@ -96,6 +96,9 @@ impl WheelInfo {
         ray_results: VehicleRaycasterResult,
         time_step: f32,
         front: bool,
+        handbrake_val: f32,
+        real_throttle: f32,
+        three_wheels: bool,
     ) {
         let contact_point = ray_results.hit_point_in_world;
         let contact_normal = ray_results.hit_normal_in_world;
@@ -150,6 +153,44 @@ impl WheelInfo {
                 self.extra_pushback = collision_result / NUM_WHEELS as f32;
             }
         }
+
+        // Refresh friction curves against THIS tick's fresh contact before
+        // the impulses are computed - consuming the previous grounded tick's
+        // values left first-touchdown ticks with stale (full-strength)
+        // friction.
+        let lat_dir = self.axle_dir;
+        let long_dir = lat_dir.cross(contact_normal);
+        let wheel_delta = contact_point - chassis.get_world_trans().translation;
+        let cross_vec = (chassis.ang_vel.cross(wheel_delta) + chassis.lin_vel) * BT_TO_UU;
+        let base_friction = cross_vec.dot(lat_dir).abs();
+        let friction_curve_input = if base_friction > 5.0 {
+            base_friction / (cross_vec.dot(long_dir).abs() + base_friction)
+        } else {
+            0.0
+        };
+        let mut lat_friction = if three_wheels {
+            curves::LAT_FRICTION_THREEWHEEL
+        } else {
+            curves::LAT_FRICTION
+        }
+        .get_output(friction_curve_input);
+        let mut long_friction = 1.0;
+        if handbrake_val != 0.0 {
+            lat_friction *= 1.0
+                + (curves::HANDBRAKE_LAT_FRICTION_FACTOR.get_output(friction_curve_input) - 1.0)
+                    * handbrake_val;
+            long_friction *= 1.0
+                + (curves::HANDBRAKE_LONG_FRICTION_FACTOR.get_output(friction_curve_input) - 1.0)
+                    * handbrake_val;
+        }
+        if real_throttle == 0.0 {
+            let non_sticky_scale =
+                curves::NON_STICKY_FRICTION_FACTOR.get_output(contact_normal.z);
+            lat_friction *= non_sticky_scale;
+            long_friction *= non_sticky_scale;
+        }
+        self.lat_friction = lat_friction;
+        self.long_friction = long_friction;
 
         let impulse = self.calc_friction_impulses(
             chassis,

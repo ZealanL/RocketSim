@@ -284,63 +284,6 @@ impl Car {
         self.bullet_vehicle.wheels[0].steer_angle = steer_angle;
         self.bullet_vehicle.wheels[1].steer_angle = steer_angle;
 
-        let car_pos = rb.get_world_pos();
-        let car_vel = rb.lin_vel;
-        let car_ang_vel = rb.ang_vel;
-
-        for wheel in &mut self.bullet_vehicle.wheels {
-            let Some(raycast_info) = wheel.raycast_info.as_ref() else {
-                continue;
-            };
-
-            if !raycast_info.is_in_contact_with_world {
-                continue;
-            }
-
-            let lat_dir = wheel.axle_dir;
-            let long_dir = lat_dir.cross(raycast_info.contact_normal);
-
-            let wheel_delta = wheel.hard_point - car_pos;
-            let cross_vec = (car_ang_vel.cross(wheel_delta) + car_vel) * BT_TO_UU;
-
-            let base_friction = cross_vec.dot(lat_dir).abs();
-            let friction_curve_input = if base_friction > 5.0 {
-                base_friction / (cross_vec.dot(long_dir).abs() + base_friction)
-            } else {
-                0.0
-            };
-
-            let mut lat_friction = if self.info.config.three_wheels {
-                curves::LAT_FRICTION_THREEWHEEL
-            } else {
-                curves::LAT_FRICTION
-            }
-            .get_output(friction_curve_input);
-            let mut long_friction = 1.0;
-
-            if self.state.handbrake_val != 0.0 {
-                let handbrake_amount = self.state.handbrake_val;
-                lat_friction *= 1.0
-                    + (curves::HANDBRAKE_LAT_FRICTION_FACTOR.get_output(friction_curve_input)
-                        - 1.0)
-                        * handbrake_amount;
-                long_friction *= 1.0
-                    + (curves::HANDBRAKE_LONG_FRICTION_FACTOR.get_output(friction_curve_input)
-                        - 1.0)
-                        * handbrake_amount;
-            }
-
-            if real_throttle == 0.0 {
-                // Contact is not sticky
-                let non_sticky_scale =
-                    curves::NON_STICKY_FRICTION_FACTOR.get_output(raycast_info.contact_normal.z);
-                lat_friction *= non_sticky_scale;
-                long_friction *= non_sticky_scale;
-            }
-
-            wheel.lat_friction = lat_friction;
-            wheel.long_friction = long_friction;
-        }
 
         // fresh raycast contact must not produce sticky force within its own tick
         if self.sticky_gate_prev {
@@ -851,7 +794,18 @@ impl Car {
 
         self.update_boost(rb, mutator_config);
 
-        self.bullet_vehicle.update(collision_world, TICK_TIME);
+        let real_throttle = if self.state.controls.boost && self.state.boost > 0.0 {
+            1.0
+        } else {
+            self.state.controls.throttle
+        };
+        self.bullet_vehicle.update(
+            collision_world,
+            TICK_TIME,
+            self.state.handbrake_val,
+            real_throttle,
+            self.info.config.three_wheels,
+        );
 
         let mut num_wheels_in_contact = 0u8;
         for (wheel, has_contact) in self
