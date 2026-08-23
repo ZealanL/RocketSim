@@ -144,12 +144,8 @@ pub mod car {
     pub mod jump {
         pub const ACCEL: f32 = 4375.0 / 3.0;
         pub const IMMEDIATE_FORCE: f32 = 875.0 / 3.0;
-        /// Minimum hold duration: 3 ticks (0.025 s @ 120 Hz).
-        /// Compared in whole ticks: the f32 product `3 * TICK_TIME` rounds
-        /// above `f32(0.025)`, so a time-based comparison misses the
-        /// boundary tick where RL still applies the hold accel.
+        /// Minimum hold duration: 3 ticks (0.025 s @ 120 Hz)
         pub const MIN_TICKS: u32 = 3;
-        pub const RESET_TIME_PAD: f32 = 0.25;
         /// Maximum hold duration: 24 ticks (0.2 s @ 120 Hz)
         pub const MAX_TICKS: u32 = 24;
         /// Can be at most 1.25 seconds after the jump is finished
