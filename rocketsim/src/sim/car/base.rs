@@ -379,11 +379,6 @@ impl Car {
         let dir_yaw = up_dir;
         let dir_roll = -forward_dir;
 
-        if self.state.is_flipping {
-            self.state.is_flipping =
-                self.state.has_flipped && self.state.flip_time < flip::TORQUE_TIME;
-        }
-
         let mut do_air_control = false;
         if self.state.is_flipping && update_air_control {
             if self.state.flip_rel_torque == Vec3A::ZERO {
@@ -409,6 +404,30 @@ impl Car {
                     false,
                     true,
                 );
+
+                let damp_pitch = dir_pitch.dot(rb.ang_vel) * air_control::DAMPING.x;
+                let damp_yaw = dir_yaw.dot(rb.ang_vel) * air_control::DAMPING.y;
+                let damp_roll = dir_roll.dot(rb.ang_vel) * air_control::DAMPING.z;
+                let damping = dir_yaw * damp_yaw + dir_pitch * damp_pitch + dir_roll * damp_roll;
+                rb.add_impulse(
+                    None,
+                    Impulse::Angular(damping * const { air_control::TORQUE_APPLY_SCALE * TICK_TIME }),
+                    false,
+                    true,
+                );
+
+                let proj_x = rb.ang_vel.x + rb.accum_ang_vel.x;
+                if proj_x > flip::SPIN_CAP_X {
+                    rb.accum_ang_vel.x -= proj_x - flip::SPIN_CAP_X;
+                } else if proj_x < -flip::SPIN_CAP_X {
+                    rb.accum_ang_vel.x -= proj_x + flip::SPIN_CAP_X;
+                }
+                let proj_y = rb.ang_vel.y + rb.accum_ang_vel.y;
+                if proj_y > flip::SPIN_CAP_Y {
+                    rb.accum_ang_vel.y -= proj_y - flip::SPIN_CAP_Y;
+                } else if proj_y < -flip::SPIN_CAP_Y {
+                    rb.accum_ang_vel.y -= proj_y + flip::SPIN_CAP_Y;
+                }
             }
         } else {
             do_air_control = true;
@@ -669,6 +688,8 @@ impl Car {
 
         if self.state.is_flipping {
             let flip_time_pre = self.state.flip_time;
+            self.state.is_flipping =
+                self.state.has_flipped && flip_time_pre < car_consts::flip::TORQUE_TIME;
             self.state.flip_time = flip_time_pre + TICK_TIME;
             if flip_time_pre <= car_consts::flip::TORQUE_TIME
                 && flip_time_pre >= car_consts::flip::Z_DAMP_START

@@ -166,6 +166,8 @@ pub mod car {
         /// X: Left/Right
         /// Y: Forward/Backward
         pub const TORQUE: Vec3A = Vec3A::new(260.0, 224.0, 0.0);
+        pub const SPIN_CAP_X: f32 = 7.4396;
+        pub const SPIN_CAP_Y: f32 = 7.2348;
         pub const FORWARD_IMPULSE_MAX_SPEED_SCALE: f32 = 1.0;
         pub const SIDE_IMPULSE_MAX_SPEED_SCALE: f32 = 1.9;
         pub const BACKWARD_IMPULSE_MAX_SPEED_SCALE: f32 = 2.5;
