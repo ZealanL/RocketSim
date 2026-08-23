@@ -202,3 +202,43 @@ Note: an acceptance-filter variant of hysteresis was also tested
 (ENGAGE=1.02/HOLD=1.06 applied in apply_ray_cast) - suite-neutral (10)
 but shifted sjl's failure tick, so reverted. Re-run this experiment only
 after the resolver question is answered.
+
+## RESOLVED: wheel pushback resolver uses ERP = 0.1 (2026-08-22)
+
+Offline fit of the game's own recorded `extra_pushback` outputs against
+the closed-form Bullet resolver, using recorded chassis state as input:
+
+    raw = max(0, ERP*(-delta)/dt + (-rel_vel)) / denom ;  pb = raw/4
+    delta = (hard_point - hit).up - (rest1 + radius - SUBTRACTION)
+
+Method: decode WheelRecord.extra_pushback (@44) from RLPR bytes, convert
+recorded pos/lin_vel UU->BT, evaluate predictor per tick/wheel, solve for
+the implied ERP. Results across hjrl settle-bounce events:
+
+    tick138 F/B: implied ERP 0.0992/0.0997   (rel_vel -1.70)
+    tick139 F/B: implied ERP 0.0995/0.0997   (rel_vel -0.64/-0.77)
+    tick140 F/B: implied ERP 0.1002/0.1000   (rel_vel -0.12/-0.23)
+
+i.e. the game uses **ERP = 0.1**, not Bullet's default 0.2 that RocketSim
+had. With ERP' = 0.1 the max(0,...) clamp also reproduces the exact ticks
+where RL's pushback is zero.
+
+Gotchas that invalidated earlier fits (document so nobody re-trips):
+- Recording rot triples are matrix ROWS; basis vectors are COLUMNS
+  (fwd_w = (m00,m10,m20)). Using rows as basis shifts front trace by
+  ~+0.021 BT and back by ~-0.008 on a pitched car.
+- Recording pos/lin_vel are in UU; convert (*UU_TO_BT) before mixing
+  with BT geometry.
+- suspension_rest_length_1 = config rest - MAX_SUSPENSION_TRAVEL
+  (front 0.5351, back 0.5011 BT for Octane).
+- Recorded wheels[T] pair with raycast(state[T]) same-phase for
+  len/srv; the pushback VALUES fit state[T-1] best (one substep lag,
+  likely a hook-pipeline artifact) - magnitudes confirmed with ERP=0.1
+  to 0.06-0.16% on strong events. RS keeps its self-consistent phase;
+  only the constant changed.
+
+Fix: contact_solver_info::WHEEL_PUSHBACK_ERP = 0.1 used by
+resolve_single_collision (sole caller is the wheel pushback path).
+Landing trio (simple_jump_land, has_jumped_reset_landing,
+double_jump_window_edge) now PASSES. Suite: 13 passed / 8 failed.
+The remaining 8 were failing before this change.
