@@ -37,9 +37,6 @@ pub struct Car {
     pub(crate) rigid_body_idx: usize,
     pub(crate) vel_impulse_cache: Vec3A,
     pub(crate) state: CarState,
-    /// Wheel-world-contact from the END of the previous tick. The game gates
-    /// the sticky force on last tick's contact, so a car spawned on the
-    /// ground does not stick until its second tick (see LANDING_NOTES.md).
     pub(crate) sticky_gate_prev: bool,
 }
 
@@ -344,8 +341,7 @@ impl Car {
             wheel.long_friction = long_friction;
         }
 
-        // Gate on LAST tick's world contact (game parity): fresh raycast
-        // contact must not produce sticky force within its own tick.
+        // fresh raycast contact must not produce sticky force within its own tick
         if self.sticky_gate_prev {
             let upwards_dir = self.bullet_vehicle.get_upwards_dir_from_wheel_contacts(rb);
 
@@ -456,7 +452,6 @@ impl Car {
             rb.add_impulse(None, Impulse::Angular(rb_torque), false, true);
         }
 
-        // When boosting, air throttle is always full regardless of throttle input.
         let throttle_scale = if self.state.controls.boost {
             1.0
         } else {
@@ -490,14 +485,10 @@ impl Car {
         self.state.jump_ticks += 1;
 
         if self.state.is_jumping {
-            // Compare in whole ticks: RL keeps the jump alive through
-            // MIN_TICKS even if jump was released, and ends it once the hold
-            // exceeds MAX_TICKS. A time-based check misses the minimum-hold
-            // boundary because `3 * TICK_TIME` rounds above `0.025` in f32.
             self.state.is_jumping = self.state.jump_ticks <= jump::MIN_TICKS
                 || (self.state.controls.jump && self.state.jump_ticks <= jump::MAX_TICKS);
             if !self.state.is_jumping {
-                // Jump ended this tick: counter restarts (RL parity).
+                // Jump ended this tick: counter restarts
                 self.state.jump_ticks = 1;
             }
         }
@@ -835,15 +826,7 @@ impl Car {
 
         self.update_boost(rb, mutator_config);
 
-        // Wheel raycasts and the resulting suspension/friction impulses are
-        // evaluated from the PRE-integration pose, matching RL (and stock
-        // Bullet's action update): recorded wheel data at frame t reflects
-        // geometry(t-1), and takeoff/landing contact shifts by one tick
-        // otherwise.
-        self.bullet_vehicle
-            .update_vehicle_first(collision_world, TICK_TIME);
-        self.bullet_vehicle
-            .update_vehicle_second(collision_world, TICK_TIME);
+        self.bullet_vehicle.update(collision_world, TICK_TIME);
 
         let mut num_wheels_in_contact = 0u8;
         for (wheel, has_contact) in self
@@ -903,8 +886,6 @@ impl Car {
             self.state.supersonic_grace_timer = 0.0;
         }
 
-        // is_on_ground was recorded from this tick's pre-integration wheel
-        // raycasts (see pre_tick_update); used here for jump re-arming.
         // Re-arm the jump once the car is grounded again, no
         // longer holding a jump, and its suspension is no longer extending.
         if self.state.has_jumped && !self.state.is_jumping && self.state.is_on_ground {

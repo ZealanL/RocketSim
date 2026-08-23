@@ -38,11 +38,7 @@ impl VehicleRL {
         self.wheels.len()
     }
 
-    pub fn update_vehicle_first(
-        &mut self,
-        collision_world: &DiscreteDynamicsWorld,
-        time_step: f32,
-    ) {
+    pub fn update(&mut self, collision_world: &mut DiscreteDynamicsWorld, time_step: f32) {
         let chassis = &collision_world.bodies()[self.chassis_body_idx];
         let chassis_trans = chassis.get_world_trans();
 
@@ -64,21 +60,15 @@ impl VehicleRL {
                 wheel.reset_wheel_suspension();
             }
         }
-    }
 
-    pub fn update_vehicle_second(
-        &mut self,
-        collision_world: &mut DiscreteDynamicsWorld,
-        step: f32,
-    ) {
         let chassis = &mut collision_world.bodies_mut()[self.chassis_body_idx];
         for wheel in &mut self.wheels {
-            wheel.update_suspension(chassis, step);
+            wheel.update_suspension(chassis, time_step);
         }
 
         // note: all suspension MUST be updated before impulses are applied
         for wheel in &mut self.wheels {
-            wheel.apply_friction_impulses(chassis, step);
+            wheel.apply_friction_impulses(chassis, time_step);
         }
     }
 }
