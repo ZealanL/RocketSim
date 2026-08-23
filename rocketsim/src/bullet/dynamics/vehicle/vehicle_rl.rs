@@ -63,14 +63,14 @@ impl VehicleRL {
         for (i, wheel) in self.wheels.iter_mut().enumerate() {
             if let Some(ray_result) = ray_results[i] {
                 wheel.apply_ray_cast(
-                chassis,
-                ray_result,
-                time_step,
-                i < 2,
-                handbrake_val,
-                real_throttle,
-                three_wheels,
-            );
+                    chassis,
+                    ray_result,
+                    time_step,
+                    i < 2,
+                    handbrake_val,
+                    real_throttle,
+                    three_wheels,
+                );
             } else {
                 wheel.reset_wheel_suspension();
             }

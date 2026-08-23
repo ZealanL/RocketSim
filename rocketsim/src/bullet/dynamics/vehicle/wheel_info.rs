@@ -184,8 +184,7 @@ impl WheelInfo {
                     * handbrake_val;
         }
         if real_throttle == 0.0 {
-            let non_sticky_scale =
-                curves::NON_STICKY_FRICTION_FACTOR.get_output(contact_normal.z);
+            let non_sticky_scale = curves::NON_STICKY_FRICTION_FACTOR.get_output(contact_normal.z);
             lat_friction *= non_sticky_scale;
             long_friction *= non_sticky_scale;
         }
@@ -220,10 +219,7 @@ impl WheelInfo {
         time_step: f32,
     ) -> Vec3A {
         let friction_scale = chassis.get_mass() / 3.0;
-        let mut axle_dir = self.axle_dir;
-        let proj = axle_dir.dot(contact_normal);
-        axle_dir -= contact_normal * proj;
-        axle_dir = axle_dir.normalize_or_zero();
+        let axle_dir = self.axle_dir.normalize_or_zero();
 
         let forward_dir = contact_normal.cross(axle_dir).normalize_or_zero();
 
