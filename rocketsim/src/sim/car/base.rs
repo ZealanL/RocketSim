@@ -37,6 +37,10 @@ pub struct Car {
     pub(crate) rigid_body_idx: usize,
     pub(crate) vel_impulse_cache: Vec3A,
     pub(crate) state: CarState,
+    /// Wheel-world-contact from the END of the previous tick. The game gates
+    /// the sticky force on last tick's contact, so a car spawned on the
+    /// ground does not stick until its second tick (see LANDING_NOTES.md).
+    pub(crate) sticky_gate_prev: bool,
 }
 
 impl Deref for Car {
@@ -123,6 +127,7 @@ impl Car {
             rigid_body_idx,
             bullet_vehicle: VehicleRL::new(rigid_body_idx, wheels),
             vel_impulse_cache: Vec3A::ZERO,
+            sticky_gate_prev: false,
             state: CarState {
                 boost: mutator_config.car_spawn_boost_amount,
                 ..Default::default()
@@ -339,13 +344,9 @@ impl Car {
             wheel.long_friction = long_friction;
         }
 
-        let wheels_have_world_contact = self.bullet_vehicle.wheels.iter().any(|wheel| {
-            wheel
-                .raycast_info
-                .as_ref()
-                .is_some_and(|info| info.is_in_contact_with_world)
-        });
-        if wheels_have_world_contact {
+        // Gate on LAST tick's world contact (game parity): fresh raycast
+        // contact must not produce sticky force within its own tick.
+        if self.sticky_gate_prev {
             let upwards_dir = self.bullet_vehicle.get_upwards_dir_from_wheel_contacts(rb);
 
             let full_stick = real_throttle != 0.0
@@ -856,6 +857,13 @@ impl Car {
             num_wheels_in_contact += u8::from(in_contact);
         }
         self.state.is_on_ground = num_wheels_in_contact >= 3;
+
+        self.sticky_gate_prev = self.bullet_vehicle.wheels.iter().any(|wheel| {
+            wheel
+                .raycast_info
+                .as_ref()
+                .is_some_and(|info| info.is_in_contact_with_world)
+        });
     }
 
     pub(crate) fn post_tick_update(&mut self, collision_world: &mut DiscreteDynamicsWorld) {

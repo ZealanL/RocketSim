@@ -242,3 +242,57 @@ resolve_single_collision (sole caller is the wheel pushback path).
 Landing trio (simple_jump_land, has_jumped_reset_landing,
 double_jump_window_edge) now PASSES. Suite: 13 passed / 8 failed.
 The remaining 8 were failing before this change.
+
+## Session addendum 2: ball sleep, sticky gate, remaining failures triaged
+
+### Fixed: ball sleep-on-zero-velocity (idle, freefall_bounce now pass)
+`Arena::step_tick` put the ball to Sleep whenever lin/ang vel were exactly
+zero. A ball spawned at rest in MID-AIR therefore never gained gravity,
+while recordings show the game integrates it (-650*dt on tick 1).
+Removed the block; ball's own CanSleep path is inert anyway
+(linear_sleeping_threshold = 0). Suite 13 -> 15.
+
+### Fixed: sticky force gated on last tick's world contact
+Game does not apply StickyForce on a spawn tick whose fresh raycast sees
+ground (car spawned "airborne" flag-wise): supersonic_brake's first-tick
+car vz matched once sticky used `sticky_gate_prev` (stored at end of
+update_vehicle_second) instead of fresh raycast contact. Kept impulse in
+its original pipeline position (order-sensitive f32 accumulation).
+
+### Recording-file artifacts (user will regenerate records)
+- boost_run: recorded boost starts at 100, snaps to exactly 1.0 at t12,
+  then drains 0.002775/tick WHILE applying full boost acceleration every
+  tick (+8.2646 uu/s = 991.67/120). Tank math impossible; RS empties a
+  real 33.33 tank at t130 -> one missing boost tick diverges vx by
+  exactly one boost-tick. Not an RS bug.
+- front_flip / side_dodge: flip_rel_torque convention mismatch in
+  records (user handling).
+
+### OPEN: backboard_slope_descend (i=88, chassis-box world contact)
+Only two recordings exercise car-vs-world chassis contacts:
+falling_ball_aerial_touch (6 events, PASSES - full restitution 0.3
+bounce matches) and backboard_slope_descend (1 event, FAILS).
+
+The failing event: car level, falling vz=-1119.76 vy=-400, box hits
+backboard slope (normal ~+z flat triangle), pen -0.10025 BT.
+- RS single manifold point converges fully IN-TICK: kills to rest target
+  (+6.72 BT/s separation), COM dvz=+19.50 BT/s -> vz=-150.86 after tick.
+- RL spreads the kill over THREE ticks: dvz = 535/390/178 uu/s per tick,
+  never bounces, settles into a chassis slide at z~70 with wheels NEVER
+  contacting (rays miss on the slope). RL's per-tick response is weaker
+  than even kill-to-zero, i.e. NOT a converged single-constraint solve.
+- restitution=0 experiment: halves backboard error (152->75) but breaks
+  fbat -> restitution IS right for gentle events. Discriminator unknown.
+
+Leading hypothesis: game resolves multi-point manifolds (box face flush
+on coplanar triangles -> up to 4 pts) with limited effective iterations
+or sequential point distribution, so correction leaks across ticks;
+RS generated only ONE cached point here and converges immediately.
+Next steps: dump RS point_cache contents across ticks leading up to
+impact (persistent manifold refresh logic), compare against game's
+collision_records (ContactRecord stream in rlpr? not currently
+recorded), consider emulating partial-per-tick response.
+
+Debug tooling kept (env-gated, zero cost when unset):
+- Arena::get_car_wheel_debug(idx) -> [(contact,len,srv);4]
+- RS_TRACE=1 harness per-tick PRED/REAL pos+vel dump
