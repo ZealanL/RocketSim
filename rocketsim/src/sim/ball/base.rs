@@ -2,8 +2,6 @@ use std::f32::consts::TAU;
 
 use glam::{Affine3A, Vec2, Vec3A};
 
-use crate::bullet::dynamics::rigid_body::Impulse;
-use crate::consts::TICK_TIME;
 use crate::{
     BallState, Car, GameMode, MutatorConfig, Team, TileDamageState, TileStates,
     bullet::{
@@ -16,10 +14,12 @@ use crate::{
         },
         dynamics::{
             discrete_dynamics_world::DiscreteDynamicsWorld,
-            rigid_body::{ActivationState, CollisionFlags, RigidBody, RigidBodyConstructionInfo},
+            rigid_body::{
+                ActivationState, CollisionFlags, Impulse, RigidBody, RigidBodyConstructionInfo,
+            },
         },
     },
-    consts::{BT_TO_UU, UU_TO_BT, dropshot, heatseeker, snowday},
+    consts::{BT_TO_UU, TICK_TIME, UU_TO_BT, dropshot, heatseeker, snowday},
     get_neighbor_indices_1, get_neighbor_indices_2, get_tile_pos,
     shared::Angle,
     sim::{UserInfoTypes, consts},

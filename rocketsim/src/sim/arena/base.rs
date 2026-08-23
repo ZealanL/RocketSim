@@ -1,3 +1,11 @@
+use std::{any::Any, f32::consts::PI, iter::repeat_n, mem};
+
+use arrayvec::ArrayVec;
+use fastrand::Rng;
+use glam::{Affine3A, EulerRot, Mat3A, Vec3A};
+#[cfg(debug_assertions)]
+use indexmap::IndexMap;
+
 use super::ArenaContactTracker;
 use crate::{
     ARENA_COLLISION_SHAPES, ArenaConfig,
@@ -26,12 +34,6 @@ use crate::{
         DemoMode, UserInfoTypes, arena::ArenaEventList,
     },
 };
-use arrayvec::ArrayVec;
-use fastrand::Rng;
-use glam::{Affine3A, EulerRot, Mat3A, Vec3A};
-#[cfg(debug_assertions)]
-use indexmap::IndexMap;
-use std::{any::Any, f32::consts::PI, iter::repeat_n, mem};
 
 pub trait Vis: Send + Sync + Any {
     fn update(&mut self, arena_state: &ArenaState, dt: f32);

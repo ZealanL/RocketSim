@@ -1,8 +1,9 @@
-use crate::rl_comparison_test::recording::Recording;
-use crate::rl_comparison_test::recording::tick_record::TickRecord;
 use glam::Vec3A;
-use rocketsim::consts::BT_TO_UU;
-use rocketsim::{Arena, CarBodyConfig, CarControls, CarState, GameMode, PhysState, Team};
+use rocketsim::{
+    Arena, CarBodyConfig, CarControls, CarState, GameMode, PhysState, Team, consts::BT_TO_UU,
+};
+
+use crate::rl_comparison_test::recording::{Recording, tick_record::TickRecord};
 
 mod compare;
 mod recording;
@@ -60,11 +61,6 @@ fn test_recording(recording: &Recording) {
         .collect();
     set_state_to_record_tick(&mut arena, &car_idcs, &recording.ticks[0], &warmup_controls);
 
-    // Seed boost tanks from the recording's first tick: RLPR carries the
-    // initial boost state, and scenarios that need a non-default tank
-    // (e.g. boost_run's full 100) silently diverge once accounting
-    // differs. Later ticks are NOT forced - drain-rate differences stay
-    // observable.
     for (i, &car_idx) in car_idcs.iter().enumerate() {
         let mut cs = *arena.get_car_state(car_idx);
         cs.boost = recording.ticks[0].car_records[i].boost_amount;
@@ -102,16 +98,6 @@ fn test_recording(recording: &Recording) {
 
         let comparison = compare::compare_states_to_tick(&car_states, ball_state, to_tick);
         let norm_error = comparison.calc_norm_error();
-
-        if std::env::var("RS_TRACE").is_ok() {
-            let cs = &car_states[0];
-            let rt = &to_tick.car_records[0];
-            println!(
-                "i={i} PRED wy={:+8.4} vz={:+9.3} flipT={:.3} | REAL(t{}) wy={:+8.4} vz={:+9.3}",
-                cs.phys.ang_vel.y, cs.phys.vel.z, cs.flip_time,
-                i + 1, rt.phys.ang_vel[1], rt.phys.lin_vel[2],
-            );
-        }
 
         if norm_error >= 1.0 {
             let recording_name = &recording.name;

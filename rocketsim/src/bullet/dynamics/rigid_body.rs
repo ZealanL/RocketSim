@@ -1,7 +1,6 @@
 use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not};
 
 use glam::{Affine3A, Mat3A, Quat, Vec3A};
-
 #[cfg(debug_assertions)]
 use indexmap::IndexMap;
 
