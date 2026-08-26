@@ -1,8 +1,8 @@
 use crate::backend::{
-    Color, InfoLineType, ModelSet, ShaderSrc, ShaderSrcType, Shape2D, SharedVisRenderState,
+    Color, Elem2D, InfoLineType, ModelSet, ShaderSrc, ShaderSrcType, SharedVisRenderState,
     SharedWindowEvents, TextureSet, WindowEvent, WindowEventQueue,
 };
-use egui::{Pos2, Rect};
+use egui::{Align, Align2, Pos2, Rect};
 use egui_miniquad::EguiMq;
 use glam::{
     Mat4, Vec2, Vec3, Vec4,
@@ -509,7 +509,7 @@ impl EventHandler for VisRenderer {
                             let fn_transform_size = |size: f32| size / 2.0 * total_area_size_y;
 
                             match shape {
-                                Shape2D::Circle { pos, radius, color } => {
+                                Elem2D::Circle { pos, radius, color } => {
                                     let pos = fn_transform_pos(pos);
                                     let radius = fn_transform_size(radius);
                                     painter.circle_filled(
@@ -518,7 +518,7 @@ impl EventHandler for VisRenderer {
                                         color.to_egui(),
                                     );
                                 }
-                                Shape2D::Rect {
+                                Elem2D::Rect {
                                     a,
                                     b,
                                     color,
@@ -533,6 +533,25 @@ impl EventHandler for VisRenderer {
                                             Pos2::new(b.x, b.y),
                                         ),
                                         rounding,
+                                        color.to_egui(),
+                                    );
+                                }
+                                Elem2D::Text {
+                                    pos,
+                                    centered,
+                                    string,
+                                    color,
+                                } => {
+                                    let pos = fn_transform_pos(pos);
+                                    painter.text(
+                                        Pos2::new(pos.x, pos.y),
+                                        if centered {
+                                            Align2([Align::Center, Align::Center])
+                                        } else {
+                                            Align2([Align::Min, Align::Min])
+                                        },
+                                        string,
+                                        egui::FontId::proportional(14.0),
                                         color.to_egui(),
                                     );
                                 }

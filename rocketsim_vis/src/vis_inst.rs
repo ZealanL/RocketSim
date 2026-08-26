@@ -5,7 +5,7 @@ use rocketsim::{
 };
 use std::{sync::RwLock, thread::JoinHandle};
 
-use crate::backend::{InfoLineType, Shape2D};
+use crate::backend::{InfoLineType, Elem2D};
 use crate::{
     backend::{
         Color, ShaderSrc, ShaderSrcType, SharedVisRenderState, SharedWindowEvents, VisRenderState,
@@ -222,36 +222,54 @@ impl Vis for VisInst {
                 boost_ribbon.render(&mut new_render_state, emit_pos);
             }
 
+            // Draw boost meter
             if let Some(car_cam) = self.camera_man.car_cam()
                 && car_cam.car_idx < astate.num_cars()
                 && self.game_mode != GameMode::Heatseeker
             {
-                // Draw boost meter
+                const TRACK_COLOR: Color = Color::new_rgb(0.05, 0.05, 0.05);
+
                 let area_min = Vec2::new(-0.3, 0.85);
                 let area_max = Vec2::new(0.3, 0.95);
                 let track_pad = 0.02;
                 let track_width = (area_max.x - area_min.x) - (track_pad * 2.0);
-                new_render_state.shapes_2d.push(Shape2D::Rect {
+                new_render_state.shapes_2d.push(Elem2D::Rect {
                     a: area_min - track_pad,
                     b: area_max + track_pad,
                     color: Color::new(0.2, 0.2, 0.2, 0.8),
                     rounding: 0.1,
                 });
-                new_render_state.shapes_2d.push(Shape2D::Rect {
+                new_render_state.shapes_2d.push(Elem2D::Rect {
                     a: area_min,
                     b: area_max,
-                    color: Color::BLACK.with_alpha(0.5),
+                    color: TRACK_COLOR,
                     rounding: 0.1,
                 });
 
                 let car_state: &CarState = &astate.cars[car_cam.car_idx].1;
                 let track_frac = (car_state.boost / 100.0).clamp(0.0, 1.0);
-                new_render_state.shapes_2d.push(Shape2D::Rect {
+                new_render_state.shapes_2d.push(Elem2D::Rect {
                     a: area_min,
                     b: area_max.with_x(area_min.x + track_width * track_frac),
                     color: Color::new(1.0, 1.0, 0.4, 0.9),
                     rounding: 0.1,
                 });
+
+                let center = (area_min + area_max) / 2.0;
+                new_render_state.shapes_2d.push(Elem2D::Rect {
+                    a: center - Vec2::splat(0.04),
+                    b: center + Vec2::splat(0.04),
+                    color: TRACK_COLOR.with_alpha(0.5),
+                    rounding: 0.01,
+                });
+                new_render_state.shapes_2d.push(
+                    Elem2D::Text {
+                        string: format!("{}", car_state.boost as i32),
+                        pos: center,
+                        centered: true,
+                        color: Color::WHITE
+                    }
+                );
             }
         }
 

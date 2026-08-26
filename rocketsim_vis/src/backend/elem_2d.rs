@@ -1,8 +1,8 @@
 use crate::backend::Color;
 use glam::Vec2;
 
-#[derive(Debug, Copy, Clone)]
-pub enum Shape2D {
+#[derive(Debug, Clone)]
+pub enum Elem2D {
     Circle {
         pos: Vec2,
         radius: f32,
@@ -14,4 +14,10 @@ pub enum Shape2D {
         color: Color,
         rounding: f32,
     },
+    Text {
+        string: String,
+        pos: Vec2,
+        centered: bool,
+        color: Color,
+    }
 }

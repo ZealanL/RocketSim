@@ -2,7 +2,7 @@ use std::sync::{Arc, RwLock};
 
 use glam::{Mat3A, Vec3A};
 
-use crate::backend::{Color, Shape2D};
+use crate::backend::{Color, Elem2D};
 
 #[derive(Debug, Copy, Clone)]
 pub struct VisRenderLinePoint {
@@ -40,7 +40,7 @@ pub struct VisRenderState {
     pub objects: Vec<VisRenderModelObj>,
     pub lines: Vec<VisRenderLine>,
     pub info_text_lines: Vec<(InfoLineType, String)>,
-    pub shapes_2d: Vec<Shape2D>,
+    pub shapes_2d: Vec<Elem2D>,
 }
 
 impl VisRenderState {
