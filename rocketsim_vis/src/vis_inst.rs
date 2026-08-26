@@ -1,12 +1,11 @@
-use std::{sync::RwLock, thread::JoinHandle};
-
-use glam::{Mat3A, Vec3A};
+use glam::{Mat3A, Vec2, Vec3A};
 use miniquad::KeyCode;
 use rocketsim::{
-    ArenaState, CarBodyConfig, CarInfo, CollisionMeshFile, GameMode, Team, Vis, consts,
+    ArenaState, CarBodyConfig, CarInfo, CarState, CollisionMeshFile, GameMode, Team, Vis, consts,
 };
+use std::{sync::RwLock, thread::JoinHandle};
 
-use crate::backend::InfoLineType;
+use crate::backend::{InfoLineType, Shape2D};
 use crate::{
     backend::{
         Color, ShaderSrc, ShaderSrcType, SharedVisRenderState, SharedWindowEvents, VisRenderState,
@@ -221,6 +220,38 @@ impl Vis for VisInst {
 
                 boost_ribbon.update(car_state.is_boosting, emit_pos, emit_vel, dt);
                 boost_ribbon.render(&mut new_render_state, emit_pos);
+            }
+
+            if let Some(car_cam) = self.camera_man.car_cam()
+                && car_cam.car_idx < astate.num_cars()
+                && self.game_mode != GameMode::Heatseeker
+            {
+                // Draw boost meter
+                let area_min = Vec2::new(-0.3, 0.85);
+                let area_max = Vec2::new(0.3, 0.95);
+                let track_pad = 0.02;
+                let track_width = (area_max.x - area_min.x) - (track_pad * 2.0);
+                new_render_state.shapes_2d.push(Shape2D::Rect {
+                    a: area_min - track_pad,
+                    b: area_max + track_pad,
+                    color: Color::new(0.2, 0.2, 0.2, 0.8),
+                    rounding: 0.1,
+                });
+                new_render_state.shapes_2d.push(Shape2D::Rect {
+                    a: area_min,
+                    b: area_max,
+                    color: Color::BLACK.with_alpha(0.5),
+                    rounding: 0.1,
+                });
+
+                let car_state: &CarState = &astate.cars[car_cam.car_idx].1;
+                let track_frac = (car_state.boost / 100.0).clamp(0.0, 1.0);
+                new_render_state.shapes_2d.push(Shape2D::Rect {
+                    a: area_min,
+                    b: area_max.with_x(area_min.x + track_width * track_frac),
+                    color: Color::new(1.0, 1.0, 0.4, 0.9),
+                    rounding: 0.1,
+                });
             }
         }
 

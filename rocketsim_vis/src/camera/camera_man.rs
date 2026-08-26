@@ -84,4 +84,12 @@ impl CameraMan {
             }
         }
     }
+
+    pub fn car_cam(&mut self) -> Option<&CarCam> {
+        if let CameraViewMode::CarCam(car_cam) = &self.view_mode {
+            Some(car_cam)
+        } else {
+            None
+        }
+    }
 }

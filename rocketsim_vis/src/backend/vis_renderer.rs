@@ -1,3 +1,8 @@
+use crate::backend::{
+    Color, InfoLineType, ModelSet, ShaderSrc, ShaderSrcType, Shape2D, SharedVisRenderState,
+    SharedWindowEvents, TextureSet, WindowEvent, WindowEventQueue,
+};
+use egui::{Pos2, Rect};
 use egui_miniquad::EguiMq;
 use glam::{
     Mat4, Vec2, Vec3, Vec4,
@@ -12,8 +17,6 @@ use miniquad::{
 };
 use rustc_hash::FxHashMap;
 use std::{sync::Mutex, thread::JoinHandle};
-
-use crate::backend::{Color, InfoLineType, ModelSet, ShaderSrc, ShaderSrcType, SharedVisRenderState, SharedWindowEvents, TextureSet, WindowEvent, WindowEventQueue};
 
 #[repr(C)]
 pub struct Uniforms {
@@ -474,6 +477,7 @@ impl EventHandler for VisRenderer {
                     .show(ctx, |ui| {
                         ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
 
+                        // Draw debug lines
                         egui::Frame::canvas(ui.style())
                             .fill(egui::Color32::from_rgba_premultiplied(0, 0, 0, 100))
                             .inner_margin(8.0)
@@ -491,7 +495,49 @@ impl EventHandler for VisRenderer {
                                     };
                                     ui.colored_label(color, line);
                                 }
-                            })
+                            });
+
+                        let painter = ui.painter();
+                        for shape in state.shapes_2d.clone() {
+                            let total_area_size_x = painter.clip_rect().size().x;
+                            let total_area_size_y = painter.clip_rect().size().y;
+                            let fn_transform_pos = |pos: Vec2| {
+                                pos / 2.0 * total_area_size_y
+                                    + Vec2::new(total_area_size_x, total_area_size_y) / 2.0
+                            };
+
+                            let fn_transform_size = |size: f32| size / 2.0 * total_area_size_y;
+
+                            match shape {
+                                Shape2D::Circle { pos, radius, color } => {
+                                    let pos = fn_transform_pos(pos);
+                                    let radius = fn_transform_size(radius);
+                                    painter.circle_filled(
+                                        Pos2::new(pos.x, pos.y),
+                                        radius,
+                                        color.to_egui(),
+                                    );
+                                }
+                                Shape2D::Rect {
+                                    a,
+                                    b,
+                                    color,
+                                    rounding,
+                                } => {
+                                    let a = fn_transform_pos(a);
+                                    let b = fn_transform_pos(b);
+                                    let rounding = fn_transform_size(rounding);
+                                    painter.rect_filled(
+                                        Rect::from_two_pos(
+                                            Pos2::new(a.x, a.y),
+                                            Pos2::new(b.x, b.y),
+                                        ),
+                                        rounding,
+                                        color.to_egui(),
+                                    );
+                                }
+                            }
+                        }
                     });
             });
             self.egui_mq.draw(self.ctx.as_mut());

@@ -2,7 +2,7 @@ use std::sync::{Arc, RwLock};
 
 use glam::{Mat3A, Vec3A};
 
-use crate::backend::Color;
+use crate::backend::{Color, Shape2D};
 
 #[derive(Debug, Copy, Clone)]
 pub struct VisRenderLinePoint {
@@ -26,7 +26,7 @@ pub struct VisRenderModelObj {
 #[derive(Debug, Copy, Clone)]
 pub enum InfoLineType {
     Normal,
-    Dim
+    Dim,
 }
 
 #[derive(Debug, Clone)]
@@ -39,8 +39,8 @@ pub struct VisRenderState {
 
     pub objects: Vec<VisRenderModelObj>,
     pub lines: Vec<VisRenderLine>,
-
     pub info_text_lines: Vec<(InfoLineType, String)>,
+    pub shapes_2d: Vec<Shape2D>,
 }
 
 impl VisRenderState {
@@ -89,6 +89,7 @@ impl Default for VisRenderState {
             objects: Vec::new(),
             lines: Vec::new(),
             info_text_lines: Vec::new(),
+            shapes_2d: Vec::new(),
         }
     }
 }

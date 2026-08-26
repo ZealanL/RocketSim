@@ -8,7 +8,7 @@ pub struct Color {
 
 impl Color {
     pub const ALPHA: Color = Color::new(0.0, 0.0, 0.0, 0.0);
-    pub const BLACK: Color = Color::new_rgb(0.0, 0.0, 1.0);
+    pub const BLACK: Color = Color::new_rgb(0.0, 0.0, 0.0);
     pub const WHITE: Color = Color::new_rgb(1.0, 1.0, 1.0);
 
     pub const RED: Color = Color::new_rgb(1.0, 0.0, 0.0);
@@ -59,6 +59,15 @@ impl Color {
             self.g * it + other.g * t,
             self.b * it + other.b * t,
             self.a * it + other.a * t,
+        )
+    }
+
+    pub(in crate::backend) fn to_egui(&self) -> egui::Color32 {
+        egui::Color32::from_rgba_unmultiplied(
+            (self.r.clamp(0.0, 1.0) * 255.0).round() as u8,
+            (self.g.clamp(0.0, 1.0) * 255.0).round() as u8,
+            (self.b.clamp(0.0, 1.0) * 255.0).round() as u8,
+            (self.a.clamp(0.0, 1.0) * 255.0).round() as u8,
         )
     }
 }
