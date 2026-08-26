@@ -36,7 +36,14 @@ pub fn is_initialized() -> bool {
 
 pub fn get_arena_collision_mesh_files(game_mode: GameMode) -> Vec<CollisionMeshFile> {
     let collision_mesh_files = ARENA_COLLISION_MESH_FILES.read().unwrap();
-    collision_mesh_files.as_ref().unwrap()[&game_mode].clone()
+    let meshes_mode = match game_mode {
+        GameMode::Hoops => game_mode,
+        GameMode::Dropshot => game_mode,
+        GameMode::TheVoid => return Vec::new(),
+        _ => GameMode::Soccar,
+    };
+
+    collision_mesh_files.as_ref().unwrap()[&meshes_mode].clone()
 }
 
 pub fn init_from_default(silent: bool) -> IoResult<()> {

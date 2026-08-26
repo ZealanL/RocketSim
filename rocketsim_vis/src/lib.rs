@@ -16,16 +16,7 @@ impl ArenaVisExt for Arena {
         match (vis_enabled, self.is_vis_enabled()) {
             (true, false) => {
                 let game_mode = self.game_mode();
-                let mesh_game_mode = match game_mode {
-                    GameMode::Heatseeker | GameMode::Snowday => GameMode::Soccar,
-                    _ => game_mode,
-                };
-
-                let game_mode_mesh_files = get_arena_collision_mesh_files(mesh_game_mode);
-                self.vis = Some(Box::new(VisInst::new(
-                    game_mode,
-                    game_mode_mesh_files.as_slice(),
-                )));
+                self.vis = Some(Box::new(VisInst::new(game_mode)));
             }
             (false, true) => {
                 self.vis = None;

@@ -30,8 +30,10 @@ pub struct VisInst {
 }
 
 impl VisInst {
-    pub fn new(game_mode: GameMode, arena_meshes: &[CollisionMeshFile]) -> Self {
-        let models = vis_asset_loader::load_models(game_mode, arena_meshes);
+    pub fn new(game_mode: GameMode) -> Self {
+        let arena_meshes = rocketsim::get_arena_collision_mesh_files(game_mode);
+        
+        let models = vis_asset_loader::load_models(game_mode, &arena_meshes);
         let textures = vis_asset_loader::load_textures();
 
         let shared_state = SharedVisRenderState::new(RwLock::new(VisRenderState::default()));
