@@ -14,6 +14,7 @@ struct SpecialResolveInfo {
     pub num_special_collisions: u16,
     pub total_normal: Vec3A,
     pub total_dist: f32,
+    pub total_penetration: f32,
     pub restitution: f32,
     pub friction: f32,
 }
@@ -24,6 +25,7 @@ impl SpecialResolveInfo {
         num_special_collisions: 0,
         total_normal: Vec3A::ZERO,
         total_dist: 0.0,
+        total_penetration: 0.0,
         restitution: 0.0,
         friction: 0.0,
     };
@@ -44,6 +46,7 @@ impl SpecialResolveInfo {
                 self.restitution = cp.combined_restitution;
                 self.total_normal += cp.normal_world_on_b;
                 self.total_dist += rel_pos.length();
+                self.total_penetration += cp.distance_1;
             }
         }
     }
@@ -232,6 +235,7 @@ impl SeqImpulseConstraintSolver {
         let num_collisions = f32::from(sri.num_special_collisions);
         let distance = sri.total_dist / num_collisions;
         let normal_world_on_b = sri.total_normal / num_collisions;
+        let avg_penetration = sri.total_penetration / num_collisions;
 
         let friction_idx = self.tmp_solver_contact_constraint_pool.len();
 
@@ -267,7 +271,7 @@ impl SeqImpulseConstraintSolver {
 
         let (contact_normal_1, rel_pos1_cross_normal) = (normal_world_on_b, torque_axis_0);
 
-        let penetration = distance;
+        let penetration = avg_penetration;
 
         let vel = body.get_vel_in_local_point(rel_pos1);
         let rel_vel = normal_world_on_b.dot(vel);
