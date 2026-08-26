@@ -9,7 +9,7 @@ members = [
 ]
 
 [workspace.dependencies]
-glam = { version = "0.33.0", features = ["debug-glam-assert"] }
+glam = { version = "0.33.5", features = ["debug-glam-assert"] }
 rustc-hash = "2.1.2"
 
 [profile.dev]
