@@ -52,9 +52,15 @@ fn init_from_path(collision_meshes_folder: &Path, silent: bool) -> IoResult<()> 
         [GameMode::Soccar, GameMode::Hoops, GameMode::Dropshot];
 
     if !collision_meshes_folder.exists() {
+        let working_dir = std::env::current_dir().expect("Could not get working directory");
+
         return Err(IoError::new(
             ErrorKind::NotFound,
-            format!("{} does not exist", collision_meshes_folder.display()),
+            format!(
+                "{} does not exist (from: {})",
+                collision_meshes_folder.display(),
+                working_dir.display()
+            ),
         ));
     }
 
