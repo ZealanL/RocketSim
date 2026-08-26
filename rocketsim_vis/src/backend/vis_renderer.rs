@@ -1,5 +1,4 @@
-use std::{sync::Mutex, thread::JoinHandle};
-
+use egui_miniquad::EguiMq;
 use glam::{
     Mat4, Vec2, Vec3, Vec4,
     camera::lh::{proj::directx, view::look_at_mat4},
@@ -12,11 +11,9 @@ use miniquad::{
     window,
 };
 use rustc_hash::FxHashMap;
+use std::{sync::Mutex, thread::JoinHandle};
 
-use crate::backend::{
-    Color, ModelSet, ShaderSrc, ShaderSrcType, SharedVisRenderState, SharedWindowEvents,
-    TextureSet, WindowEvent, WindowEventQueue,
-};
+use crate::backend::{Color, InfoLineType, ModelSet, ShaderSrc, ShaderSrcType, SharedVisRenderState, SharedWindowEvents, TextureSet, WindowEvent, WindowEventQueue};
 
 #[repr(C)]
 pub struct Uniforms {
@@ -138,8 +135,9 @@ pub struct VisRenderer {
     cur_window_size: Vec2,
 
     shared_render_state: SharedVisRenderState,
-
     window_event_queue: SharedWindowEvents,
+
+    egui_mq: EguiMq,
 }
 
 impl VisRenderer {
@@ -304,6 +302,7 @@ impl VisRenderer {
         };
 
         let screen_size = Vec2::from(window::screen_size());
+        let egui_mq = EguiMq::new(ctx.as_mut());
         VisRenderer {
             models,
             textures,
@@ -323,6 +322,8 @@ impl VisRenderer {
 
             shared_render_state,
             window_event_queue,
+
+            egui_mq,
         }
     }
 
@@ -463,6 +464,37 @@ impl EventHandler for VisRenderer {
                 self.apply_uniforms();
                 self.ctx.draw(0, 6, num_lines);
             }
+        }
+
+        // Render EGUI
+        {
+            self.egui_mq.run(self.ctx.as_mut(), |_backend, ctx| {
+                egui::Area::new(egui::Id::new("TextArea"))
+                    .fixed_pos(egui::pos2(20.0, 20.0))
+                    .show(ctx, |ui| {
+                        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+
+                        egui::Frame::canvas(ui.style())
+                            .fill(egui::Color32::from_rgba_premultiplied(0, 0, 0, 100))
+                            .inner_margin(8.0)
+                            .show(ui, |ui| {
+                                let title_text = egui::RichText::new(format!(
+                                    "RocketSim Vis [{}]",
+                                    env!("CARGO_PKG_VERSION")
+                                ));
+                                ui.colored_label(egui::Color32::LIGHT_BLUE, title_text);
+
+                                for (line_type, line) in state.info_text_lines.clone() {
+                                    let color = match line_type {
+                                        InfoLineType::Normal => egui::Color32::WHITE,
+                                        InfoLineType::Dim => egui::Color32::GRAY,
+                                    };
+                                    ui.colored_label(color, line);
+                                }
+                            })
+                    });
+            });
+            self.egui_mq.draw(self.ctx.as_mut());
         }
 
         // End frame in macroquad

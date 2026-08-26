@@ -10,6 +10,8 @@ miniquad = "0.4.8"
 png = "0.18.0"
 rocketsim = { path = "../rocketsim" }
 rustc-hash.workspace = true
+egui = "0.31.0"
+egui-miniquad = "0.16.0"
 
 [dev-dependencies]
 device_query = "4.0.1"

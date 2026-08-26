@@ -6,6 +6,7 @@ use rocketsim::{
     ArenaState, CarBodyConfig, CarInfo, CollisionMeshFile, GameMode, Team, Vis, consts,
 };
 
+use crate::backend::InfoLineType;
 use crate::{
     backend::{
         Color, ShaderSrc, ShaderSrcType, SharedVisRenderState, SharedWindowEvents, VisRenderState,
@@ -32,7 +33,7 @@ pub struct VisInst {
 impl VisInst {
     pub fn new(game_mode: GameMode) -> Self {
         let arena_meshes = rocketsim::get_arena_collision_mesh_files(game_mode);
-        
+
         let models = vis_asset_loader::load_models(game_mode, &arena_meshes);
         let textures = vis_asset_loader::load_textures();
 
@@ -250,6 +251,35 @@ impl Vis for VisInst {
                     Mat3A::IDENTITY * 2.0,                      // TODO: Resize pad models
                 );
             }
+        }
+
+        // Add info text lines
+        {
+            // TODO: Move
+            fn vel_to_kph(vel_len: f32) -> f32 {
+                vel_len * (9.0 / 250.0)
+            }
+
+            new_render_state.info_text_lines.push((
+                InfoLineType::Normal,
+                format!("Gamemode: {}", astate.game_mode().name()),
+            ));
+
+            new_render_state
+                .info_text_lines
+                .push((InfoLineType::Normal, format!("Cars: {}", astate.cars.len())));
+
+            new_render_state.info_text_lines.push((
+                InfoLineType::Normal,
+                format!(
+                    "Ball speed: {:.1} KPH",
+                    vel_to_kph(astate.ball.vel.length())
+                ),
+            ));
+
+            new_render_state
+                .info_text_lines
+                .push((InfoLineType::Dim, "Cycle camera with 'C'".to_string()));
         }
 
         // Handle window events

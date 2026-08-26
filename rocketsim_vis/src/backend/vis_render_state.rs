@@ -23,6 +23,12 @@ pub struct VisRenderModelObj {
     pub model_rot_mat: Mat3A,
 }
 
+#[derive(Debug, Copy, Clone)]
+pub enum InfoLineType {
+    Normal,
+    Dim
+}
+
 #[derive(Debug, Clone)]
 pub struct VisRenderState {
     pub shut_down: bool,
@@ -33,6 +39,8 @@ pub struct VisRenderState {
 
     pub objects: Vec<VisRenderModelObj>,
     pub lines: Vec<VisRenderLine>,
+
+    pub info_text_lines: Vec<(InfoLineType, String)>,
 }
 
 impl VisRenderState {
@@ -80,6 +88,7 @@ impl Default for VisRenderState {
 
             objects: Vec::new(),
             lines: Vec::new(),
+            info_text_lines: Vec::new(),
         }
     }
 }
