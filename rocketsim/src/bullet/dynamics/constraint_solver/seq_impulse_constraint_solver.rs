@@ -231,7 +231,7 @@ impl SeqImpulseConstraintSolver {
         let sri = &self.special_resolve_info;
         let num_collisions = f32::from(sri.num_special_collisions);
         let distance = sri.total_dist / num_collisions;
-        let normal_world_on_b = sri.total_normal / num_collisions;
+        let normal_world_on_b = (sri.total_normal / num_collisions).normalize_or_zero();
 
         let friction_idx = self.tmp_solver_contact_constraint_pool.len();
 
