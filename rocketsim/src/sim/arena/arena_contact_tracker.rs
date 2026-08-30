@@ -14,7 +14,7 @@ use crate::{
     sim::UserInfoTypes,
 };
 
-// An instance of a contact event
+// Store one contact event.
 #[derive(Debug, Copy, Clone)]
 pub(crate) struct ContactRecord {
     pub is_swap: bool,
@@ -23,7 +23,7 @@ pub(crate) struct ContactRecord {
     pub manifold_point: ManifoldPoint,
 }
 
-// A struct to be accessed through the bullet contact callbacks
+// Track contacts reported by Bullet callbacks.
 pub(crate) struct ArenaContactTracker {
     collision_records: Vec<ContactRecord>,
 }
@@ -31,7 +31,7 @@ pub(crate) struct ArenaContactTracker {
 impl ArenaContactTracker {
     pub fn new() -> Self {
         Self {
-            collision_records: Vec::with_capacity(4), // Rarely exceeded
+            collision_records: Vec::with_capacity(4), // Reserve space for common contact counts.
         }
     }
 
@@ -80,11 +80,19 @@ impl ContactAddedCallback for ArenaContactTracker {
             };
             manifold_point.combined_friction = hit_coefs.friction;
             manifold_point.combined_restitution = hit_coefs.restitution;
-        } else if user_idx_a == UserInfoTypes::Ball && user_idx_b == UserInfoTypes::None {
+        } else if user_idx_a == UserInfoTypes::Ball
+            && user_idx_b == UserInfoTypes::None
+            && body_b.is_static_obj()
+        {
             manifold_point.is_special = true;
         }
 
-        // NOTE: Push *before* the manifold is mutated by adjust_internal_edge_contacts()
+        // Record contact data before edge adjustment changes the manifold.
+        if manifold_point.is_special {
+            // Save the raw normal for special-contact aggregation.
+            manifold_point.raw_normal_world_on_b = manifold_point.normal_world_on_b;
+        }
+
         self.collision_records.push(ContactRecord {
             is_swap: should_swap,
             rb_idx_a: body_a.world_array_idx,
