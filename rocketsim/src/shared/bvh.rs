@@ -24,9 +24,17 @@ impl Tree {
     const TRAVERSAL_STACK_SIZE: usize = 128;
 
     pub fn build(aabb: Aabb, leaf_nodes: &mut [Node]) -> Self {
-        let binary = BinaryTree::build(aabb, leaf_nodes);
+        Self::from_binary(BinaryTree::build(aabb, leaf_nodes), leaf_nodes.len())
+    }
+
+    pub(crate) fn build_bullet(aabb: Aabb, leaf_nodes: &mut [Node]) -> Self {
+        Self::from_binary(BinaryTree::build_bullet(aabb, leaf_nodes), leaf_nodes.len())
+    }
+
+    fn from_binary(binary: BinaryTree, num_leaves: usize) -> Self {
+        let aabb = binary.aabb;
         let mut wide_nodes = Vec::new();
-        let mut leaves = Vec::with_capacity(leaf_nodes.len());
+        let mut leaves = Vec::with_capacity(num_leaves);
         let max_wide_depth = binary.build_wide_node(0, &mut wide_nodes, &mut leaves);
         assert!(max_wide_depth * 3 < Self::TRAVERSAL_STACK_SIZE);
 
@@ -155,6 +163,51 @@ impl Tree {
         mid
     }
 
+    fn calc_bullet_split(leaf_nodes: &mut [Node], start_idx: usize, end_idx: usize) -> usize {
+        let count = end_idx - start_idx;
+        debug_assert!(count >= 2);
+
+        let mut mean = Vec3A::ZERO;
+        for leaf in &leaf_nodes[start_idx..end_idx] {
+            mean += leaf.aabb.center();
+        }
+        mean *= 1.0 / count as f32;
+
+        let mut variance = Vec3A::ZERO;
+        for leaf in &leaf_nodes[start_idx..end_idx] {
+            let difference = leaf.aabb.center() - mean;
+            variance += difference * difference;
+        }
+        variance *= 1.0 / (count as f32 - 1.0);
+
+        let axis = if variance.x < variance.y {
+            if variance.y < variance.z { 2 } else { 1 }
+        } else if variance.x < variance.z {
+            2
+        } else {
+            0
+        };
+        let split_value = mean[axis];
+
+        let mut split_idx = start_idx;
+        for i in start_idx..end_idx {
+            if leaf_nodes[i].aabb.center()[axis] > split_value {
+                if i != split_idx {
+                    Self::swap_leaf_nodes(leaf_nodes, i, split_idx);
+                }
+                split_idx += 1;
+            }
+        }
+
+        let balanced_range = count / 3;
+        if split_idx <= start_idx + balanced_range || split_idx >= end_idx - 1 - balanced_range {
+            split_idx = start_idx + (count >> 1);
+        }
+
+        debug_assert!(split_idx != start_idx && split_idx != end_idx);
+        split_idx
+    }
+
     fn swap_leaf_nodes(leaf_nodes: &mut [Node], i: usize, split_idx: usize) {
         debug_assert_ne!(i, split_idx);
         let [a, b] = unsafe { leaf_nodes.get_disjoint_unchecked_mut([split_idx, i]) };
@@ -267,16 +320,33 @@ struct BinaryTree {
 impl BinaryTree {
     fn build(aabb: Aabb, leaf_nodes: &mut [Node]) -> Self {
         assert!(!leaf_nodes.is_empty());
-        let mut tree = Self {
-            aabb,
-            cur_node_idx: 0,
-            nodes: repeat_n(Node::DEFAULT, 2 * leaf_nodes.len()).collect(),
-        };
-        tree.build_subtree(leaf_nodes, 0, leaf_nodes.len());
+        let mut tree = Self::new(aabb, leaf_nodes.len());
+        tree.build_subtree(leaf_nodes, 0, leaf_nodes.len(), Tree::calc_sah_split);
         tree
     }
 
-    fn build_subtree(&mut self, leaf_nodes: &mut [Node], start_idx: usize, end_idx: usize) {
+    fn build_bullet(aabb: Aabb, leaf_nodes: &mut [Node]) -> Self {
+        assert!(!leaf_nodes.is_empty());
+        let mut tree = Self::new(aabb, leaf_nodes.len());
+        tree.build_subtree(leaf_nodes, 0, leaf_nodes.len(), Tree::calc_bullet_split);
+        tree
+    }
+
+    fn new(aabb: Aabb, num_leaves: usize) -> Self {
+        Self {
+            aabb,
+            cur_node_idx: 0,
+            nodes: repeat_n(Node::DEFAULT, 2 * num_leaves).collect(),
+        }
+    }
+
+    fn build_subtree(
+        &mut self,
+        leaf_nodes: &mut [Node],
+        start_idx: usize,
+        end_idx: usize,
+        split_fn: fn(&mut [Node], usize, usize) -> usize,
+    ) {
         let num_indices = end_idx - start_idx;
         let cur_idx = self.cur_node_idx;
 
@@ -286,7 +356,7 @@ impl BinaryTree {
             return;
         }
 
-        let split_idx = Tree::calc_sah_split(leaf_nodes, start_idx, end_idx);
+        let split_idx = split_fn(leaf_nodes, start_idx, end_idx);
         let internal_node_idx = self.cur_node_idx;
 
         {
@@ -299,8 +369,8 @@ impl BinaryTree {
         }
 
         self.cur_node_idx += 1;
-        self.build_subtree(leaf_nodes, start_idx, split_idx);
-        self.build_subtree(leaf_nodes, split_idx, end_idx);
+        self.build_subtree(leaf_nodes, start_idx, split_idx, split_fn);
+        self.build_subtree(leaf_nodes, split_idx, end_idx, split_fn);
 
         self.nodes[internal_node_idx].node_type = BvhNodeType::Branch {
             escape_idx: self.cur_node_idx - cur_idx,
