@@ -16,16 +16,27 @@ pub fn set_state_to_record_tick(
 ) {
     for (i, &car_idx) in car_idcs.iter().enumerate() {
         let mut cs = *arena.get_car_state(car_idx);
-        let rep_cs: CarState = tick.car_records[i].into();
+        let car_record = &tick.car_records[i];
+        let rep_cs: CarState = (*car_record).into();
         cs.phys = rep_cs.phys;
+        cs.is_on_ground = rep_cs.is_on_ground;
+        cs.wheels_with_contact = rep_cs.wheels_with_contact;
         cs.is_jumping = rep_cs.is_jumping;
         cs.is_flipping = rep_cs.is_flipping;
         cs.jump_ticks = rep_cs.jump_ticks;
         cs.flip_time = rep_cs.flip_time;
         cs.has_jumped = rep_cs.has_jumped;
+        cs.prev_controls = car_record.prev_controls.into();
+        cs.flip_rel_torque = rep_cs.flip_rel_torque;
 
-        if cs.has_flip_or_jump() {
-            cs.has_double_jumped = rep_cs.has_double_jumped;
+        if car_record.has_flip {
+            cs.has_double_jumped = false;
+            cs.has_flipped = false;
+        } else if car_record.is_flipping {
+            cs.has_double_jumped = false;
+            cs.has_flipped = true;
+        } else if car_record.double_jumped_or_flipped && !cs.has_flipped {
+            cs.has_double_jumped = true;
         }
 
         cs.controls = car_controls[i];
@@ -79,6 +90,12 @@ fn test_recording(recording: &Recording) {
         let frame_delta =
             to_tick.car_records[0].phys.physics_frame - from_tick.car_records[0].phys.physics_frame;
         if frame_delta != 1 {
+            continue;
+        }
+
+        // Skip the first tick after teleport: bullet contact manifolds
+        // (sticky/wheels) need one tick to settle after SetPhysicsState
+        if i == 0 {
             continue;
         }
 
