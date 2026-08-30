@@ -218,6 +218,7 @@ impl From<CarRecord> for CarState {
             boost: phys_record.boost_amount,
             controls: phys_record.prev_controls.into(),
             is_on_ground: phys_record.is_on_ground,
+            wheels_with_contact: phys_record.wheels.map(|wheel| wheel.has_contact),
             is_jumping: phys_record.is_jumping,
             is_flipping: phys_record.is_flipping,
             flip_rel_torque: phys_record.flip_rel_torque.into(),
