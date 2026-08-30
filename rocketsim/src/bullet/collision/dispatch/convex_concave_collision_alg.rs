@@ -15,7 +15,7 @@ use crate::bullet::{
 };
 
 struct ConvexTriangleCallback<'a, T: ContactAddedCallback> {
-    pub manifold: PersistentManifold,
+    pub manifold: &'a mut PersistentManifold,
     pub convex_obj: &'a RigidBody,
     pub tri_obj: &'a RigidBody,
     contact_added_callback: &'a mut T,
@@ -24,12 +24,13 @@ struct ConvexTriangleCallback<'a, T: ContactAddedCallback> {
 
 impl<'a, T: ContactAddedCallback> ConvexTriangleCallback<'a, T> {
     pub fn new(
+        manifold: &'a mut PersistentManifold,
         convex_obj: &'a RigidBody,
         tri_obj: &'a RigidBody,
         contact_added_callback: &'a mut T,
     ) -> Self {
         Self {
-            manifold: PersistentManifold::new(convex_obj, tri_obj),
+            manifold,
             convex_obj,
             tri_obj,
             contact_added_callback,
@@ -96,26 +97,23 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
     }
 }
 
-pub fn process_collision<T: ContactAddedCallback>(
+pub fn process_collision_into<T: ContactAddedCallback>(
     convex_obj: &RigidBody,
     concave_obj: &RigidBody,
     tri_mesh: &BvhTriangleMeshShape,
+    manifold: &mut PersistentManifold,
     contact_added_callback: &mut T,
-) -> Option<PersistentManifold> {
-    let mut convex_triangle_callback =
-        ConvexTriangleCallback::new(convex_obj, concave_obj, contact_added_callback);
+) -> bool {
+    {
+        let mut convex_triangle_callback =
+            ConvexTriangleCallback::new(manifold, convex_obj, concave_obj, contact_added_callback);
 
-    let aabb = convex_obj
-        .get_collision_shape()
-        .get_aabb(convex_obj.get_world_trans());
-    tri_mesh.process_all_triangles(&mut convex_triangle_callback, &aabb);
-
-    if convex_triangle_callback.manifold.point_cache.is_empty() {
-        None
-    } else {
-        convex_triangle_callback
-            .manifold
-            .refresh_contact_points(convex_obj, concave_obj);
-        Some(convex_triangle_callback.manifold)
+        let aabb = convex_obj
+            .get_collision_shape()
+            .get_aabb(convex_obj.get_world_trans());
+        tri_mesh.process_all_triangles(&mut convex_triangle_callback, &aabb);
     }
+
+    manifold.refresh_contact_points(convex_obj, concave_obj);
+    !manifold.point_cache.is_empty()
 }
