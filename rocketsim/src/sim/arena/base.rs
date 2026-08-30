@@ -23,7 +23,7 @@ use crate::{
         },
         dynamics::{
             discrete_dynamics_world::DiscreteDynamicsWorld,
-            rigid_body::{ActivationState, CollisionFlags, RigidBody, RigidBodyConstructionInfo},
+            rigid_body::{CollisionFlags, RigidBody, RigidBodyConstructionInfo},
         },
     },
     consts::{self, BT_TO_UU, TICK_RATE, TICK_TIME, UU_TO_BT},
@@ -493,14 +493,7 @@ impl Arena {
             quantize::quantize(ball_rb);
         }
 
-        {
-            let ball_rb = &mut self.bullet_world.bodies_mut()[self.ball.rigid_body_idx];
-            if ball_rb.lin_vel.length_squared() == 0.0 && ball_rb.ang_vel.length_squared() == 0.0 {
-                ball_rb.set_activation_state(ActivationState::Sleeping);
-            } else {
-                ball_rb.set_activation_state(ActivationState::Active);
-            }
-        }
+        // Keep resting balls active so same-tick contacts can affect them.
 
         for car in &mut self.cars {
             car.pre_tick_update(
@@ -883,7 +876,7 @@ impl Arena {
         ball_is_body_a: bool,
     ) {
         let ball_rb = &mut self.bullet_world.bodies_mut()[self.ball.rigid_body_idx];
-        let ball_accum_vel_before = ball_rb.accum_lin_vel;
+        let ball_lin_vel_before = ball_rb.lin_vel;
         self.ball.on_hit(
             &self.cars[car_idx],
             self.config.game_mode,
@@ -898,7 +891,7 @@ impl Arena {
             manifold_point.pos_world_on_b
         } * BT_TO_UU;
 
-        let extra_hit_vel = (ball_rb.accum_lin_vel - ball_accum_vel_before) * BT_TO_UU;
+        let extra_hit_vel = (ball_rb.lin_vel - ball_lin_vel_before) * BT_TO_UU;
         self.events.push(ArenaEvent::CarHitBall(CarHitBallEvent {
             car_idx,
             contact_point,

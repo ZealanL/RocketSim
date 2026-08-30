@@ -91,7 +91,8 @@ impl Ball {
 
         let mut body = RigidBody::new(info);
         body.user_idx = UserInfoTypes::Ball;
-        body.collision_flags |= CollisionFlags::CustomMaterialCallback | CollisionFlags::CanSleep;
+        // Keep the ball active so resting contacts remain responsive.
+        body.collision_flags |= CollisionFlags::CustomMaterialCallback;
         if no_rot && matches!(body.get_collision_shape(), CollisionShapes::Sphere(_)) {
             body.collision_flags |= CollisionFlags::NoAngularMotion;
         }
@@ -284,11 +285,12 @@ impl Ball {
                 * rel_speed
                 * consts::curves::BALL_CAR_EXTRA_IMPULSE_FACTOR.get_output(rel_speed)
                 * mutator_config.ball_hit_extra_force_scale;
+            // Apply the extra impulse after contact solving.
             rb.add_impulse(
                 None,
                 Impulse::Linear(added_hit_impulse * UU_TO_BT),
                 false,
-                true,
+                false,
             );
 
             self.state.last_extra_hit_tick = Some(tick_count);
