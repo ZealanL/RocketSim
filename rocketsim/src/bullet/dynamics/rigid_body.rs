@@ -7,7 +7,9 @@ use indexmap::IndexMap;
 use crate::{
     bullet::{
         collision::shapes::collision_shape::CollisionShapes,
-        linear_math::{integrate_trans, integrate_trans_no_rot},
+        linear_math::{
+            bullet_normalize, bullet_quat_from_mat3, integrate_trans, integrate_trans_no_rot,
+        },
     },
     sim::UserInfoTypes,
 };
@@ -187,7 +189,7 @@ impl RigidBody {
 
         Self {
             world_trans: info.start_world_trans,
-            world_quat: Quat::from_mat3a(&info.start_world_trans.matrix3),
+            world_quat: bullet_quat_from_mat3(info.start_world_trans.matrix3),
             interp_world_trans: info.start_world_trans,
             contact_processing_threshold: f32::MAX,
             broadphase_handle: 0,
@@ -221,7 +223,7 @@ impl RigidBody {
 
     pub fn set_world_trans(&mut self, world_trans: Affine3A) {
         if (self.collision_flags & CollisionFlags::NoAngularMotion) == 0 {
-            self.world_quat = Quat::from_mat3a(&world_trans.matrix3);
+            self.world_quat = bullet_quat_from_mat3(world_trans.matrix3);
         }
 
         self.world_trans = world_trans;
@@ -321,7 +323,15 @@ impl RigidBody {
             }
             Impulse::LinearRelPos(v, rel_pos) => {
                 lin_impulse = v * massed_scaler;
-                ang_impulse = self.inv_inertia_tensor_world * rel_pos.cross(v);
+                // Mat3A stores the world inertia tensor in the transposed
+                // Bullet row/column convention used throughout the solver.
+                // `Mat3A` stores this tensor in column form, while the Bullet
+                // compatibility values are exposed in row form. The
+                // transpose-vector multiply is therefore the Bullet-equivalent
+                // world-inertia application here.
+                ang_impulse = self
+                    .inv_inertia_tensor_world
+                    .mul_transpose_vec3a(rel_pos.cross(v));
                 if !massed {
                     ang_impulse *= self.mass; // Have to undo the effects of inv inertia tensor
                 }
@@ -448,11 +458,11 @@ impl RigidBody {
 
     pub fn limit_vels(&mut self, max_lin_speed: f32, max_ang_speed: f32) {
         if self.lin_vel.length_squared() > max_lin_speed.powi(2) {
-            self.lin_vel = self.lin_vel.normalize_or_zero() * max_lin_speed;
+            self.lin_vel = bullet_normalize(self.lin_vel) * max_lin_speed;
         }
 
         if self.ang_vel.length_squared() > max_ang_speed.powi(2) {
-            self.ang_vel = self.ang_vel.normalize_or_zero() * max_ang_speed;
+            self.ang_vel = bullet_normalize(self.ang_vel) * max_ang_speed;
         }
     }
 }

@@ -41,8 +41,19 @@ pub struct PolyhedralConvexShape {
 
 impl PolyhedralConvexShape {
     pub fn new(simd_points: &[[Vec4; 3]], points: &[Vec3A]) -> Self {
-        let convex_internal_shape = ConvexInternalShape::default();
-        let local_aabb = calc_local_aabb(simd_points, points, convex_internal_shape.margin);
+        Self::new_with_margin(simd_points, points, ConvexInternalShape::default().margin)
+    }
+
+    pub fn new_with_margin(
+        simd_points: &[[Vec4; 3]],
+        points: &[Vec3A],
+        collision_margin: f32,
+    ) -> Self {
+        let convex_internal_shape = ConvexInternalShape {
+            implicit_dim: Vec3A::ZERO,
+            margin: collision_margin,
+        };
+        let local_aabb = calc_local_aabb(simd_points, points, collision_margin);
 
         Self {
             convex_internal_shape,

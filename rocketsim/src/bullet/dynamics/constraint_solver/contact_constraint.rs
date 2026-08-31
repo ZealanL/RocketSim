@@ -31,8 +31,7 @@ pub fn resolve_single_collision(
     let penetration_impulse = positional_error * jac_diag_ab_inv;
     let vel_impulse = vel_error * jac_diag_ab_inv;
 
-    let normal_impulse = penetration_impulse + vel_impulse;
-    normal_impulse.max(0.0)
+    (penetration_impulse + vel_impulse).max(0.0)
 }
 
 pub fn resolve_single_bilateral(

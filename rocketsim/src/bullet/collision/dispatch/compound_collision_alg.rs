@@ -8,6 +8,7 @@ use super::{
 use crate::{
     bullet::{
         collision::{
+            narrowphase::gjk::{ClosestPointInput, GjkPairDetector, GjkResult},
             narrowphase::persistent_manifold::{ContactAddedCallback, PersistentManifold},
             shapes::{
                 box_shape::BoxShape, collision_shape::CollisionShapes,
@@ -21,16 +22,54 @@ use crate::{
     shared::{Aabb, rsmath},
 };
 
+#[derive(Clone, Copy)]
 struct SatResult {
     penetration: f32,
     axis: Vec3A,
     axis_type: AxisType,
 }
 
+#[derive(Clone, Copy)]
 enum AxisType {
     TriFace,
     ObbFace(usize),
     EdgeEdge { box_axis: usize, tri_edge: usize },
+}
+
+struct NoopGjkResult;
+
+impl GjkResult for NoopGjkResult {
+    fn add_contact_point(&mut self, _normal_on_b: Vec3A, _point_on_b_world: Vec3A, _depth: f32) {}
+}
+
+fn clip_polygon_against_plane(
+    input: &[Vec3A],
+    normal: Vec3A,
+    plane_eq: f32,
+) -> ArrayVec<Vec3A, 16> {
+    let mut output = ArrayVec::new();
+    if input.len() < 2 {
+        return output;
+    }
+
+    let mut first = *input.last().unwrap();
+    let mut ds = normal.dot(first) + plane_eq;
+    for &end in input {
+        let de = normal.dot(end) + plane_eq;
+        if ds < 0.0 {
+            if de < 0.0 {
+                output.push(end);
+            } else {
+                output.push(first.lerp(end, ds / (ds - de)));
+            }
+        } else if de < 0.0 {
+            output.push(first.lerp(end, ds / (ds - de)));
+            output.push(end);
+        }
+        first = end;
+        ds = de;
+    }
+    output
 }
 
 struct ConvexTriangleCallback<'a, T: ContactAddedCallback> {
@@ -39,14 +78,37 @@ struct ConvexTriangleCallback<'a, T: ContactAddedCallback> {
     pub tri_obj: &'a RigidBody,
     pub local_convex_aabb: &'a Aabb,
     pub box_shape: &'a BoxShape,
+    pub gjk_shape: Option<&'a CollisionShapes>,
+    pub convex_world_trans: Affine3A,
+    pub current_triangle_index: usize,
     pub contact_added_callback: &'a mut T,
 }
 
+impl<T: ContactAddedCallback> GjkResult for ConvexTriangleCallback<'_, T> {
+    fn add_contact_point(&mut self, normal_on_b: Vec3A, point_on_b_world: Vec3A, depth: f32) {
+        self.manifold.add_contact_point(
+            self.convex_obj.obj,
+            self.tri_obj,
+            normal_on_b,
+            point_on_b_world,
+            depth,
+            Some(self.current_triangle_index),
+            self.contact_added_callback,
+        );
+    }
+}
+
 impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> {
+    fn stable_triangle_order(&self) -> bool {
+        true
+    }
+
     fn process_triangle(&mut self, triangle: &TriangleShape, triangle_idx: usize) {
         if !triangle.aabb().intersects(self.local_convex_aabb) {
             return;
         }
+
+        self.current_triangle_index = triangle_idx;
 
         let half_extents = self.box_shape.get_half_extents();
         let contact_margin = self.box_shape.get_margin() + self.manifold.contact_breaking_threshold;
@@ -172,6 +234,129 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
         let Some(result) = best_result else {
             return;
         };
+
+        // Diagnostic escape hatch: the legacy SAT contact construction is useful
+        // when comparing the narrowphase against Bullet's per-triangle GJK.
+        // It is disabled by default and must never affect normal runs.
+        if let Some(gjk_shape) = self.gjk_shape {
+            if std::env::var_os("RSIM_COMPOUND_SAT").is_some() {
+                // Diagnostic only: continue with the legacy SAT contact below.
+            } else if std::env::var_os("RSIM_CLIP_TRIANGLES").is_some() {
+                let triangle_shape = CollisionShapes::Triangle(*triangle);
+                let convex_world_trans = self.convex_world_trans;
+                let contact_breaking_threshold = self.manifold.contact_breaking_threshold;
+                let input = ClosestPointInput::new(
+                    &convex_world_trans,
+                    self.tri_obj.get_world_trans(),
+                    self.box_shape.get_margin() + contact_breaking_threshold,
+                );
+                let mut noop = NoopGjkResult;
+                let (cached_axis, cached_distance, found_contact) =
+                    GjkPairDetector::new(self.box_shape.get_margin(), 0.0)
+                        .get_closest_points_with_cache(
+                            &input,
+                            gjk_shape,
+                            &triangle_shape,
+                            &mut noop,
+                        );
+
+                if !found_contact || cached_axis.length_squared() <= f32::EPSILON {
+                    return;
+                }
+
+                // Match Bullet's polyhedral-vs-triangle path: GJK supplies the
+                // separating direction, then the triangle is clipped against the
+                // incident box face and all resulting contacts are emitted.
+                let sep_normal = cached_axis / cached_axis.length_squared();
+                let min_dist = cached_distance - self.box_shape.get_margin();
+                let min_clip = min_dist - self.manifold.contact_breaking_threshold;
+                let max_clip = self.manifold.contact_breaking_threshold;
+                let tri_world_trans = self.tri_obj.get_world_trans();
+                let inv_box = convex_world_trans.inverse();
+                let tri_local = [
+                    inv_box
+                        .transform_point3a(tri_world_trans.transform_point3a(triangle.points[0])),
+                    inv_box
+                        .transform_point3a(tri_world_trans.transform_point3a(triangle.points[1])),
+                    inv_box
+                        .transform_point3a(tri_world_trans.transform_point3a(triangle.points[2])),
+                ];
+                let full_half =
+                    self.box_shape.get_half_extents() + Vec3A::splat(self.box_shape.get_margin());
+
+                let mut face_axis = 0usize;
+                let mut face_sign = 1.0f32;
+                let mut face_dot = f32::INFINITY;
+                for axis in 0..3 {
+                    for sign in [-1.0f32, 1.0] {
+                        let mut local_normal = Vec3A::ZERO;
+                        local_normal[axis] = sign;
+                        let world_face_normal = convex_world_trans.transform_vector3a(local_normal);
+                        let dot = world_face_normal.dot(sep_normal);
+                        if dot < face_dot {
+                            face_dot = dot;
+                            face_axis = axis;
+                            face_sign = sign;
+                        }
+                    }
+                }
+
+                let mut polygon = ArrayVec::<Vec3A, 16>::new();
+                polygon.extend(tri_local);
+                for axis in 0..3 {
+                    if axis == face_axis {
+                        continue;
+                    }
+                    for sign in [-1.0f32, 1.0] {
+                        let mut plane_normal = Vec3A::ZERO;
+                        plane_normal[axis] = sign;
+                        polygon =
+                            clip_polygon_against_plane(&polygon, plane_normal, -full_half[axis]);
+                        if polygon.is_empty() {
+                            return;
+                        }
+                    }
+                }
+
+                let mut face_normal_local = Vec3A::ZERO;
+                face_normal_local[face_axis] = face_sign;
+                let face_plane = -full_half[face_axis];
+                for point_local in polygon {
+                    let mut depth = face_normal_local.dot(point_local) + face_plane;
+                    if depth <= min_clip {
+                        depth = min_clip;
+                    }
+                    if depth <= max_clip {
+                        let point_world = convex_world_trans.transform_point3a(point_local);
+                        self.manifold.add_contact_point(
+                            self.convex_obj.obj,
+                            self.tri_obj,
+                            sep_normal,
+                            point_world,
+                            depth,
+                            Some(triangle_idx),
+                            self.contact_added_callback,
+                        );
+                    }
+                }
+                return;
+            } else {
+                let triangle_shape = CollisionShapes::Triangle(*triangle);
+                let convex_world_trans = self.convex_world_trans;
+                let input = ClosestPointInput::new(
+                    &convex_world_trans,
+                    self.tri_obj.get_world_trans(),
+                    self.box_shape.get_margin() + self.manifold.contact_breaking_threshold,
+                );
+                GjkPairDetector::new(self.box_shape.get_margin(), 0.0).get_closest_points(
+                    &input,
+                    gjk_shape,
+                    &triangle_shape,
+                    self,
+                );
+                return;
+            }
+        }
 
         let contact_point_local = match result.axis_type {
             AxisType::TriFace => {
@@ -311,6 +496,7 @@ pub fn process_collision<T: ContactAddedCallback>(
 
     match other_col_shape {
         CollisionShapes::TriangleMesh(tri_mesh) => {
+            let gjk_shape = compound_shape.gjk_shape.as_ref();
             let xform1 = other_obj.get_world_trans().transpose();
             let xform2 = new_child_world_trans;
             let convex_in_triangle_space = Affine3A {
@@ -325,6 +511,9 @@ pub fn process_collision<T: ContactAddedCallback>(
                 tri_obj: other_obj,
                 local_convex_aabb: &aabb_in_triangle,
                 box_shape,
+                gjk_shape: Some(gjk_shape),
+                convex_world_trans: new_child_world_trans,
+                current_triangle_index: 0,
                 contact_added_callback,
             };
 

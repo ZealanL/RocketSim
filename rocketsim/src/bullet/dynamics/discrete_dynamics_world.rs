@@ -136,6 +136,30 @@ impl DiscreteDynamicsWorld {
         );
     }
 
+    /// Match Bullet's simulation-island activation pass: a sleeping dynamic
+    /// body is made active when it shares a contact manifold with an awake
+    /// dynamic body, so the post-solver transform integration runs this tick.
+    fn wake_contacting_bodies(&mut self) {
+        let mut wake = Vec::new();
+        for manifold in &self.collision_world.dispatcher1.manifolds {
+            let a = manifold.body0_idx;
+            let b = manifold.body1_idx;
+            let body_a = &self.collision_world.collision_objs[a];
+            let body_b = &self.collision_world.collision_objs[b];
+            if body_a.is_static_obj() || body_b.is_static_obj() {
+                continue;
+            }
+            if body_a.is_active() && !body_b.is_active() {
+                wake.push(b);
+            } else if body_b.is_active() && !body_a.is_active() {
+                wake.push(a);
+            }
+        }
+        for idx in wake {
+            self.collision_world.collision_objs[idx].force_activate();
+        }
+    }
+
     fn integrate_trans_internal(&mut self, time_step: f32) {
         for &body in &self.dynamic_body_idcs {
             let body = &mut self.collision_world.collision_objs[body];
@@ -179,6 +203,7 @@ impl DiscreteDynamicsWorld {
         self.collision_world
             .perform_discrete_collision_detection(contact_added_callback);
 
+        self.wake_contacting_bodies();
         self.solve_constraints(time_step);
         self.integrate_trans(time_step);
         self.update_activation_state(time_step);

@@ -48,5 +48,13 @@ pub fn create_bvh(triangles: &TriangleMesh, aabb: Aabb) -> Tree {
         })
         .collect();
 
-    Tree::build(aabb, &mut leaf_nodes)
+    // RocketSim V2 uses Bullet's btQuantizedBvh for arena meshes.  Use the
+    // matching variance/mean split order by default so manifold contact order
+    // (and therefore sequential-impulse results) stays comparable.  The
+    // previous SAH builder remains available for A/B diagnostics.
+    if std::env::var_os("RSIM_SAH_BVH").is_some() {
+        Tree::build(aabb, &mut leaf_nodes)
+    } else {
+        Tree::build_bullet(aabb, &mut leaf_nodes)
+    }
 }

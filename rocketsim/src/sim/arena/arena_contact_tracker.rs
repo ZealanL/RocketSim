@@ -1,5 +1,7 @@
 use std::mem;
 
+use glam::Vec3A;
+
 use crate::{
     bullet::{
         collision::{
@@ -21,6 +23,13 @@ pub(crate) struct ContactRecord {
     pub rb_idx_a: usize,
     pub rb_idx_b: usize,
     pub manifold_point: ManifoldPoint,
+    /// RocketSim V2 invokes semantic contact handling before Bullet integrates
+    /// transforms. Rust drains contact records after the step, so retain the
+    /// pre-solver body values for equivalent hit calculations.
+    pub pre_pos_a: Vec3A,
+    pub pre_vel_a: Vec3A,
+    pub pre_pos_b: Vec3A,
+    pub pre_vel_b: Vec3A,
 }
 
 // A struct to be accessed through the bullet contact callbacks
@@ -90,7 +99,30 @@ impl ContactAddedCallback for ArenaContactTracker {
             rb_idx_a: body_a.world_array_idx,
             rb_idx_b: body_b.world_array_idx,
             manifold_point: *manifold_point,
+            pre_pos_a: body_a.get_world_trans().translation,
+            pre_vel_a: body_a.lin_vel,
+            pre_pos_b: body_b.get_world_trans().translation,
+            pre_vel_b: body_b.lin_vel,
         });
+
+        if std::env::var("RSIM_DEBUG_CONTACT").is_ok() {
+            println!(
+                "rust_contact,a={},b={},swap={},idx={:?},special={},point_a={:?},point_b={:?},normal={:?},distance={},friction={},restitution={},pre_a={:?},pre_b={:?}",
+                body_a.world_array_idx,
+                body_b.world_array_idx,
+                should_swap,
+                idx,
+                manifold_point.is_special,
+                manifold_point.pos_world_on_a,
+                manifold_point.pos_world_on_b,
+                manifold_point.normal_world_on_b,
+                manifold_point.distance_1,
+                manifold_point.combined_friction,
+                manifold_point.combined_restitution,
+                body_a.get_world_trans().translation,
+                body_b.get_world_trans().translation,
+            );
+        }
 
         if let Some(idx) = idx {
             adjust_internal_edge_contacts(manifold_point, body_b, idx);

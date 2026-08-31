@@ -424,7 +424,10 @@ impl Epa2 {
         let mut best = self.find_best();
         let mut outer = self.fc_store[best];
 
-        'epa_iter: for pass in 0..Self::MAX_ITERATIONS {
+        // Bullet starts its pass counter at one. Faces are initialized with
+        // pass zero, so starting at zero would make the first expansion treat
+        // every adjacent face as already visited and abort the horizon walk.
+        'epa_iter: for pass in 1..=Self::MAX_ITERATIONS {
             if self.next_sv >= Self::MAX_VERTICES {
                 status = EpaStatus::OutOfVertices;
                 break;

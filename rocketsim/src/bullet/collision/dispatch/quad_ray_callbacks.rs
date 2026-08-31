@@ -7,7 +7,7 @@ use crate::bullet::{
         shapes::{triangle_callback::ProcessQuadRayTriangle, triangle_shape::TriangleShape},
     },
     dynamics::rigid_body::RigidBody,
-    linear_math::interpolate_3,
+    linear_math::{bullet_normalize, interpolate_3},
 };
 
 pub struct LocalRayResult {
@@ -176,11 +176,17 @@ impl<T: QuadRayResultCallback> BridgeTriQuadRayCallback<'_, T> {
     }
 
     fn process_triangle(&mut self, triangle: &TriangleShape, lambda_max: &mut f32, ray_idx: usize) {
-        const EDGE_TOLERANCE: f32 = -0.0001;
-
-        let dist = triangle.points[0].dot(triangle.normal);
-        let dist_a = triangle.normal.dot(self.from[ray_idx]) - dist;
-        let dist_b = triangle.normal.dot(self.to[ray_idx]) - dist;
+        // Bullet computes the unnormalized triangle normal for the plane and
+        // edge tests on every raycast, and normalizes only the reported hit
+        // normal. Reusing the cached unit normal changes the hit fraction by a
+        // few ulps on arena mesh triangles and can make the coincident floor
+        // plane win the closest-hit tie.
+        let edge_0 = triangle.points[1] - triangle.points[0];
+        let edge_1 = triangle.points[2] - triangle.points[0];
+        let triangle_normal = edge_0.cross(edge_1);
+        let dist = triangle.points[0].dot(triangle_normal);
+        let dist_a = triangle_normal.dot(self.from[ray_idx]) - dist;
+        let dist_b = triangle_normal.dot(self.to[ray_idx]) - dist;
         if dist_a * dist_b >= 0.0 {
             return; // same sign
         }
@@ -195,27 +201,29 @@ impl<T: QuadRayResultCallback> BridgeTriQuadRayCallback<'_, T> {
         let point = self.from[ray_idx].lerp(self.to[ray_idx], distance);
         let v0p = triangle.points[0] - point;
         let v1p = triangle.points[1] - point;
+        let edge_tolerance = -0.0001 * triangle_normal.length_squared();
         let cp0 = v0p.cross(v1p);
-        if cp0.dot(triangle.normal) < EDGE_TOLERANCE {
+        if cp0.dot(triangle_normal) < edge_tolerance {
             return;
         }
 
         let v2p = triangle.points[2] - point;
         let cp1 = v1p.cross(v2p);
-        if cp1.dot(triangle.normal) < EDGE_TOLERANCE {
+        if cp1.dot(triangle_normal) < edge_tolerance {
             return;
         }
 
         let cp2 = v2p.cross(v0p);
-        if cp2.dot(triangle.normal) < EDGE_TOLERANCE {
+        if cp2.dot(triangle_normal) < edge_tolerance {
             return;
         }
 
         *lambda_max = distance;
+        let normal = bullet_normalize(triangle_normal);
         if dist_a <= 0.0 {
-            self.internal_report_hit(-triangle.normal, distance, ray_idx);
+            self.internal_report_hit(-normal, distance, ray_idx);
         } else {
-            self.internal_report_hit(triangle.normal, distance, ray_idx);
+            self.internal_report_hit(normal, distance, ray_idx);
         }
     }
 }

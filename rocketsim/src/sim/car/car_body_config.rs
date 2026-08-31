@@ -11,7 +11,7 @@ pub const HITBOX_SIZES: [Vec3A; 7] = [
 ];
 
 pub const HITBOX_OFFSETS: [Vec3A; 7] = [
-    Vec3A::new(13.8757, 0.0, 20.755),
+    Vec3A::new(13.87566, 0.0, 20.755),
     Vec3A::new(9.0, 0.0, 15.75),
     Vec3A::new(9.00857, 0.0, 12.0942),
     Vec3A::new(12.5, 0.0, 11.75),

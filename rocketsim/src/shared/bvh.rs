@@ -24,7 +24,18 @@ impl Tree {
     const TRAVERSAL_STACK_SIZE: usize = 128;
 
     pub fn build(aabb: Aabb, leaf_nodes: &mut [Node]) -> Self {
-        let binary = BinaryTree::build(aabb, leaf_nodes);
+        Self::build_with_mode(aabb, leaf_nodes, false)
+    }
+
+    /// Build using Bullet's btQuantizedBvh split heuristic.  The resulting
+    /// binary pre-order is useful when matching Bullet's triangle callback
+    /// order; callers that do not need Bullet ordering should use `build`.
+    pub fn build_bullet(aabb: Aabb, leaf_nodes: &mut [Node]) -> Self {
+        Self::build_with_mode(aabb, leaf_nodes, true)
+    }
+
+    fn build_with_mode(aabb: Aabb, leaf_nodes: &mut [Node], bullet_order: bool) -> Self {
+        let binary = BinaryTree::build_with_mode(aabb, leaf_nodes, bullet_order);
         let mut wide_nodes = Vec::new();
         let mut leaves = Vec::with_capacity(leaf_nodes.len());
         let max_wide_depth = binary.build_wide_node(0, &mut wide_nodes, &mut leaves);
@@ -155,6 +166,56 @@ impl Tree {
         mid
     }
 
+    fn calc_bullet_split(leaf_nodes: &mut [Node], start_idx: usize, end_idx: usize) -> usize {
+        let count = end_idx - start_idx;
+        debug_assert!(count >= 2);
+
+        // This mirrors btQuantizedBvh::calcSplittingAxis.  Bullet computes
+        // centroids from the (quantized) leaf bounds and chooses the largest
+        // sample variance.  The explicit comparisons preserve btVector3's
+        // maxAxis tie-breaking (x, then y, then z).
+        let mut means = Vec3A::ZERO;
+        for leaf in &leaf_nodes[start_idx..end_idx] {
+            means += (leaf.aabb.min + leaf.aabb.max) * 0.5;
+        }
+        means *= 1.0 / count as f32;
+
+        let mut variance = Vec3A::ZERO;
+        for leaf in &leaf_nodes[start_idx..end_idx] {
+            let diff = (leaf.aabb.min + leaf.aabb.max) * 0.5 - means;
+            variance += diff * diff;
+        }
+        variance *= 1.0 / (count - 1) as f32;
+
+        let split_axis = if variance.x < variance.y {
+            if variance.y < variance.z { 2 } else { 1 }
+        } else if variance.x < variance.z {
+            2
+        } else {
+            0
+        };
+
+        let split_value = means[split_axis];
+        let mut split_idx = start_idx;
+        for i in start_idx..end_idx {
+            let center = (leaf_nodes[i].aabb.min + leaf_nodes[i].aabb.max) * 0.5;
+            if center[split_axis] > split_value {
+                if i != split_idx {
+                    Self::swap_leaf_nodes(leaf_nodes, i, split_idx);
+                }
+                split_idx += 1;
+            }
+        }
+
+        let range_balanced = count / 3;
+        if split_idx <= start_idx + range_balanced || split_idx >= end_idx - 1 - range_balanced {
+            start_idx + (count >> 1)
+        } else {
+            debug_assert!(split_idx > start_idx && split_idx < end_idx);
+            split_idx
+        }
+    }
+
     fn swap_leaf_nodes(leaf_nodes: &mut [Node], i: usize, split_idx: usize) {
         debug_assert_ne!(i, split_idx);
         let [a, b] = unsafe { leaf_nodes.get_disjoint_unchecked_mut([split_idx, i]) };
@@ -215,6 +276,38 @@ impl Tree {
         }
     }
 
+    /// Collect the triangle/leaf indices overlapping an AABB without invoking
+    /// a callback.  This is used by the triangle-mesh adapter when it needs a
+    /// deterministic ordering independent of the wide-BVH traversal layout.
+    pub fn collect_aabb_overlapping_indices(&self, aabb: &Aabb) -> Vec<usize> {
+        let mut indices = Vec::new();
+        if !aabb.intersects(&self.aabb) {
+            return indices;
+        }
+
+        let mut stack = [WideChild::default(); Self::TRAVERSAL_STACK_SIZE];
+        stack[0] = WideChild::branch(0);
+        let mut stack_len = 1;
+        while stack_len != 0 {
+            stack_len -= 1;
+            let work = stack[stack_len];
+            if let Some(storage_idx) = work.leaf_idx() {
+                indices.push(self.leaves[storage_idx].leaf_idx);
+                continue;
+            }
+
+            let node = &self.wide_nodes[work.branch_idx()];
+            let mask = node.intersection_mask(aabb);
+            for lane in (0..node.child_count as usize).rev() {
+                if mask & (1 << lane) != 0 {
+                    stack[stack_len] = node.children[lane];
+                    stack_len += 1;
+                }
+            }
+        }
+        indices
+    }
+
     pub fn report_quad_ray_overlapping_node<T: ProcessQuadRayNode>(
         &self,
         node_callback: &mut T,
@@ -265,18 +358,24 @@ struct BinaryTree {
 }
 
 impl BinaryTree {
-    fn build(aabb: Aabb, leaf_nodes: &mut [Node]) -> Self {
+    fn build_with_mode(aabb: Aabb, leaf_nodes: &mut [Node], bullet_order: bool) -> Self {
         assert!(!leaf_nodes.is_empty());
         let mut tree = Self {
             aabb,
             cur_node_idx: 0,
             nodes: repeat_n(Node::DEFAULT, 2 * leaf_nodes.len()).collect(),
         };
-        tree.build_subtree(leaf_nodes, 0, leaf_nodes.len());
+        tree.build_subtree(leaf_nodes, 0, leaf_nodes.len(), bullet_order);
         tree
     }
 
-    fn build_subtree(&mut self, leaf_nodes: &mut [Node], start_idx: usize, end_idx: usize) {
+    fn build_subtree(
+        &mut self,
+        leaf_nodes: &mut [Node],
+        start_idx: usize,
+        end_idx: usize,
+        bullet_order: bool,
+    ) {
         let num_indices = end_idx - start_idx;
         let cur_idx = self.cur_node_idx;
 
@@ -286,7 +385,11 @@ impl BinaryTree {
             return;
         }
 
-        let split_idx = Tree::calc_sah_split(leaf_nodes, start_idx, end_idx);
+        let split_idx = if bullet_order {
+            Tree::calc_bullet_split(leaf_nodes, start_idx, end_idx)
+        } else {
+            Tree::calc_sah_split(leaf_nodes, start_idx, end_idx)
+        };
         let internal_node_idx = self.cur_node_idx;
 
         {
@@ -299,8 +402,8 @@ impl BinaryTree {
         }
 
         self.cur_node_idx += 1;
-        self.build_subtree(leaf_nodes, start_idx, split_idx);
-        self.build_subtree(leaf_nodes, split_idx, end_idx);
+        self.build_subtree(leaf_nodes, start_idx, split_idx, bullet_order);
+        self.build_subtree(leaf_nodes, split_idx, end_idx, bullet_order);
 
         self.nodes[internal_node_idx].node_type = BvhNodeType::Branch {
             escape_idx: self.cur_node_idx - cur_idx,

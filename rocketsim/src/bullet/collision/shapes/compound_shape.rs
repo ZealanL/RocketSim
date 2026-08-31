@@ -1,6 +1,8 @@
 use glam::{Affine3A, Vec3A};
 
-use super::box_shape::BoxShape;
+use super::{
+    box_shape::BoxShape, collision_shape::CollisionShapes, convex_hull_shape::ConvexHullShape,
+};
 use crate::{
     bullet::collision::dispatch::quad_ray_callbacks::{
         BridgeTriQuadRayCallback, QuadRayResultCallback,
@@ -11,16 +13,25 @@ use crate::{
 pub struct CompoundShape {
     pub child_shape: BoxShape,
     pub child_trans: Affine3A,
+    /// Convex proxy for the child box, cached for mesh GJK narrowphase calls.
+    pub gjk_shape: Box<CollisionShapes>,
     local_aabb: Aabb,
 }
 
 impl CompoundShape {
     pub fn new(child_shape: BoxShape, child_trans: Affine3A) -> Self {
         let local_aabb = child_shape.get_aabb(&child_trans);
-
+        let collision_margin = child_shape.get_margin();
+        let half_extents = child_shape.get_half_extents();
+        // Keep the cached proxy's vertices margin-free, matching Bullet's
+        // btBoxShape::localGetSupportVertexWithoutMargin path. The analytical
+        // box margin is supplied by the GJK detector below.
         Self {
             child_shape,
             child_trans,
+            gjk_shape: Box::new(CollisionShapes::ConvexHull(
+                ConvexHullShape::new_box_with_margin(half_extents, collision_margin),
+            )),
             local_aabb,
         }
     }

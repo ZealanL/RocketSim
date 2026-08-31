@@ -6,7 +6,7 @@ use glam::{Affine3A, EulerRot, Mat3A, Vec3A};
 #[cfg(debug_assertions)]
 use indexmap::IndexMap;
 
-use super::ArenaContactTracker;
+use super::{ArenaContactTracker, ContactRecord};
 use crate::{
     ARENA_COLLISION_SHAPES, ArenaConfig,
     ArenaEvent::{BallHitWorld, CarPickupBoost},
@@ -28,7 +28,6 @@ use crate::{
     },
     consts::{self, BT_TO_UU, TICK_RATE, TICK_TIME, UU_TO_BT},
     make_tile_shapes,
-    shared::quantize,
     sim::{
         ArenaEvent, Ball, BallState, BoostPad, CarHitBallEvent, CarHitCarEvent, CarHitWorldEvent,
         DemoMode, UserInfoTypes, arena::ArenaEventList,
@@ -476,21 +475,19 @@ impl Arena {
         // TODO: Make it not need to be called manually
         self.bullet_world.clear_accum_forces();
 
-        // Limit velocities, then quantize physics values
+        // Limit velocities after each physics step.
         {
             use consts::{ball, car};
 
             for car_idx in 0..self.cars.len() {
                 let car_rb = &mut self.bullet_world.bodies_mut()[self.cars[car_idx].rigid_body_idx];
                 car_rb.limit_vels(car::MAX_SPEED * UU_TO_BT, car::MAX_ANG_SPEED);
-                quantize::quantize(car_rb);
             }
             let ball_rb = &mut self.bullet_world.bodies_mut()[self.ball.rigid_body_idx];
             ball_rb.limit_vels(
                 self.config.mutators.ball_max_speed * UU_TO_BT,
                 ball::MAX_ANG_SPEED,
             );
-            quantize::quantize(ball_rb);
         }
 
         {
@@ -516,8 +513,36 @@ impl Arena {
             self.config.game_mode,
         );
 
+        if std::env::var("RSIM_DEBUG_SPECIAL_DETAIL").is_ok()
+            && (2125..=2132).contains(&self.tick_count)
+        {
+            let rb = &self.bullet_world.bodies()[self.ball.rigid_body_idx];
+            println!(
+                "rust_tick_before,tick={},pos={:?},lin={:?},ang={:?},active={:?}",
+                self.tick_count,
+                rb.get_world_trans().translation,
+                rb.lin_vel,
+                rb.ang_vel,
+                rb.is_active(),
+            );
+        }
+
         self.bullet_world
             .step_simulation(TICK_TIME, &mut self.contact_tracker);
+
+        if std::env::var("RSIM_DEBUG_SPECIAL_DETAIL").is_ok()
+            && (2125..=2132).contains(&self.tick_count)
+        {
+            let rb = &self.bullet_world.bodies()[self.ball.rigid_body_idx];
+            println!(
+                "rust_tick_after_world,tick={},pos={:?},lin={:?},ang={:?},active={:?}",
+                self.tick_count,
+                rb.get_world_trans().translation,
+                rb.lin_vel,
+                rb.ang_vel,
+                rb.is_active(),
+            );
+        }
 
         let contact_count = self.contact_tracker.num_records();
         for idx in 0..contact_count {
@@ -534,11 +559,7 @@ impl Arena {
             match user_idx_a {
                 UserInfoTypes::Car => match user_idx_b {
                     UserInfoTypes::Ball => {
-                        self.on_car_ball_collision(
-                            user_pointer_a,
-                            &contact.manifold_point,
-                            contact.is_swap,
-                        );
+                        self.on_car_ball_collision(user_pointer_a, &contact);
                     }
                     UserInfoTypes::Car => {
                         self.on_car_car_collision(
@@ -554,7 +575,7 @@ impl Arena {
                         self.on_ball_tile_collision(user_pointer_b);
                     }
                     UserInfoTypes::None => {
-                        self.on_ball_world_collision(&contact.manifold_point, contact.rb_idx_a);
+                        self.on_ball_world_collision(&contact);
                     }
                     _ => {}
                 },
@@ -586,7 +607,8 @@ impl Arena {
         }
 
         let ball_rb = &mut self.bullet_world.bodies_mut()[self.ball.rigid_body_idx];
-        self.ball.finish_physics_tick(ball_rb);
+        self.ball
+            .finish_physics_tick(ball_rb, &self.config.mutators);
 
         if self.config.game_mode == GameMode::Dropshot
             && self.ball.state.ds_info.last_damage_tick == Some(self.tick_count)
@@ -862,13 +884,39 @@ impl Arena {
         );
     }
 
-    fn on_ball_world_collision(&mut self, manifold_point: &ManifoldPoint, rb_index: usize) {
-        let contact_point = manifold_point.pos_world_on_b * BT_TO_UU;
-        let contact_normal = manifold_point.normal_world_on_b;
+    fn on_ball_world_collision(&mut self, contact: &ContactRecord) {
+        if std::env::var("RSIM_CONTACT_DEBUG_STEP")
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            == Some(self.tick_count)
+        {
+            println!(
+                "rust_ball_world_contact,tick={},distance={},a={},b={},swap={},point_a={:?},point_b={:?},normal={:?},pre_a={:?},pre_b={:?},vel_a={:?},vel_b={:?}",
+                self.tick_count,
+                contact.manifold_point.distance_1,
+                contact.rb_idx_a,
+                contact.rb_idx_b,
+                contact.is_swap,
+                contact.manifold_point.pos_world_on_a,
+                contact.manifold_point.pos_world_on_b,
+                contact.manifold_point.normal_world_on_b,
+                contact.pre_pos_a,
+                contact.pre_pos_b,
+                contact.pre_vel_a,
+                contact.pre_vel_b,
+            );
+        }
+        let contact_point = contact.manifold_point.pos_world_on_b * BT_TO_UU;
+        let contact_normal = contact.manifold_point.normal_world_on_b;
 
-        let rb = &mut self.bullet_world.bodies_mut()[rb_index];
-        self.ball
-            .on_world_hit(rb, self.config.game_mode, contact_normal);
+        let rb = &mut self.bullet_world.bodies_mut()[contact.rb_idx_a];
+        self.ball.on_world_hit(
+            rb,
+            self.config.game_mode,
+            contact_normal,
+            contact.pre_pos_a,
+            contact.pre_vel_a,
+        );
 
         self.events.push(BallHitWorld(BallHitWorldEvent {
             contact_point,
@@ -876,29 +924,47 @@ impl Arena {
         }));
     }
 
-    fn on_car_ball_collision(
-        &mut self,
-        car_idx: usize,
-        manifold_point: &ManifoldPoint,
-        ball_is_body_a: bool,
-    ) {
-        let ball_rb = &mut self.bullet_world.bodies_mut()[self.ball.rigid_body_idx];
-        let ball_accum_vel_before = ball_rb.accum_lin_vel;
+    fn on_car_ball_collision(&mut self, car_idx: usize, contact: &ContactRecord) {
+        if std::env::var("RSIM_CONTACT_DEBUG_STEP")
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            == Some(self.tick_count)
+        {
+            println!(
+                "rust_car_ball_contact,tick={},car={},a={},b={},swap={},distance={},point_a={:?},point_b={:?},normal={:?},pre_a={:?},pre_b={:?},vel_a={:?},vel_b={:?}",
+                self.tick_count,
+                car_idx,
+                contact.rb_idx_a,
+                contact.rb_idx_b,
+                contact.is_swap,
+                contact.manifold_point.distance_1,
+                contact.manifold_point.pos_world_on_a,
+                contact.manifold_point.pos_world_on_b,
+                contact.manifold_point.normal_world_on_b,
+                contact.pre_pos_a,
+                contact.pre_pos_b,
+                contact.pre_vel_a,
+                contact.pre_vel_b,
+            );
+        }
         self.ball.on_hit(
             &self.cars[car_idx],
+            contact.pre_pos_a,
+            contact.pre_vel_a,
+            contact.pre_pos_b,
+            contact.pre_vel_b,
             self.config.game_mode,
             &self.config.mutators,
             self.tick_count,
-            ball_rb,
         );
 
-        let contact_point = if ball_is_body_a {
-            manifold_point.pos_world_on_a
+        let contact_point = if contact.is_swap {
+            contact.manifold_point.pos_world_on_a
         } else {
-            manifold_point.pos_world_on_b
+            contact.manifold_point.pos_world_on_b
         } * BT_TO_UU;
 
-        let extra_hit_vel = (ball_rb.accum_lin_vel - ball_accum_vel_before) * BT_TO_UU;
+        let extra_hit_vel = self.ball.velocity_impulse_cache * BT_TO_UU;
         self.events.push(ArenaEvent::CarHitBall(CarHitBallEvent {
             car_idx,
             contact_point,
@@ -907,6 +973,21 @@ impl Arena {
     }
 
     fn on_car_world_collision(&mut self, car_idx: usize, manifold_point: &ManifoldPoint) {
+        if std::env::var("RSIM_CONTACT_DEBUG_STEP")
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            == Some(self.tick_count)
+        {
+            println!(
+                "rust_car_world_contact,tick={},car={},distance={},point_a={:?},point_b={:?},normal={:?}",
+                self.tick_count,
+                car_idx,
+                manifold_point.distance_1,
+                manifold_point.pos_world_on_a,
+                manifold_point.pos_world_on_b,
+                manifold_point.normal_world_on_b,
+            );
+        }
         self.events.push(ArenaEvent::CarHitWorld(CarHitWorldEvent {
             car_idx,
             contact_point: manifold_point.pos_world_on_b * BT_TO_UU,
