@@ -5,6 +5,7 @@ use crate::bullet::{
         ClosestQuadRayResultCallback, QuadRayResultCallback,
     },
     dynamics::{discrete_dynamics_world::DiscreteDynamicsWorld, rigid_body::RigidBody},
+    linear_math::bullet_normalize,
 };
 
 #[derive(Clone, Copy)]
@@ -45,7 +46,9 @@ impl VehicleRaycaster {
                     *result = Some(VehicleRaycasterResult {
                         rigid_body: rb,
                         hit_point_in_world: ray_callback.hit_point_world[i],
-                        hit_normal_in_world: ray_callback.hit_normal_world[i].normalize_or_zero(),
+                        // btDefaultVehicleRaycaster normalizes the callback
+                        // normal once more before handing it to the vehicle.
+                        hit_normal_in_world: bullet_normalize(ray_callback.hit_normal_world[i]),
                     });
                 }
             }

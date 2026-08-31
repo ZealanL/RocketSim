@@ -18,6 +18,7 @@ use crate::{
                 ActivationState, CollisionFlags, Impulse, RigidBody, RigidBodyConstructionInfo,
             },
         },
+        linear_math::bullet_safe_normalize,
     },
     consts::{BT_TO_UU, TICK_TIME, UU_TO_BT, dropshot, heatseeker, snowday},
     get_neighbor_indices_1, get_neighbor_indices_2, get_tile_pos,
@@ -29,9 +30,21 @@ pub(crate) struct Ball {
     pub state: BallState,
     pub rigid_body_idx: usize,
     pub ground_stick_applied: bool,
+    // V2 defers post-solver ball impulses (car-hit extra velocity and
+    // mode-specific wall bounces) until Ball::_FinishPhysicsTick. Keep the
+    // same cache in Rust instead of putting them into the next solver step.
+    pub velocity_impulse_cache: Vec3A,
 }
 
 impl Ball {
+    /// Match RocketSim v2's scalar `Vec::Length()`, whose components are
+    /// already in UU and whose arithmetic is not Bullet's packed reduction.
+    #[inline]
+    fn legacy_length(v: Vec3A) -> f32 {
+        let length_sq = v.x * v.x + v.y * v.y + v.z * v.z;
+        length_sq.sqrt()
+    }
+
     fn make_ball_collision_shape(
         game_mode: GameMode,
         mutator_config: &MutatorConfig,
@@ -108,6 +121,7 @@ impl Ball {
             state: BallState::DEFAULT,
             rigid_body_idx,
             ground_stick_applied: false,
+            velocity_impulse_cache: Vec3A::ZERO,
         }
     }
 
@@ -123,6 +137,10 @@ impl Ball {
         rb.set_lin_vel(state.phys.vel * UU_TO_BT);
         rb.set_ang_vel(state.phys.ang_vel);
         rb.update_inertia_tensor();
+
+        // Match Ball::SetState in V2: a state restore starts with no pending
+        // post-tick velocity impulse.
+        self.velocity_impulse_cache = Vec3A::ZERO;
 
         if state.phys.vel != Vec3A::ZERO || state.phys.ang_vel != Vec3A::ZERO {
             rb.set_activation_state(ActivationState::Active);
@@ -230,7 +248,27 @@ impl Ball {
         }
     }
 
-    pub(crate) fn finish_physics_tick(&mut self, rb: &mut RigidBody) {
+    pub(crate) fn finish_physics_tick(
+        &mut self,
+        rb: &mut RigidBody,
+        mutator_config: &MutatorConfig,
+    ) {
+        // V2 applies its velocity impulse cache after Bullet has finished the
+        // tick and before exposing the recorded state. Applying this here keeps
+        // car-ball and mode-specific wall impulses on the same tick.
+        if self.velocity_impulse_cache != Vec3A::ZERO {
+            rb.lin_vel += self.velocity_impulse_cache;
+            self.velocity_impulse_cache = Vec3A::ZERO;
+        }
+
+        // V2 clamps gameplay velocities after Bullet integration (and after
+        // applying any cached gameplay impulse). Keep the ball's angular
+        // velocity clamp in the same post-tick position; without it a sphere
+        // can expose solver angular velocity above BALL_MAX_ANG_SPEED.
+        rb.limit_vels(
+            mutator_config.ball_max_speed * UU_TO_BT,
+            consts::ball::MAX_ANG_SPEED,
+        );
         self.state.phys.vel = rb.lin_vel * BT_TO_UU;
         self.state.phys.ang_vel = rb.ang_vel;
 
@@ -244,18 +282,38 @@ impl Ball {
     pub(crate) fn on_hit(
         &mut self,
         car: &Car,
+        car_pos_bt: Vec3A,
+        car_vel_bt: Vec3A,
+        ball_pos_bt: Vec3A,
+        ball_vel_bt: Vec3A,
         game_mode: GameMode,
         mutator_config: &MutatorConfig,
         tick_count: u64,
-        rb: &mut RigidBody,
     ) {
         let car_forward = car.state.phys.rot_mat.x_axis;
-        let rel_pos = self.state.phys.pos - car.state.phys.pos;
-        let rel_vel = self.state.phys.vel - car.state.phys.vel;
+        // Arena drains contact records after rigid-body integration, while V2
+        // invokes semantic contact handling before that integration. Use the
+        // snapshots captured at contact generation time.
+        let car_pos = car_pos_bt * BT_TO_UU;
+        let car_vel = car_vel_bt * BT_TO_UU;
+        let ball_pos = ball_pos_bt * BT_TO_UU;
+        let ball_vel = ball_vel_bt * BT_TO_UU;
+        let rel_pos = ball_pos - car_pos;
+        let rel_vel = ball_vel - car_vel;
 
-        let rel_speed = rel_vel
-            .length()
-            .min(consts::ball::car_hit_impulse::MAX_DELTA_VEL_UU);
+        let debug_hit = std::env::var("RSIM_DEBUG_BALL_HIT_STEP")
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            == Some(tick_count);
+        if debug_hit {
+            println!(
+                "rust_ball_input,tick={},car_forward={:?},rel_pos={:?},rel_vel={:?}",
+                tick_count, car_forward, rel_pos, rel_vel
+            );
+        }
+
+        let rel_speed =
+            Self::legacy_length(rel_vel).min(consts::ball::car_hit_impulse::MAX_DELTA_VEL_UU);
 
         // Prevent repeated extra impulses
         let can_accel = self
@@ -274,22 +332,30 @@ impl Ball {
                 consts::ball::car_hit_impulse::Z_SCALE_NORMAL
             };
 
-            let mut hit_dir = (rel_pos * Vec3A::new(1.0, 1.0, z_scale)).normalize_or_zero();
+            // V2 converts the component-wise `Vec` product to btVector3 and
+            // calls `safeNormalized()`.  Use Bullet's SSE dot reduction and
+            // scalar-sqrt reciprocal sequence here, not glam normalization.
+            let mut hit_dir = bullet_safe_normalize(rel_pos * Vec3A::new(1.0, 1.0, z_scale));
             let forward_dir_adjustment = car_forward
                 * hit_dir.dot(car_forward)
                 * const { 1.0 - consts::ball::car_hit_impulse::FORWARD_SCALE };
-            hit_dir = (hit_dir - forward_dir_adjustment).normalize_or_zero();
+            hit_dir = bullet_safe_normalize(hit_dir - forward_dir_adjustment);
 
             let added_hit_impulse = hit_dir
                 * rel_speed
                 * consts::curves::BALL_CAR_EXTRA_IMPULSE_FACTOR.get_output(rel_speed)
                 * mutator_config.ball_hit_extra_force_scale;
-            rb.add_impulse(
-                None,
-                Impulse::Linear(added_hit_impulse * UU_TO_BT),
-                false,
-                true,
-            );
+            if debug_hit {
+                println!(
+                    "rust_ball_output,tick={},rel_speed={},hit_dir={:?},added_vel={:?},scale={}",
+                    tick_count,
+                    rel_speed,
+                    hit_dir,
+                    added_hit_impulse,
+                    mutator_config.ball_hit_extra_force_scale
+                );
+            }
+            self.velocity_impulse_cache += added_hit_impulse * UU_TO_BT;
 
             self.state.last_extra_hit_tick = Some(tick_count);
         }
@@ -315,8 +381,8 @@ impl Ball {
                 let accumulated_hit_force = &mut self.state.ds_info.accumulated_hit_force;
                 let charge_level = &mut self.state.ds_info.charge_level;
 
-                let dir_from_car = (self.state.phys.pos - car.state.phys.pos).normalize_or_zero();
-                let rel_vel_from_car = car.state.phys.vel - self.state.phys.vel;
+                let dir_from_car = rel_pos.normalize_or_zero();
+                let rel_vel_from_car = -rel_vel;
                 let vel_info_ball = dir_from_car.dot(rel_vel_from_car);
 
                 if vel_info_ball >= dropshot::MIN_CHARGE_HIT_SPEED {
@@ -338,7 +404,14 @@ impl Ball {
         }
     }
 
-    pub(crate) fn on_world_hit(&mut self, rb: &mut RigidBody, game_mode: GameMode, normal: Vec3A) {
+    pub(crate) fn on_world_hit(
+        &mut self,
+        rb: &mut RigidBody,
+        game_mode: GameMode,
+        normal: Vec3A,
+        pre_pos_bt: Vec3A,
+        pre_vel_bt: Vec3A,
+    ) {
         match game_mode {
             GameMode::Heatseeker => {
                 const ARENA_EXTENT: Vec3A = consts::arena::get_aabb(GameMode::Soccar).max;
@@ -348,7 +421,9 @@ impl Ball {
 
                 let y_target_dir = f32::from(self.state.hs_info.y_target_dir);
                 let rel_normal_y = normal.y * y_target_dir;
-                let rel_y = self.state.phys.pos.y * y_target_dir;
+                let ball_pos = pre_pos_bt * BT_TO_UU;
+                let ball_vel = pre_vel_bt * BT_TO_UU;
+                let rel_y = ball_pos.y * y_target_dir;
                 if rel_normal_y <= -heatseeker::WALL_BOUNCE_CHANGE_Y_NORMAL
                     && rel_y >= ARENA_EXTENT.y - heatseeker::WALL_BOUNCE_CHANGE_Y_THRESH
                 {
@@ -362,23 +437,20 @@ impl Ball {
                     );
 
                     // Add wall bounce impulse
-                    let dir_to_goal = (goal_target_pos - self.state.phys.pos).normalize_or_zero();
+                    let dir_to_goal = (goal_target_pos - ball_pos).normalize_or_zero();
 
                     let bounce_dir = dir_to_goal * (1.0 - heatseeker::WALL_BOUNCE_UP_FRAC)
                         + Vec3A::Z * heatseeker::WALL_BOUNCE_UP_FRAC;
-                    let bounce_impulse = bounce_dir
-                        * self.state.phys.vel.length()
-                        * heatseeker::WALL_BOUNCE_FORCE_SCALE;
-                    rb.add_impulse(
-                        None,
-                        Impulse::Linear(bounce_impulse * UU_TO_BT),
-                        false,
-                        true,
-                    );
+                    let bounce_impulse =
+                        bounce_dir * ball_vel.length() * heatseeker::WALL_BOUNCE_FORCE_SCALE;
+                    self.velocity_impulse_cache += bounce_impulse * UU_TO_BT;
                 }
             }
             GameMode::Snowday if !self.ground_stick_applied => {
                 let force = -normal * snowday::PUCK_GROUND_STICK_FORCE * TICK_TIME;
+                // This is a force in V2 and is intentionally solver-applied;
+                // unlike velocity impulses it is not part of the post-tick
+                // cache.
                 rb.add_impulse(None, Impulse::Linear(force), true, true);
                 self.ground_stick_applied = true;
             }

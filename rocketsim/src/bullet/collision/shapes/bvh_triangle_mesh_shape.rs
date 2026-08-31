@@ -47,6 +47,19 @@ impl BvhTriangleMeshShape {
     }
 
     pub fn process_all_triangles<T: ProcessTriangle>(&self, callback: &mut T, aabb: &Aabb) {
+        // Diagnostic mode: force the same stable triangle-index order for all
+        // overlapping leaves.  The normal path retains the fast BVH callback
+        // traversal; this switch lets parity tests isolate ordering effects.
+        if std::env::var_os("RSIM_SORT_TRIANGLES").is_some() && callback.stable_triangle_order() {
+            let mut indices = self.bvh.collect_aabb_overlapping_indices(aabb);
+            indices.sort_unstable();
+            let tris = self.get_mesh_interface().get_tris();
+            for idx in indices {
+                callback.process_triangle(&tris[idx], idx);
+            }
+            return;
+        }
+
         let mut my_node_callback = NodeOverlapCallback::new(self.get_mesh_interface(), callback);
         self.bvh
             .report_aabb_overlapping_node(&mut my_node_callback, aabb);

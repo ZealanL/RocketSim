@@ -4,6 +4,7 @@ use super::collision_obj_wrapper::RigidBodyWrapper;
 use crate::bullet::{
     collision::{
         narrowphase::persistent_manifold::{ContactAddedCallback, PersistentManifold},
+        shapes::collision_shape::CollisionShapes,
         shapes::static_plane_shape::StaticPlaneShape,
     },
     dynamics::rigid_body::RigidBody,
@@ -35,7 +36,38 @@ pub fn process_collision<T: ContactAddedCallback>(
     let distance = plane_normal.dot(vtx_in_plane);
 
     let mut manifold = PersistentManifold::new(convex_obj.obj, plane_obj);
-    if distance >= manifold.contact_breaking_threshold {
+    if std::env::var("RSIM_DEBUG_SPECIAL_DETAIL").is_ok()
+        && convex_obj.world_trans.translation.x > -11.0
+        && convex_obj.world_trans.translation.x < -9.0
+        && convex_obj.world_trans.translation.y > 79.0
+        && convex_obj.world_trans.translation.y < 81.0
+        && convex_obj.world_trans.translation.z < 3.0
+    {
+        println!(
+            "rust_plane_detail,body={},pos={:?},vtx={:?},distance={},threshold={}",
+            convex_obj.obj.world_array_idx,
+            convex_obj.world_trans.translation,
+            vtx,
+            distance,
+            manifold.contact_breaking_threshold,
+        );
+    }
+    // Bullet's convex-plane dispatcher evaluates the sphere/plane contact
+    // against the result-output distance margin as well as the manifold's
+    // breaking threshold.  On the V2 arena this keeps the ball's floor
+    // contact callback alive for a few extra 1e-5 BT while the ball is
+    // numerically grazing the plane.  Preserve the original signed distance
+    // in the manifold (so split-impulse penetration math is unchanged) and
+    // extend only the sphere threshold enough to cover that dispatcher margin.
+    let contact_threshold = if matches!(
+        convex_obj.obj.get_collision_shape(),
+        CollisionShapes::Sphere(_)
+    ) {
+        manifold.contact_breaking_threshold + 0.0001
+    } else {
+        manifold.contact_breaking_threshold
+    };
+    if distance >= contact_threshold {
         return None;
     }
 

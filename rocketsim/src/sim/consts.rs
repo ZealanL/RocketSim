@@ -144,6 +144,9 @@ pub mod car {
     pub mod jump {
         pub const ACCEL: f32 = 4375.0 / 3.0;
         pub const IMMEDIATE_FORCE: f32 = 875.0 / 3.0;
+        pub const MIN_TIME: f32 = 0.025;
+        pub const RESET_TIME_PAD: f32 = 1.0 / 40.0;
+        pub const MAX_TIME: f32 = 0.2;
         /// Minimum hold duration: 3 ticks (0.025 s @ 120 Hz)
         pub const MIN_TICKS: u32 = 3;
         /// Maximum hold duration: 24 ticks (0.2 s @ 120 Hz)

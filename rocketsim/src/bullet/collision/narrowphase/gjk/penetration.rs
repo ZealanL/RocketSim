@@ -19,25 +19,51 @@ fn penetration(
     let shape = MinkowskiDiff::new(shape_a, *trans_a, shape_b, *trans_b);
 
     let mut gjk = Gjk::new(&shape);
-    match gjk.evaluate::<true>(-guess) {
+    let gjk_status = gjk.evaluate::<true>(-guess);
+    if std::env::var_os("RSIM_PEN_TRACE").is_some() {
+        let status_name = match gjk_status {
+            GjkStatus::Failed => "failed",
+            GjkStatus::Valid => "valid",
+            GjkStatus::Inside => "inside",
+        };
+        println!(
+            "rust_pen_gjk,guess={:?},status={},rank={}",
+            guess,
+            status_name,
+            gjk.simplex().rank
+        );
+    }
+    match gjk_status {
         GjkStatus::Failed | GjkStatus::Valid => return None,
         GjkStatus::Inside => {}
     }
 
     let mut epa = Epa2::new();
-    let status: EpaStatus = epa.evaluate::<true>(gjk, guess);
+    // Bullet's btGjkEpaSolver2 passes the negated initial guess to EPA after
+    // GJK was evaluated with -guess.  Keeping the sign here is important for
+    // the low-rank/degenerate fallback normal and for deterministic witnesses.
+    let status: EpaStatus = epa.evaluate::<true>(gjk, -guess);
+    if std::env::var_os("RSIM_PEN_TRACE").is_some() {
+        println!(
+            "rust_pen_epa,guess={:?},status={:?},rank={},depth={},normal={:?}",
+            guess, status, epa.result.rank, epa.depth, epa.normal
+        );
+    }
     debug_assert!(status == EpaStatus::Valid || status == EpaStatus::AccuracyReached);
 
     let mut w0 = Vec3A::ZERO;
     for i in 0..epa.result.rank {
-        w0 += shape.support0::<true>(epa.sv_store[epa.result.c[i]].d) * epa.result.p[i];
+        let direction = epa.sv_store[epa.result.c[i]].d;
+        let weight = epa.result.p[i];
+        w0 += shape.support0::<true>(direction) * weight;
     }
+    // Bullet's btGjkEpaSolver2 does not barycentrically reconstruct witness B
+    // here.  It derives it from the EPA normal/depth, which preserves the
+    // exact contact direction even when support vertices are duplicated.
+    let w1 = w0 - epa.normal * epa.depth;
 
     Some(GjkEpa2Result {
-        witnesses: [
-            trans_a.transform_point3a(w0),
-            trans_a.transform_point3a(w0 - epa.normal * epa.depth),
-        ],
+        witnesses: [trans_a.transform_point3a(w0), trans_a.transform_point3a(w1)],
         normal: -epa.normal,
         penetrating: true,
     })
@@ -75,7 +101,7 @@ fn distance(
     }
 
     Some(GjkEpa2Result {
-        witnesses: [w0, w1],
+        witnesses: [trans_a.transform_point3a(w0), trans_a.transform_point3a(w1)],
         normal: (w1 - w0).normalize_or_zero(),
         penetrating: false,
     })

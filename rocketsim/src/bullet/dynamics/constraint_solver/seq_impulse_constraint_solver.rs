@@ -146,17 +146,20 @@ impl SeqImpulseConstraintSolver {
                 let rel_pos1 = cp.pos_world_on_a - body0.get_world_trans().translation;
                 let rel_pos2 = cp.pos_world_on_b - body1.get_world_trans().translation;
 
-                if cp.is_special {
-                    self.special_resolve_info
-                        .add_special_collision(body0, body1, cp, rel_pos1, rel_pos2);
-
-                    // Skip normal contact processing for special contacts
-                    continue;
-                }
-
                 let rb0 = solver_body_a.original_body.map(|_| &*body0);
                 let rb1 = solver_body_b.original_body.map(|_| &*body1);
                 let friction_idx = self.tmp_solver_contact_friction_constraint_pool.len();
+
+                // V2 retains the original special manifold in the contact pool.
+                // Its split-impulse pass therefore applies the manifold's
+                // penetration correction, while the regular velocity pass
+                // skips it via SolverConstraint::is_special.  The aggregated
+                // special constraint below supplies the ball/world velocity
+                // response.  Do not discard the manifold before split impulse.
+                if cp.is_special {
+                    self.special_resolve_info
+                        .add_special_collision(body0, body1, cp, rel_pos1, rel_pos2);
+                }
 
                 self.tmp_solver_contact_constraint_pool.push(
                     SolverConstraint::get_contact_constraint(
@@ -233,6 +236,23 @@ impl SeqImpulseConstraintSolver {
         let distance = sri.total_dist / num_collisions;
         let normal_world_on_b = (sri.total_normal / num_collisions).normalize_or_zero();
 
+        if std::env::var("RSIM_DEBUG_SPECIAL").is_ok() {
+            println!(
+                "rust_special,num={},total_normal={:?},total_dist={},avg_normal={:?},avg_dist={},friction={},restitution={},body={},pos={:?},lin={:?},ang={:?}",
+                sri.num_special_collisions,
+                sri.total_normal,
+                sri.total_dist,
+                normal_world_on_b,
+                distance,
+                sri.friction,
+                sri.restitution,
+                body.world_array_idx,
+                body.get_world_trans().translation,
+                body.lin_vel,
+                body.ang_vel,
+            );
+        }
+
         let friction_idx = self.tmp_solver_contact_constraint_pool.len();
 
         let solver_body_id_a = body.companion_id.unwrap();
@@ -299,6 +319,43 @@ impl SeqImpulseConstraintSolver {
             } else {
                 (vel_impulse, penetration_impulse)
             };
+
+        // Temporary diagnostic for the one remaining full-replay divergence.  The
+        // coordinate gate keeps this focused on the ball near the floor contact
+        // around transition 2130; remove with the other debug instrumentation once
+        // the solver parity fix is identified.
+        let p = body.get_world_trans().translation;
+        if std::env::var("RSIM_DEBUG_SPECIAL_DETAIL").is_ok()
+            && p.x > -11.0
+            && p.x < -9.0
+            && p.y > 79.0
+            && p.y < 81.0
+            && p.z < 3.0
+        {
+            println!(
+                "rust_special_detail,body={},pos={:?},distance={},normal={:?},rel_pos={:?},body_lin={:?},body_ang={:?},solver_lin={:?},solver_ang={:?},ext_lin={:?},ext_ang={:?},rel_vel_pre={},restitution={},jac={},penetration={},pos_error={},vel_error={},rhs={},rhs_pen={},applied={}",
+                body.world_array_idx,
+                p,
+                distance,
+                normal_world_on_b,
+                rel_pos1,
+                body.lin_vel,
+                body.ang_vel,
+                solver_body_a.lin_vel,
+                solver_body_a.ang_vel,
+                external_force_impulse_a,
+                external_torque_impulse_a,
+                rel_vel,
+                restitution,
+                jac_diag_ab_inv,
+                penetration,
+                positional_error,
+                vel_error,
+                rhs,
+                rhs_penetration,
+                0.0f32,
+            );
+        }
 
         self.tmp_solver_contact_constraint_pool
             .push(SolverConstraint {
@@ -406,7 +463,11 @@ impl SeqImpulseConstraintSolver {
     fn solve_single_iteration(&mut self) -> f32 {
         let mut least_squares_residual = 0.0;
 
-        for contact in &mut self.tmp_solver_contact_constraint_pool {
+        for (contact_idx, contact) in self
+            .tmp_solver_contact_constraint_pool
+            .iter_mut()
+            .enumerate()
+        {
             if contact.is_special {
                 continue;
             }
@@ -419,7 +480,43 @@ impl SeqImpulseConstraintSolver {
                 ])
             };
 
+            let detail = std::env::var("RSIM_DEBUG_SPECIAL_DETAIL").is_ok()
+                && (body_a.original_body == Some(20) || body_b.original_body == Some(20))
+                && body_a.world_trans.translation.x > -11.0
+                && body_a.world_trans.translation.x < -9.0
+                && body_a.world_trans.translation.y > 79.0
+                && body_a.world_trans.translation.y < 81.0
+                && body_a.world_trans.translation.z < 3.0;
+            if detail {
+                println!(
+                    "rust_constraint_before,idx={},special={},a={},b={},rhs={},rhs_pen={},jac={},applied={},lower={},upper={},normal={:?},delta_lin_a={:?},delta_ang_a={:?}",
+                    contact_idx,
+                    contact.is_special,
+                    contact.solver_body_id_a,
+                    contact.solver_body_id_b,
+                    contact.rhs,
+                    contact.rhs_penetration,
+                    contact.jac_diag_ab_inv,
+                    contact.applied_impulse,
+                    contact.lower_limit,
+                    contact.upper_limit,
+                    contact.contact_normal_1,
+                    body_a.delta_lin_vel,
+                    body_a.delta_ang_vel,
+                );
+            }
+
             let residual = contact.resolve_single_constraint_row_lower_limit(body_a, body_b);
+            if detail {
+                println!(
+                    "rust_constraint_after,idx={},residual={},applied={},delta_lin_a={:?},delta_ang_a={:?}",
+                    contact_idx,
+                    residual,
+                    contact.applied_impulse,
+                    body_a.delta_lin_vel,
+                    body_a.delta_ang_vel,
+                );
+            }
             least_squares_residual = (residual * residual).max(least_squares_residual);
         }
 
@@ -466,6 +563,24 @@ impl SeqImpulseConstraintSolver {
             let Some(body) = solver.original_body.map(|idx| &mut collision_objs[idx]) else {
                 continue;
             };
+
+            if std::env::var("RSIM_SOLVER_DEBUG").is_ok()
+                && body.world_array_idx == 20
+                && solver.push_vel.length_squared() > 0.0
+            {
+                println!(
+                    "rust_solver_body,idx={},pre_pos={:?},pre_lin={:?},pre_ang={:?},delta_lin={:?},delta_ang={:?},push={:?},turn={:?},inv_mass={:?}",
+                    body.world_array_idx,
+                    body.get_world_trans().translation,
+                    body.lin_vel,
+                    body.ang_vel,
+                    solver.delta_lin_vel,
+                    solver.delta_ang_vel,
+                    solver.push_vel,
+                    solver.turn_vel,
+                    solver.inv_mass,
+                );
+            }
 
             solver.lin_vel += solver.delta_lin_vel;
             solver.ang_vel += solver.delta_ang_vel;

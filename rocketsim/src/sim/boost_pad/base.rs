@@ -39,7 +39,11 @@ impl BoostPad {
             mutator_config.boost_pad_amount_small
         };
 
-        let extent = Vec3A::new(box_radius, box_radius, boost_pads::CYL_HEIGHT);
+        // The collision query uses the cylinder-origin radius.  The broadphase
+        // AABB must therefore cover that cylinder, not just the (smaller) box
+        // hitbox used for the locked-car path.  Using `box_radius` here can
+        // cull a valid big-pad pickup before `process_node` checks CYL_RAD_BIG.
+        let extent = Vec3A::new(cyl_radius, cyl_radius, boost_pads::CYL_HEIGHT);
         let aabb = Aabb::new(config.pos - extent, config.pos + extent);
 
         Self {

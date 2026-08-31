@@ -6,6 +6,7 @@ use crate::{
         collision::{
             dispatch::quad_ray_callbacks::{BridgeTriQuadRayCallback, QuadRayResultCallback},
             narrowphase::gjk::calc_time_of_impact,
+            shapes::collision_margin::CONVEX_DISTANCE_MARGIN,
         },
         linear_math::max_dot,
     },
@@ -16,10 +17,19 @@ pub struct ConvexHullShape {
     polyhedral_convex_shape: PolyhedralConvexShape,
     unscaled_points: Box<[Vec3A]>,
     simd_unscaled_points: Box<[[Vec4; 3]]>,
+    /// When true this eight-point hull is a btBoxShape proxy. Bullet's box
+    /// support uses per-component sign selection (including + for zero), while
+    /// the generic Bullet margin path expands the corner along the normalized
+    /// query direction.
+    box_support: bool,
 }
 
 impl ConvexHullShape {
     pub fn new(unscaled_points: Box<[Vec3A]>) -> Self {
+        Self::new_with_margin(unscaled_points, CONVEX_DISTANCE_MARGIN)
+    }
+
+    pub fn new_with_margin(unscaled_points: Box<[Vec3A]>, collision_margin: f32) -> Self {
         let simd_unscaled_points: Box<_> = unscaled_points
             .as_chunks::<4>()
             .0
@@ -34,21 +44,68 @@ impl ConvexHullShape {
             .collect();
 
         Self {
-            polyhedral_convex_shape: PolyhedralConvexShape::new(
+            polyhedral_convex_shape: PolyhedralConvexShape::new_with_margin(
                 &simd_unscaled_points,
                 &unscaled_points,
+                collision_margin,
             ),
             unscaled_points,
             simd_unscaled_points,
+            box_support: false,
         }
+    }
+
+    pub fn new_box_with_margin(half_extents: Vec3A, collision_margin: f32) -> Self {
+        let points = [
+            Vec3A::new(-half_extents.x, -half_extents.y, -half_extents.z),
+            Vec3A::new(half_extents.x, -half_extents.y, -half_extents.z),
+            Vec3A::new(-half_extents.x, half_extents.y, -half_extents.z),
+            Vec3A::new(half_extents.x, half_extents.y, -half_extents.z),
+            Vec3A::new(-half_extents.x, -half_extents.y, half_extents.z),
+            Vec3A::new(half_extents.x, -half_extents.y, half_extents.z),
+            Vec3A::new(-half_extents.x, half_extents.y, half_extents.z),
+            Vec3A::new(half_extents.x, half_extents.y, half_extents.z),
+        ];
+        let mut shape = Self::new_with_margin(points.into(), collision_margin);
+        shape.box_support = true;
+        shape
     }
 
     #[inline]
     pub fn local_get_supporting_vertex_without_margin(&self, vec: Vec3A) -> Vec3A {
+        if self.box_support {
+            let h =
+                self.polyhedral_convex_shape.get_ident_aabb().max - Vec3A::splat(self.get_margin());
+            return Vec3A::new(
+                if vec.x >= 0.0 { h.x } else { -h.x },
+                if vec.y >= 0.0 { h.y } else { -h.y },
+                if vec.z >= 0.0 { h.z } else { -h.z },
+            );
+        }
         max_dot(&self.simd_unscaled_points, &self.unscaled_points, vec)
     }
 
     pub fn local_get_supporting_vertex(&self, vec: Vec3A) -> Vec3A {
+        if self.box_support {
+            // btConvexShape::localGetSupportVertexNonVirtual (used by
+            // btGjkEpa2 with margins) selects the margin-free box corner,
+            // then expands it by margin along the normalized query vector.
+            // It does not use btBoxShape::localGetSupportingVertex's
+            // component-wise full-extents corner.
+            let h =
+                self.polyhedral_convex_shape.get_ident_aabb().max - Vec3A::splat(self.get_margin());
+            let vec_norm = if vec.length_squared() < f32::EPSILON * f32::EPSILON {
+                crate::bullet::linear_math::bullet_normalize(Vec3A::NEG_ONE)
+            } else {
+                crate::bullet::linear_math::bullet_normalize(vec)
+            };
+            let corner = Vec3A::new(
+                if vec_norm.x >= 0.0 { h.x } else { -h.x },
+                if vec_norm.y >= 0.0 { h.y } else { -h.y },
+                if vec_norm.z >= 0.0 { h.z } else { -h.z },
+            );
+            return corner + self.get_margin() * vec_norm;
+        }
         let mut sup_vertex = self.local_get_supporting_vertex_without_margin(vec);
 
         debug_assert_ne!(self.polyhedral_convex_shape.get_margin(), 0.0);

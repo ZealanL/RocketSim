@@ -5,6 +5,7 @@ use super::{
     solver::VoronoiSimplexSolver,
 };
 use crate::bullet::collision::shapes::collision_shape::CollisionShapes;
+use crate::bullet::linear_math::{bullet_dot, bullet_length_squared, bullet_normalize};
 
 const MAX_ITERATIONS: usize = 1000;
 const REL_ERROR2: f32 = 1.0e-6;
@@ -43,12 +44,25 @@ impl GjkPairDetector {
     }
 
     pub fn get_closest_points<T: GjkResult>(
-        mut self,
+        self,
         input: &ClosestPointInput,
         shape_a: &CollisionShapes,
         shape_b: &CollisionShapes,
         output: &mut T,
     ) {
+        let _ = self.get_closest_points_with_cache(input, shape_a, shape_b, output);
+    }
+
+    /// Run GJK/EPA and also return Bullet's cached separating axis/distance.
+    /// The convex-vs-triangle clipping path needs these values even though it
+    /// discards the detector's direct contact callback.
+    pub fn get_closest_points_with_cache<T: GjkResult>(
+        mut self,
+        input: &ClosestPointInput,
+        shape_a: &CollisionShapes,
+        shape_b: &CollisionShapes,
+        output: &mut T,
+    ) -> (Vec3A, f32, bool) {
         let mut local_trans_a = *input.transform_a;
         let mut local_trans_b = *input.transform_b;
         let position_offset = (local_trans_a.translation + local_trans_b.translation) * 0.5;
@@ -85,14 +99,17 @@ impl GjkPairDetector {
         let catch_degenerate_penetration_case =
             degenerate_simplex != 0 && (distance + self.margin) < 0.01;
 
-        if (!is_valid || catch_degenerate_penetration_case)
-            && let Some(result) = calc_pen_depth(shape_a, shape_b, &local_trans_a, &local_trans_b)
-        {
+        let penetration_result = if !is_valid || catch_degenerate_penetration_case {
+            calc_pen_depth(shape_a, shape_b, &local_trans_a, &local_trans_b)
+        } else {
+            None
+        };
+        if let Some(result) = penetration_result {
             let [tmp_point_on_a, tmp_point_on_b] = result.witnesses;
 
             if result.penetrating {
                 let tmp_normal_in_b = tmp_point_on_b - tmp_point_on_a;
-                let len_sqr = tmp_normal_in_b.length_squared();
+                let len_sqr = bullet_length_squared(tmp_normal_in_b);
                 if len_sqr > f32::EPSILON * f32::EPSILON {
                     let length = len_sqr.sqrt();
                     let distance_2 = -length;
@@ -110,18 +127,26 @@ impl GjkPairDetector {
                 if !is_valid || distance_2 < distance {
                     distance = distance_2;
                     point_on_b = tmp_point_on_b + result.normal * self.margin_b;
-                    normal_in_b = result.normal.normalize();
+                    normal_in_b = bullet_normalize(result.normal);
                     is_valid = true;
                 }
             }
         }
 
-        if is_valid && distance * distance < input.maximum_distance_squared {
+        // Bullet always reports penetrating contacts, even when their depth is
+        // beyond the positive closest-point threshold. The threshold only
+        // filters separated points; applying it to negative distances drops
+        // deep mesh contacts and changes the solver's impulse set.
+        let mut emitted = false;
+        if is_valid && (distance < 0.0 || distance * distance < input.maximum_distance_squared) {
             self.separating_axis = normal_in_b;
             self.separating_distance = distance;
 
             output.add_contact_point(normal_in_b, point_on_b + position_offset, distance);
+            emitted = true;
         }
+
+        (self.separating_axis, self.separating_distance, emitted)
     }
 
     fn compute_simplex_contact(
@@ -141,7 +166,7 @@ impl GjkPairDetector {
         result.normal_in_b = self.separating_axis;
 
         // valid normal
-        let len_sqr = self.separating_axis.length_squared();
+        let len_sqr = bullet_length_squared(self.separating_axis);
         if len_sqr < 0.0001 {
             result.degenerate_simplex = 5;
         }
@@ -186,7 +211,7 @@ impl GjkPairDetector {
             let q_world = transform_b.transform_point3a(q_in_b);
 
             let w = p_world - q_world;
-            let delta = self.separating_axis.dot(w);
+            let delta = bullet_dot(self.separating_axis, w);
 
             // Potential exit: the shapes are separated far enough.
             if delta > 0.0 && delta * delta > squared_distance * maximum_distance_squared {
@@ -223,7 +248,7 @@ impl GjkPairDetector {
                 break;
             }
 
-            if new_cached_separating_axis.length_squared() < REL_ERROR2 {
+            if bullet_length_squared(new_cached_separating_axis) < REL_ERROR2 {
                 self.separating_axis = new_cached_separating_axis;
                 degenerate_simplex = 6;
                 check_simplex = true;
@@ -231,7 +256,7 @@ impl GjkPairDetector {
             }
 
             let previous_squared_distance = squared_distance;
-            squared_distance = new_cached_separating_axis.length_squared();
+            squared_distance = bullet_length_squared(new_cached_separating_axis);
 
             // Are we getting any closer?
             if previous_squared_distance - squared_distance

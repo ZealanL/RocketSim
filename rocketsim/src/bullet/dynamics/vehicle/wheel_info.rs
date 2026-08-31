@@ -9,12 +9,13 @@ use crate::{
             },
             rigid_body::{Impulse, RigidBody},
         },
-        linear_math::QuatExt,
+        linear_math::{QuatExt, bullet_mat3_from_quat},
     },
     consts::{BT_TO_UU, UU_TO_BT, bullet_vehicle, curves},
 };
 
 pub struct RaycastInfo {
+    pub ground_body_idx: usize,
     pub contact_normal: Vec3A,
     pub contact_point: Vec3A,
     pub suspension_length: f32,
@@ -54,8 +55,12 @@ impl WheelInfo {
         brake: 0.0,
         steer_angle: 0.0,
         vel_at_contact_point: Vec3A::ZERO,
-        lat_friction: 1.0,
-        long_friction: 1.0,
+        // btWheelInfoRL initializes these to zero.  They are overwritten by
+        // Car::_UpdateWheels only while a ray has a ground object; keeping the
+        // Rust defaults at one applies an unintended first-contact friction
+        // impulse one tick before V2 does.
+        lat_friction: 0.0,
+        long_friction: 0.0,
         suspension_force_scale: 1.0,
         extra_pushback: 0.0,
         real_ray_length: 0.0,
@@ -75,7 +80,8 @@ impl WheelInfo {
 
         let suspension_travel = bullet_vehicle::MAX_SUSPENSION_TRAVEL * UU_TO_BT;
         self.real_ray_length =
-            self.suspension_rest_length_1 + suspension_travel + self.wheels_radius;
+            self.suspension_rest_length_1 + suspension_travel + self.wheels_radius
+                - bullet_vehicle::SUSPENSION_SUBTRACTION;
     }
 
     pub fn prepare_for_raycast(&mut self, chassis_trans: &Affine3A) -> (Vec3A, Vec3A) {
@@ -96,9 +102,6 @@ impl WheelInfo {
         ray_results: VehicleRaycasterResult,
         time_step: f32,
         front: bool,
-        handbrake_val: f32,
-        real_throttle: f32,
-        three_wheels: bool,
     ) {
         let contact_point = ray_results.hit_point_in_world;
         let contact_normal = ray_results.hit_normal_in_world;
@@ -106,8 +109,13 @@ impl WheelInfo {
 
         let chassis_trans = chassis.get_world_trans();
         self.axle_dir = if front {
-            Quat::from_axis_angle_simd(chassis_trans.matrix3.z_axis, self.steer_angle)
-                * chassis_trans.matrix3.y_axis
+            // btVehicleRL::updateWheelTransform builds a Bullet quaternion,
+            // converts it with btMatrix3x3::setRotation, and applies that
+            // matrix to basis2's right column. Use the same path instead of
+            // glam's quaternion-vector multiply (which rounds differently).
+            let steering =
+                Quat::from_axis_angle_bullet(chassis_trans.matrix3.z_axis, self.steer_angle);
+            bullet_mat3_from_quat(steering) * chassis_trans.matrix3.y_axis
         } else {
             chassis_trans.matrix3.y_axis
         };
@@ -154,13 +162,39 @@ impl WheelInfo {
             }
         }
 
-        // Refresh friction curves against THIS tick's fresh contact before
-        // the impulses are computed - consuming the previous grounded tick's
-        // values left first-touchdown ticks with stale (full-strength)
-        // friction.
+        self.raycast_info = Some(RaycastInfo {
+            ground_body_idx: ray_results.rigid_body.world_array_idx,
+            contact_normal,
+            contact_point,
+            suspension_length,
+            impulse: Vec3A::ZERO,
+            is_in_contact_with_world,
+            clipped_inv_contact_dot_suspension,
+            suspension_relative_vel,
+        });
+    }
+
+    /// Update the friction coefficients after the car has updated
+    /// engine/brake, steering, and handbrake state for this tick. The actual
+    /// friction impulse is intentionally calculated earlier by
+    /// `VehicleRL::update_first`, using the previous tick's coefficients.
+    pub fn update_friction_coefficients(
+        &mut self,
+        chassis: &RigidBody,
+        handbrake_val: f32,
+        real_throttle: f32,
+        three_wheels: bool,
+    ) {
+        let Some(info) = self.raycast_info.as_ref() else {
+            return;
+        };
+        let contact_normal = info.contact_normal;
         let lat_dir = self.axle_dir;
         let long_dir = lat_dir.cross(contact_normal);
-        let wheel_delta = contact_point - chassis.get_world_trans().translation;
+        // V2 evaluates the friction curve from the suspension hard point,
+        // not the ray hit point (the latter is only used for the impulse
+        // application). Preserve that distinction for parity.
+        let wheel_delta = self.hard_point - chassis.get_world_trans().translation;
         let cross_vec = (chassis.ang_vel.cross(wheel_delta) + chassis.lin_vel) * BT_TO_UU;
         let base_friction = cross_vec.dot(lat_dir).abs();
         let friction_curve_input = if base_friction > 5.0 {
@@ -168,46 +202,26 @@ impl WheelInfo {
         } else {
             0.0
         };
-        let mut lat_friction = if three_wheels {
+        self.lat_friction = if three_wheels {
             curves::LAT_FRICTION_THREEWHEEL
         } else {
             curves::LAT_FRICTION
         }
         .get_output(friction_curve_input);
-        let mut long_friction = 1.0;
+        self.long_friction = 1.0;
         if handbrake_val != 0.0 {
-            lat_friction *= 1.0
+            self.lat_friction *= 1.0
                 + (curves::HANDBRAKE_LAT_FRICTION_FACTOR.get_output(friction_curve_input) - 1.0)
                     * handbrake_val;
-            long_friction *= 1.0
+            self.long_friction *= 1.0
                 + (curves::HANDBRAKE_LONG_FRICTION_FACTOR.get_output(friction_curve_input) - 1.0)
                     * handbrake_val;
         }
         if real_throttle == 0.0 {
             let non_sticky_scale = curves::NON_STICKY_FRICTION_FACTOR.get_output(contact_normal.z);
-            lat_friction *= non_sticky_scale;
-            long_friction *= non_sticky_scale;
+            self.lat_friction *= non_sticky_scale;
+            self.long_friction *= non_sticky_scale;
         }
-        self.lat_friction = lat_friction;
-        self.long_friction = long_friction;
-
-        let impulse = self.calc_friction_impulses(
-            chassis,
-            ray_results.rigid_body,
-            contact_normal,
-            contact_point,
-            time_step,
-        );
-
-        self.raycast_info = Some(RaycastInfo {
-            contact_normal,
-            contact_point,
-            suspension_length,
-            impulse,
-            is_in_contact_with_world,
-            clipped_inv_contact_dot_suspension,
-            suspension_relative_vel,
-        });
     }
 
     pub fn calc_friction_impulses(
@@ -219,7 +233,12 @@ impl WheelInfo {
         time_step: f32,
     ) -> Vec3A {
         let friction_scale = chassis.get_mass() / 3.0;
-        let axle_dir = self.axle_dir.normalize_or_zero();
+        // V2 projects the wheel's raw axle basis onto the contact plane before
+        // normalizing it.  The raw steer axis is still used for the friction
+        // coefficient curve, but the impulse basis must be tangent to the
+        // surface normal.
+        let axle_dir = (self.axle_dir - contact_normal * self.axle_dir.dot(contact_normal))
+            .normalize_or_zero();
 
         let forward_dir = contact_normal.cross(axle_dir).normalize_or_zero();
 

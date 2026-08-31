@@ -95,6 +95,7 @@ impl<'a> Gjk<'a> {
     }
 
     pub fn evaluate<const ENABLE_MARGIN: bool>(&mut self, guess: Vec3A) -> GjkStatus {
+        let trace_detail = std::env::var_os("RSIM_GJK_DETAIL").is_some();
         let mut status = GjkStatus::Valid;
         let mut iterations = 0usize;
         let mut alpha = 0.0f32;
@@ -109,6 +110,18 @@ impl<'a> Gjk<'a> {
         self.simplices[0].p[0] = 1.0;
         let first_index = self.simplices[0].c[0];
         self.ray = self.store[first_index].w;
+        if trace_detail {
+            let d = self.store[first_index].d;
+            println!(
+                "rust_gjk_begin,guess={:?},margin={},d={:?},p={:?},q={:?},w={:?}",
+                guess,
+                ENABLE_MARGIN as u8,
+                d,
+                self.shape.support0::<ENABLE_MARGIN>(d),
+                self.shape.support1::<ENABLE_MARGIN>(-d),
+                self.store[first_index].w
+            );
+        }
 
         let mut lastw = [self.ray; 4];
 
@@ -125,6 +138,18 @@ impl<'a> Gjk<'a> {
             self.append_vertex::<ENABLE_MARGIN>(current, -self.ray);
             let cs = self.simplices[current];
             let w = self.store[cs.c[cs.rank - 1]].w;
+            if trace_detail && iterations < 16 {
+                let d = self.store[cs.c[cs.rank - 1]].d;
+                println!(
+                    "rust_gjk_support,iter={},d={:?},p={:?},q={:?},w={:?},rank={}",
+                    iterations,
+                    d,
+                    self.shape.support0::<ENABLE_MARGIN>(d),
+                    self.shape.support1::<ENABLE_MARGIN>(-d),
+                    w,
+                    cs.rank
+                );
+            }
 
             let mut found = false;
             for lastw in lastw {
