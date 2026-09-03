@@ -45,7 +45,13 @@ impl BoxShape {
         mass / 12.0 * (yxx * yxx + zzy * zzy)
     }
 
+    pub fn local_get_supporting_vertex_without_margin(&self, vec: Vec3A) -> Vec3A {
+        let support_sign = Vec3A::select(vec.cmplt(Vec3A::ZERO), Vec3A::NEG_ONE, Vec3A::ONE);
+        self.get_half_extents() * support_sign
+    }
+
     pub fn local_get_supporting_vertex(&self, vec: Vec3A) -> Vec3A {
-        (self.get_half_extents() + self.get_margin()) * Vec3A::ONE.copysign(vec)
+        let support = self.local_get_supporting_vertex_without_margin(vec);
+        support + self.get_margin() * support.signum()
     }
 }

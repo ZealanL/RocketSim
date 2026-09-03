@@ -60,9 +60,9 @@ fn point_in_triangle(point: Vec3A, vertices: &[Vec3A; 3]) -> bool {
         && barycentric_0 + barycentric_1 <= 1.0 + BARYCENTRIC_EPSILON
 }
 
-fn triangle_face_contact_point(axis: Vec3A, half_extents: Vec3A, vertices: &[Vec3A; 3]) -> Vec3A {
+fn triangle_face_contact_point(axis: Vec3A, box_shape: &BoxShape, vertices: &[Vec3A; 3]) -> Vec3A {
     let plane_dist = axis.dot(vertices[0]);
-    let corner = half_extents * Vec3A::ONE.copysign(axis);
+    let corner = box_shape.local_get_supporting_vertex_without_margin(axis);
     let dist_to_plane = axis.dot(corner) - plane_dist;
     corner - axis * dist_to_plane
 }
@@ -205,7 +205,7 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
 
         let triangle_face_result = triangle_face_result.filter(|result| {
             let contact_point =
-                triangle_face_contact_point(result.axis, half_extents, &tri_verts_rel);
+                triangle_face_contact_point(result.axis, self.box_shape, &tri_verts_rel);
             point_in_triangle(contact_point, &tri_verts_rel)
         });
         let Some(result) = triangle_face_result.or(best_result) else {
@@ -214,7 +214,7 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
 
         let contact_point_local = match result.axis_type {
             AxisType::TriFace => {
-                triangle_face_contact_point(result.axis, half_extents, &tri_verts_rel)
+                triangle_face_contact_point(result.axis, self.box_shape, &tri_verts_rel)
             }
 
             AxisType::ObbFace(face_idx) => {
