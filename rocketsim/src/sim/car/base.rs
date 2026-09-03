@@ -776,7 +776,7 @@ impl Car {
         self.update_double_jump_or_flip(rb, mutator_config, jump_pressed, forward_speed_uu);
 
         if !self.state.is_on_ground {
-            self.update_air_torque(rb, num_wheels_in_contact == 0);
+            self.update_air_torque(rb, num_wheels_in_contact < 3);
         }
 
         if self.state.controls.throttle != 0.0
