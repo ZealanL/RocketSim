@@ -867,8 +867,12 @@ impl Car {
             self.state.supersonic_grace_timer = 0.0;
         }
 
-        // Keep the jump active while all contacted wheels leave the ground.
-        if self.state.has_jumped && !self.state.is_jumping && self.state.is_on_ground {
+        // Re-arm the jump when the car lands after an airborne tick.
+        if self.state.has_jumped
+            && !self.state.is_jumping
+            && self.state.is_on_ground
+            && self.state.air_time > 0.0
+        {
             let mut num_contacts = 0;
             let all_contacts_extending = self
                 .bullet_vehicle
