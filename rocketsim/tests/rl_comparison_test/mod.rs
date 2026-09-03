@@ -70,8 +70,9 @@ fn test_recording(recording: &Recording) {
     let (mut arena, car_idcs) = create_arena(recording);
     let num_cars = car_idcs.len();
 
-    // Warm-up: step once to establish contact constraints after teleport
-    let warmup_controls: Vec<CarControls> = recording.ticks[0]
+    // Warm-up: step once to establish contact constraints after teleport.
+    // The destination tick stores the controls used during the transition.
+    let warmup_controls: Vec<CarControls> = recording.ticks[1]
         .car_records
         .iter()
         .map(|cr| cr.prev_controls.into())
