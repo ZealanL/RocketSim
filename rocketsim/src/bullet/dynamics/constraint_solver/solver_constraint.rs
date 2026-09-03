@@ -69,7 +69,6 @@ impl SolverConstraint {
         (rel_pos1, rel_pos2): (Vec3A, Vec3A),
         cp: &ManifoldPoint,
         friction_idx: usize,
-        restitution_velocity_threshold: f32,
         time_step: f32,
     ) -> Self {
         let mut constraint = Self {
@@ -88,23 +87,14 @@ impl SolverConstraint {
             (rb0, rb1),
             (rel_pos1, rel_pos2),
             cp,
-            restitution_velocity_threshold,
             time_step,
         );
 
         constraint
     }
 
-    pub fn restitution_curve(
-        rel_vel: f32,
-        restitution: f32,
-        restitution_velocity_threshold: f32,
-    ) -> f32 {
-        if rel_vel.abs() < restitution_velocity_threshold {
-            0.0
-        } else {
-            restitution * -rel_vel
-        }
+    pub fn restitution_curve(rel_vel: f32, restitution: f32) -> f32 {
+        (restitution * -rel_vel).max(0.0)
     }
 
     fn setup_contact_constraint(
@@ -113,7 +103,6 @@ impl SolverConstraint {
         (rb0, rb1): (Option<&RigidBody>, Option<&RigidBody>),
         (rel_pos1, rel_pos2): (Vec3A, Vec3A),
         cp: &ManifoldPoint,
-        restitution_velocity_threshold: f32,
         time_step: f32,
     ) {
         let inv_time_step = 1.0 / time_step;
@@ -177,12 +166,7 @@ impl SolverConstraint {
 
         let vel = vel0 - vel1;
         let rel_vel = cp.normal_world_on_b.dot(vel);
-        let restitution = Self::restitution_curve(
-            rel_vel,
-            cp.combined_restitution,
-            restitution_velocity_threshold,
-        )
-        .max(0.0);
+        let restitution = Self::restitution_curve(rel_vel, cp.combined_restitution);
 
         let penetration = cp.distance_1;
         let positional_error = if penetration > 0.0 {

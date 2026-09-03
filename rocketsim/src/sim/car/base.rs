@@ -305,7 +305,7 @@ impl Car {
         }
     }
 
-    fn update_air_torque(&mut self, rb: &mut RigidBody, update_air_control: bool) {
+    fn update_air_torque(&mut self, rb: &mut RigidBody, num_wheels_in_contact: usize) {
         use car_consts::{air_control, flip};
 
         let forward_dir = self.state.get_forward_dir();
@@ -316,64 +316,32 @@ impl Car {
         let dir_yaw = up_dir;
         let dir_roll = -forward_dir;
 
-        let mut do_air_control = false;
-        if self.state.is_flipping && update_air_control {
-            if self.state.flip_rel_torque == Vec3A::ZERO {
-                do_air_control = true;
-            } else {
-                let mut rel_dodge_torque = self.state.flip_rel_torque;
+        let allow_dodge = num_wheels_in_contact < 3;
+        let allow_air = num_wheels_in_contact == 0;
 
-                let mut pitch_scale = 1.0;
-                if rel_dodge_torque.y != 0.0
-                    && self.state.controls.pitch != 0.0
-                    && rel_dodge_torque.y.signum() == self.state.controls.pitch.signum()
-                {
-                    pitch_scale = 1.0 - self.state.controls.pitch.abs().min(1.0);
-                    do_air_control = true;
-                }
+        if self.state.is_flipping && allow_dodge && self.state.flip_rel_torque != Vec3A::ZERO {
+            let mut rel_dodge_torque = self.state.flip_rel_torque;
 
-                rel_dodge_torque.y *= pitch_scale;
-                let dodge_torque = rel_dodge_torque * flip::TORQUE * TICK_TIME;
-
-                rb.add_impulse(
-                    None,
-                    Impulse::Angular(rb.get_world_trans().matrix3 * dodge_torque),
-                    false,
-                    true,
-                );
-
-                let damp_pitch = dir_pitch.dot(rb.ang_vel) * air_control::DAMPING.x;
-                let damp_yaw = dir_yaw.dot(rb.ang_vel) * air_control::DAMPING.y;
-                let damp_roll = dir_roll.dot(rb.ang_vel) * air_control::DAMPING.z;
-                let damping = dir_yaw * damp_yaw + dir_pitch * damp_pitch + dir_roll * damp_roll;
-                rb.add_impulse(
-                    None,
-                    Impulse::Angular(
-                        damping * const { air_control::TORQUE_APPLY_SCALE * TICK_TIME },
-                    ),
-                    false,
-                    true,
-                );
-
-                let proj_x = rb.ang_vel.x + rb.accum_ang_vel.x;
-                if proj_x > flip::SPIN_CAP_X {
-                    rb.accum_ang_vel.x -= proj_x - flip::SPIN_CAP_X;
-                } else if proj_x < -flip::SPIN_CAP_X {
-                    rb.accum_ang_vel.x -= proj_x + flip::SPIN_CAP_X;
-                }
-                let proj_y = rb.ang_vel.y + rb.accum_ang_vel.y;
-                if proj_y > flip::SPIN_CAP_Y {
-                    rb.accum_ang_vel.y -= proj_y - flip::SPIN_CAP_Y;
-                } else if proj_y < -flip::SPIN_CAP_Y {
-                    rb.accum_ang_vel.y -= proj_y + flip::SPIN_CAP_Y;
-                }
+            let mut pitch_scale = 1.0;
+            if rel_dodge_torque.y != 0.0
+                && self.state.controls.pitch != 0.0
+                && rel_dodge_torque.y.signum() == self.state.controls.pitch.signum()
+            {
+                pitch_scale = 1.0 - self.state.controls.pitch.abs().min(1.0);
             }
-        } else {
-            do_air_control = true;
+
+            rel_dodge_torque.y *= pitch_scale;
+            let dodge_torque = rel_dodge_torque * flip::TORQUE * TICK_TIME;
+
+            rb.add_impulse(
+                None,
+                Impulse::Angular(rb.get_world_trans().matrix3 * dodge_torque),
+                false,
+                true,
+            );
         }
 
-        do_air_control &= !self.state.is_auto_flipping;
-        do_air_control &= update_air_control;
+        let do_air_control = allow_air && !self.state.is_auto_flipping;
         if do_air_control {
             let mut pitch_torque_scale = 1.0;
             let torque = if self.state.controls.pitch != 0.0
@@ -409,6 +377,21 @@ impl Car {
                 (torque - damping) * const { air_control::TORQUE_APPLY_SCALE * TICK_TIME };
 
             rb.add_impulse(None, Impulse::Angular(rb_torque), false, true);
+        }
+
+        if self.state.is_flipping && self.state.flip_rel_torque != Vec3A::ZERO {
+            let proj_x = rb.ang_vel.x + rb.accum_ang_vel.x;
+            if proj_x > flip::SPIN_CAP_X {
+                rb.accum_ang_vel.x -= proj_x - flip::SPIN_CAP_X;
+            } else if proj_x < -flip::SPIN_CAP_X {
+                rb.accum_ang_vel.x -= proj_x + flip::SPIN_CAP_X;
+            }
+            let proj_y = rb.ang_vel.y + rb.accum_ang_vel.y;
+            if proj_y > flip::SPIN_CAP_Y {
+                rb.accum_ang_vel.y -= proj_y - flip::SPIN_CAP_Y;
+            } else if proj_y < -flip::SPIN_CAP_Y {
+                rb.accum_ang_vel.y -= proj_y + flip::SPIN_CAP_Y;
+            }
         }
 
         let throttle_scale = if self.state.controls.boost {
@@ -633,8 +616,8 @@ impl Car {
             self.state.is_flipping =
                 self.state.has_flipped && flip_time_pre < car_consts::flip::TORQUE_TIME;
             self.state.flip_time = flip_time_pre + TICK_TIME;
-            if flip_time_pre <= car_consts::flip::TORQUE_TIME
-                && flip_time_pre >= car_consts::flip::Z_DAMP_START
+            if (car_consts::flip::Z_DAMP_START..=car_consts::flip::TORQUE_TIME)
+                .contains(&flip_time_pre)
                 && (rb.lin_vel.z < 0.0 || flip_time_pre < car_consts::flip::Z_DAMP_END)
             {
                 rb.lin_vel.z *= 1.0 - car_consts::flip::Z_DAMP_120;
@@ -779,10 +762,11 @@ impl Car {
         self.update_double_jump_or_flip(rb, mutator_config, jump_pressed, forward_speed_uu);
 
         if !self.state.is_on_ground {
-            self.update_air_torque(rb, num_wheels_in_contact < 3);
+            self.update_air_torque(rb, num_wheels_in_contact);
         }
 
         if self.state.controls.throttle != 0.0
+            && !self.state.is_flipping
             && ((0 < num_wheels_in_contact && num_wheels_in_contact < 4)
                 || self.state.world_contact_normal.is_some())
         {

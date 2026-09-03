@@ -12,9 +12,9 @@ use crate::{
                 CONTACT_BREAKING_THRESHOLD, ContactAddedCallback, PersistentManifold,
             },
             shapes::{
-                box_shape::BoxShape, collision_shape::CollisionShapes,
-                compound_shape::CompoundShape, triangle_callback::ProcessTriangle,
-                triangle_shape::TriangleShape,
+                box_shape::BoxShape, collision_margin::CONVEX_DISTANCE_MARGIN,
+                collision_shape::CollisionShapes, compound_shape::CompoundShape,
+                triangle_callback::ProcessTriangle, triangle_shape::TriangleShape,
             },
         },
         dynamics::rigid_body::RigidBody,
@@ -84,7 +84,9 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
 
         let half_extents = self.box_shape.get_half_extents();
         let sat_half_extents = half_extents + self.box_shape.get_margin();
-        let contact_margin = self.manifold.contact_breaking_threshold;
+        let contact_margin = (self.manifold.contact_breaking_threshold
+            - (CONVEX_DISTANCE_MARGIN - self.box_shape.get_margin()))
+        .max(0.0);
 
         let world_to_box = self.convex_obj.world_trans.inverse();
         let tri_to_world = self.tri_obj.get_world_trans();

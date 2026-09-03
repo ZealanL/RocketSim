@@ -9,13 +9,12 @@ pub struct BoxShape {
 
 impl BoxShape {
     pub fn new(box_half_extents: Vec3A) -> Self {
+        let safe_margin = 0.1 * box_half_extents.min_element();
+        let margin = safe_margin.min(CONVEX_DISTANCE_MARGIN);
         Self {
             internal_shape: ConvexInternalShape {
-                implicit_dim: box_half_extents - CONVEX_DISTANCE_MARGIN,
-                margin: {
-                    let safe_margin = 0.1 * box_half_extents.min_element();
-                    safe_margin.min(CONVEX_DISTANCE_MARGIN)
-                },
+                implicit_dim: box_half_extents - margin,
+                margin,
             },
         }
     }
