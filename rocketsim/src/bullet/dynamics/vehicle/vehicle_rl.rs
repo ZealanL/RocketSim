@@ -67,11 +67,10 @@ impl VehicleRL {
         for (i, wheel) in self.wheels.iter_mut().enumerate() {
             if let Some(ray_result) = ray_results[i] {
                 num_wheels_in_contact += 1;
-                wheel.apply_ray_cast(
+                wheel.apply_ray_cast(chassis, ray_result, time_step, i < 2);
+                wheel.refresh_friction_curves(
                     chassis,
-                    ray_result,
-                    time_step,
-                    i < 2,
+                    ray_result.hit_normal_in_world,
                     handbrake_val,
                     real_throttle,
                     three_wheels,

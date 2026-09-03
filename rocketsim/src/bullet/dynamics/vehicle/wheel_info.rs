@@ -98,9 +98,6 @@ impl WheelInfo {
         ray_results: VehicleRaycasterResult,
         time_step: f32,
         front: bool,
-        handbrake_val: f32,
-        real_throttle: f32,
-        three_wheels: bool,
     ) {
         let contact_point = ray_results.hit_point_in_world;
         let contact_normal = ray_results.hit_normal_in_world;
@@ -118,7 +115,6 @@ impl WheelInfo {
         let wheel_trace_len_sq = (self.hard_point - contact_point).dot(up);
 
         let suspension_travel = bullet_vehicle::MAX_SUSPENSION_TRAVEL * UU_TO_BT;
-        let min_suspension_len = self.suspension_rest_length_1 - suspension_travel;
         let max_suspension_len = self.suspension_rest_length_1 + suspension_travel;
 
         let rel_pos = contact_point - chassis_trans.translation;
@@ -134,8 +130,7 @@ impl WheelInfo {
             (0.0, 10.0)
         };
 
-        let suspension_length =
-            (wheel_trace_len_sq - self.wheels_radius).clamp(min_suspension_len, max_suspension_len);
+        let suspension_length = (wheel_trace_len_sq - self.wheels_radius).min(max_suspension_len);
 
         if is_in_contact_with_world {
             let ray_pushback_thresh = self.suspension_rest_length_1 + self.wheels_radius
@@ -156,43 +151,6 @@ impl WheelInfo {
             }
         }
 
-        // Refresh friction curves against THIS tick's fresh contact before
-        // the impulses are computed - consuming the previous grounded tick's
-        // values left first-touchdown ticks with stale (full-strength)
-        // friction.
-        let lat_dir = self.axle_dir;
-        let long_dir = lat_dir.cross(contact_normal);
-        let wheel_delta = self.hard_point - chassis.get_world_trans().translation;
-        let cross_vec = (chassis.ang_vel.cross(wheel_delta) + chassis.lin_vel) * BT_TO_UU;
-        let base_friction = cross_vec.dot(lat_dir).abs();
-        let friction_curve_input = if base_friction > 5.0 {
-            base_friction / (cross_vec.dot(long_dir).abs() + base_friction)
-        } else {
-            0.0
-        };
-        let mut lat_friction = if three_wheels {
-            curves::LAT_FRICTION_THREEWHEEL
-        } else {
-            curves::LAT_FRICTION
-        }
-        .get_output(friction_curve_input);
-        let mut long_friction = 1.0;
-        if handbrake_val != 0.0 {
-            lat_friction *= 1.0
-                + (curves::HANDBRAKE_LAT_FRICTION_FACTOR.get_output(friction_curve_input) - 1.0)
-                    * handbrake_val;
-            long_friction *= 1.0
-                + (curves::HANDBRAKE_LONG_FRICTION_FACTOR.get_output(friction_curve_input) - 1.0)
-                    * handbrake_val;
-        }
-        if real_throttle == 0.0 {
-            let non_sticky_scale = curves::NON_STICKY_FRICTION_FACTOR.get_output(contact_normal.z);
-            lat_friction *= non_sticky_scale;
-            long_friction *= non_sticky_scale;
-        }
-        self.lat_friction = lat_friction;
-        self.long_friction = long_friction;
-
         // Dynamic ray hits apply stick to the hit body.
         let ground_stick =
             if !ray_results.rigid_body.is_static_obj() && ray_results.rigid_body.inv_mass != 0.0 {
@@ -200,6 +158,7 @@ impl WheelInfo {
             } else {
                 Vec3A::ZERO
             };
+
         self.raycast_info = Some(RaycastInfo {
             contact_normal,
             contact_point,
@@ -211,6 +170,52 @@ impl WheelInfo {
             clipped_inv_contact_dot_suspension,
             suspension_relative_vel,
         });
+    }
+
+    pub fn refresh_friction_curves(
+        &mut self,
+        chassis: &RigidBody,
+        contact_normal: Vec3A,
+        handbrake_val: f32,
+        real_throttle: f32,
+        three_wheels: bool,
+    ) {
+        let lat_dir = self.axle_dir;
+        let long_dir = lat_dir.cross(contact_normal);
+        let wheel_delta = self.hard_point - chassis.get_world_trans().translation;
+        let cross_vec = (chassis.ang_vel.cross(wheel_delta) + chassis.lin_vel) * BT_TO_UU;
+        let base_friction = cross_vec.dot(lat_dir).abs();
+        let friction_curve_input = if base_friction > 5.0 {
+            base_friction / (cross_vec.dot(long_dir).abs() + base_friction)
+        } else {
+            0.0
+        };
+
+        let mut lat_friction = if three_wheels {
+            curves::LAT_FRICTION_THREEWHEEL
+        } else {
+            curves::LAT_FRICTION
+        }
+        .get_output(friction_curve_input);
+
+        let mut long_friction = 1.0;
+        if handbrake_val != 0.0 {
+            lat_friction *= 1.0
+                + (curves::HANDBRAKE_LAT_FRICTION_FACTOR.get_output(friction_curve_input) - 1.0)
+                    * handbrake_val;
+            long_friction *= 1.0
+                + (curves::HANDBRAKE_LONG_FRICTION_FACTOR.get_output(friction_curve_input) - 1.0)
+                    * handbrake_val;
+        }
+
+        if real_throttle == 0.0 {
+            let non_sticky_scale = curves::NON_STICKY_FRICTION_FACTOR.get_output(contact_normal.z);
+            lat_friction *= non_sticky_scale;
+            long_friction *= non_sticky_scale;
+        }
+
+        self.lat_friction = lat_friction;
+        self.long_friction = long_friction;
     }
 
     pub fn calc_friction_impulses(
