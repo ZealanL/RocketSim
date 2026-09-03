@@ -3,6 +3,9 @@
 //! `car_sum_pass_rate` is the primary metric. It sums the Euclidean position
 //! error for all cars in a tick. The tick passes when the sum is less than
 //! `--threshold-uu`.
+//!
+//! Position samples are excluded when a car record is absent or when either
+//! endpoint is part of a frozen run or a kickoff/reset boundary.
 
 use std::{
     collections::HashSet,
@@ -14,10 +17,10 @@ use clap::Parser;
 use glam::Vec3A;
 use rocketsim::{
     Arena, CarBodyConfig, CarControls, CarState, GameMode, PhysState, Team,
-    consts::BT_TO_UU,
+    consts::{BT_TO_UU, car::spawn::RESPAWN_TIME},
     rlpr::{
         Recording,
-        cpp_records::{PhysRecord, RecordingInfo},
+        cpp_records::{CarRecord, PhysRecord, RecordingInfo, VecRecord},
         tick_record::TickRecord,
     },
 };
@@ -48,7 +51,10 @@ struct Metrics {
     passed_ball_ticks: usize,
     frame_gaps: usize,
     missing_car_ticks: usize,
+    /// Comparisons excluded because either endpoint is frozen.
     frozen_ticks: usize,
+    /// Comparisons excluded because either endpoint is a reset state.
+    reset_ticks: usize,
     max_error_uu: f32,
 }
 
@@ -64,6 +70,7 @@ impl Metrics {
         self.frame_gaps += other.frame_gaps;
         self.missing_car_ticks += other.missing_car_ticks;
         self.frozen_ticks += other.frozen_ticks;
+        self.reset_ticks += other.reset_ticks;
         self.max_error_uu = self.max_error_uu.max(other.max_error_uu);
     }
 
@@ -143,6 +150,8 @@ fn set_state_to_tick(
         state.prev_controls = car_record.prev_controls.into();
         state.flip_rel_torque = recorded.flip_rel_torque;
         state.boost = recorded.boost;
+        state.is_demoed = false;
+        state.demo_respawn_timer = 0.0;
 
         if car_record.has_flip {
             state.has_double_jumped = false;
@@ -212,6 +221,62 @@ fn tick_is_frozen(from: &TickRecord, to: &TickRecord) -> bool {
             .all(|(from, to)| phys_is_unchanged(&from.phys, &to.phys))
 }
 
+fn frozen_tick_flags(ticks: &[TickRecord]) -> Vec<bool> {
+    let mut flags = vec![false; ticks.len()];
+    for (index, window) in ticks.windows(2).enumerate() {
+        let [from, to] = window else { unreachable!() };
+        if tick_is_frozen(from, to) {
+            flags[index] = true;
+            flags[index + 1] = true;
+        }
+    }
+    flags
+}
+
+fn zero_vector(vector: VecRecord) -> bool {
+    let vector = Vec3A::from(vector);
+    vector.length_squared() <= 1e-6
+}
+
+fn car_is_at_kickoff_spawn(car: &CarRecord) -> bool {
+    let pos = Vec3A::from(car.phys.pos);
+    let matches_spawn = |x: f32, y: f32| (pos.x - x).abs() <= 0.1 && (pos.y - y).abs() <= 0.1;
+    let at_spawn = rocketsim::consts::car::spawn::get_kickoff_spawn_locations(GameMode::Soccar)
+        .iter()
+        .any(|spawn| matches_spawn(spawn.x, spawn.y) || matches_spawn(-spawn.x, -spawn.y));
+    at_spawn && zero_vector(car.phys.lin_vel) && zero_vector(car.phys.ang_vel)
+}
+
+fn tick_is_reset(tick: &TickRecord) -> bool {
+    let ball = &tick.ball_record;
+    // RLPR records the standard kickoff ball height as 100.49 UU.
+    let ball_at_center =
+        ball.pos.x == 0.0 && ball.pos.y == 0.0 && (ball.pos.z - 100.49).abs() <= 0.01;
+    (ball_at_center && zero_vector(ball.lin_vel) && zero_vector(ball.ang_vel))
+        || tick.car_records.iter().any(car_is_at_kickoff_spawn)
+}
+
+fn reset_tick_flags(ticks: &[TickRecord]) -> Vec<bool> {
+    let mut flags = vec![false; ticks.len()];
+    for (index, tick) in ticks.iter().enumerate() {
+        if tick_is_reset(tick) {
+            flags[index] = true;
+        }
+    }
+    flags
+}
+
+// RLPR omits a car while it is demolished. Keep it out of the simulation
+// until the recorded respawn state is available.
+fn mark_cars_demoed(arena: &mut Arena, car_ids: &[usize]) {
+    for &car_id in car_ids {
+        let mut state = *arena.get_car_state(car_id);
+        state.is_demoed = true;
+        state.demo_respawn_timer = RESPAWN_TIME;
+        arena.set_car_state(car_id, state);
+    }
+}
+
 fn measure_recording(recording: &Recording, threshold_uu: f32) -> Metrics {
     let num_cars = recording
         .ticks
@@ -243,6 +308,8 @@ fn measure_recording(recording: &Recording, threshold_uu: f32) -> Metrics {
         arena.step_tick();
     }
 
+    let frozen_ticks = frozen_tick_flags(&recording.ticks);
+    let reset_ticks = reset_tick_flags(&recording.ticks);
     let mut metrics = Metrics::default();
     for (index, ticks) in recording.ticks.windows(2).enumerate() {
         let [from, to] = ticks else { unreachable!() };
@@ -251,13 +318,30 @@ fn measure_recording(recording: &Recording, threshold_uu: f32) -> Metrics {
         }
         if from.car_records.len() != num_cars || to.car_records.len() != num_cars {
             metrics.missing_car_ticks += 1;
+            if from.car_records.len() == num_cars && to.car_records.len() != num_cars {
+                mark_cars_demoed(&mut arena, &car_ids);
+            } else if from.car_records.len() != num_cars && to.car_records.len() == num_cars {
+                let controls: Vec<CarControls> = to
+                    .car_records
+                    .iter()
+                    .map(|record| record.prev_controls.into())
+                    .collect();
+                set_state_to_tick(&mut arena, &car_ids, to, &controls);
+            }
+            continue;
+        }
+        if frozen_ticks[index] || frozen_ticks[index + 1] {
+            metrics.frozen_ticks += 1;
+            continue;
+        }
+        if reset_ticks[index] || reset_ticks[index + 1] {
+            metrics.reset_ticks += 1;
             continue;
         }
         if !frame_is_contiguous(from, to) {
             metrics.frame_gaps += 1;
             continue;
         }
-        metrics.frozen_ticks += usize::from(tick_is_frozen(from, to));
 
         let controls: Vec<CarControls> = to
             .car_records
@@ -310,7 +394,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     files.sort();
 
     println!(
-        "file,version,ticks,eligible,frame_gaps,missing_car_ticks,frozen,car_max_pass_rate,car_sum_pass_rate,car_object_pass_rate,ball_pass_rate,max_car_error_uu"
+        "file,version,ticks,eligible,frame_gaps,missing_car_ticks,frozen,reset,car_max_pass_rate,car_sum_pass_rate,car_object_pass_rate,ball_pass_rate,max_car_error_uu"
     );
 
     let mut total = Metrics::default();
@@ -348,7 +432,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let metrics = measure_recording(&recording, args.threshold_uu);
         println!(
-            "{},{},{},{},{},{},{},{:.6},{:.6},{:.6},{:.6},{:.9}",
+            "{},{},{},{},{},{},{},{},{:.6},{:.6},{:.6},{:.6},{:.9}",
             recording.name,
             recording.version,
             recording.ticks.len(),
@@ -356,6 +440,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             metrics.frame_gaps,
             metrics.missing_car_ticks,
             metrics.frozen_ticks,
+            metrics.reset_ticks,
             metrics.tick_max_rate(),
             metrics.tick_sum_rate(),
             metrics.car_rate(),
@@ -367,12 +452,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     println!(
-        "TOTAL,-,{},{},{},{},{},{:.6},{:.6},{:.6},{:.6},{:.9}",
+        "TOTAL,-,{},{},{},{},{},{},{:.6},{:.6},{:.6},{:.6},{:.9}",
         measured_files,
         total.eligible_ticks,
         total.frame_gaps,
         total.missing_car_ticks,
         total.frozen_ticks,
+        total.reset_ticks,
         total.tick_max_rate(),
         total.tick_sum_rate(),
         total.car_rate(),

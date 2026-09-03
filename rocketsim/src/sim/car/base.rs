@@ -612,10 +612,7 @@ impl Car {
                             false,
                             false,
                         );
-                        rb.limit_vels(
-                            car_consts::MAX_SPEED * UU_TO_BT,
-                            car_consts::MAX_ANG_SPEED,
-                        );
+                        rb.limit_vels(car_consts::MAX_SPEED * UU_TO_BT, car_consts::MAX_ANG_SPEED);
                     }
                 } else {
                     let jump_start_force =
