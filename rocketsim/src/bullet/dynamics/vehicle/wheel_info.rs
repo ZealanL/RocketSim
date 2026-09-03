@@ -161,7 +161,7 @@ impl WheelInfo {
         // friction.
         let lat_dir = self.axle_dir;
         let long_dir = lat_dir.cross(contact_normal);
-        let wheel_delta = contact_point - chassis.get_world_trans().translation;
+        let wheel_delta = self.hard_point - chassis.get_world_trans().translation;
         let cross_vec = (chassis.ang_vel.cross(wheel_delta) + chassis.lin_vel) * BT_TO_UU;
         let base_friction = cross_vec.dot(lat_dir).abs();
         let friction_curve_input = if base_friction > 5.0 {

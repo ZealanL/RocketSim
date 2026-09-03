@@ -212,7 +212,6 @@ impl Car {
     fn update_wheels(
         &mut self,
         rb: &mut RigidBody,
-        num_wheels_in_contact: usize,
         forward_speed_uu: f32,
         mutator_config: &MutatorConfig,
     ) {
@@ -253,11 +252,7 @@ impl Car {
             }
         }
 
-        let mut drive_speed_scale =
-            curves::DRIVE_SPEED_TORQUE_FACTOR.get_output(abs_forward_speed_uu);
-        if num_wheels_in_contact < 3 {
-            drive_speed_scale /= 4.0;
-        }
+        let drive_speed_scale = curves::DRIVE_SPEED_TORQUE_FACTOR.get_output(abs_forward_speed_uu);
 
         let drive_engine_force = engine_throttle
             * const { drive_consts::THROTTLE_TORQUE_AMOUNT * UU_TO_BT }
@@ -770,7 +765,7 @@ impl Car {
         // TODO: Refactor and move
         let num_wheels_in_contact = self.state.num_wheels_in_contact();
 
-        self.update_wheels(rb, num_wheels_in_contact, forward_speed_uu, mutator_config);
+        self.update_wheels(rb, forward_speed_uu, mutator_config);
 
         if self.state.is_on_ground {
             self.state.is_flipping = false;

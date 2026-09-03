@@ -60,8 +60,10 @@ impl VehicleRL {
             .raycaster
             .cast_rays(collision_world, &sources, &targets, chassis);
 
+        let mut num_wheels_in_contact = 0;
         for (i, wheel) in self.wheels.iter_mut().enumerate() {
             if let Some(ray_result) = ray_results[i] {
+                num_wheels_in_contact += 1;
                 wheel.apply_ray_cast(
                     chassis,
                     ray_result,
@@ -73,6 +75,12 @@ impl VehicleRL {
                 );
             } else {
                 wheel.reset_wheel_suspension();
+            }
+        }
+
+        if num_wheels_in_contact < 3 {
+            for wheel in &mut self.wheels {
+                wheel.engine_force /= 4.0;
             }
         }
 
