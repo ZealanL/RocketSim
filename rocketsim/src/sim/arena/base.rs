@@ -484,6 +484,9 @@ impl Arena {
                 let car_rb = &mut self.bullet_world.bodies_mut()[self.cars[car_idx].rigid_body_idx];
                 car_rb.limit_vels(car::MAX_SPEED * UU_TO_BT, car::MAX_ANG_SPEED);
                 quantize::quantize(car_rb);
+                // Sync the cached state after rigid-body limits.
+                self.cars[car_idx].state.phys.vel = car_rb.lin_vel * BT_TO_UU;
+                self.cars[car_idx].state.phys.ang_vel = car_rb.ang_vel;
             }
             let ball_rb = &mut self.bullet_world.bodies_mut()[self.ball.rigid_body_idx];
             ball_rb.limit_vels(
@@ -491,6 +494,8 @@ impl Arena {
                 ball::MAX_ANG_SPEED,
             );
             quantize::quantize(ball_rb);
+            self.ball.state.phys.vel = ball_rb.lin_vel * BT_TO_UU;
+            self.ball.state.phys.ang_vel = ball_rb.ang_vel;
         }
 
         // Keep resting balls active so same-tick contacts can affect them.

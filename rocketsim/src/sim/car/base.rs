@@ -223,11 +223,7 @@ impl Car {
         self.state.handbrake_val = (self.state.handbrake_val + handbrake_delta).clamp(0.0, 1.0);
 
         let mut real_brake = 0.0;
-        let real_throttle = if self.state.controls.boost && self.state.boost > 0.0 {
-            1.0
-        } else {
-            self.state.controls.throttle
-        };
+        let real_throttle = self.state.controls.throttle;
 
         let abs_forward_speed_uu = forward_speed_uu.abs();
         let mut engine_throttle = real_throttle;
