@@ -1,12 +1,11 @@
 use glam::Vec3A;
 use rocketsim::{
-    Arena, CarBodyConfig, CarControls, CarState, GameMode, PhysState, Team, consts::BT_TO_UU,
+    Arena, CarBodyConfig, CarControls, CarState, GameMode, PhysState, Team,
+    consts::BT_TO_UU,
+    rlpr::{Recording, tick_record::TickRecord},
 };
 
-use crate::rl_comparison_test::recording::{Recording, tick_record::TickRecord};
-
 mod compare;
-mod recording;
 
 pub fn set_state_to_record_tick(
     arena: &mut Arena,
