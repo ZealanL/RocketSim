@@ -442,6 +442,8 @@ impl Car {
                     false,
                     false,
                 );
+                // Clamp speed after the impulse, as after a dodge impulse.
+                rb.limit_vels(car_consts::MAX_SPEED * UU_TO_BT, car_consts::MAX_ANG_SPEED);
             }
 
             let jump_force = up_dir * mutator_config.jump_accel * const { UU_TO_BT * TICK_TIME };
@@ -491,14 +493,14 @@ impl Car {
         mutator_config: &MutatorConfig,
         jump_pressed: bool,
         forward_speed_uu: f32,
-    ) {
+    ) -> bool {
         if self.state.is_on_ground {
             self.state.has_double_jumped = false;
             self.state.has_flipped = false;
             self.state.air_time = 0.0;
             self.state.air_time_since_jump = 0.0;
             self.state.flip_time = 0.0;
-            return;
+            return false;
         }
 
         self.state.air_time += TICK_TIME;
@@ -602,6 +604,8 @@ impl Car {
                         false,
                         false,
                     );
+                    // Clamp speed after the impulse, as after a dodge impulse.
+                    rb.limit_vels(car_consts::MAX_SPEED * UU_TO_BT, car_consts::MAX_ANG_SPEED);
                     self.state.has_double_jumped = true;
                 }
             }
@@ -609,8 +613,9 @@ impl Car {
 
         if self.state.is_flipping {
             let flip_time_pre = self.state.flip_time;
-            self.state.is_flipping =
+            let still_flipping =
                 self.state.has_flipped && flip_time_pre < car_consts::flip::TORQUE_TIME;
+            self.state.is_flipping = still_flipping;
             self.state.flip_time = flip_time_pre + TICK_TIME;
             if (car_consts::flip::Z_DAMP_START..=car_consts::flip::TORQUE_TIME)
                 .contains(&flip_time_pre)
@@ -618,9 +623,12 @@ impl Car {
             {
                 rb.lin_vel.z *= 1.0 - car_consts::flip::Z_DAMP_120;
             }
-        } else if self.state.has_flipped {
+            return !still_flipping;
+        }
+        if self.state.has_flipped {
             self.state.flip_time += TICK_TIME;
         }
+        false
     }
 
     fn update_auto_roll(&self, rb: &mut RigidBody, num_wheels_in_contact: usize) {
@@ -755,14 +763,18 @@ impl Car {
 
         self.update_jump(rb, mutator_config, jump_pressed);
         self.update_auto_flip(rb, jump_pressed);
-        self.update_double_jump_or_flip(rb, mutator_config, jump_pressed, forward_speed_uu);
+        let flip_ended =
+            self.update_double_jump_or_flip(rb, mutator_config, jump_pressed, forward_speed_uu);
 
         if !self.state.is_on_ground {
             self.update_air_torque(rb, num_wheels_in_contact);
         }
 
+        // Skip auto-roll on the tick a flip ends. The car still counts as
+        // flipping for auto-roll on its last flip tick.
         if self.state.controls.throttle != 0.0
             && !self.state.is_flipping
+            && !flip_ended
             && ((0 < num_wheels_in_contact && num_wheels_in_contact < 4)
                 || self.state.world_contact_normal.is_some())
         {
