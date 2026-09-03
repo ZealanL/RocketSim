@@ -546,6 +546,8 @@ impl Car {
                 };
 
             if can_use {
+                self.state.has_jumped = true;
+
                 if is_flip_input {
                     self.state.flip_time = 0.0;
                     self.state.has_flipped = true;
@@ -861,15 +863,20 @@ impl Car {
             self.state.supersonic_grace_timer = 0.0;
         }
 
-        // Re-arm the jump once the car is grounded again, no
-        // longer holding a jump, and its suspension is no longer extending.
+        // Keep the jump active while all contacted wheels leave the ground.
         if self.state.has_jumped && !self.state.is_jumping && self.state.is_on_ground {
-            let susp_extending = self.bullet_vehicle.wheels.iter().any(|w| {
-                w.raycast_info
-                    .as_ref()
-                    .is_some_and(|ri| ri.suspension_relative_vel > 1.0)
-            });
-            if !susp_extending {
+            let mut num_contacts = 0;
+            let all_contacts_extending = self
+                .bullet_vehicle
+                .wheels
+                .iter()
+                .filter_map(|wheel| wheel.raycast_info.as_ref())
+                .all(|info| {
+                    num_contacts += 1;
+                    info.suspension_relative_vel > 1.0
+                });
+            let leaving_ground = num_contacts != 0 && all_contacts_extending;
+            if !leaving_ground {
                 self.state.has_jumped = false;
             }
         }
