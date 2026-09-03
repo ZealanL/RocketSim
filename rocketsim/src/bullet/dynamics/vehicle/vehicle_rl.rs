@@ -3,7 +3,10 @@ use glam::Vec3A;
 use super::{NUM_WHEELS, raycaster::VehicleRaycaster, wheel_info::WheelInfo};
 use crate::bullet::{
     collision::broadphase::CollisionFilterGroups,
-    dynamics::{discrete_dynamics_world::DiscreteDynamicsWorld, rigid_body::RigidBody},
+    dynamics::{
+        discrete_dynamics_world::DiscreteDynamicsWorld,
+        rigid_body::{Impulse, RigidBody},
+    },
 };
 
 pub struct VehicleRL {
@@ -82,6 +85,33 @@ impl VehicleRL {
             for wheel in &mut self.wheels {
                 wheel.engine_force /= 4.0;
             }
+        }
+
+        // Apply dynamic-body stick before chassis suspension and friction.
+        for wheel in &self.wheels {
+            let Some(info) = wheel.raycast_info.as_ref() else {
+                continue;
+            };
+            let ground_idx = info.ground_body_idx;
+            if info.ground_stick == Vec3A::ZERO
+                || ground_idx == self.chassis_body_idx
+                || ground_idx >= collision_world.bodies().len()
+            {
+                continue;
+            }
+
+            let ground = &mut collision_world.bodies_mut()[ground_idx];
+            if ground.is_static_obj() || ground.inv_mass == 0.0 {
+                continue;
+            }
+
+            let ground_offset = info.contact_point - ground.get_world_trans().translation;
+            ground.add_impulse(
+                None,
+                Impulse::LinearRelPos(info.ground_stick, ground_offset),
+                true,
+                false,
+            );
         }
 
         let chassis = &mut collision_world.bodies_mut()[self.chassis_body_idx];

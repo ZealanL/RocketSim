@@ -20,6 +20,7 @@ pub struct RaycastInfo {
     pub ground_body_idx: usize,
     pub suspension_length: f32,
     pub impulse: Vec3A,
+    pub ground_stick: Vec3A,
     pub is_in_contact_with_world: bool,
     pub clipped_inv_contact_dot_suspension: f32,
     pub suspension_relative_vel: f32,
@@ -192,12 +193,20 @@ impl WheelInfo {
         self.lat_friction = lat_friction;
         self.long_friction = long_friction;
 
+        // Dynamic ray hits apply stick to the hit body.
+        let ground_stick =
+            if !ray_results.rigid_body.is_static_obj() && ray_results.rigid_body.inv_mass != 0.0 {
+                -contact_normal
+            } else {
+                Vec3A::ZERO
+            };
         self.raycast_info = Some(RaycastInfo {
             contact_normal,
             contact_point,
             ground_body_idx: ray_results.rigid_body_idx,
             suspension_length,
             impulse: Vec3A::ZERO,
+            ground_stick,
             is_in_contact_with_world,
             clipped_inv_contact_dot_suspension,
             suspension_relative_vel,
@@ -226,10 +235,7 @@ impl WheelInfo {
             } else {
                 const ROLLING_FRICTION_SCALE: f32 = 113.73963;
 
-                let car_rel_contact_point = contact_point - chassis.get_world_trans().translation;
-
-                let contact_vel = self.vel_at_contact_point
-                    - ground_rb.get_vel_in_local_point(car_rel_contact_point);
+                let contact_vel = self.vel_at_contact_point;
                 let mut rel_vel = contact_vel.dot(forward_dir);
 
                 if time_step > 1.0 / 80.0 {
