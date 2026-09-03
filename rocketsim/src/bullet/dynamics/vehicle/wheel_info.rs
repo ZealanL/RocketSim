@@ -17,6 +17,7 @@ use crate::{
 pub struct RaycastInfo {
     pub contact_normal: Vec3A,
     pub contact_point: Vec3A,
+    pub ground_body_idx: usize,
     pub suspension_length: f32,
     pub impulse: Vec3A,
     pub is_in_contact_with_world: bool,
@@ -191,19 +192,12 @@ impl WheelInfo {
         self.lat_friction = lat_friction;
         self.long_friction = long_friction;
 
-        let impulse = self.calc_friction_impulses(
-            chassis,
-            ray_results.rigid_body,
-            contact_normal,
-            contact_point,
-            time_step,
-        );
-
         self.raycast_info = Some(RaycastInfo {
             contact_normal,
             contact_point,
+            ground_body_idx: ray_results.rigid_body_idx,
             suspension_length,
-            impulse,
+            impulse: Vec3A::ZERO,
             is_in_contact_with_world,
             clipped_inv_contact_dot_suspension,
             suspension_relative_vel,
@@ -254,6 +248,32 @@ impl WheelInfo {
         let total_friction_force = forward_dir * rolling_friction * self.long_friction
             + axle_dir * side_impulse * self.lat_friction;
         total_friction_force * friction_scale
+    }
+
+    pub fn update_friction_impulse(
+        &mut self,
+        chassis: &RigidBody,
+        collision_objs: &[RigidBody],
+        time_step: f32,
+    ) {
+        let Some(raycast_info) = self.raycast_info.as_ref() else {
+            return;
+        };
+
+        let contact_normal = raycast_info.contact_normal;
+        let contact_point = raycast_info.contact_point;
+        let ground_rb = &collision_objs[raycast_info.ground_body_idx];
+        let impulse = self.calc_friction_impulses(
+            chassis,
+            ground_rb,
+            contact_normal,
+            contact_point,
+            time_step,
+        );
+
+        if let Some(raycast_info) = self.raycast_info.as_mut() {
+            raycast_info.impulse = impulse;
+        }
     }
 
     pub fn update_suspension(&mut self, cb: &mut RigidBody, delta_time: f32) {

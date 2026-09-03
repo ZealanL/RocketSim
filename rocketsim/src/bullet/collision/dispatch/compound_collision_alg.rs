@@ -8,7 +8,9 @@ use super::{
 use crate::{
     bullet::{
         collision::{
-            narrowphase::persistent_manifold::{ContactAddedCallback, PersistentManifold},
+            narrowphase::persistent_manifold::{
+                CONTACT_BREAKING_THRESHOLD, ContactAddedCallback, PersistentManifold,
+            },
             shapes::{
                 box_shape::BoxShape, collision_shape::CollisionShapes,
                 compound_shape::CompoundShape, triangle_callback::ProcessTriangle,
@@ -21,16 +23,48 @@ use crate::{
     shared::{Aabb, rsmath},
 };
 
+#[derive(Clone, Copy)]
 struct SatResult {
     penetration: f32,
     axis: Vec3A,
     axis_type: AxisType,
 }
 
+#[derive(Clone, Copy)]
 enum AxisType {
     TriFace,
     ObbFace(usize),
     EdgeEdge { box_axis: usize, tri_edge: usize },
+}
+
+fn point_in_triangle(point: Vec3A, vertices: &[Vec3A; 3]) -> bool {
+    const BARYCENTRIC_EPSILON: f32 = 1e-4;
+
+    let edge_0 = vertices[1] - vertices[0];
+    let edge_1 = vertices[2] - vertices[0];
+    let point_offset = point - vertices[0];
+    let dot_00 = edge_0.dot(edge_0);
+    let dot_01 = edge_0.dot(edge_1);
+    let dot_11 = edge_1.dot(edge_1);
+    let dot_20 = point_offset.dot(edge_0);
+    let dot_21 = point_offset.dot(edge_1);
+    let denominator = dot_00 * dot_11 - dot_01 * dot_01;
+    if denominator.abs() <= f32::EPSILON {
+        return false;
+    }
+
+    let barycentric_0 = (dot_11 * dot_20 - dot_01 * dot_21) / denominator;
+    let barycentric_1 = (dot_00 * dot_21 - dot_01 * dot_20) / denominator;
+    barycentric_0 >= -BARYCENTRIC_EPSILON
+        && barycentric_1 >= -BARYCENTRIC_EPSILON
+        && barycentric_0 + barycentric_1 <= 1.0 + BARYCENTRIC_EPSILON
+}
+
+fn triangle_face_contact_point(axis: Vec3A, half_extents: Vec3A, vertices: &[Vec3A; 3]) -> Vec3A {
+    let plane_dist = axis.dot(vertices[0]);
+    let corner = half_extents * Vec3A::ONE.copysign(axis);
+    let dist_to_plane = axis.dot(corner) - plane_dist;
+    corner - axis * dist_to_plane
 }
 
 struct ConvexTriangleCallback<'a, T: ContactAddedCallback> {
@@ -49,7 +83,8 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
         }
 
         let half_extents = self.box_shape.get_half_extents();
-        let contact_margin = self.box_shape.get_margin() + self.manifold.contact_breaking_threshold;
+        let sat_half_extents = half_extents + self.box_shape.get_margin();
+        let contact_margin = self.manifold.contact_breaking_threshold;
 
         let world_to_box = self.convex_obj.world_trans.inverse();
         let tri_to_world = self.tri_obj.get_world_trans();
@@ -67,8 +102,9 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
             tri_verts_rel[0] - tri_verts_rel[2],
         ];
 
-        let mut min_penetration = f32::INFINITY;
+        let mut min_non_face_penetration = f32::INFINITY;
         let mut best_result: Option<SatResult> = None;
+        let mut triangle_face_result: Option<SatResult> = None;
 
         for i in 0..3 {
             let tri_min = tri_verts_rel[0][i]
@@ -78,7 +114,7 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
                 .max(tri_verts_rel[1][i])
                 .max(tri_verts_rel[2][i]);
 
-            let axis_extent = half_extents[i] + contact_margin;
+            let axis_extent = sat_half_extents[i] + contact_margin;
             if tri_max < -axis_extent || tri_min > axis_extent {
                 return;
             }
@@ -91,8 +127,8 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
                 (p_pos, 1.0)
             };
 
-            if penetration < min_penetration {
-                min_penetration = penetration;
+            if penetration < min_non_face_penetration {
+                min_non_face_penetration = penetration;
                 let mut axis = Vec3A::ZERO;
                 axis[i] = side;
                 best_result = Some(SatResult {
@@ -106,25 +142,23 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
         let tri_normal = tri_edges_rel[0].cross(tri_edges_rel[1]);
         if let Some(norm_axis) = tri_normal.try_normalize() {
             let plane_dist = norm_axis.dot(tri_verts_rel[0]);
-            let proj_radius = half_extents.dot(norm_axis.abs()) + contact_margin;
+            let proj_radius = sat_half_extents.dot(norm_axis.abs()) + contact_margin;
 
             if plane_dist.abs() > proj_radius {
                 return;
             }
 
             let penetration = proj_radius - plane_dist.abs();
-            if penetration < min_penetration {
-                min_penetration = penetration;
-                best_result = Some(SatResult {
-                    penetration,
-                    axis: if plane_dist > 0.0 {
-                        norm_axis
-                    } else {
-                        -norm_axis
-                    },
-                    axis_type: AxisType::TriFace,
-                });
-            }
+            let face_result = SatResult {
+                penetration,
+                axis: if plane_dist > 0.0 {
+                    norm_axis
+                } else {
+                    -norm_axis
+                },
+                axis_type: AxisType::TriFace,
+            };
+            triangle_face_result = Some(face_result);
         }
 
         for box_axis_idx in 0..3 {
@@ -140,7 +174,7 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
                         norm_axis.dot(tri_verts_rel[2]),
                     );
                     let (tri_min, tri_max) = (p.min_element(), p.max_element());
-                    let proj_radius = half_extents.dot(norm_axis.abs()) + contact_margin;
+                    let proj_radius = sat_half_extents.dot(norm_axis.abs()) + contact_margin;
 
                     if tri_max < -proj_radius || tri_min > proj_radius {
                         return;
@@ -154,8 +188,8 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
                         (p_pos, norm_axis)
                     };
 
-                    if penetration < min_penetration {
-                        min_penetration = penetration;
+                    if penetration < min_non_face_penetration {
+                        min_non_face_penetration = penetration;
                         best_result = Some(SatResult {
                             penetration,
                             axis: axis_dir,
@@ -169,35 +203,18 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
             }
         }
 
-        let Some(result) = best_result else {
+        let triangle_face_result = triangle_face_result.filter(|result| {
+            let contact_point =
+                triangle_face_contact_point(result.axis, half_extents, &tri_verts_rel);
+            point_in_triangle(contact_point, &tri_verts_rel)
+        });
+        let Some(result) = triangle_face_result.or(best_result) else {
             return;
         };
 
         let contact_point_local = match result.axis_type {
             AxisType::TriFace => {
-                let tri_centroid = (tri_verts_rel[0] + tri_verts_rel[1] + tri_verts_rel[2]) / 3.0;
-                let plane_dist = result.axis.dot(tri_verts_rel[0]);
-
-                let mut best_point = Vec3A::ZERO;
-                let mut min_dist_sq = f32::INFINITY;
-                for i in 0..8 {
-                    let corner = half_extents
-                        * Vec3A::new(
-                            if i & 1 != 0 { 1.0 } else { -1.0 },
-                            if i & 2 != 0 { 1.0 } else { -1.0 },
-                            if i & 4 != 0 { 1.0 } else { -1.0 },
-                        );
-
-                    let dist_to_plane = result.axis.dot(corner) - plane_dist;
-                    let projected = corner - result.axis * dist_to_plane;
-
-                    let dist_sq = (projected - tri_centroid).length_squared();
-                    if dist_sq < min_dist_sq && dist_to_plane.abs() < 0.1 {
-                        min_dist_sq = dist_sq;
-                        best_point = projected;
-                    }
-                }
-                best_point
+                triangle_face_contact_point(result.axis, half_extents, &tri_verts_rel)
             }
 
             AxisType::ObbFace(face_idx) => {
@@ -270,7 +287,14 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
             .transform_point3a(contact_point_local);
 
         let normal_world_on_b = -self.convex_obj.world_trans.transform_vector3a(result.axis);
-        let distance = -(result.penetration + self.box_shape.get_margin());
+        let triangle_normal_world = self
+            .tri_obj
+            .get_world_trans()
+            .transform_vector3a(triangle.normal);
+        if normal_world_on_b.dot(triangle_normal_world) < 0.0 {
+            return;
+        }
+        let distance = self.manifold.contact_breaking_threshold - result.penetration;
         self.manifold.add_contact_point(
             self.convex_obj.obj,
             self.tri_obj,
@@ -319,8 +343,12 @@ pub fn process_collision<T: ContactAddedCallback>(
             };
             let aabb_in_triangle = box_shape.get_aabb(&convex_in_triangle_space);
 
+            let mut manifold = PersistentManifold::new(compound_obj, other_obj);
+            manifold.contact_breaking_threshold =
+                box_shape.get_half_extents().length() * CONTACT_BREAKING_THRESHOLD;
+
             let mut convex_triangle_callback = ConvexTriangleCallback {
-                manifold: PersistentManifold::new(compound_obj, other_obj),
+                manifold,
                 convex_obj: compound_obj_wrap,
                 tri_obj: other_obj,
                 local_convex_aabb: &aabb_in_triangle,

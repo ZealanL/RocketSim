@@ -81,7 +81,14 @@ impl VehicleRL {
             wheel.update_suspension(chassis, time_step);
         }
 
+        let bodies = collision_world.bodies();
+        let chassis = &bodies[self.chassis_body_idx];
+        for wheel in &mut self.wheels {
+            wheel.update_friction_impulse(chassis, bodies, time_step);
+        }
+
         // note: all suspension MUST be updated before impulses are applied
+        let chassis = &mut collision_world.bodies_mut()[self.chassis_body_idx];
         for wheel in &mut self.wheels {
             wheel.apply_friction_impulses(chassis, time_step);
         }

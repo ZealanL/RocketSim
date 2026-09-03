@@ -223,7 +223,6 @@ impl CollisionDispatcher {
                     col_obj_a,
                     contact_added_callback,
                 ),
-                CollisionShapes::TriangleMesh(_) => unreachable!(),
                 CollisionShapes::Sphere(_) => convex_convex_collision_alg::process_collision(
                     &RigidBodyWrapper {
                         obj: col_obj_a,

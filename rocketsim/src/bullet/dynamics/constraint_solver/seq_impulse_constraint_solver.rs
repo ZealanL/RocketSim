@@ -2,9 +2,12 @@ use glam::Vec3A;
 
 use super::{contact_solver_info, solver_body::SolverBody, solver_constraint::SolverConstraint};
 use crate::bullet::{
-    collision::narrowphase::{
-        manifold_point::ManifoldPoint,
-        persistent_manifold::{MANIFOLD_CACHE_SIZE, PersistentManifold},
+    collision::{
+        narrowphase::{
+            manifold_point::ManifoldPoint,
+            persistent_manifold::{MANIFOLD_CACHE_SIZE, PersistentManifold},
+        },
+        shapes::collision_shape::CollisionShapes,
     },
     dynamics::rigid_body::{CollisionFlags, RigidBody},
     linear_math::{integrate_trans, integrate_trans_no_rot, plane_space_1},
@@ -220,6 +223,22 @@ impl SeqImpulseConstraintSolver {
             body0.companion_id = Some(solver_body_id_a);
             body1.companion_id = Some(solver_body_id_b);
 
+            let is_compound_mesh = matches!(
+                (body0.get_collision_shape(), body1.get_collision_shape()),
+                (
+                    CollisionShapes::Compound(_),
+                    CollisionShapes::TriangleMesh(_)
+                ) | (
+                    CollisionShapes::TriangleMesh(_),
+                    CollisionShapes::Compound(_)
+                )
+            );
+            let restitution_velocity_threshold = if is_compound_mesh {
+                contact_solver_info::COMPOUND_MESH_RESTITUTION_VELOCITY_THRESHOLD
+            } else {
+                contact_solver_info::RESTITUTION_VELOCITY_THRESHOLD
+            };
+
             for cp in &mut manifold.point_cache {
                 assert!(cp.distance_1 <= manifold.contact_processing_threshold);
 
@@ -249,6 +268,7 @@ impl SeqImpulseConstraintSolver {
                         (rel_pos1, rel_pos2),
                         cp,
                         friction_idx,
+                        restitution_velocity_threshold,
                         time_step,
                     ),
                 );
