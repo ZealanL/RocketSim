@@ -4,6 +4,8 @@ use std::ops::{Index, IndexMut};
 
 use glam::{Mat3A, Vec3A};
 use rocketsim::{CarControls, CarState, PhysState, consts::TICK_RATE};
+
+const RL_BOOST_TO_ROCKETSIM_SCALE: f32 = 100.0;
 #[repr(C)]
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct VecRecord {
@@ -215,7 +217,7 @@ impl From<CarRecord> for CarState {
     fn from(phys_record: CarRecord) -> Self {
         Self {
             phys: phys_record.phys.into(),
-            boost: phys_record.boost_amount,
+            boost: phys_record.boost_amount * RL_BOOST_TO_ROCKETSIM_SCALE,
             controls: phys_record.prev_controls.into(),
             is_on_ground: phys_record.is_on_ground,
             wheels_with_contact: phys_record.wheels.map(|wheel| wheel.has_contact),

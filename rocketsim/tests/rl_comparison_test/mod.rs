@@ -74,7 +74,8 @@ fn test_recording(recording: &Recording) {
 
     for (i, &car_idx) in car_idcs.iter().enumerate() {
         let mut cs = *arena.get_car_state(car_idx);
-        cs.boost = recording.ticks[0].car_records[i].boost_amount;
+        let initial_car_state: CarState = recording.ticks[0].car_records[i].into();
+        cs.boost = initial_car_state.boost;
         arena.set_car_state(car_idx, cs);
     }
 
