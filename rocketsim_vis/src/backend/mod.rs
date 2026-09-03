@@ -1,8 +1,8 @@
 mod color;
+mod elem_2d;
 mod model;
 mod model_set;
 mod shader_src;
-mod elem_2d;
 mod texture;
 mod texture_set;
 mod vis_render_state;
@@ -11,10 +11,10 @@ mod window_event;
 mod window_event_queue;
 
 pub use color::*;
+pub use elem_2d::*;
 pub use model::*;
 pub use model_set::*;
 pub use shader_src::*;
-pub use elem_2d::*;
 pub use texture::*;
 pub use texture_set::*;
 pub use vis_render_state::*;

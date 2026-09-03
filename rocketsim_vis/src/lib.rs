@@ -4,7 +4,7 @@ mod ribbon_emitter;
 pub mod vis_asset_loader;
 mod vis_inst;
 
-use rocketsim::{Arena, GameMode, get_arena_collision_mesh_files};
+use rocketsim::Arena;
 pub use vis_inst::*;
 
 pub trait ArenaVisExt {

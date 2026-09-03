@@ -1,7 +1,5 @@
-use crate::backend::{
-    Color, Elem2D, InfoLineType, ModelSet, ShaderSrc, ShaderSrcType, SharedVisRenderState,
-    SharedWindowEvents, TextureSet, WindowEvent, WindowEventQueue,
-};
+use std::{sync::Mutex, thread::JoinHandle};
+
 use egui::{Align, Align2, Pos2, Rect};
 use egui_miniquad::EguiMq;
 use glam::{
@@ -16,7 +14,11 @@ use miniquad::{
     window,
 };
 use rustc_hash::FxHashMap;
-use std::{sync::Mutex, thread::JoinHandle};
+
+use crate::backend::{
+    Color, Elem2D, InfoLineType, ModelSet, ShaderSrc, ShaderSrcType, SharedVisRenderState,
+    SharedWindowEvents, TextureSet, WindowEvent, WindowEventQueue,
+};
 
 #[repr(C)]
 pub struct Uniforms {

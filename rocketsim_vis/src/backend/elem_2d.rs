@@ -1,5 +1,6 @@
-use crate::backend::Color;
 use glam::Vec2;
+
+use crate::backend::Color;
 
 #[derive(Debug, Clone)]
 pub enum Elem2D {
@@ -19,5 +20,5 @@ pub enum Elem2D {
         pos: Vec2,
         centered: bool,
         color: Color,
-    }
+    },
 }

@@ -30,11 +30,11 @@ impl Color {
         Self::new(r, g, b, 1.0)
     }
 
-    pub const fn to_array(&self) -> [f32; 4] {
+    pub const fn to_array(self) -> [f32; 4] {
         [self.r, self.g, self.b, self.a]
     }
 
-    pub const fn is_valid(&self) -> bool {
+    pub const fn is_valid(self) -> bool {
         let vals = self.to_array();
         let mut i = 0;
         while i < vals.len() {
@@ -62,7 +62,7 @@ impl Color {
         )
     }
 
-    pub(in crate::backend) fn to_egui(&self) -> egui::Color32 {
+    pub(in crate::backend) fn to_egui(self) -> egui::Color32 {
         egui::Color32::from_rgba_unmultiplied(
             (self.r.clamp(0.0, 1.0) * 255.0).round() as u8,
             (self.g.clamp(0.0, 1.0) * 255.0).round() as u8,
