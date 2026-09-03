@@ -35,25 +35,15 @@ pub fn resolve_single_collision(
     normal_impulse.max(0.0)
 }
 
-pub fn resolve_single_bilateral(
-    body1: &RigidBody,
-    body2: &RigidBody,
-    pos1: Vec3A,
-    pos2: Vec3A,
-    normal: Vec3A,
-) -> f32 {
+pub fn resolve_single_bilateral_fake_ground(body1: &RigidBody, pos: Vec3A, normal: Vec3A) -> f32 {
     const CONTACT_DAMPING: f32 = -0.2;
 
     debug_assert!(normal.is_normalized());
     let body1_comt = body1.get_world_trans();
-    let body2_comt = body2.get_world_trans();
 
-    let rel_pos1 = pos1 - body1_comt.translation;
-    let rel_pos2 = pos2 - body2_comt.translation;
+    let rel_pos1 = pos - body1_comt.translation;
 
     let vel1 = body1.get_vel_in_local_point(rel_pos1);
-    let vel2 = body2.get_vel_in_local_point(rel_pos2);
-    let vel = vel1 - vel2;
 
     let jac_body_a = JacbobianBody {
         world: &body1_comt.matrix3,
@@ -63,15 +53,15 @@ pub fn resolve_single_bilateral(
     };
 
     let jac_body_b = JacbobianBody {
-        world: &body2_comt.matrix3,
-        rel_pos: rel_pos2,
-        inertia_inv: body2.inv_inertia_local,
-        mass_inv: body2.inv_mass,
+        world: &body1_comt.matrix3,
+        rel_pos: Vec3A::ZERO,
+        inertia_inv: Vec3A::ZERO,
+        mass_inv: 0.0,
     };
 
     let jac_diag_ab = get_jacobian_diagonal(&jac_body_a, &jac_body_b, normal);
     let jac_diag_ab_inv = 1.0 / jac_diag_ab;
-    let rel_vel = normal.dot(vel);
+    let rel_vel = normal.dot(vel1);
 
     CONTACT_DAMPING * rel_vel * jac_diag_ab_inv
 }

@@ -68,12 +68,14 @@ impl VehicleRL {
             if let Some(ray_result) = ray_results[i] {
                 num_wheels_in_contact += 1;
                 wheel.apply_ray_cast(chassis, ray_result, time_step, i < 2);
+                let is_dynamic_hit = !ray_result.rigid_body.is_static_obj();
                 wheel.refresh_friction_curves(
                     chassis,
                     ray_result.hit_normal_in_world,
                     handbrake_val,
                     real_throttle,
                     three_wheels,
+                    is_dynamic_hit,
                 );
             } else {
                 wheel.reset_wheel_suspension();
@@ -118,10 +120,9 @@ impl VehicleRL {
             wheel.update_suspension(chassis, time_step);
         }
 
-        let bodies = collision_world.bodies();
-        let chassis = &bodies[self.chassis_body_idx];
+        let chassis = &collision_world.bodies()[self.chassis_body_idx];
         for wheel in &mut self.wheels {
-            wheel.update_friction_impulse(chassis, bodies, time_step);
+            wheel.update_friction_impulse(chassis, time_step);
         }
 
         // note: all suspension MUST be updated before impulses are applied

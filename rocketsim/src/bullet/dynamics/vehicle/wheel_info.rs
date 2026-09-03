@@ -5,7 +5,7 @@ use crate::{
     bullet::{
         dynamics::{
             constraint_solver::contact_constraint::{
-                resolve_single_bilateral, resolve_single_collision,
+                resolve_single_bilateral_fake_ground, resolve_single_collision,
             },
             rigid_body::{Impulse, RigidBody},
         },
@@ -179,6 +179,7 @@ impl WheelInfo {
         handbrake_val: f32,
         real_throttle: f32,
         three_wheels: bool,
+        is_dynamic_hit: bool,
     ) {
         let lat_dir = self.axle_dir;
         let long_dir = lat_dir.cross(contact_normal);
@@ -208,7 +209,15 @@ impl WheelInfo {
                     * handbrake_val;
         }
 
-        if real_throttle == 0.0 {
+        // Wheels on a dynamic hit body cannot use sticky ground: the lateral
+        // bilateral resolves against a fixed body (target GetFakeBulletObj),
+        // so a ball hit grips like static ground in the vehicle layer. RL
+        // wheel records keep the 0.1 non-sticky scale on ball contacts even
+        // with throttle (e.g. cb_reset_fling i67 lat 0.049/long 0.081 vs a
+        // 0.49/0.81 unscaled vehicle computation), while flat ground
+        // (normal.z = 1) scales by 1.0 and is unaffected. Gate on the
+        // static-vs-dynamic hit classifier, not on recording or body names.
+        if real_throttle == 0.0 || is_dynamic_hit {
             let non_sticky_scale = curves::NON_STICKY_FRICTION_FACTOR.get_output(contact_normal.z);
             lat_friction *= non_sticky_scale;
             long_friction *= non_sticky_scale;
@@ -221,7 +230,6 @@ impl WheelInfo {
     pub fn calc_friction_impulses(
         &mut self,
         chassis: &RigidBody,
-        ground_rb: &RigidBody,
         contact_normal: Vec3A,
         contact_point: Vec3A,
         time_step: f32,
@@ -231,8 +239,9 @@ impl WheelInfo {
 
         let forward_dir = contact_normal.cross(axle_dir).normalize_or_zero();
 
-        let side_impulse =
-            resolve_single_bilateral(chassis, ground_rb, contact_point, contact_point, axle_dir);
+        // Lateral friction resolves against a fixed ground body, never the
+        // landed rigid body (target GetFakeBulletObj; upstream getFixedBody).
+        let side_impulse = resolve_single_bilateral_fake_ground(chassis, contact_point, axle_dir);
 
         let rolling_friction = if self.engine_force == 0.0 {
             if self.brake == 0.0 {
@@ -261,26 +270,15 @@ impl WheelInfo {
         total_friction_force * friction_scale
     }
 
-    pub fn update_friction_impulse(
-        &mut self,
-        chassis: &RigidBody,
-        collision_objs: &[RigidBody],
-        time_step: f32,
-    ) {
+    pub fn update_friction_impulse(&mut self, chassis: &RigidBody, time_step: f32) {
         let Some(raycast_info) = self.raycast_info.as_ref() else {
             return;
         };
 
         let contact_normal = raycast_info.contact_normal;
         let contact_point = raycast_info.contact_point;
-        let ground_rb = &collision_objs[raycast_info.ground_body_idx];
-        let impulse = self.calc_friction_impulses(
-            chassis,
-            ground_rb,
-            contact_normal,
-            contact_point,
-            time_step,
-        );
+        let impulse =
+            self.calc_friction_impulses(chassis, contact_normal, contact_point, time_step);
 
         if let Some(raycast_info) = self.raycast_info.as_mut() {
             raycast_info.impulse = impulse;
