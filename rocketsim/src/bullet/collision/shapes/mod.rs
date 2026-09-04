@@ -1,6 +1,6 @@
 pub mod box_shape;
 pub mod bvh_triangle_mesh_shape;
-mod collision_margin;
+pub mod collision_margin;
 pub mod collision_shape;
 pub mod compound_shape;
 pub mod convex_hull_shape;

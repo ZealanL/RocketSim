@@ -1,12 +1,11 @@
 use glam::Vec3A;
 use rocketsim::{
-    Arena, CarBodyConfig, CarControls, CarState, GameMode, PhysState, Team, consts::BT_TO_UU,
+    Arena, CarBodyConfig, CarControls, CarState, GameMode, PhysState, Team,
+    consts::BT_TO_UU,
+    rlpr::{Recording, tick_record::TickRecord},
 };
 
-use crate::rl_comparison_test::recording::{Recording, tick_record::TickRecord};
-
 mod compare;
-mod recording;
 
 pub fn set_state_to_record_tick(
     arena: &mut Arena,
@@ -28,6 +27,7 @@ pub fn set_state_to_record_tick(
         cs.has_jumped = rep_cs.has_jumped;
         cs.prev_controls = car_record.prev_controls.into();
         cs.flip_rel_torque = rep_cs.flip_rel_torque;
+        cs.boost = rep_cs.boost;
 
         if car_record.has_flip {
             cs.has_double_jumped = false;
@@ -50,10 +50,9 @@ pub fn set_state_to_record_tick(
     arena.set_ball_state(bs);
 }
 
-fn test_recording(recording: &Recording) {
+fn create_arena(recording: &Recording) -> (Arena, Vec<usize>) {
     let mut arena = Arena::new(GameMode::Soccar);
-    let num_cars = recording.info.num_cars as usize;
-    let car_idcs: Vec<usize> = (0..num_cars)
+    let car_idcs = (0..recording.info.num_cars as usize)
         .map(|i| {
             let team = if (i % 2) == 0 {
                 Team::Blue
@@ -64,19 +63,21 @@ fn test_recording(recording: &Recording) {
         })
         .collect();
 
-    // Warm-up: step once to establish contact constraints after teleport
-    let warmup_controls: Vec<CarControls> = recording.ticks[0]
+    (arena, car_idcs)
+}
+
+fn test_recording(recording: &Recording) {
+    let (mut arena, car_idcs) = create_arena(recording);
+    let num_cars = car_idcs.len();
+
+    // Warm-up: step once to establish contact constraints after teleport.
+    // The destination tick stores the controls used during the transition.
+    let warmup_controls: Vec<CarControls> = recording.ticks[1]
         .car_records
         .iter()
         .map(|cr| cr.prev_controls.into())
         .collect();
     set_state_to_record_tick(&mut arena, &car_idcs, &recording.ticks[0], &warmup_controls);
-
-    for (i, &car_idx) in car_idcs.iter().enumerate() {
-        let mut cs = *arena.get_car_state(car_idx);
-        cs.boost = recording.ticks[0].car_records[i].boost_amount;
-        arena.set_car_state(car_idx, cs);
-    }
 
     arena.step_tick();
 
@@ -179,15 +180,19 @@ fn test_recording(recording: &Recording) {
     }
 }
 
+fn init_rocketsim() {
+    static INIT: std::sync::Once = std::sync::Once::new();
+    INIT.call_once(|| {
+        rocketsim::init_from_default(true).unwrap();
+    });
+}
+
 // This will be called from each test file
 #[allow(unused)]
 fn run_comparison_test(name: &str, recording_bytes: &[u8]) {
     // Tests run in parallel threads; racing the global init corrupts
     // lookup tables for latecomers (nondeterministic physics failures).
-    static INIT: std::sync::Once = std::sync::Once::new();
-    INIT.call_once(|| {
-        rocketsim::init_from_default(true).unwrap();
-    });
+    init_rocketsim();
     let recording = Recording::from_bytes(name, recording_bytes).unwrap();
     test_recording(&recording);
 }

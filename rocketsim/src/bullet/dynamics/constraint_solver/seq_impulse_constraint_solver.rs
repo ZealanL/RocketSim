@@ -292,42 +292,55 @@ impl SeqImpulseConstraintSolver {
 
         manifolds.clear();
 
-        let special_contacts = std::mem::take(&mut self.tmp_special_contact_pool);
-        if special_contacts
-            .iter()
-            .all(|contact| !contact.is_penetrating())
-        {
-            if !special_contacts.is_empty() {
-                self.convert_contact_special(collision_objs, &special_contacts, time_step);
-            }
-        } else {
-            // Resolve each physical touch once across duplicate mesh groups.
-            let mut group_start = 0;
-            for group_idx in 0..self.tmp_special_contact_group_ends.len() {
-                let group_end = self.tmp_special_contact_group_ends[group_idx];
-                let group = &special_contacts[group_start..group_end];
-                let has_impact = group.iter().any(|contact| contact.is_penetrating());
-                if has_impact {
-                    let is_duplicate_view = group.iter().all(|contact| {
-                        self.tmp_special_resolved_touches
-                            .iter()
-                            .any(|resolved| same_touch(resolved, contact))
-                    });
-                    if is_duplicate_view {
-                        group_start = group_end;
-                        continue;
-                    }
-
-                    self.tmp_special_resolved_touches.extend_from_slice(group);
-                }
-
-                self.convert_contact_special(collision_objs, group, time_step);
-                group_start = group_end;
+        if !self.tmp_special_contact_pool.is_empty() {
+            if self.all_special_shallow() {
+                self.convert_contact_special(collision_objs, time_step);
+            } else {
+                self.collect_survivor_clusters();
+                self.convert_cluster_averages(collision_objs, time_step);
             }
         }
 
         self.tmp_special_contact_group_ends.clear();
-        self.tmp_special_contact_pool = special_contacts;
+    }
+
+    fn all_special_shallow(&self) -> bool {
+        self.tmp_special_contact_pool
+            .iter()
+            .all(|contact| !contact.is_penetrating())
+    }
+
+    /// Move each contact group into the cluster pool.
+    /// Skip impact groups that duplicate an already resolved touch.
+    fn collect_survivor_clusters(&mut self) {
+        let Self {
+            tmp_special_contact_pool: contacts,
+            tmp_special_contact_group_ends: group_ends,
+            tmp_special_cluster_pool: clusters,
+            tmp_special_resolved_touches: resolved,
+            ..
+        } = self;
+
+        clusters.clear();
+        let mut group_start = 0;
+        for &group_end in group_ends.iter() {
+            let group = &contacts[group_start..group_end];
+            let has_impact = group.iter().any(SpecialContact::is_penetrating);
+            if has_impact {
+                let is_duplicate_view = group
+                    .iter()
+                    .all(|contact| resolved.iter().any(|r| same_touch(r, contact)));
+                if is_duplicate_view {
+                    group_start = group_end;
+                    continue;
+                }
+
+                resolved.extend_from_slice(group);
+            }
+
+            clusters.extend_from_slice(group);
+            group_start = group_end;
+        }
     }
 
     fn setup_solver_bodies(
@@ -363,16 +376,11 @@ impl SeqImpulseConstraintSolver {
         }
     }
 
-    fn convert_contact_special(
-        &mut self,
-        collision_objs: &[RigidBody],
-        special_contacts: &[SpecialContact],
-        time_step: f32,
-    ) {
+    fn convert_contact_special(&mut self, collision_objs: &[RigidBody], time_step: f32) {
         // Reduce duplicate reports before classifying shallow support contacts.
         // Use one representative for each deep physical touch.
         let has_reduced_contacts = reduce_shallow_support_contacts(
-            special_contacts,
+            &self.tmp_special_contact_pool,
             &mut self.tmp_special_shallow_reduced,
             &mut self.tmp_special_shallow_edge_group_pool,
             &mut self.tmp_special_shallow_edge_group_ranges,
@@ -383,12 +391,13 @@ impl SeqImpulseConstraintSolver {
             let classification_contacts: &[SpecialContact] = if has_reduced_contacts {
                 &self.tmp_special_shallow_deduplicated
             } else {
-                special_contacts
+                &self.tmp_special_contact_pool
             };
             let min_distance = classification_contacts
                 .iter()
                 .map(|contact| contact.distance)
                 .fold(f32::MAX, f32::min);
+
             let mut total_classification_normal = Vec3A::ZERO;
             for contact in classification_contacts {
                 total_classification_normal += if has_reduced_contacts {
@@ -397,12 +406,13 @@ impl SeqImpulseConstraintSolver {
                     contact.raw_normal_world_on_b
                 };
             }
+
             let classification_mean =
                 total_classification_normal / classification_contacts.len() as f32;
-            let all_non_penetrating = special_contacts
+            let all_non_penetrating = self
+                .tmp_special_contact_pool
                 .iter()
                 .all(|contact| !contact.is_penetrating());
-
             if all_non_penetrating
                 || (min_distance > -SPECIAL_LINEAR_SLOP
                     && classification_mean.z >= SUPPORT_NORMAL_MIN_Z)
@@ -424,7 +434,7 @@ impl SeqImpulseConstraintSolver {
                     normal_world_on_b: (total_normal / num_samples).normalize(),
                     lever_len: total_lever_len / num_samples,
                     min_distance,
-                    obj_idx: special_contacts[0].obj_idx,
+                    obj_idx: self.tmp_special_contact_pool[0].obj_idx,
                 }
             } else {
                 // Group deep samples by physical touch.
@@ -432,14 +442,12 @@ impl SeqImpulseConstraintSolver {
                 self.tmp_special_cluster_pool.clear();
                 self.tmp_special_cluster_ranges.clear();
                 self.tmp_special_representatives.clear();
-                self.tmp_special_cluster_pool
-                    .reserve(special_contacts.len());
-                self.tmp_special_cluster_ranges
-                    .reserve(special_contacts.len());
-                self.tmp_special_representatives
-                    .reserve(special_contacts.len());
+                let num_contacts = self.tmp_special_contact_pool.len();
+                self.tmp_special_cluster_pool.reserve(num_contacts);
+                self.tmp_special_cluster_ranges.reserve(num_contacts);
+                self.tmp_special_representatives.reserve(num_contacts);
 
-                for contact in special_contacts {
+                for contact in &self.tmp_special_contact_pool {
                     let matching_cluster =
                         self.tmp_special_cluster_ranges.iter().enumerate().find_map(
                             |(cluster_idx, &(start, end))| {
@@ -479,12 +487,13 @@ impl SeqImpulseConstraintSolver {
                     let representative = {
                         let (start, end) = self.tmp_special_cluster_ranges[cluster_idx];
                         let cluster = &self.tmp_special_cluster_pool[start..end];
+
                         // Use the touched body's velocities for every sample in the cluster.
                         let body = &collision_objs[cluster[0].obj_idx];
                         let solver_body = &self.tmp_solver_body_pool[body.companion_id.unwrap()];
-                        *dominant_contact(cluster, solver_body.lin_vel, solver_body.ang_vel)
+                        dominant_contact(cluster, solver_body.lin_vel, solver_body.ang_vel)
                     };
-                    self.tmp_special_representatives.push(representative);
+                    self.tmp_special_representatives.push(*representative);
                 }
 
                 // Ignore stationary touches when another touch approaches.
@@ -525,16 +534,78 @@ impl SeqImpulseConstraintSolver {
             }
         };
 
+        let first_contact = self.tmp_special_contact_pool[0];
         let contact = SpecialContact {
             normal_world_on_b: aggregate.normal_world_on_b,
             lever_arm: aggregate.normal_world_on_b * -aggregate.lever_len,
             distance: aggregate.min_distance,
-            friction: special_contacts[0].friction,
-            restitution: special_contacts[0].restitution,
+            friction: first_contact.friction,
+            restitution: first_contact.restitution,
             obj_idx: aggregate.obj_idx,
-            ..special_contacts[0]
+            ..first_contact
         };
 
+        self.push_special_row::<false>(collision_objs, &contact, time_step);
+    }
+
+    /// Create one averaged synthetic row for each dynamic body.
+    /// Read survivors from the cluster pool. Copy each sample by value.
+    /// Hold no pool borrow across `push_special_row`.
+    fn convert_cluster_averages(&mut self, collision_objs: &[RigidBody], time_step: f32) {
+        let num_clusters = self.tmp_special_cluster_pool.len();
+        'clusters: for i in 0..num_clusters {
+            let contact = &self.tmp_special_cluster_pool[i];
+            for other_contact in &self.tmp_special_cluster_pool[0..i] {
+                if other_contact.obj_idx == contact.obj_idx {
+                    continue 'clusters;
+                }
+            }
+
+            let mut total_normal = Vec3A::ZERO;
+            let mut total_lever_len = 0.0;
+            let mut total_friction = 0.0;
+            let mut total_restitution = 0.0;
+            let mut min_distance = f32::MAX;
+            let mut count = 0u32;
+            let mut first = contact;
+
+            let obj_idx = contact.obj_idx;
+            for contact in &self.tmp_special_cluster_pool {
+                if contact.obj_idx != obj_idx {
+                    continue;
+                }
+
+                total_normal += contact.normal_world_on_b;
+                total_lever_len += contact.lever_arm.length();
+                total_friction += contact.friction;
+                total_restitution += contact.restitution;
+                min_distance = min_distance.min(contact.distance);
+                count += 1;
+                first = contact;
+            }
+
+            let num_samples = count as f32;
+            let mean_normal = (total_normal / num_samples).normalize();
+            let contact = SpecialContact {
+                normal_world_on_b: mean_normal,
+                lever_arm: mean_normal * -(total_lever_len / num_samples),
+                distance: min_distance,
+                friction: total_friction / num_samples,
+                restitution: total_restitution / num_samples,
+                obj_idx,
+                ..*first
+            };
+
+            self.push_special_row::<true>(collision_objs, &contact, time_step);
+        }
+    }
+
+    fn push_special_row<const STANDARD_RESTITUTION: bool>(
+        &mut self,
+        collision_objs: &[RigidBody],
+        contact: &SpecialContact,
+        time_step: f32,
+    ) {
         let body = &collision_objs[contact.obj_idx];
         let relaxation = contact_solver_info::SOR;
 
@@ -572,14 +643,13 @@ impl SeqImpulseConstraintSolver {
         let vel = body.get_vel_in_local_point(rel_pos1);
         let rel_vel = normal_world_on_b.dot(vel);
 
-        // Use a low threshold for special contacts.
-        // Preserve shallow impacts without bouncing at rest.
-        let restitution =
-            if rel_vel.abs() >= contact_solver_info::SPECIAL_RESTITUTION_VELOCITY_THRESHOLD {
-                (contact.restitution * -rel_vel).max(0.0)
-            } else {
-                0.0
-            };
+        let restitution = if STANDARD_RESTITUTION
+            || rel_vel.abs() >= contact_solver_info::SPECIAL_RESTITUTION_VELOCITY_THRESHOLD
+        {
+            (contact.restitution * -rel_vel).max(0.0)
+        } else {
+            0.0
+        };
 
         let (external_force_impulse_a, external_torque_impulse_a) = {
             let solver_body_a = &self.tmp_solver_body_pool[solver_body_id_a];
@@ -689,6 +759,7 @@ impl SeqImpulseConstraintSolver {
                 ..Default::default()
             });
     }
+
     fn solve_group_split_impulse_iterations(&mut self) {
         let mut should_run = (1u64 << self.tmp_solver_contact_constraint_pool.len()) - 1;
 
@@ -834,15 +905,12 @@ fn same_touch(a: &SpecialContact, b: &SpecialContact) -> bool {
         return false;
     }
 
-    let dx = (a.pos_world_on_a.x - b.pos_world_on_a.x)
-        .abs()
-        .min((a.pos_world_on_a.x + b.pos_world_on_a.x).abs());
-    let dy = (a.pos_world_on_a.y - b.pos_world_on_a.y)
-        .abs()
-        .min((a.pos_world_on_a.y + b.pos_world_on_a.y).abs());
-    let dz = (a.pos_world_on_a.z - b.pos_world_on_a.z).abs();
+    let delta = (a.pos_world_on_a - b.pos_world_on_a).abs();
+    let dx = delta.x.min((a.pos_world_on_a.x + b.pos_world_on_a.x).abs());
+    let dy = delta.y.min((a.pos_world_on_a.y + b.pos_world_on_a.y).abs());
+
     let tolerance = a.lever_arm.length() * SPECIAL_CONTACT_CLUSTER_LEVER_FRACTION;
-    dx * dx + dy * dy + dz * dz <= tolerance * tolerance
+    dx * dx + dy * dy + delta.z * delta.z <= tolerance * tolerance
 }
 
 const SPECIAL_NORMAL_ADJUSTMENT_EPSILON: f32 = 1e-4;

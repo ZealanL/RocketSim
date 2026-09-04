@@ -61,6 +61,7 @@ impl SolverConstraint {
         constraint
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn get_contact_constraint(
         (solver_body_id_a, solver_body_id_b): (usize, usize),
         (solver_body_a, solver_body_b): (&mut SolverBody, &mut SolverBody),
@@ -93,11 +94,7 @@ impl SolverConstraint {
     }
 
     pub fn restitution_curve(rel_vel: f32, restitution: f32) -> f32 {
-        if rel_vel.abs() < contact_solver_info::RESTITUTION_VELOCITY_THRESHOLD {
-            0.0
-        } else {
-            restitution * -rel_vel
-        }
+        (restitution * -rel_vel).max(0.0)
     }
 
     fn setup_contact_constraint(
@@ -169,7 +166,7 @@ impl SolverConstraint {
 
         let vel = vel0 - vel1;
         let rel_vel = cp.normal_world_on_b.dot(vel);
-        let restitution = Self::restitution_curve(rel_vel, cp.combined_restitution).max(0.0);
+        let restitution = Self::restitution_curve(rel_vel, cp.combined_restitution);
 
         let penetration = cp.distance_1;
         let positional_error = if penetration > 0.0 {

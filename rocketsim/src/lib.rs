@@ -9,6 +9,8 @@ mod base;
 mod bullet;
 mod glam_inc;
 mod logging;
+#[doc(hidden)]
+pub mod rlpr;
 pub mod shared;
 mod sim;
 ///////////

@@ -212,7 +212,6 @@ impl Car {
     fn update_wheels(
         &mut self,
         rb: &mut RigidBody,
-        num_wheels_in_contact: usize,
         forward_speed_uu: f32,
         mutator_config: &MutatorConfig,
     ) {
@@ -224,11 +223,7 @@ impl Car {
         self.state.handbrake_val = (self.state.handbrake_val + handbrake_delta).clamp(0.0, 1.0);
 
         let mut real_brake = 0.0;
-        let real_throttle = if self.state.controls.boost && self.state.boost > 0.0 {
-            1.0
-        } else {
-            self.state.controls.throttle
-        };
+        let real_throttle = self.state.controls.throttle;
 
         let abs_forward_speed_uu = forward_speed_uu.abs();
         let mut engine_throttle = real_throttle;
@@ -253,11 +248,7 @@ impl Car {
             }
         }
 
-        let mut drive_speed_scale =
-            curves::DRIVE_SPEED_TORQUE_FACTOR.get_output(abs_forward_speed_uu);
-        if num_wheels_in_contact < 3 {
-            drive_speed_scale /= 4.0;
-        }
+        let drive_speed_scale = curves::DRIVE_SPEED_TORQUE_FACTOR.get_output(abs_forward_speed_uu);
 
         let drive_engine_force = engine_throttle
             * const { drive_consts::THROTTLE_TORQUE_AMOUNT * UU_TO_BT }
@@ -310,7 +301,7 @@ impl Car {
         }
     }
 
-    fn update_air_torque(&mut self, rb: &mut RigidBody, update_air_control: bool) {
+    fn update_air_torque(&mut self, rb: &mut RigidBody, num_wheels_in_contact: usize) {
         use car_consts::{air_control, flip};
 
         let forward_dir = self.state.get_forward_dir();
@@ -321,64 +312,32 @@ impl Car {
         let dir_yaw = up_dir;
         let dir_roll = -forward_dir;
 
-        let mut do_air_control = false;
-        if self.state.is_flipping && update_air_control {
-            if self.state.flip_rel_torque == Vec3A::ZERO {
-                do_air_control = true;
-            } else {
-                let mut rel_dodge_torque = self.state.flip_rel_torque;
+        let allow_dodge = num_wheels_in_contact < 3;
+        let allow_air = num_wheels_in_contact == 0;
 
-                let mut pitch_scale = 1.0;
-                if rel_dodge_torque.y != 0.0
-                    && self.state.controls.pitch != 0.0
-                    && rel_dodge_torque.y.signum() == self.state.controls.pitch.signum()
-                {
-                    pitch_scale = 1.0 - self.state.controls.pitch.abs().min(1.0);
-                    do_air_control = true;
-                }
+        if self.state.is_flipping && allow_dodge && self.state.flip_rel_torque != Vec3A::ZERO {
+            let mut rel_dodge_torque = self.state.flip_rel_torque;
 
-                rel_dodge_torque.y *= pitch_scale;
-                let dodge_torque = rel_dodge_torque * flip::TORQUE * TICK_TIME;
-
-                rb.add_impulse(
-                    None,
-                    Impulse::Angular(rb.get_world_trans().matrix3 * dodge_torque),
-                    false,
-                    true,
-                );
-
-                let damp_pitch = dir_pitch.dot(rb.ang_vel) * air_control::DAMPING.x;
-                let damp_yaw = dir_yaw.dot(rb.ang_vel) * air_control::DAMPING.y;
-                let damp_roll = dir_roll.dot(rb.ang_vel) * air_control::DAMPING.z;
-                let damping = dir_yaw * damp_yaw + dir_pitch * damp_pitch + dir_roll * damp_roll;
-                rb.add_impulse(
-                    None,
-                    Impulse::Angular(
-                        damping * const { air_control::TORQUE_APPLY_SCALE * TICK_TIME },
-                    ),
-                    false,
-                    true,
-                );
-
-                let proj_x = rb.ang_vel.x + rb.accum_ang_vel.x;
-                if proj_x > flip::SPIN_CAP_X {
-                    rb.accum_ang_vel.x -= proj_x - flip::SPIN_CAP_X;
-                } else if proj_x < -flip::SPIN_CAP_X {
-                    rb.accum_ang_vel.x -= proj_x + flip::SPIN_CAP_X;
-                }
-                let proj_y = rb.ang_vel.y + rb.accum_ang_vel.y;
-                if proj_y > flip::SPIN_CAP_Y {
-                    rb.accum_ang_vel.y -= proj_y - flip::SPIN_CAP_Y;
-                } else if proj_y < -flip::SPIN_CAP_Y {
-                    rb.accum_ang_vel.y -= proj_y + flip::SPIN_CAP_Y;
-                }
+            let mut pitch_scale = 1.0;
+            if rel_dodge_torque.y != 0.0
+                && self.state.controls.pitch != 0.0
+                && rel_dodge_torque.y.signum() == self.state.controls.pitch.signum()
+            {
+                pitch_scale = 1.0 - self.state.controls.pitch.abs().min(1.0);
             }
-        } else {
-            do_air_control = true;
+
+            rel_dodge_torque.y *= pitch_scale;
+            let dodge_torque = rel_dodge_torque * flip::TORQUE * TICK_TIME;
+
+            rb.add_impulse(
+                None,
+                Impulse::Angular(rb.get_world_trans().matrix3 * dodge_torque),
+                false,
+                true,
+            );
         }
 
-        do_air_control &= !self.state.is_auto_flipping;
-        do_air_control &= update_air_control;
+        let do_air_control = allow_air && !self.state.is_auto_flipping;
         if do_air_control {
             let mut pitch_torque_scale = 1.0;
             let torque = if self.state.controls.pitch != 0.0
@@ -414,6 +373,21 @@ impl Car {
                 (torque - damping) * const { air_control::TORQUE_APPLY_SCALE * TICK_TIME };
 
             rb.add_impulse(None, Impulse::Angular(rb_torque), false, true);
+        }
+
+        if self.state.is_flipping && self.state.flip_rel_torque != Vec3A::ZERO {
+            let proj_x = rb.ang_vel.x + rb.accum_ang_vel.x;
+            if proj_x > flip::SPIN_CAP_X {
+                rb.accum_ang_vel.x -= proj_x - flip::SPIN_CAP_X;
+            } else if proj_x < -flip::SPIN_CAP_X {
+                rb.accum_ang_vel.x -= proj_x + flip::SPIN_CAP_X;
+            }
+            let proj_y = rb.ang_vel.y + rb.accum_ang_vel.y;
+            if proj_y > flip::SPIN_CAP_Y {
+                rb.accum_ang_vel.y -= proj_y - flip::SPIN_CAP_Y;
+            } else if proj_y < -flip::SPIN_CAP_Y {
+                rb.accum_ang_vel.y -= proj_y + flip::SPIN_CAP_Y;
+            }
         }
 
         let throttle_scale = if self.state.controls.boost {
@@ -468,6 +442,8 @@ impl Car {
                     false,
                     false,
                 );
+                // Clamp speed after the impulse, as after a dodge impulse.
+                rb.limit_vels(car_consts::MAX_SPEED * UU_TO_BT, car_consts::MAX_ANG_SPEED);
             }
 
             let jump_force = up_dir * mutator_config.jump_accel * const { UU_TO_BT * TICK_TIME };
@@ -517,14 +493,14 @@ impl Car {
         mutator_config: &MutatorConfig,
         jump_pressed: bool,
         forward_speed_uu: f32,
-    ) {
+    ) -> bool {
         if self.state.is_on_ground {
             self.state.has_double_jumped = false;
             self.state.has_flipped = false;
             self.state.air_time = 0.0;
             self.state.air_time_since_jump = 0.0;
             self.state.flip_time = 0.0;
-            return;
+            return false;
         }
 
         self.state.air_time += TICK_TIME;
@@ -551,6 +527,8 @@ impl Car {
                 };
 
             if can_use {
+                self.state.has_jumped = true;
+
                 if is_flip_input {
                     self.state.flip_time = 0.0;
                     self.state.has_flipped = true;
@@ -615,6 +593,7 @@ impl Car {
                             false,
                             false,
                         );
+                        rb.limit_vels(car_consts::MAX_SPEED * UU_TO_BT, car_consts::MAX_ANG_SPEED);
                     }
                 } else {
                     let jump_start_force =
@@ -625,6 +604,8 @@ impl Car {
                         false,
                         false,
                     );
+                    // Clamp speed after the impulse, as after a dodge impulse.
+                    rb.limit_vels(car_consts::MAX_SPEED * UU_TO_BT, car_consts::MAX_ANG_SPEED);
                     self.state.has_double_jumped = true;
                 }
             }
@@ -632,18 +613,22 @@ impl Car {
 
         if self.state.is_flipping {
             let flip_time_pre = self.state.flip_time;
-            self.state.is_flipping =
+            let still_flipping =
                 self.state.has_flipped && flip_time_pre < car_consts::flip::TORQUE_TIME;
+            self.state.is_flipping = still_flipping;
             self.state.flip_time = flip_time_pre + TICK_TIME;
-            if flip_time_pre <= car_consts::flip::TORQUE_TIME
-                && flip_time_pre >= car_consts::flip::Z_DAMP_START
+            if (car_consts::flip::Z_DAMP_START..=car_consts::flip::TORQUE_TIME)
+                .contains(&flip_time_pre)
                 && (rb.lin_vel.z < 0.0 || flip_time_pre < car_consts::flip::Z_DAMP_END)
             {
                 rb.lin_vel.z *= 1.0 - car_consts::flip::Z_DAMP_120;
             }
-        } else if self.state.has_flipped {
+            return !still_flipping;
+        }
+        if self.state.has_flipped {
             self.state.flip_time += TICK_TIME;
         }
+        false
     }
 
     fn update_auto_roll(&self, rb: &mut RigidBody, num_wheels_in_contact: usize) {
@@ -770,7 +755,7 @@ impl Car {
         // TODO: Refactor and move
         let num_wheels_in_contact = self.state.num_wheels_in_contact();
 
-        self.update_wheels(rb, num_wheels_in_contact, forward_speed_uu, mutator_config);
+        self.update_wheels(rb, forward_speed_uu, mutator_config);
 
         if self.state.is_on_ground {
             self.state.is_flipping = false;
@@ -778,13 +763,18 @@ impl Car {
 
         self.update_jump(rb, mutator_config, jump_pressed);
         self.update_auto_flip(rb, jump_pressed);
-        self.update_double_jump_or_flip(rb, mutator_config, jump_pressed, forward_speed_uu);
+        let flip_ended =
+            self.update_double_jump_or_flip(rb, mutator_config, jump_pressed, forward_speed_uu);
 
         if !self.state.is_on_ground {
-            self.update_air_torque(rb, num_wheels_in_contact == 0);
+            self.update_air_torque(rb, num_wheels_in_contact);
         }
 
+        // Skip auto-roll on the tick a flip ends. The car still counts as
+        // flipping for auto-roll on its last flip tick.
         if self.state.controls.throttle != 0.0
+            && !self.state.is_flipping
+            && !flip_ended
             && ((0 < num_wheels_in_contact && num_wheels_in_contact < 4)
                 || self.state.world_contact_normal.is_some())
         {
@@ -866,15 +856,24 @@ impl Car {
             self.state.supersonic_grace_timer = 0.0;
         }
 
-        // Re-arm the jump once the car is grounded again, no
-        // longer holding a jump, and its suspension is no longer extending.
-        if self.state.has_jumped && !self.state.is_jumping && self.state.is_on_ground {
-            let susp_extending = self.bullet_vehicle.wheels.iter().any(|w| {
-                w.raycast_info
-                    .as_ref()
-                    .is_some_and(|ri| ri.suspension_relative_vel > 1.0)
-            });
-            if !susp_extending {
+        // Re-arm the jump when the car lands after an airborne tick.
+        if self.state.has_jumped
+            && !self.state.is_jumping
+            && self.state.is_on_ground
+            && self.state.air_time > 0.0
+        {
+            let mut num_contacts = 0;
+            let all_contacts_extending = self
+                .bullet_vehicle
+                .wheels
+                .iter()
+                .filter_map(|wheel| wheel.raycast_info.as_ref())
+                .all(|info| {
+                    num_contacts += 1;
+                    info.suspension_relative_vel > 1.0
+                });
+            let leaving_ground = num_contacts != 0 && all_contacts_extending;
+            if !leaving_ground {
                 self.state.has_jumped = false;
             }
         }

@@ -1,4 +1,4 @@
-use std::io::{self, ErrorKind, Read};
+use std::io::{self, ErrorKind};
 
 use byteorder::{LittleEndian, ReadBytesExt};
 
@@ -31,8 +31,26 @@ impl<'a> DataReader<'a> {
         Ok(byte == 1)
     }
 
+    pub fn read_sized_bytes(&mut self) -> io::Result<&'a [u8]> {
+        let size = self.bytes.read_u32::<LittleEndian>()? as usize;
+        if self.bytes.len() < size {
+            return Err(io::Error::new(
+                ErrorKind::UnexpectedEof,
+                format!(
+                    "Serialized record needs {size} bytes, but only {} remain",
+                    self.bytes.len()
+                ),
+            ));
+        }
+
+        let (record, remaining) = self.bytes.split_at(size);
+        self.bytes = remaining;
+        Ok(record)
+    }
+
     pub unsafe fn read_struct_unsafe<T: Copy>(&mut self) -> io::Result<T> {
-        let expected_size = self.bytes.read_u32::<LittleEndian>()? as usize;
+        let bytes = self.read_sized_bytes()?;
+        let expected_size = bytes.len();
         let struct_size = size_of::<T>();
 
         if expected_size != struct_size {
@@ -52,7 +70,7 @@ impl<'a> DataReader<'a> {
         // Oooooo scary! But not really since the worst case scenario is wrong-value primitives
         unsafe {
             let slice = std::slice::from_raw_parts_mut(obj.as_mut_ptr() as *mut u8, struct_size);
-            self.bytes.read_exact(slice)?;
+            slice.copy_from_slice(bytes);
             Ok(obj.assume_init())
         }
     }

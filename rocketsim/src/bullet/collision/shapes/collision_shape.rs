@@ -107,10 +107,9 @@ impl CollisionShapes {
     pub fn local_get_support_vertex_without_margin(&self, vec: Vec3A) -> Vec3A {
         match self {
             Self::Sphere(_) => Vec3A::ZERO,
-            Self::Compound(shape) => {
-                let half_extents = shape.child_shape.get_half_extents();
-                half_extents * Vec3A::ONE.copysign(vec)
-            }
+            Self::Compound(shape) => shape
+                .child_shape
+                .local_get_supporting_vertex_without_margin(vec),
             Self::ConvexHull(shape) => shape.local_get_supporting_vertex_without_margin(vec),
             Self::Triangle(shape) => shape.local_get_supporting_vertex_without_margin(vec),
             _ => unreachable!(),

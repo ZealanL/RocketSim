@@ -1,7 +1,7 @@
 use std::{fs, path::Path};
 
 fn generate_comparison_tests() {
-    println!("cargo:rerun-if-changed=tests/rl_comparison_tests/test_recordings");
+    println!("cargo:rerun-if-changed=tests/rl_comparison_test/test_recordings");
 
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
     let test_data_dir = Path::new(&manifest_dir)

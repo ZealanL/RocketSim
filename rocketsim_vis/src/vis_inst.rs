@@ -1,15 +1,13 @@
-use glam::{Mat3A, Vec2, Vec3A};
-use miniquad::KeyCode;
-use rocketsim::{
-    ArenaState, CarBodyConfig, CarInfo, CarState, CollisionMeshFile, GameMode, Team, Vis, consts,
-};
 use std::{sync::RwLock, thread::JoinHandle};
 
-use crate::backend::{InfoLineType, Elem2D};
+use glam::{Mat3A, Vec2, Vec3A};
+use miniquad::KeyCode;
+use rocketsim::{ArenaState, CarBodyConfig, CarInfo, CarState, GameMode, Team, Vis, consts};
+
 use crate::{
     backend::{
-        Color, ShaderSrc, ShaderSrcType, SharedVisRenderState, SharedWindowEvents, VisRenderState,
-        VisRenderer, WindowEvent,
+        Color, Elem2D, InfoLineType, ShaderSrc, ShaderSrcType, SharedVisRenderState,
+        SharedWindowEvents, VisRenderState, VisRenderer, WindowEvent,
     },
     camera::{CameraConfig, CameraMan},
     ribbon_emitter::{RibbonConfig, RibbonEmitter},
@@ -262,14 +260,12 @@ impl Vis for VisInst {
                     color: TRACK_COLOR.with_alpha(0.5),
                     rounding: 0.01,
                 });
-                new_render_state.shapes_2d.push(
-                    Elem2D::Text {
-                        string: format!("{}", car_state.boost as i32),
-                        pos: center,
-                        centered: true,
-                        color: Color::WHITE
-                    }
-                );
+                new_render_state.shapes_2d.push(Elem2D::Text {
+                    string: format!("{}", car_state.boost as i32),
+                    pos: center,
+                    centered: true,
+                    color: Color::WHITE,
+                });
             }
         }
 

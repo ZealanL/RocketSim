@@ -9,13 +9,12 @@ pub struct BoxShape {
 
 impl BoxShape {
     pub fn new(box_half_extents: Vec3A) -> Self {
+        let safe_margin = 0.1 * box_half_extents.min_element();
+        let margin = safe_margin.min(CONVEX_DISTANCE_MARGIN);
         Self {
             internal_shape: ConvexInternalShape {
-                implicit_dim: box_half_extents - CONVEX_DISTANCE_MARGIN,
-                margin: {
-                    let safe_margin = 0.1 * box_half_extents.min_element();
-                    safe_margin.min(CONVEX_DISTANCE_MARGIN)
-                },
+                implicit_dim: box_half_extents - margin,
+                margin,
             },
         }
     }
@@ -45,7 +44,13 @@ impl BoxShape {
         mass / 12.0 * (yxx * yxx + zzy * zzy)
     }
 
+    pub fn local_get_supporting_vertex_without_margin(&self, vec: Vec3A) -> Vec3A {
+        let support_sign = Vec3A::select(vec.cmplt(Vec3A::ZERO), Vec3A::NEG_ONE, Vec3A::ONE);
+        self.get_half_extents() * support_sign
+    }
+
     pub fn local_get_supporting_vertex(&self, vec: Vec3A) -> Vec3A {
-        (self.get_half_extents() + self.get_margin()) * Vec3A::ONE.copysign(vec)
+        let support = self.local_get_supporting_vertex_without_margin(vec);
+        support + self.get_margin() * support.signum()
     }
 }

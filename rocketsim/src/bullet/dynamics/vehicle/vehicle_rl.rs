@@ -3,7 +3,10 @@ use glam::Vec3A;
 use super::{NUM_WHEELS, raycaster::VehicleRaycaster, wheel_info::WheelInfo};
 use crate::bullet::{
     collision::broadphase::CollisionFilterGroups,
-    dynamics::{discrete_dynamics_world::DiscreteDynamicsWorld, rigid_body::RigidBody},
+    dynamics::{
+        discrete_dynamics_world::DiscreteDynamicsWorld,
+        rigid_body::{Impulse, RigidBody},
+    },
 };
 
 pub struct VehicleRL {
@@ -60,20 +63,56 @@ impl VehicleRL {
             .raycaster
             .cast_rays(collision_world, &sources, &targets, chassis);
 
+        let mut num_wheels_in_contact = 0;
         for (i, wheel) in self.wheels.iter_mut().enumerate() {
             if let Some(ray_result) = ray_results[i] {
-                wheel.apply_ray_cast(
+                num_wheels_in_contact += 1;
+                wheel.apply_ray_cast(chassis, ray_result, time_step, i < 2);
+                let is_dynamic_hit = !ray_result.rigid_body.is_static_obj();
+                wheel.refresh_friction_curves(
                     chassis,
-                    ray_result,
-                    time_step,
-                    i < 2,
+                    ray_result.hit_normal_in_world,
                     handbrake_val,
                     real_throttle,
                     three_wheels,
+                    is_dynamic_hit,
                 );
             } else {
                 wheel.reset_wheel_suspension();
             }
+        }
+
+        if num_wheels_in_contact < 3 {
+            for wheel in &mut self.wheels {
+                wheel.engine_force /= 4.0;
+            }
+        }
+
+        // Apply dynamic-body stick before chassis suspension and friction.
+        for wheel in &self.wheels {
+            let Some(info) = wheel.raycast_info.as_ref() else {
+                continue;
+            };
+            let ground_idx = info.ground_body_idx;
+            if info.ground_stick == Vec3A::ZERO
+                || ground_idx == self.chassis_body_idx
+                || ground_idx >= collision_world.bodies().len()
+            {
+                continue;
+            }
+
+            let ground = &mut collision_world.bodies_mut()[ground_idx];
+            if ground.is_static_obj() || ground.inv_mass == 0.0 {
+                continue;
+            }
+
+            let ground_offset = info.contact_point - ground.get_world_trans().translation;
+            ground.add_impulse(
+                None,
+                Impulse::LinearRelPos(info.ground_stick, ground_offset),
+                true,
+                false,
+            );
         }
 
         let chassis = &mut collision_world.bodies_mut()[self.chassis_body_idx];
@@ -81,7 +120,13 @@ impl VehicleRL {
             wheel.update_suspension(chassis, time_step);
         }
 
+        let chassis = &collision_world.bodies()[self.chassis_body_idx];
+        for wheel in &mut self.wheels {
+            wheel.update_friction_impulse(chassis, time_step);
+        }
+
         // note: all suspension MUST be updated before impulses are applied
+        let chassis = &mut collision_world.bodies_mut()[self.chassis_body_idx];
         for wheel in &mut self.wheels {
             wheel.apply_friction_impulses(chassis, time_step);
         }
