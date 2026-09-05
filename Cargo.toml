@@ -5,6 +5,7 @@ resolver = "3"
 members = [
   "rocketsim",
   "rocketsim_derive",
+  "rocketsim_test",
   "rocketsim_vis",
 ]
 
@@ -16,6 +17,7 @@ rustc-hash = "2.1.2"
 opt-level = 1
 
 [profile.release]
+codegen-units = 1
 debug = true
 lto = true
 panic = "abort"

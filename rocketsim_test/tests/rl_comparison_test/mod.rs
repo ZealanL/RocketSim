@@ -1,9 +1,8 @@
 use glam::Vec3A;
 use rocketsim::{
-    Arena, CarBodyConfig, CarControls, CarState, GameMode, PhysState, Team,
-    consts::BT_TO_UU,
-    rlpr::{Recording, tick_record::TickRecord},
+    Arena, CarBodyConfig, CarControls, CarState, GameMode, PhysState, Team, consts::BT_TO_UU,
 };
+use rocketsim_test::rlpr::{Recording, tick_record::TickRecord};
 
 mod compare;
 
@@ -70,21 +69,23 @@ fn test_recording(recording: &Recording) {
     let (mut arena, car_idcs) = create_arena(recording);
     let num_cars = car_idcs.len();
 
-    // Warm-up: step once to establish contact constraints after teleport.
-    // The destination tick stores the controls used during the transition.
-    let warmup_controls: Vec<CarControls> = recording.ticks[1]
-        .car_records
-        .iter()
-        .map(|cr| cr.prev_controls.into())
-        .collect();
-    set_state_to_record_tick(&mut arena, &car_idcs, &recording.ticks[0], &warmup_controls);
-
-    arena.step_tick();
-
     for i in 0..(recording.ticks.len() - 1) {
         let from_tick = &recording.ticks[i];
         let to_tick = &recording.ticks[i + 1];
 
+        let controls_during: Vec<CarControls> = to_tick
+            .car_records
+            .iter()
+            .map(|car_record| car_record.prev_controls.into())
+            .collect();
+        set_state_to_record_tick(&mut arena, &car_idcs, from_tick, &controls_during);
+        arena.step_tick();
+
+        // Keep the state update and step above for every transition so
+        // persistent manifolds and wheel state stay synchronized. The
+        // i == 0 step replaces the old warm-up (same state and controls).
+        // Suppress comparison for uncomparable frame gaps and the first
+        // post-teleport tick.
         // The recorder occasionally drops a physics frame (game hitch), so a
         // recorded tick can be the result of TWO sim steps. Comparing one RS
         // step against a double step can never match; skip that transition.
@@ -99,14 +100,6 @@ fn test_recording(recording: &Recording) {
         if i == 0 {
             continue;
         }
-
-        let controls_during: Vec<CarControls> = to_tick
-            .car_records
-            .iter()
-            .map(|car_record| car_record.prev_controls.into())
-            .collect();
-        set_state_to_record_tick(&mut arena, &car_idcs, from_tick, &controls_during);
-        arena.step_tick();
 
         let ball_state = arena.get_ball_state();
         let car_states: Vec<CarState> = car_idcs
@@ -183,7 +176,11 @@ fn test_recording(recording: &Recording) {
 fn init_rocketsim() {
     static INIT: std::sync::Once = std::sync::Once::new();
     INIT.call_once(|| {
-        rocketsim::init_from_default(true).unwrap();
+        rocketsim::init(
+            concat!(env!("CARGO_MANIFEST_DIR"), "/../collision_meshes"),
+            true,
+        )
+        .unwrap();
     });
 }
 

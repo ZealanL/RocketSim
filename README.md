@@ -22,4 +22,27 @@ Lots of features found in RocketSim are currently missing.
 | `Balanced` | ~108 KiB | ~1–2% slower | ~123 KiB | ~3% slower |
 | `Light` | ~66 KiB | ~9% slower | ~91 KiB | ~12% slower |
 
-Balanced reduces marginal memory while retaining most of Heavy's performance. Light effectively disables grid partitioning by using a single broadphase cell, prioritizing minimum memory over performance. Results may vary by platform and workload.
+Balanced reduces marginal memory while retaining most of Heavy's performance. Light uses one broadphase cell to reduce memory use. Results can differ by platform and workload.
+
+## Accuracy metric
+
+The metric replays one-second segments from a bundled 90-second Rocket League recording. It reports strict pass percentages for car-ball, ball-world, chassis-world, wheel-world, and no-contact ticks.
+
+Run the v3 metric:
+
+```sh
+cargo run --release -p rocketsim_test --example rlpr_metric
+```
+
+Enable `v2` to compare v3 with the original C++ RocketSim bindings:
+
+```sh
+cargo run --release -p rocketsim_test --features v2 --example rlpr_metric
+```
+
+Run the comparable stress benchmarks with these commands:
+
+```sh
+cargo run --release -p rocketsim_test --example stress_v3
+cargo run --release -p rocketsim_test --features v2 --example stress_v2
+```

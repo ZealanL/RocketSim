@@ -1,0 +1,21 @@
+[package]
+name = "rocketsim_test"
+version.workspace = true
+edition = "2024"
+license-file.workspace = true
+publish = false
+
+[features]
+v2 = ["dep:rocketsim_rs"]
+
+[dependencies]
+rocketsim = { path = "../rocketsim" }
+rocketsim_rs = { version = "=0.37.0", optional = true, default-features = false }
+glam.workspace = true
+byteorder = "1.5.0"
+fastrand = "2.3.0"
+clap = { version = "4.6.0", features = ["derive"] }
+
+[[example]]
+name = "stress_v2"
+required-features = ["v2"]

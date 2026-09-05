@@ -3,8 +3,7 @@
 use std::ops::{Index, IndexMut};
 
 use glam::{Mat3A, Vec3A};
-
-use crate::{CarControls, CarState, PhysState, consts::TICK_RATE};
+use rocketsim::{CarControls, CarState, PhysState, consts::TICK_RATE};
 
 const RL_BOOST_TO_ROCKETSIM_SCALE: f32 = 100.0;
 #[repr(C)]

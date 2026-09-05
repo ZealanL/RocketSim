@@ -1,13 +1,10 @@
 use std::{collections::HashMap, fmt::Debug};
 
 use glam::Vec3A;
-use rocketsim::{
-    BallState, CarState, PhysState,
-    consts::TICK_TIME,
-    rlpr::{
-        cpp_records::{CarRecord, PhysRecord},
-        tick_record::TickRecord,
-    },
+use rocketsim::{BallState, CarState, PhysState, consts::TICK_TIME};
+use rocketsim_test::rlpr::{
+    cpp_records::{CarRecord, PhysRecord},
+    tick_record::TickRecord,
 };
 
 #[derive(Copy, Clone, Debug)]
