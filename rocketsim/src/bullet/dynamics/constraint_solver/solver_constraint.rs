@@ -29,7 +29,6 @@ pub struct SolverConstraint {
     pub friction_idx: usize,
     pub solver_body_id_a: usize,
     pub solver_body_id_b: usize,
-    pub is_special: bool,
 }
 
 impl SolverConstraint {
@@ -76,7 +75,6 @@ impl SolverConstraint {
             solver_body_id_b,
             friction_idx,
             friction: cp.combined_friction,
-            is_special: cp.is_special,
             lower_limit: 0.0,
             upper_limit: 1e10,
             ..Default::default()

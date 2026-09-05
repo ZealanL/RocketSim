@@ -13,13 +13,15 @@ pub fn process_collision<T: ContactAddedCallback>(
     compound_b_obj: &RigidBody,
     compound_b_shape: &CompoundShape,
     contact_added_callback: &mut T,
-) -> Option<PersistentManifold> {
+    out: &mut Option<PersistentManifold>,
+) {
+    debug_assert!(out.is_none());
     let org_0_trans = compound_a_obj.get_world_trans();
     let aabb_0 = compound_a_shape.get_aabb(org_0_trans);
     let org_1_trans = compound_b_obj.get_world_trans();
     let aabb_1 = compound_b_shape.get_aabb(org_1_trans);
     if !aabb_0.intersects(&aabb_1) {
-        return None;
+        return;
     }
 
     let child_a_trans = &compound_a_shape.child_trans;
@@ -36,5 +38,5 @@ pub fn process_collision<T: ContactAddedCallback>(
         contact_added_callback,
     };
 
-    detector.get_closest_points(child_a_world_trans, child_b_world_trans)
+    detector.get_closest_points(child_a_world_trans, child_b_world_trans, out);
 }

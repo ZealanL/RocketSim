@@ -175,10 +175,17 @@ impl SeqImpulseConstraintSolver {
         &mut self,
         collision_objs: &mut [RigidBody],
         non_static_bodies: &[usize],
-        manifolds: &mut Vec<PersistentManifold>,
+        manifolds: &mut [PersistentManifold],
+        active_manifold_idcs: &mut Vec<usize>,
         time_step: f32,
     ) {
-        self.solve_group_setup(collision_objs, non_static_bodies, manifolds, time_step);
+        self.solve_group_setup(
+            collision_objs,
+            non_static_bodies,
+            manifolds,
+            active_manifold_idcs,
+            time_step,
+        );
         self.solve_group_iterations();
         self.solve_group_finish(collision_objs, time_step);
     }
@@ -187,7 +194,8 @@ impl SeqImpulseConstraintSolver {
         &mut self,
         collision_objs: &mut [RigidBody],
         non_static_bodies: &[usize],
-        manifolds: &mut Vec<PersistentManifold>,
+        manifolds: &mut [PersistentManifold],
+        active_manifold_idcs: &mut Vec<usize>,
         time_step: f32,
     ) {
         self.setup_solver_bodies(collision_objs, non_static_bodies);
@@ -195,7 +203,13 @@ impl SeqImpulseConstraintSolver {
         self.tmp_special_contact_group_ends.clear();
         self.tmp_special_resolved_touches.clear();
 
-        for manifold in manifolds.iter_mut() {
+        // Iterate the persistent manifolds for this tick's active pairs
+        // directly. Only `lateral_friction_dir_1` is mutated, and it is
+        // recomputed from scratch on every read, so sharing the
+        // persistent copy (instead of solving a per-tick clone) changes
+        // no contact order, threshold, selection, or warmstart state.
+        for &manifold_idx in active_manifold_idcs.iter() {
+            let manifold = &mut manifolds[manifold_idx];
             let evicted_point = manifold.most_recently_evicted_point;
             let special_contact_start = self.tmp_special_contact_pool.len();
 
@@ -220,11 +234,15 @@ impl SeqImpulseConstraintSolver {
             body0.companion_id = Some(solver_body_id_a);
             body1.companion_id = Some(solver_body_id_b);
 
+            // Hoist the (loop-invariant) body translations out of the point loop.
+            let trans0 = body0.get_world_trans().translation;
+            let trans1 = body1.get_world_trans().translation;
+
             for cp in &mut manifold.point_cache {
                 assert!(cp.distance_1 <= manifold.contact_processing_threshold);
 
-                let rel_pos1 = cp.pos_world_on_a - body0.get_world_trans().translation;
-                let rel_pos2 = cp.pos_world_on_b - body1.get_world_trans().translation;
+                let rel_pos1 = cp.pos_world_on_a - trans0;
+                let rel_pos2 = cp.pos_world_on_b - trans1;
 
                 if cp.is_special {
                     if let Some(contact) =
@@ -272,8 +290,8 @@ impl SeqImpulseConstraintSolver {
                     return None;
                 }
 
-                let rel_pos1 = cp.pos_world_on_a - body0.get_world_trans().translation;
-                let rel_pos2 = cp.pos_world_on_b - body1.get_world_trans().translation;
+                let rel_pos1 = cp.pos_world_on_a - trans0;
+                let rel_pos2 = cp.pos_world_on_b - trans1;
                 special_contact_from_point(body0, body1, &cp, rel_pos1, rel_pos2)
             });
 
@@ -290,7 +308,9 @@ impl SeqImpulseConstraintSolver {
             }
         }
 
-        manifolds.clear();
+        // Drop this tick's active list. Persistent manifolds keep their
+        // points and warmstart impulses for the next tick.
+        active_manifold_idcs.clear();
 
         if !self.tmp_special_contact_pool.is_empty() {
             if self.all_special_shallow() {
@@ -398,25 +418,27 @@ impl SeqImpulseConstraintSolver {
                 .map(|contact| contact.distance)
                 .fold(f32::MAX, f32::min);
 
-            let mut total_classification_normal = Vec3A::ZERO;
-            for contact in classification_contacts {
-                total_classification_normal += if has_reduced_contacts {
-                    contact.normal_world_on_b
-                } else {
-                    contact.raw_normal_world_on_b
-                };
-            }
-
-            let classification_mean =
-                total_classification_normal / classification_contacts.len() as f32;
             let all_non_penetrating = self
                 .tmp_special_contact_pool
                 .iter()
                 .all(|contact| !contact.is_penetrating());
-            if all_non_penetrating
-                || (min_distance > -SPECIAL_LINEAR_SLOP
-                    && classification_mean.z >= SUPPORT_NORMAL_MIN_Z)
-            {
+            // Evaluate the deep-contact condition lazily: the mean below is only
+            // needed when a penetrating sample exists.
+            let is_shallow_support = all_non_penetrating || {
+                let mut total_classification_normal = Vec3A::ZERO;
+                for contact in classification_contacts {
+                    total_classification_normal += if has_reduced_contacts {
+                        contact.normal_world_on_b
+                    } else {
+                        contact.raw_normal_world_on_b
+                    };
+                }
+
+                let classification_mean =
+                    total_classification_normal / classification_contacts.len() as f32;
+                min_distance > -SPECIAL_LINEAR_SLOP && classification_mean.z >= SUPPORT_NORMAL_MIN_Z
+            };
+            if is_shallow_support {
                 let aggregate_contacts = classification_contacts;
                 let mut total_normal = Vec3A::ZERO;
                 let mut total_lever_len = 0.0;
@@ -798,10 +820,6 @@ impl SeqImpulseConstraintSolver {
         let mut least_squares_residual = 0.0;
 
         for contact in &mut self.tmp_solver_contact_constraint_pool {
-            if contact.is_special {
-                continue;
-            }
-
             debug_assert_ne!(contact.solver_body_id_a, contact.solver_body_id_b);
             let [body_a, body_b] = unsafe {
                 self.tmp_solver_body_pool.get_disjoint_unchecked_mut([
@@ -861,28 +879,36 @@ impl SeqImpulseConstraintSolver {
             solver.lin_vel += solver.delta_lin_vel;
             solver.ang_vel += solver.delta_ang_vel;
 
+            // Skip the transform write-back unless split impulse moved the body.
+            // Without push motion the body transform is already current, so there
+            // is nothing to write back (this skips a redundant quaternion rebuild).
             if solver.push_vel.length_squared() != 0.0 || solver.turn_vel.length_squared() != 0.0 {
+                // Reload the body transform here instead of copying it into every
+                // solver body at setup: bodies are untouched between setup and
+                // write-back, so these are the same values.
+                let mut world_trans = *body.get_world_trans();
                 if body.collision_flags & CollisionFlags::NoAngularMotion != 0 {
                     integrate_trans_no_rot(
-                        &mut solver.world_trans.translation,
+                        &mut world_trans.translation,
                         solver.push_vel,
                         time_step,
                     );
                 } else {
+                    let mut world_rot = body.get_world_rot();
                     integrate_trans(
-                        &mut solver.world_trans,
-                        &mut solver.world_rot,
+                        &mut world_trans,
+                        &mut world_rot,
                         solver.push_vel,
                         solver.turn_vel * contact_solver_info::SPLIT_IMPULSE_TURN_ERP,
                         time_step,
                     );
                 }
+
+                body.set_world_trans(world_trans);
             }
 
             body.set_lin_vel(solver.lin_vel + solver.external_force_impulse);
             body.set_ang_vel(solver.ang_vel + solver.external_torque_impulse);
-
-            body.set_world_trans(solver.world_trans);
         }
 
         self.tmp_solver_body_pool.clear();

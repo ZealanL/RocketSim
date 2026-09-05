@@ -20,12 +20,24 @@ pub trait ContactAddedCallback {
 pub const CONTACT_BREAKING_THRESHOLD: f32 = 0.02;
 pub const MANIFOLD_CACHE_SIZE: usize = 4;
 
+/// Order-independent lookup key for a body pair.
+/// Packs `min` in the high bits and `max` in the low bits so the
+/// dispatcher matches pairs with one `u64` compare instead of two
+/// `min`/`max` calls per cached manifold.
+#[inline]
+pub fn pair_key(body_a_idx: usize, body_b_idx: usize) -> u64 {
+    let pair_min = body_a_idx.min(body_b_idx) as u64;
+    let pair_max = body_a_idx.max(body_b_idx) as u64;
+    (pair_min << 32) | pair_max
+}
+
 #[derive(Clone)]
 pub struct PersistentManifold {
     pub point_cache: ArrayVec<ManifoldPoint, MANIFOLD_CACHE_SIZE>,
     pub(crate) most_recently_evicted_point: Option<ManifoldPoint>,
     pub body0_idx: usize,
     pub body1_idx: usize,
+    pub pair_key: u64,
     pub contact_breaking_threshold: f32,
     pub contact_processing_threshold: f32,
 }
@@ -34,13 +46,11 @@ impl PersistentManifold {
     pub fn new(body0: &RigidBody, body1: &RigidBody) -> Self {
         debug_assert_ne!(body0.world_array_idx, body1.world_array_idx);
 
-        let body0_cbt = body0
-            .get_collision_shape()
-            .get_contact_breaking_threshold(CONTACT_BREAKING_THRESHOLD);
-        let body1_cbt = body1
-            .get_collision_shape()
-            .get_contact_breaking_threshold(CONTACT_BREAKING_THRESHOLD);
-        let contact_breaking_threshold = body0_cbt.min(body1_cbt);
+        // Thresholds are cached per body: shapes never change after
+        // construction, so this is two loads and two `min` calls.
+        let contact_breaking_threshold = body0
+            .get_contact_breaking_threshold()
+            .min(body1.get_contact_breaking_threshold());
         let contact_processing_threshold = body0
             .contact_processing_threshold
             .min(body1.contact_processing_threshold);
@@ -48,6 +58,7 @@ impl PersistentManifold {
         Self {
             body0_idx: body0.world_array_idx,
             body1_idx: body1.world_array_idx,
+            pair_key: pair_key(body0.world_array_idx, body1.world_array_idx),
             contact_breaking_threshold,
             contact_processing_threshold,
             point_cache: ArrayVec::new(),
@@ -260,13 +271,19 @@ impl PersistentManifold {
         }
     }
 
-    pub(crate) fn merge_contact_points(&mut self, other: Self) {
-        let contacts = other.point_cache;
-        for contact in contacts {
-            self.add_contact_without_callback(contact);
+    pub(crate) fn merge_contact_points(&mut self, other: &Self) {
+        // Borrow the fresh manifold: points are `Copy`, so iterating by
+        // reference moves the same values in the same order without
+        // memmoving the whole donor struct (`ArrayVec` + evicted point).
+        for contact in other.point_cache.iter() {
+            self.add_contact_without_callback(*contact);
         }
     }
 
+    /// Re-project carried points and cull separated ones.
+    /// Refreshing an empty cache is a no-op (returns early with no
+    /// observable change), so hot-path callers skip the call when
+    /// `point_cache` is empty.
     pub fn refresh_contact_points(&mut self, body0: &RigidBody, body1: &RigidBody) {
         if self.point_cache.is_empty() {
             return;

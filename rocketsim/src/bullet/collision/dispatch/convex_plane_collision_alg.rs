@@ -14,10 +14,12 @@ pub fn process_collision<T: ContactAddedCallback>(
     plane_obj: &RigidBody,
     plane_shape: &StaticPlaneShape,
     contact_added_callback: &mut T,
-) -> Option<PersistentManifold> {
+    out: &mut Option<PersistentManifold>,
+) {
+    debug_assert!(out.is_none());
     let convex_aabb = convex_obj.get_aabb();
     if !convex_aabb.intersects(&plane_shape.aabb_cache) {
-        return None;
+        return;
     }
 
     let plane_normal = plane_shape.get_plane_normal();
@@ -36,7 +38,7 @@ pub fn process_collision<T: ContactAddedCallback>(
 
     let mut manifold = PersistentManifold::new(convex_obj.obj, plane_obj);
     if distance >= manifold.contact_breaking_threshold {
-        return None;
+        return;
     }
 
     let vtx_in_plane_projected = vtx_in_plane - distance * plane_normal;
@@ -56,5 +58,5 @@ pub fn process_collision<T: ContactAddedCallback>(
     );
 
     manifold.refresh_contact_points(convex_obj.obj, plane_obj);
-    Some(manifold)
+    *out = Some(manifold);
 }

@@ -1,9 +1,6 @@
 use glam::Vec3A;
 
-use super::{
-    contact_solver_info,
-    jacobian_entry::{JacbobianBody, get_jacobian_diagonal},
-};
+use super::contact_solver_info;
 use crate::bullet::dynamics::rigid_body::RigidBody;
 
 pub fn resolve_single_collision(
@@ -45,21 +42,14 @@ pub fn resolve_single_bilateral_fake_ground(body1: &RigidBody, pos: Vec3A, norma
 
     let vel1 = body1.get_vel_in_local_point(rel_pos1);
 
-    let jac_body_a = JacbobianBody {
-        world: &body1_comt.matrix3,
-        rel_pos: rel_pos1,
-        inertia_inv: body1.inv_inertia_local,
-        mass_inv: body1.inv_mass,
-    };
-
-    let jac_body_b = JacbobianBody {
-        world: &body1_comt.matrix3,
-        rel_pos: Vec3A::ZERO,
-        inertia_inv: Vec3A::ZERO,
-        mass_inv: 0.0,
-    };
-
-    let jac_diag_ab = get_jacobian_diagonal(&jac_body_a, &jac_body_b, normal);
+    // The fake ground body has zero position offset, inverse inertia, and
+    // inverse mass by construction, so its Jacobian terms are exactly zero
+    // and only add `+ 0.0` twice to a strictly positive diagonal (the chassis
+    // has non-zero mass). Skip them instead of computing them per wheel.
+    let a_j = body1_comt
+        .matrix3
+        .mul_transpose_vec3a(rel_pos1.cross(normal));
+    let jac_diag_ab = body1.inv_mass + (body1.inv_inertia_local * a_j).dot(a_j);
     let jac_diag_ab_inv = 1.0 / jac_diag_ab;
     let rel_vel = normal.dot(vel1);
 

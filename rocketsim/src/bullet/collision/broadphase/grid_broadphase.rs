@@ -1,8 +1,6 @@
 use glam::{IVec3, USizeVec3, Vec3A};
 
-use super::{
-    broadphase_proxy::BroadphaseProxy, overlapping_pair_cache::HashedOverlappingPairCache,
-};
+use super::{broadphase_proxy::BroadphaseProxy, overlapping_pair_cache::OverlappingPairCache};
 use crate::{
     bullet::{
         collision::{
@@ -12,6 +10,7 @@ use crate::{
             shapes::collision_shape::CollisionShapes,
         },
         dynamics::rigid_body::RigidBody,
+        linear_math::AffineExt,
     },
     shared::Aabb,
 };
@@ -97,6 +96,9 @@ impl CellGrid {
             CollisionShapes::TriangleMesh(mesh) => Some(mesh.as_ref()),
             _ => None,
         };
+        // Mesh BVHs hold local triangles. Goal components carry a body
+        // translation, so test world grid cells in mesh-local space.
+        let world_to_local = col_obj.get_world_trans().transpose();
 
         for i in min.x..=max.x {
             for j in min.y..=max.y {
@@ -105,8 +107,9 @@ impl CellGrid {
                         let cell_min = self.get_cell_min_pos(USizeVec3::new(i, j, k));
                         let cell_aabb =
                             Aabb::new(cell_min, cell_min + Vec3A::splat(self.cell_size));
+                        let local_cell = cell_aabb.transform(&world_to_local, 0.0);
 
-                        if !mesh_interface.check_overlap_with(&cell_aabb) {
+                        if !mesh_interface.check_overlap_with(&local_cell) {
                             continue;
                         }
                     }
@@ -163,7 +166,7 @@ pub struct GridBroadphase {
     cell_grid: CellGrid,
     min_dyn_handle_idx: usize,
     pub handles: Vec<BroadphaseProxy>,
-    pair_cache: HashedOverlappingPairCache,
+    pair_cache: OverlappingPairCache,
 }
 
 impl GridBroadphase {
@@ -196,7 +199,7 @@ impl GridBroadphase {
                 cells,
             },
             handles: Vec::with_capacity(32),
-            pair_cache: HashedOverlappingPairCache::default(),
+            pair_cache: OverlappingPairCache::default(),
         }
     }
 

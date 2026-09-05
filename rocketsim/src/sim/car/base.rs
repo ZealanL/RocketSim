@@ -214,6 +214,7 @@ impl Car {
         rb: &mut RigidBody,
         forward_speed_uu: f32,
         mutator_config: &MutatorConfig,
+        cached_upwards_dir: &mut Option<Vec3A>,
     ) {
         let handbrake_delta = if self.state.controls.handbrake {
             drive_consts::POWERSLIDE_RISE_RATE
@@ -277,7 +278,16 @@ impl Car {
 
         // fresh raycast contact must not produce sticky force within its own tick
         if self.sticky_gate_prev {
-            let upwards_dir = self.bullet_vehicle.get_upwards_dir_from_wheel_contacts(rb);
+            // The wheel contacts are unchanged between the sticky force and
+            // auto-roll in one tick, so share one cached upwards direction.
+            let upwards_dir = match *cached_upwards_dir {
+                Some(dir) => dir,
+                None => {
+                    let dir = self.bullet_vehicle.get_upwards_dir_from_wheel_contacts(rb);
+                    *cached_upwards_dir = Some(dir);
+                    dir
+                }
+            };
 
             let full_stick = real_throttle != 0.0
                 || abs_forward_speed_uu > car_consts::drive::STOPPING_FORWARD_VEL;
@@ -631,9 +641,22 @@ impl Car {
         false
     }
 
-    fn update_auto_roll(&self, rb: &mut RigidBody, num_wheels_in_contact: usize) {
+    fn update_auto_roll(
+        &self,
+        rb: &mut RigidBody,
+        num_wheels_in_contact: usize,
+        cached_upwards_dir: &mut Option<Vec3A>,
+    ) {
         let ground_up_dir = if num_wheels_in_contact > 0 {
-            self.bullet_vehicle.get_upwards_dir_from_wheel_contacts(rb)
+            // Same contacts as the sticky force above: reuse its cached direction.
+            match *cached_upwards_dir {
+                Some(dir) => dir,
+                None => {
+                    let dir = self.bullet_vehicle.get_upwards_dir_from_wheel_contacts(rb);
+                    *cached_upwards_dir = Some(dir);
+                    dir
+                }
+            }
         } else {
             self.state.world_contact_normal.unwrap()
         };
@@ -726,36 +749,40 @@ impl Car {
             self.bullet_vehicle.get_num_wheels() == 4 || self.bullet_vehicle.get_num_wheels() == 3
         );
 
-        {
-            let rb = &mut collision_world.bodies_mut()[self.rigid_body_idx];
-            if self.state.is_demoed {
-                self.state.demo_respawn_timer =
-                    (self.state.demo_respawn_timer - TICK_TIME).max(0.0);
-                if self.state.demo_respawn_timer == 0.0 {
-                    self.respawn(rb, rng, game_mode, mutator_config.car_spawn_boost_amount);
-                }
-
-                rb.set_activation_state(ActivationState::DisableSimulation);
-                rb.collision_flags |= CollisionFlags::NoContactResponse as u8;
-                return;
+        // One body lookup per tick: wheel impulses only change velocities,
+        // never the body slot, so `rb` stays valid for the whole pre-tick.
+        let rb = &mut collision_world.bodies_mut()[self.rigid_body_idx];
+        if self.state.is_demoed {
+            self.state.demo_respawn_timer = (self.state.demo_respawn_timer - TICK_TIME).max(0.0);
+            if self.state.demo_respawn_timer == 0.0 {
+                self.respawn(rb, rng, game_mode, mutator_config.car_spawn_boost_amount);
             }
 
-            rb.force_activate();
-            rb.collision_flags &= !(CollisionFlags::NoContactResponse as u8);
-            self.state.controls = self.state.controls.clamp();
+            rb.set_activation_state(ActivationState::DisableSimulation);
+            rb.collision_flags |= CollisionFlags::NoContactResponse as u8;
+            return;
         }
 
-        let forward_speed_uu =
-            collision_world.bodies()[self.rigid_body_idx].get_forward_speed() * BT_TO_UU;
+        rb.force_activate();
+        rb.collision_flags &= !(CollisionFlags::NoContactResponse as u8);
+        self.state.controls = self.state.controls.clamp();
+
+        let forward_speed_uu = rb.get_forward_speed() * BT_TO_UU;
 
         let jump_pressed = self.state.controls.jump && !self.state.prev_controls.jump;
-
-        let rb = &mut collision_world.bodies_mut()[self.rigid_body_idx];
 
         // TODO: Refactor and move
         let num_wheels_in_contact = self.state.num_wheels_in_contact();
 
-        self.update_wheels(rb, forward_speed_uu, mutator_config);
+        // The wheel contacts only change in `bullet_vehicle.update` below, so
+        // the sticky force and auto-roll share one upwards direction.
+        let mut cached_upwards_dir = None;
+        self.update_wheels(
+            rb,
+            forward_speed_uu,
+            mutator_config,
+            &mut cached_upwards_dir,
+        );
 
         if self.state.is_on_ground {
             self.state.is_flipping = false;
@@ -778,7 +805,7 @@ impl Car {
             && ((0 < num_wheels_in_contact && num_wheels_in_contact < 4)
                 || self.state.world_contact_normal.is_some())
         {
-            self.update_auto_roll(rb, num_wheels_in_contact);
+            self.update_auto_roll(rb, num_wheels_in_contact, &mut cached_upwards_dir);
         }
 
         self.state.world_contact_normal = None;

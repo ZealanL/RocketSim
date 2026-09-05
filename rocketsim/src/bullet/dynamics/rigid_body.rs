@@ -6,7 +6,10 @@ use indexmap::IndexMap;
 
 use crate::{
     bullet::{
-        collision::shapes::collision_shape::CollisionShapes,
+        collision::{
+            narrowphase::persistent_manifold::CONTACT_BREAKING_THRESHOLD,
+            shapes::collision_shape::CollisionShapes,
+        },
         linear_math::{integrate_trans, integrate_trans_no_rot},
     },
     sim::UserInfoTypes,
@@ -133,6 +136,11 @@ pub struct RigidBody {
 
     pub interp_world_trans: Affine3A,
     pub contact_processing_threshold: f32,
+    /// Cached shape breaking threshold (`angular_disc * 0.02`).
+    /// Shapes never change after construction, so cache the disc math here
+    /// instead of recomputing two square roots per manifold creation.
+    /// Read it via [`get_contact_breaking_threshold`](Self::get_contact_breaking_threshold).
+    contact_breaking_threshold: f32,
 
     pub collision_flags: u8,
     pub companion_id: Option<usize>,
@@ -185,11 +193,18 @@ impl RigidBody {
         let inv_inertia_tensor_world =
             Self::get_inertia_tensor(info.start_world_trans.matrix3, inv_inertia_local);
 
+        // Shapes are immutable after construction, so the angular-disc
+        // threshold never changes for this body. Cache it once.
+        let contact_breaking_threshold = info
+            .collision_shape
+            .get_contact_breaking_threshold(CONTACT_BREAKING_THRESHOLD);
+
         Self {
             world_trans: info.start_world_trans,
             world_quat: Quat::from_mat3a(&info.start_world_trans.matrix3),
             interp_world_trans: info.start_world_trans,
             contact_processing_threshold: f32::MAX,
+            contact_breaking_threshold,
             broadphase_handle: 0,
             shape: info.collision_shape,
             collision_flags,
@@ -217,6 +232,13 @@ impl RigidBody {
             #[cfg(debug_assertions)]
             dbg_tick_impulse_history: IndexMap::new(),
         }
+    }
+
+    /// Cached breaking threshold for this body's shape (see field docs).
+    /// Shapes are immutable, so this never changes after construction.
+    #[inline]
+    pub const fn get_contact_breaking_threshold(&self) -> f32 {
+        self.contact_breaking_threshold
     }
 
     pub fn set_world_trans(&mut self, world_trans: Affine3A) {
@@ -306,7 +328,7 @@ impl RigidBody {
     #[inline(always)] // Should assure const evaluation
     pub fn add_impulse(
         &mut self,
-        name: Option<&'static str>,
+        _name: Option<&'static str>,
         impulse: Impulse,
         massed: bool,
         accum: bool,
@@ -340,7 +362,7 @@ impl RigidBody {
         }
 
         #[cfg(debug_assertions)]
-        if let Some(name) = name {
+        if let Some(name) = _name {
             let map = &mut self.dbg_tick_impulse_history;
             if let Some((lin, ang)) = map.get_mut(&(name, accum)) {
                 *lin += lin_impulse;

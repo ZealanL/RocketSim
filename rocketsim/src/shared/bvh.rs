@@ -245,12 +245,15 @@ impl Tree {
             return;
         }
 
-        let mut stack = [WideChild::default(); Self::TRAVERSAL_STACK_SIZE];
-        stack[0] = WideChild::branch(0);
+        // Only the pushed prefix is read, so leave the rest uninitialized.
+        use std::mem::MaybeUninit;
+        let mut stack = [MaybeUninit::<WideChild>::uninit(); Self::TRAVERSAL_STACK_SIZE];
+        stack[0].write(WideChild::branch(0));
         let mut stack_len = 1;
         while stack_len != 0 {
             stack_len -= 1;
-            let work = stack[stack_len];
+            // SAFETY: only indices below `stack_len + 1` are read, each written before bump.
+            let work = unsafe { stack[stack_len].assume_init() };
             if let Some(storage_idx) = work.leaf_idx() {
                 node_callback.process_node(self.leaves[storage_idx].leaf_idx);
                 continue;
@@ -261,7 +264,8 @@ impl Tree {
             for lane in (0..node.child_count as usize).rev() {
                 if mask & (1 << lane) != 0 {
                     std::hint::cold_path();
-                    stack[stack_len] = node.children[lane];
+                    debug_assert!(stack_len < Self::TRAVERSAL_STACK_SIZE);
+                    stack[stack_len].write(node.children[lane]);
                     stack_len += 1;
                 }
             }
@@ -413,10 +417,7 @@ impl BinaryTree {
             frontier.splice(slot..=slot, [left, right]);
         }
 
-        let mut wide = WideNode {
-            child_count: frontier.len() as u8,
-            ..Default::default()
-        };
+        let mut wide = WideNode::with_child_count(frontier.len() as u8);
         let mut max_child_depth = 0;
         for (lane, binary_idx) in frontier.into_iter().enumerate() {
             let node = self.nodes[binary_idx];
@@ -459,9 +460,20 @@ struct WideNode {
     max_z: Vec4,
     children: [WideChild; 4],
     child_count: u8,
+    // Valid-child mask: (1 << child_count) - 1.
+    valid_mask: u32,
 }
 
 impl WideNode {
+    fn with_child_count(child_count: u8) -> Self {
+        debug_assert!((1..=4).contains(&child_count));
+        Self {
+            child_count,
+            valid_mask: (1u32 << child_count) - 1,
+            ..Default::default()
+        }
+    }
+
     fn set_bounds(&mut self, lane: usize, aabb: Aabb) {
         self.min_x[lane] = aabb.min.x;
         self.min_y[lane] = aabb.min.y;
@@ -478,7 +490,7 @@ impl WideNode {
             & self.max_y.cmpge(Vec4::splat(aabb.min.y))
             & self.min_z.cmple(Vec4::splat(aabb.max.z))
             & self.max_z.cmpge(Vec4::splat(aabb.min.z));
-        overlap.bitmask() & ((1 << self.child_count) - 1)
+        overlap.bitmask() & self.valid_mask
     }
 }
 

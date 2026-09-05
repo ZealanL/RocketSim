@@ -196,7 +196,9 @@ impl<T: ContactAddedCallback> BoxBoxDetector<'_, T> {
         &mut self,
         transform_a: Affine3A,
         transform_b: Affine3A,
-    ) -> Option<PersistentManifold> {
+        out: &mut Option<PersistentManifold>,
+    ) {
+        debug_assert!(out.is_none());
         let axis_a = transform_a.matrix3;
         let axis_b = transform_b.matrix3;
         let axis_a_inv = axis_a.transpose();
@@ -207,18 +209,20 @@ impl<T: ContactAddedCallback> BoxBoxDetector<'_, T> {
         let obb1 = Obb::new(transform_a.translation, axis_a, side1);
         let obb2 = Obb::new(transform_b.translation, axis_b, side2);
 
-        let hit = box_box_sat(&obb1, &axis_a_inv, &obb2)?;
+        let Some(hit) = box_box_sat(&obb1, &axis_a_inv, &obb2) else {
+            return;
+        };
 
         let mut manifold = PersistentManifold::new(self.col1, self.col2);
 
         self.compute_contact_points(&obb1, &axis_a, &obb2, &axis_b, &hit, &mut manifold);
 
         if manifold.point_cache.is_empty() {
-            return None;
+            return;
         }
 
         manifold.refresh_contact_points(self.col1, self.col2);
-        Some(manifold)
+        *out = Some(manifold);
     }
 
     fn compute_contact_points<'b>(

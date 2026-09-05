@@ -49,6 +49,7 @@ impl TriangleShape {
         }
     }
 
+    #[inline]
     pub fn aabb(&self) -> Aabb {
         Aabb {
             min: self.points[0].min(self.points[1]).min(self.points[2]),

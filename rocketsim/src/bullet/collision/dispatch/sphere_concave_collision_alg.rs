@@ -119,7 +119,10 @@ pub(crate) fn process_collision_into<T: ContactAddedCallback>(
         );
     }
 
-    manifold.refresh_contact_points(convex_obj, concave_obj);
+    // Skip the no-op empty refresh (see `refresh_contact_points`).
+    if !manifold.point_cache.is_empty() {
+        manifold.refresh_contact_points(convex_obj, concave_obj);
+    }
 
     !manifold.point_cache.is_empty()
 }

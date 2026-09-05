@@ -37,7 +37,9 @@ pub fn process_collision<T: ContactAddedCallback>(
     convex_obj_a: &RigidBodyWrapper,
     convex_obj_b: &RigidBody,
     contact_added_callback: &mut T,
-) -> Option<PersistentManifold> {
+    out: &mut Option<PersistentManifold>,
+) {
+    debug_assert!(out.is_none());
     let mut manifold = PersistentManifold::new(convex_obj_a.obj, convex_obj_b);
 
     let margin_a = convex_obj_a.obj.get_collision_shape().get_margin();
@@ -65,10 +67,8 @@ pub fn process_collision<T: ContactAddedCallback>(
     );
 
     if manifold.point_cache.is_empty() {
-        None
-    } else {
-        manifold.refresh_contact_points(convex_obj_a.obj, convex_obj_b);
-
-        Some(manifold)
+        return;
     }
+    manifold.refresh_contact_points(convex_obj_a.obj, convex_obj_b);
+    *out = Some(manifold);
 }

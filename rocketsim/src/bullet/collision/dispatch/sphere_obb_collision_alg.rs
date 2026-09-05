@@ -40,7 +40,9 @@ pub fn process_collision<T: ContactAddedCallback>(
     obb_obj: &RigidBody,
     obb_shape: &CompoundShape,
     contact_added_callback: &mut T,
-) -> Option<PersistentManifold> {
+    out: &mut Option<PersistentManifold>,
+) {
+    debug_assert!(out.is_none());
     let sphere_trans = sphere_obj.get_world_trans();
     let aabb_1 = sphere_shape.get_aabb(sphere_trans);
 
@@ -48,7 +50,7 @@ pub fn process_collision<T: ContactAddedCallback>(
     let aabb_2 = obb_shape.get_aabb(org_trans);
 
     if !aabb_1.intersects(&aabb_2) {
-        return None;
+        return;
     }
 
     let child_trans = &obb_shape.child_trans;
@@ -70,7 +72,7 @@ pub fn process_collision<T: ContactAddedCallback>(
     let intersection_dist = radius + box_margin;
     let contact_dist = intersection_dist + manifold.contact_breaking_threshold;
     if dist_sq > contact_dist * contact_dist {
-        return None;
+        return;
     }
 
     let mut dist;
@@ -100,8 +102,7 @@ pub fn process_collision<T: ContactAddedCallback>(
     manifold.refresh_contact_points(sphere_obj, obb_obj);
 
     if manifold.point_cache.is_empty() {
-        None
-    } else {
-        Some(manifold)
+        return;
     }
+    *out = Some(manifold);
 }
