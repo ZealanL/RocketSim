@@ -1,12 +1,17 @@
-use glam::Vec3A;
+use glam::{Quat, Vec3A};
 
-use super::{NUM_WHEELS, raycaster::VehicleRaycaster, wheel_info::WheelInfo};
+use super::{
+    NUM_WHEELS,
+    raycaster::VehicleRaycaster,
+    wheel_info::{FrictionCurveInput, WheelInfo},
+};
 use crate::bullet::{
     collision::broadphase::CollisionFilterGroups,
     dynamics::{
         discrete_dynamics_world::DiscreteDynamicsWorld,
         rigid_body::{Impulse, RigidBody},
     },
+    linear_math::QuatExt,
 };
 
 pub struct VehicleRL {
@@ -50,32 +55,72 @@ impl VehicleRL {
         three_wheels: bool,
     ) {
         let chassis = &collision_world.bodies()[self.chassis_body_idx];
-        let chassis_trans = chassis.get_world_trans();
+        // The chassis transform and mass are invariant for the whole update:
+        // wheel impulses only change velocities, never the transform or mass.
+        // Cache them once instead of re-reading them for every wheel.
+        let chassis_trans = *chassis.get_world_trans();
+        let chassis_translation = chassis_trans.translation;
+        let friction_scale = chassis.get_mass() / 3.0;
 
         let mut sources = [Vec3A::ZERO; 4];
         let mut targets = [Vec3A::ZERO; 4];
 
         for (i, wheel) in self.wheels.iter_mut().enumerate() {
-            (sources[i], targets[i]) = wheel.prepare_for_raycast(chassis_trans);
+            (sources[i], targets[i]) = wheel.prepare_for_raycast(&chassis_trans);
         }
 
         let ray_results = self
             .raycaster
             .cast_rays(collision_world, &sources, &targets, chassis);
 
+        // Front wheels normally share one steer angle, so their steered
+        // axle is identical. Compute it lazily and reuse it while the
+        // steer angle matches (each build needs a sin/cos pair). If a
+        // front wheel ever carries a different angle, fall back to its
+        // own axle with the original formula.
+        let mut front_axle_cache: Option<(f32, Vec3A)> = None;
         let mut num_wheels_in_contact = 0;
         for (i, wheel) in self.wheels.iter_mut().enumerate() {
             if let Some(ray_result) = ray_results[i] {
                 num_wheels_in_contact += 1;
-                wheel.apply_ray_cast(chassis, ray_result, time_step, i < 2);
+                let front = i < 2;
+                let steer_angle = wheel.steer_angle;
+                let axle_dir = if front {
+                    match front_axle_cache {
+                        Some((cached_angle, cached_axle)) if cached_angle == steer_angle => {
+                            cached_axle
+                        }
+                        _ => {
+                            let axle = Quat::from_axis_angle_simd(
+                                chassis_trans.matrix3.z_axis,
+                                steer_angle,
+                            ) * chassis_trans.matrix3.y_axis;
+                            front_axle_cache = Some((steer_angle, axle));
+                            axle
+                        }
+                    }
+                } else {
+                    chassis_trans.matrix3.y_axis
+                };
+                wheel.apply_ray_cast(
+                    chassis,
+                    &chassis_trans,
+                    axle_dir,
+                    ray_result,
+                    time_step,
+                    front,
+                );
                 let is_dynamic_hit = !ray_result.rigid_body.is_static_obj();
                 wheel.refresh_friction_curves(
                     chassis,
-                    ray_result.hit_normal_in_world,
-                    handbrake_val,
-                    real_throttle,
-                    three_wheels,
-                    is_dynamic_hit,
+                    FrictionCurveInput {
+                        chassis_translation,
+                        contact_normal: ray_result.hit_normal_in_world,
+                        handbrake_val,
+                        real_throttle,
+                        three_wheels,
+                        is_dynamic_hit,
+                    },
                 );
             } else {
                 wheel.reset_wheel_suspension();
@@ -117,18 +162,18 @@ impl VehicleRL {
 
         let chassis = &mut collision_world.bodies_mut()[self.chassis_body_idx];
         for wheel in &mut self.wheels {
-            wheel.update_suspension(chassis, time_step);
+            wheel.update_suspension(chassis, chassis_translation, time_step);
         }
 
         let chassis = &collision_world.bodies()[self.chassis_body_idx];
         for wheel in &mut self.wheels {
-            wheel.update_friction_impulse(chassis, time_step);
+            wheel.update_friction_impulse(chassis, time_step, friction_scale);
         }
 
         // note: all suspension MUST be updated before impulses are applied
         let chassis = &mut collision_world.bodies_mut()[self.chassis_body_idx];
         for wheel in &mut self.wheels {
-            wheel.apply_friction_impulses(chassis, time_step);
+            wheel.apply_friction_impulses(chassis, &chassis_trans, time_step);
         }
     }
 }
