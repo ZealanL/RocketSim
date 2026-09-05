@@ -193,7 +193,7 @@ impl Arena {
         for mesh in collision_meshes {
             let is_hoops_net = if game_mode == GameMode::Hoops {
                 // Detect net mesh and disable car collision
-                mesh.get_mesh_interface().get_total_num_faces() == 798
+                mesh.shape.get_mesh_interface().get_total_num_faces() == 798
             } else {
                 false
             };
@@ -206,8 +206,8 @@ impl Arena {
 
             Self::add_static_collision_shape(
                 bullet_world,
-                CollisionShapes::TriangleMesh(mesh.clone()),
-                Vec3A::ZERO,
+                CollisionShapes::TriangleMesh(mesh.shape.clone()),
+                mesh.translation,
                 mask,
             );
         }

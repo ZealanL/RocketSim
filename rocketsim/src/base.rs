@@ -6,6 +6,7 @@ use std::{
     time::Instant,
 };
 
+use glam::Vec3A;
 use log::{error, info, warn};
 use rustc_hash::FxHashMap;
 
@@ -23,8 +24,17 @@ use crate::{
 static HAS_INITIALIZED_LOCK: OnceLock<()> = OnceLock::new();
 static INITIALIZING_MUTEX: Mutex<()> = Mutex::new(());
 
+/// Arena mesh with its recovered component translation.
+/// Goal components use local vertices plus (0, +/-102.4, 0) BT.
+/// Other components use identity.
+#[derive(Clone)]
+pub(crate) struct ArenaCollisionMesh {
+    pub shape: Arc<BvhTriangleMeshShape>,
+    pub translation: Vec3A,
+}
+
 pub(crate) static ARENA_COLLISION_SHAPES: RwLock<
-    Option<FxHashMap<GameMode, Vec<Arc<BvhTriangleMeshShape>>>>,
+    Option<FxHashMap<GameMode, Vec<ArenaCollisionMesh>>>,
 > = RwLock::new(None);
 pub(crate) static ARENA_COLLISION_MESH_FILES: RwLock<
     Option<FxHashMap<GameMode, Vec<CollisionMeshFile>>>,
@@ -170,9 +180,13 @@ where
 
             *hash_count += 1;
 
-            let tri_mesh = mesh_file.make_bullet_mesh();
+            let translation = mesh_file.component_translation();
+            let tri_mesh = mesh_file.make_bullet_mesh_local();
             let bvt_mesh = BvhTriangleMeshShape::new(tri_mesh);
-            meshes.push(Arc::new(bvt_mesh));
+            meshes.push(ArenaCollisionMesh {
+                shape: Arc::new(bvt_mesh),
+                translation,
+            });
             mesh_files.push(mesh_file);
         }
 

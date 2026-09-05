@@ -1,4 +1,4 @@
-use glam::Vec3A;
+use glam::{Mat3A, Vec3A};
 
 use super::{
     collision_dispatcher::CollisionDispatcher,
@@ -9,7 +9,6 @@ use crate::{
         collision::{
             broadphase::GridBroadphase,
             narrowphase::persistent_manifold::{CONTACT_BREAKING_THRESHOLD, ContactAddedCallback},
-            shapes::collision_shape::CollisionShapes,
         },
         dynamics::rigid_body::RigidBody,
         linear_math::AffineExt,
@@ -122,26 +121,40 @@ impl CollisionWorld {
         obj_idx: usize,
         result_callback: &mut T,
     ) {
-        let (ray_from_local, ray_to_local) =
-            if matches!(co.get_collision_shape(), CollisionShapes::TriangleMesh(_)) {
-                (*ray_from, *ray_to)
-            } else {
-                let world_to_co = co.get_world_trans().transpose();
-                (
-                    [
-                        world_to_co.transform_point3a(ray_from[0]),
-                        world_to_co.transform_point3a(ray_from[1]),
-                        world_to_co.transform_point3a(ray_from[2]),
-                        world_to_co.transform_point3a(ray_from[3]),
-                    ],
-                    [
-                        world_to_co.transform_point3a(ray_to[0]),
-                        world_to_co.transform_point3a(ray_to[1]),
-                        world_to_co.transform_point3a(ray_to[2]),
-                        world_to_co.transform_point3a(ray_to[3]),
-                    ],
-                )
-            };
+        // Triangle meshes use local vertices. Goal components carry a
+        // body translation, so move world rays into mesh-local space.
+        // Other shapes use the same inverse-transform path.
+        // Fast path for translation-only bodies: local = world - translation.
+        // Bit-identical to the transpose path for identity rotation.
+        let co_trans = co.get_world_trans();
+        let (ray_from_local, ray_to_local) = if co_trans.matrix3 == Mat3A::IDENTITY {
+            let t = co_trans.translation;
+            (
+                [
+                    ray_from[0] - t,
+                    ray_from[1] - t,
+                    ray_from[2] - t,
+                    ray_from[3] - t,
+                ],
+                [ray_to[0] - t, ray_to[1] - t, ray_to[2] - t, ray_to[3] - t],
+            )
+        } else {
+            let world_to_co = co_trans.transpose();
+            (
+                [
+                    world_to_co.transform_point3a(ray_from[0]),
+                    world_to_co.transform_point3a(ray_from[1]),
+                    world_to_co.transform_point3a(ray_from[2]),
+                    world_to_co.transform_point3a(ray_from[3]),
+                ],
+                [
+                    world_to_co.transform_point3a(ray_to[0]),
+                    world_to_co.transform_point3a(ray_to[1]),
+                    world_to_co.transform_point3a(ray_to[2]),
+                    world_to_co.transform_point3a(ray_to[3]),
+                ],
+            )
+        };
 
         let mut rcb = BridgeTriQuadRayCallback {
             from: &ray_from_local,
