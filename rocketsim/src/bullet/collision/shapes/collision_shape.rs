@@ -45,9 +45,14 @@ impl CollisionShapes {
                 shape.aabb_cache
             }
             Self::TriangleMesh(shape) => {
-                #[cfg(debug_assertions)]
-                debug_assert!(fast_compare_trans(t, &Affine3A::IDENTITY));
-                shape.aabb_ident_cache
+                // Goal components use local vertices plus a body translation.
+                // World AABB equals local AABB shifted by the body origin.
+                // Shapes stay axis-aligned with identity rotation, so add
+                // the translation directly to keep world geometry equal.
+                Aabb::new(
+                    shape.aabb_ident_cache.min + t.translation,
+                    shape.aabb_ident_cache.max + t.translation,
+                )
             }
             Self::Triangle(shape) => shape.aabb(),
         }
@@ -98,6 +103,22 @@ impl CollisionShapes {
         match self {
             Self::Sphere(shape) => shape.local_get_supporting_vertex(vec),
             Self::Compound(shape) => shape.child_shape.local_get_supporting_vertex(vec),
+            Self::ConvexHull(shape) => shape.local_get_supporting_vertex(vec),
+            Self::Triangle(shape) => shape.local_get_supporting_vertex(vec),
+            _ => unreachable!(),
+        }
+    }
+
+    /// Bullet `NonVirtual` margined support used by `btGjkEpa2` (sphere
+    /// expansion for boxes). Only the EPA penetration path observes this;
+    /// Voronoi GJK, plane culling, and AABBs keep the virtual per-axis
+    /// convention.
+    pub fn local_get_supporting_vertex_nonvirtual(&self, vec: Vec3A) -> Vec3A {
+        match self {
+            Self::Sphere(shape) => shape.local_get_supporting_vertex(vec),
+            Self::Compound(shape) => shape
+                .child_shape
+                .local_get_supporting_vertex_nonvirtual(vec),
             Self::ConvexHull(shape) => shape.local_get_supporting_vertex(vec),
             Self::Triangle(shape) => shape.local_get_supporting_vertex(vec),
             _ => unreachable!(),

@@ -116,7 +116,9 @@ impl GjkPairDetector {
             }
         }
 
-        if is_valid && distance * distance < input.maximum_distance_squared {
+        // Bullet emits every penetrating contact and gates only separated
+        // ones by the maximum distance.
+        if is_valid && (distance < 0.0 || distance * distance < input.maximum_distance_squared) {
             self.separating_axis = normal_in_b;
             self.separating_distance = distance;
 
@@ -255,5 +257,98 @@ impl GjkPairDetector {
             degenerate_simplex,
             squared_distance,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use glam::Vec3A;
+
+    use super::*;
+    use crate::bullet::collision::shapes::{
+        box_shape::BoxShape, compound_shape::CompoundShape, triangle_shape::TriangleShape,
+    };
+
+    struct CollectContact {
+        pub point: Option<Vec3A>,
+        pub normal: Option<Vec3A>,
+        pub depth: Option<f32>,
+    }
+
+    impl GjkResult for CollectContact {
+        fn add_contact_point(&mut self, normal_on_b: Vec3A, point_on_b_world: Vec3A, depth: f32) {
+            self.point = Some(point_on_b_world);
+            self.normal = Some(normal_on_b);
+            self.depth = Some(depth);
+        }
+    }
+
+    /// Grazing box-vs-triangle penetration far from the origin.
+    /// The Voronoi GJK run ends with a near-zero separating axis, so the
+    /// EPA penetration fallback supplies the contact. Its witnesses must be
+    /// world-space points on the shapes. A double transform by trans_a used
+    /// to push them one full box translation away from the pair.
+    #[test]
+    fn box_triangle_graze_emits_witness_near_box() {
+        let box_shape = BoxShape::new(Vec3A::new(1.0, 2.0, 0.5));
+        let margin_a = box_shape.get_margin();
+        let compound = CompoundShape::new(box_shape, Affine3A::IDENTITY);
+        let shape_a = CollisionShapes::Compound(compound);
+
+        // Box parked far from the origin, like a car body near the goal.
+        let trans_a = Affine3A::from_translation(Vec3A::new(0.0, 119.0, 4.66).into());
+        let trans_b = Affine3A::IDENTITY;
+
+        // Wide mesh-style triangle dipping slightly into the box top face.
+        // Box top (without margin) is z = 4.66 + 0.5 = 5.16.
+        let triangle = TriangleShape::new([
+            Vec3A::new(-5.12, 118.9, 5.14),
+            Vec3A::new(5.12, 118.9, 5.14),
+            Vec3A::new(0.0, 120.0, 5.1),
+        ]);
+        let shape_b = CollisionShapes::Triangle(triangle);
+
+        let input = ClosestPointInput::new(&trans_a, &trans_b, margin_a + 0.05);
+        let detector = GjkPairDetector::new(margin_a, 0.0);
+        let mut out = CollectContact {
+            point: None,
+            normal: None,
+            depth: None,
+        };
+        detector.get_closest_points(&input, &shape_a, &shape_b, &mut out);
+
+        let point = out.point.expect("grazing pair must emit a contact");
+        let normal = out.normal.expect("grazing pair must emit a normal");
+        let depth = out.depth.expect("grazing pair must emit a depth");
+        assert!(depth < 0.0, "grazing pair must penetrate, got {depth}");
+        assert!(
+            (normal.length() - 1.0).abs() < 1e-5,
+            "normal {normal:?} not unit"
+        );
+
+        // The witness must sit on the pair, not a full translation away.
+        let box_center = trans_a.translation;
+        let witness_gap = (point - box_center).length();
+        assert!(
+            witness_gap < 5.0,
+            "witness {point:?} is {witness_gap} from box center {box_center:?}"
+        );
+
+        // Target adapter identity worldA = point + normal * depth: the
+        // reconstructed A point must land back on the box top face, and the
+        // emitted depth must equal the witness separation magnitude.
+        let world_a = point + normal * depth;
+        assert!(
+            (world_a - box_center).length() < 5.0,
+            "reconstructed A {world_a:?} left the pair"
+        );
+        assert!(
+            (world_a.z - 5.16).abs() < 0.15,
+            "reconstructed A {world_a:?} not on the box top face"
+        );
+        assert!(
+            ((point - world_a).length() + depth).abs() < 1e-3,
+            "depth {depth} != -|B - A|"
+        );
     }
 }

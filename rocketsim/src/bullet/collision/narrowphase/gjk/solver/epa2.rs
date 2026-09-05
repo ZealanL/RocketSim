@@ -424,7 +424,10 @@ impl Epa2 {
         let mut best = self.find_best();
         let mut outer = self.fc_store[best];
 
-        'epa_iter: for pass in 0..Self::MAX_ITERATIONS {
+        // Bullet numbers EPA passes from 1: new faces are stamped with
+        // pass 0 at creation, so starting at 0 would make every adjacent
+        // face look already-visited and abort expansion on the first pass.
+        'epa_iter: for pass in 1..=Self::MAX_ITERATIONS {
             if self.next_sv >= Self::MAX_VERTICES {
                 status = EpaStatus::OutOfVertices;
                 break;
