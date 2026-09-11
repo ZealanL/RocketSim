@@ -652,20 +652,9 @@ impl Arena {
         &self.cars[car_idx].state.controls
     }
 
-    /// Debug access: per-wheel `(in_contact, suspension_length, suspension_rel_vel)`.
-    pub fn get_car_wheel_debug(&self, car_idx: usize) -> [(bool, f32, f32); 4] {
-        let mut out = [(false, 0.0f32, 0.0f32); 4];
-        for (w, o) in self.cars[car_idx]
-            .bullet_vehicle
-            .wheels
-            .iter()
-            .zip(out.iter_mut())
-        {
-            if let Some(ri) = &w.raycast_info {
-                *o = (true, ri.suspension_length, ri.suspension_relative_vel);
-            }
-        }
-        out
+    /// Refresh the prior-tick wheel gate from the current car body.
+    pub fn refresh_car_sticky_gate(&mut self, car_idx: usize) {
+        self.cars[car_idx].refresh_sticky_gate(&self.bullet_world);
     }
 
     pub fn get_car_info_and_state(&self, car_idx: usize) -> (&CarInfo, &CarState) {

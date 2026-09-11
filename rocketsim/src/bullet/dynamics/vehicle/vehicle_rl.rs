@@ -42,6 +42,69 @@ impl VehicleRL {
             .unwrap_or_else(|| cb.get_up_vector())
     }
 
+    /// Refresh wheel raycast records for the sticky gate.
+    #[must_use]
+    pub(crate) fn refresh_wheel_contacts(
+        &mut self,
+        collision_world: &DiscreteDynamicsWorld,
+        chassis: &RigidBody,
+        time_step: f32,
+    ) -> bool {
+        let chassis_trans = *chassis.get_world_trans();
+        let mut sources = [Vec3A::ZERO; NUM_WHEELS];
+        let mut targets = [Vec3A::ZERO; NUM_WHEELS];
+        for (i, wheel) in self.wheels.iter_mut().enumerate() {
+            (sources[i], targets[i]) = wheel.prepare_for_raycast(&chassis_trans);
+        }
+
+        let ray_results = self
+            .raycaster
+            .cast_rays(collision_world, &sources, &targets, chassis);
+
+        let mut front_axle_cache: Option<(f32, Vec3A)> = None;
+        for (i, wheel) in self.wheels.iter_mut().enumerate() {
+            let front = i < 2;
+            if let Some(ray_result) = ray_results[i] {
+                let steer_angle = wheel.steer_angle;
+                let axle_dir = if front {
+                    match front_axle_cache {
+                        Some((cached_angle, cached_axle)) if cached_angle == steer_angle => {
+                            cached_axle
+                        }
+                        _ => {
+                            let axle = Quat::from_axis_angle_simd(
+                                chassis_trans.matrix3.z_axis,
+                                steer_angle,
+                            ) * chassis_trans.matrix3.y_axis;
+                            front_axle_cache = Some((steer_angle, axle));
+                            axle
+                        }
+                    }
+                } else {
+                    chassis_trans.matrix3.y_axis
+                };
+
+                wheel.apply_ray_cast(
+                    chassis,
+                    &chassis_trans,
+                    axle_dir,
+                    ray_result,
+                    time_step,
+                    front,
+                );
+            } else {
+                wheel.reset_wheel_suspension();
+            }
+        }
+
+        self.wheels.iter().any(|wheel| {
+            wheel
+                .raycast_info
+                .as_ref()
+                .is_some_and(|info| info.is_in_contact_with_world)
+        })
+    }
+
     pub const fn get_num_wheels(&self) -> usize {
         self.wheels.len()
     }
@@ -62,8 +125,8 @@ impl VehicleRL {
         let chassis_translation = chassis_trans.translation;
         let friction_scale = chassis.get_mass() / 3.0;
 
-        let mut sources = [Vec3A::ZERO; 4];
-        let mut targets = [Vec3A::ZERO; 4];
+        let mut sources = [Vec3A::ZERO; NUM_WHEELS];
+        let mut targets = [Vec3A::ZERO; NUM_WHEELS];
 
         for (i, wheel) in self.wheels.iter_mut().enumerate() {
             (sources[i], targets[i]) = wheel.prepare_for_raycast(&chassis_trans);

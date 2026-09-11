@@ -90,7 +90,7 @@ impl Car {
         let mut wheels = [WheelInfo::DEFAULT; NUM_WHEELS];
         for (i, wheel) in wheels.iter_mut().enumerate() {
             let front = i < 2;
-            let left = i % 2 != 0;
+            let left = i % 2 == 0;
 
             let (wheel_config, suspension_force_scale) = if front {
                 (
@@ -179,6 +179,15 @@ impl Car {
     #[must_use]
     pub const fn get_state(&self) -> &CarState {
         &self.state
+    }
+
+    /// Refresh the prior-tick world wheel-contact gate from the current body.
+    pub(crate) fn refresh_sticky_gate(&mut self, bullet_world: &DiscreteDynamicsWorld) {
+        self.sticky_gate_prev = self.bullet_vehicle.refresh_wheel_contacts(
+            bullet_world,
+            &bullet_world.bodies()[self.rigid_body_idx],
+            TICK_TIME,
+        );
     }
 
     #[must_use]
