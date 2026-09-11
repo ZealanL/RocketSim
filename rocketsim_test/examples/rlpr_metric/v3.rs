@@ -61,8 +61,19 @@ impl V3Backend {
     }
 
     /// Recording slot for one arena car id.
-    fn slot_for_arena_car(&self, car_id: usize) -> Option<usize> {
-        self.car_ids.iter().position(|&id| id == car_id)
+    fn slot_for_arena_car(&self, arena_car: usize) -> Option<usize> {
+        self.car_ids.iter().position(|&stored| stored == arena_car)
+    }
+
+    /// Arena car id for one recording slot.
+    ///
+    /// Panics as `<caller> needs car <index>` on a missing slot.
+    #[track_caller]
+    fn car_id(&self, car_idx: usize, caller: &str) -> usize {
+        match self.car_ids.get(car_idx) {
+            Some(&id) => id,
+            None => panic!("{caller} needs car {car_idx}"),
+        }
     }
 
     /// Rebuild the arena when the car count changes.
@@ -75,6 +86,21 @@ impl V3Backend {
                 .collect();
         }
     }
+
+    /// Restore the handbrake integrator before a replayed tick.
+    pub fn set_handbrake_value(&mut self, car_idx: usize, value: f32) {
+        let car_id = self.car_id(car_idx, "set_handbrake_value");
+        let mut state = *self.arena.get_car_state(car_id);
+        state.handbrake_val = value.clamp(0.0, 1.0);
+        self.arena.set_car_state(car_id, state);
+    }
+
+    /// Refresh prior-tick wheel gates without advancing dynamics.
+    pub fn refresh_sticky_gates(&mut self) {
+        for &car_id in &self.car_ids {
+            self.arena.refresh_car_sticky_gate(car_id);
+        }
+    }
 }
 
 impl Default for V3Backend {
@@ -84,6 +110,14 @@ impl Default for V3Backend {
 }
 
 impl ReplayBackend for V3Backend {
+    fn set_handbrake_value(&mut self, car_idx: usize, value: f32) {
+        V3Backend::set_handbrake_value(self, car_idx, value);
+    }
+
+    fn refresh_sticky_gates(&mut self) {
+        V3Backend::refresh_sticky_gates(self);
+    }
+
     fn reset(&mut self, start: &TickRecord) {
         self.ensure_cars(start.car_records.len());
         self.set_state(start);
@@ -171,9 +205,7 @@ impl ReplayBackend for V3Backend {
     }
 
     fn snapshot(&mut self, car_idx: usize) -> Snapshot {
-        let Some(&car_id) = self.car_ids.get(car_idx) else {
-            panic!("snapshot needs car {car_idx}");
-        };
+        let car_id = self.car_id(car_idx, "snapshot");
         let car = *self.arena.get_car_state(car_id);
         let ball = *self.arena.get_ball_state();
         Snapshot {

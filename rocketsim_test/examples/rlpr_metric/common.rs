@@ -3,7 +3,7 @@
 //! Thin `v3`/`v2` adapters implement [`ReplayBackend`].
 //! The CLI builds [`Segment`]s, runs [`evaluate`] once per car,
 //! prints one [`EvalReport`] per car. Every recorded car shares the sim,
-//! so car-car contacts are genuine engine observations..
+//! so car-car contacts are genuine engine observations.
 //!
 //! Each segment holds `segment_ticks` ticks.
 //! The first `warmup_ticks` ticks only advance the sim.
@@ -49,6 +49,16 @@ pub struct Snapshot {
 pub trait ReplayBackend {
     fn reset(&mut self, start: &TickRecord);
     fn set_state(&mut self, state: &TickRecord);
+
+    /// Restore state that is not present in an RLPR car record.
+    ///
+    /// The v3 backend has a handbrake integrator. Other backends can keep
+    /// their default when they do not expose this state.
+    fn set_handbrake_value(&mut self, _car_idx: usize, _value: f32) {}
+
+    /// Refresh hidden prior-tick wheel state without advancing dynamics.
+    fn refresh_sticky_gates(&mut self) {}
+
     fn step(&mut self, controls: &[ControlsRecord]) -> Vec<SimContactEvents>;
     fn snapshot(&mut self, car_idx: usize) -> Snapshot;
 }
@@ -253,6 +263,62 @@ fn ball_teleported(from: &TickRecord, to: &TickRecord) -> bool {
     (pa - pb).length() >= BALL_TELEPORT_DIST
 }
 
+/// Find the start of the clean run that contains `segment_start`.
+///
+/// A segment can start in the middle of a run. Do not use the segment start
+/// as the handbrake history start in that case. Stop at the same boundaries
+/// used by [`split_segments`].
+pub fn run_start(ticks: &[TickRecord], segment_start: usize) -> usize {
+    let mut start = segment_start.min(ticks.len());
+    if start == ticks.len() {
+        return start;
+    }
+    while start > 0 {
+        let from = &ticks[start - 1];
+        let to = &ticks[start];
+        if tick_car_count(from) != tick_car_count(to)
+            || !frame_is_contiguous(from, to)
+            || tick_is_frozen(from, to)
+            || any_teleport(from, to)
+        {
+            break;
+        }
+        start -= 1;
+    }
+    start
+}
+
+/// Reconstruct the handbrake integrator at one recorded state.
+///
+/// RLPR does not store `handbrake_val`. `prev_controls` at tick `i` is the
+/// control used to produce tick `i`, so include tick `state_index`. A fall
+/// from 1.0 takes 60 ticks at 120 Hz. A 60-tick window is therefore enough
+/// to remove all state from before the window for the fall-only case. At a
+/// run boundary, assume the value before the run was zero.
+pub fn reconstruct_handbrake(
+    ticks: &[TickRecord],
+    run_start: usize,
+    state_index: usize,
+    car_idx: usize,
+) -> Option<f32> {
+    if state_index >= ticks.len() || run_start > state_index {
+        return None;
+    }
+
+    let first = state_index.saturating_sub(59).max(run_start);
+    let mut value = 0.0;
+    for tick in &ticks[first..=state_index] {
+        let car = tick.car_records.get(car_idx)?;
+        let delta = if car.prev_controls.handbrake {
+            rocketsim::consts::car::drive::POWERSLIDE_RISE_RATE
+        } else {
+            -rocketsim::consts::car::drive::POWERSLIDE_FALL_RATE
+        } * rocketsim::consts::TICK_TIME;
+        value = (value + delta).clamp(0.0, 1.0);
+    }
+    Some(value)
+}
+
 /// Chunk one clean run. Drop chunks with no scored ticks.
 fn push_chunks(segments: &mut Vec<Segment>, start: usize, end: usize, config: SegmentConfig) {
     let mut offset = start;
@@ -362,6 +428,59 @@ pub fn classify_tick(tick: &TickRecord, car_idx: usize, sim: SimContactEvents) -
     }
 }
 
+/// Per-term normalized errors. Each term is already divided by its tol.
+/// Use it to find which body part dominates a `wheel_world` fail.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ComponentErrors {
+    pub car_pos: f32,
+    pub ball_pos: f32,
+    pub car_vel: f32,
+    pub ball_vel: f32,
+    pub car_ang: f32,
+    pub ball_ang: f32,
+    pub car_fwd: f32,
+    pub car_up: f32,
+    pub ball_fwd: f32,
+    pub ball_up: f32,
+}
+
+impl ComponentErrors {
+    /// Combined norm. Same value as [`normalized_error`].
+    pub fn norm(&self) -> f32 {
+        (self.car_pos * self.car_pos
+            + self.ball_pos * self.ball_pos
+            + self.car_vel * self.car_vel
+            + self.ball_vel * self.ball_vel
+            + self.car_ang * self.car_ang
+            + self.ball_ang * self.ball_ang
+            + self.car_fwd * self.car_fwd
+            + self.car_up * self.car_up
+            + self.ball_fwd * self.ball_fwd
+            + self.ball_up * self.ball_up)
+            .sqrt()
+    }
+}
+
+/// Per-term errors for one sim vs truth pair.
+///
+/// Each term is already divided by its tolerance:
+/// car/ball pos by 10 UU, car/ball vel by 3 UU/s,
+/// car/ball ang vel by 1 rad/s, axes by 1.
+pub fn component_errors(sim: &Snapshot, truth: &Snapshot) -> ComponentErrors {
+    ComponentErrors {
+        car_pos: (sim.car.pos - truth.car.pos).length() / POS_TOL_UU,
+        ball_pos: (sim.ball.pos - truth.ball.pos).length() / POS_TOL_UU,
+        car_vel: (sim.car.vel - truth.car.vel).length() / VEL_TOL_UU_S,
+        ball_vel: (sim.ball.vel - truth.ball.vel).length() / VEL_TOL_UU_S,
+        car_ang: (sim.car.ang_vel - truth.car.ang_vel).length() / ANG_VEL_TOL_RAD_S,
+        ball_ang: (sim.ball.ang_vel - truth.ball.ang_vel).length() / ANG_VEL_TOL_RAD_S,
+        car_fwd: (sim.car.forward - truth.car.forward).length() / AXIS_TOL,
+        car_up: (sim.car.up - truth.car.up).length() / AXIS_TOL,
+        ball_fwd: (sim.ball.forward - truth.ball.forward).length() / AXIS_TOL,
+        ball_up: (sim.ball.up - truth.ball.up).length() / AXIS_TOL,
+    }
+}
+
 /// Normalized physics error over car and ball.
 ///
 /// Each component is divided by its tolerance, then combined as a norm:
@@ -369,27 +488,7 @@ pub fn classify_tick(tick: &TickRecord, car_idx: usize, sim: SimContactEvents) -
 /// car/ball angular velocity by 1 rad/s, car/ball forward/up drift by 1.
 /// Passes when norm < 1.
 pub fn normalized_error(sim: &Snapshot, truth: &Snapshot) -> f32 {
-    let car_pos = (sim.car.pos - truth.car.pos).length() / POS_TOL_UU;
-    let ball_pos = (sim.ball.pos - truth.ball.pos).length() / POS_TOL_UU;
-    let car_vel = (sim.car.vel - truth.car.vel).length() / VEL_TOL_UU_S;
-    let ball_vel = (sim.ball.vel - truth.ball.vel).length() / VEL_TOL_UU_S;
-    let car_ang = (sim.car.ang_vel - truth.car.ang_vel).length() / ANG_VEL_TOL_RAD_S;
-    let ball_ang = (sim.ball.ang_vel - truth.ball.ang_vel).length() / ANG_VEL_TOL_RAD_S;
-    let car_fwd = (sim.car.forward - truth.car.forward).length() / AXIS_TOL;
-    let car_up = (sim.car.up - truth.car.up).length() / AXIS_TOL;
-    let ball_fwd = (sim.ball.forward - truth.ball.forward).length() / AXIS_TOL;
-    let ball_up = (sim.ball.up - truth.ball.up).length() / AXIS_TOL;
-    (car_pos * car_pos
-        + ball_pos * ball_pos
-        + car_vel * car_vel
-        + ball_vel * ball_vel
-        + car_ang * car_ang
-        + ball_ang * ball_ang
-        + car_fwd * car_fwd
-        + car_up * car_up
-        + ball_fwd * ball_fwd
-        + ball_up * ball_up)
-        .sqrt()
+    component_errors(sim, truth).norm()
 }
 
 /// Strict pass rule.
@@ -493,6 +592,32 @@ impl EvalReport {
     }
 }
 
+/// Refresh hidden wheel state after a reset without advancing dynamics.
+///
+/// A full warmup tick also advances ball and manifold state. Use the wheel
+/// raycast-only path so the scored body remains exactly at the recorded state.
+pub fn settle_reset_state<B: ReplayBackend>(backend: &mut B, state: &TickRecord) {
+    backend.set_state(state);
+    backend.refresh_sticky_gates();
+}
+
+/// Restore state that RLPR does not store at a segment state.
+pub fn restore_handbrake_seed<B: ReplayBackend>(
+    backend: &mut B,
+    ticks: &[TickRecord],
+    run_start: usize,
+    state_index: usize,
+) {
+    let Some(state) = ticks.get(state_index) else {
+        return;
+    };
+    for car_idx in 0..state.car_records.len() {
+        if let Some(value) = reconstruct_handbrake(ticks, run_start, state_index, car_idx) {
+            backend.set_handbrake_value(car_idx, value);
+        }
+    }
+}
+
 /// Run each segment open-loop and aggregate every car-tick into one report.
 /// Every arena car steps with its own recorded controls, so car-car
 /// contacts are real sim observations. Resets at each segment start,
@@ -506,6 +631,7 @@ pub fn evaluate<B: ReplayBackend>(
     segments: &[Segment],
     warmup_ticks: usize,
     reset_each_tick: bool,
+    reset_warmup: bool,
     use_sim_events: bool,
 ) -> EvalReport {
     let mut report = EvalReport::default();
@@ -513,14 +639,24 @@ pub fn evaluate<B: ReplayBackend>(
         if segment.end() > ticks.len() {
             continue;
         }
+        let segment_run_start = run_start(ticks, segment.start);
         if !reset_each_tick {
             backend.reset(&ticks[segment.start]);
+            restore_handbrake_seed(backend, ticks, segment_run_start, segment.start);
         }
         for offset in 1..segment.len {
             let target_index = segment.start + offset;
             let target = &ticks[target_index];
             if reset_each_tick {
-                backend.set_state(&ticks[target_index - 1]);
+                let state_index = target_index - 1;
+                if offset == 1 && reset_warmup {
+                    settle_reset_state(backend, &ticks[state_index]);
+                } else {
+                    backend.set_state(&ticks[state_index]);
+                }
+                if offset == 1 {
+                    restore_handbrake_seed(backend, ticks, segment_run_start, state_index);
+                }
             }
             let controls: Vec<ControlsRecord> = target
                 .car_records
@@ -915,6 +1051,21 @@ mod tests {
     }
 
     #[test]
+    fn reconstructs_handbrake_with_sixty_tick_fall_and_run_boundary() {
+        let mut ticks: Vec<_> = (0..84).map(|i| quiet_tick(i, i as f32)).collect();
+        for tick in ticks.iter_mut().take(24) {
+            tick.car_records[0].prev_controls.handbrake = true;
+        }
+        assert_eq!(reconstruct_handbrake(&ticks, 0, 23, 0), Some(1.0));
+        assert_eq!(reconstruct_handbrake(&ticks, 0, 83, 0), Some(0.0));
+
+        ticks[0].car_records[0].prev_controls.handbrake = true;
+        ticks[1].car_records[0].prev_controls.handbrake = false;
+        let bounded = reconstruct_handbrake(&ticks, 1, 1, 0).unwrap();
+        assert_eq!(bounded, 0.0);
+    }
+
+    #[test]
     fn splits_on_car_count_change_and_labels_per_car() {
         let mut ticks: Vec<_> = (0..4).map(|i| quiet_tick(i, i as f32 * 10.0)).collect();
         // Tick 2 gains a second car that touches the ball.
@@ -932,7 +1083,7 @@ mod tests {
         assert!(snapshot_from_tick(&ticks[2], 2).is_none());
         // Car 0 still evaluates over the clean run.
         let mut backend = MirrorBackend::new(&ticks);
-        let report = evaluate(&mut backend, &ticks, &segments, 1, false, true);
+        let report = evaluate(&mut backend, &ticks, &segments, 1, false, false, true);
         assert!(report.total.support > 0);
     }
 
@@ -945,7 +1096,7 @@ mod tests {
         }
         let mut backend = MirrorBackend::new(&ticks);
         let segments = vec![Segment { start: 0, len: 4 }];
-        let report = evaluate(&mut backend, &ticks, &segments, 1, false, true);
+        let report = evaluate(&mut backend, &ticks, &segments, 1, false, false, true);
         assert_eq!(report.total.support, 6);
         assert_eq!(report.total.passed, 6);
         assert_eq!(report.no_contact.support, 6);
@@ -958,7 +1109,7 @@ mod tests {
         ticks[4].car_records[0].wheels[0].has_contact = true;
         let mut backend = MirrorBackend::new(&ticks);
         let segments = vec![Segment { start: 0, len: 6 }];
-        let report = evaluate(&mut backend, &ticks, &segments, 1, false, true);
+        let report = evaluate(&mut backend, &ticks, &segments, 1, false, false, true);
         assert_eq!(report.total.support, 5);
         assert_eq!(report.total.passed, 5);
         assert_eq!(report.car_ball.support, 1);
@@ -966,7 +1117,7 @@ mod tests {
         assert_eq!(report.no_contact.support, 4);
 
         let mut backend = MirrorBackend::new(&ticks);
-        let report = evaluate(&mut backend, &ticks, &segments, 3, true, true);
+        let report = evaluate(&mut backend, &ticks, &segments, 3, true, false, true);
         assert_eq!(report.total.support, 5);
         assert_eq!(report.total.passed, 5);
     }

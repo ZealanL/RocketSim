@@ -36,6 +36,12 @@ struct Args {
     #[arg(long)]
     reset_each_tick: bool,
 
+    /// Refresh prior-state wheel rays at each segment start. This settles the
+    /// sticky-wheel gate without advancing dynamics.
+    /// Applies only with `--reset-each-tick`, at the first tick of each segment.
+    #[arg(long)]
+    reset_warmup: bool,
+
     /// Label ticks from RL flags only; ignore contacts the sim observed.
     /// Isolates physics fidelity from sim event sensitivity.
     #[arg(long)]
@@ -159,6 +165,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &segments,
         config.warmup_ticks,
         args.reset_each_tick,
+        args.reset_warmup,
         !args.ignore_sim_events,
     );
     print_report("v3", &v3_report);
@@ -173,6 +180,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &segments,
             config.warmup_ticks,
             args.reset_each_tick,
+            args.reset_warmup,
             !args.ignore_sim_events,
         );
         println!();
