@@ -339,16 +339,16 @@ impl<T: ContactAddedCallback> BoxBoxDetector<'_, T> {
 
         let k = m * Vec4::new(
             obb2.extent[a1],
-            obb2.extent[a1],
             obb2.extent[a2],
+            obb2.extent[a1],
             obb2.extent[a2],
         );
 
         let quad = [
-            [c1 - k.x - k.z, c2 - k.y - k.w],
-            [c1 - k.x + k.z, c2 - k.y + k.w],
-            [c1 + k.x + k.z, c2 + k.y + k.w],
-            [c1 + k.x - k.z, c2 + k.y - k.w],
+            [c1 - k.x - k.y, c2 - k.z - k.w],
+            [c1 - k.x + k.y, c2 - k.z + k.w],
+            [c1 + k.x + k.y, c2 + k.z + k.w],
+            [c1 + k.x - k.y, c2 - k.z - k.w],
         ];
 
         // find the size of the reference face
