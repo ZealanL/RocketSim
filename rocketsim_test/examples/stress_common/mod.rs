@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use clap::{Parser, ValueEnum};
 use fastrand::Rng;
 use glam::Vec3A;
@@ -39,6 +41,13 @@ pub struct Args {
     pub mem_weight_mode: MemWeightModeArg,
     #[arg(long, default_value_t = 1)]
     pub num_arenas: usize,
+    /// Number of episodes to run in the benchmark. Increase this for stable
+    /// wall-clock measurements without changing the per-tick workload.
+    #[arg(long, default_value_t = NUM_EPISODE)]
+    pub episodes: usize,
+    /// Optional deterministic state snapshot for cross-engine parity checks.
+    #[arg(long)]
+    pub state_output: Option<PathBuf>,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -192,11 +201,18 @@ pub fn calc_bot_controls(
     controls.clamp()
 }
 
-pub fn print_results(elapsed: f32, total_ball_touches: usize) {
-    let tps = (TOTAL_TICKS as f32) / elapsed;
+pub fn print_results(
+    elapsed: f32,
+    total_ball_touches: usize,
+    episodes: usize,
+    num_arenas: usize,
+) {
+    let per_arena_tps = (episodes * NUM_EPISODE_TICKS) as f32 / elapsed;
+    let aggregate_tps = (episodes * NUM_EPISODE_TICKS * num_arenas) as f32 / elapsed;
     println!(
         "Elapsed: {elapsed}\
-        \nTPS: {tps:.0}\
+        \nTPS per arena: {per_arena_tps:.0}\
+        \nAggregate TPS: {aggregate_tps:.0}\
         \nBall hits: {total_ball_touches}"
     );
 }

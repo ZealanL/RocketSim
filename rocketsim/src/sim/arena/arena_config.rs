@@ -10,11 +10,33 @@ pub enum ArenaMemWeightMode {
     Light,
 }
 
+/// How wheel suspension rays are resolved against the arena.
+///
+/// The reference RocketSim has two suspension-collision paths: the default
+/// `btVehicleRaycaster::castRay` against the whole collision world (static
+/// planes, arena trimesh, and dynamic bodies), and the
+/// `SuspensionCollisionGrid` fast path whose unmarked cells resolve against
+/// the analytic arena planes only (floor, ceiling, side walls). Captures
+/// produced by planes-only suspension engines exist in the wild; their wheel
+/// stream is only reproducible under the analytic model.
+#[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq)]
+pub enum WheelRaycastMode {
+    /// Full collision-world raycast (C++ `btVehicleRL::rayCast` default).
+    #[default]
+    World,
+    /// Analytic arena planes only — the `SuspensionCollisionGrid`
+    /// unmarked-cell path applied to every wheel ray. The trimesh and
+    /// dynamic bodies are ignored by the suspension rays.
+    ArenaPlanes,
+}
+
 #[derive(Clone, Debug)]
 pub struct ArenaConfig {
     pub game_mode: GameMode,
     pub mutators: MutatorConfig,
     pub mem_weight_mode: ArenaMemWeightMode,
+    /// How wheel suspension rays resolve contacts; see [`WheelRaycastMode`].
+    pub wheel_raycast_mode: WheelRaycastMode,
     pub min_pos: Vec3A,
     pub max_pos: Vec3A,
     pub max_aabb_len: f32,
@@ -37,6 +59,7 @@ impl ArenaConfig {
         game_mode: GameMode::Soccar,
         mutators: MutatorConfig::new(GameMode::Soccar),
         mem_weight_mode: ArenaMemWeightMode::Heavy,
+        wheel_raycast_mode: WheelRaycastMode::World,
         min_pos: Vec3A::new(-5600., -6000., 0.),
         max_pos: Vec3A::new(5600., 6000., 2200.),
         max_aabb_len: 370.,
@@ -63,6 +86,12 @@ impl ArenaConfig {
     #[must_use]
     pub fn with_mem_weight_mode(mut self, mem_weight_mode: ArenaMemWeightMode) -> Self {
         self.mem_weight_mode = mem_weight_mode;
+        self
+    }
+
+    #[must_use]
+    pub fn with_wheel_raycast_mode(mut self, wheel_raycast_mode: WheelRaycastMode) -> Self {
+        self.wheel_raycast_mode = wheel_raycast_mode;
         self
     }
 

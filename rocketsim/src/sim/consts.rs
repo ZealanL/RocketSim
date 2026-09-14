@@ -321,8 +321,28 @@ pub mod ball {
     pub mod car_hit_impulse {
         pub const FORWARD_SCALE: f32 = 0.65;
         pub const MAX_DELTA_VEL_UU: f32 = 4600.0;
+        /// The real engine starts tracking a ball-car pair once the ball's
+        /// surface is within this distance of the hitbox, and the extra hit
+        /// impulse is computed against that detection tick's state.
+        pub const DETECTION_MARGIN_UU: f32 = 4.2;
+        /// The queued extra impulse applies once the pair is actually
+        /// touching — the ball surface within this distance of the hitbox.
+        /// Contacts detected but never reaching this margin only feed the
+        /// solver.
+        pub const TOUCH_MARGIN_UU: f32 = 1.75;
+        /// A pair that enters the detection margin already this deep applies
+        /// its extra impulse on the same tick instead of deferring it.
+        /// A first contact this deep always applies its impulse on the
+        /// touch tick, even while nominally separating — the solver crushes
+        /// the approach anyway. Marginal touches only fire while the pair
+        /// still converges.
+        pub const ENTRY_TOUCH_MARGIN_UU: f32 = 1.4;
+        /// A deferred extra impulse only applies while the pair is still
+        /// converging (or co-moving); once the ball is clearly separating
+        /// from the car surface the queued impulse is dropped.
+        pub const DEFERRED_MIN_APPROACH_UU: f32 = -20.0;
 
-        pub const Z_SCALE_NORMAL: f32 = 0.35;
+        pub const Z_SCALE_NORMAL: f32 = 0.352;
         pub const Z_SCALE_HOOPS_GROUND: f32 = Z_SCALE_NORMAL * 1.55;
         pub const Z_SCALE_HOOPS_NORMAL_Z_THRESH: f32 = 0.1;
     }

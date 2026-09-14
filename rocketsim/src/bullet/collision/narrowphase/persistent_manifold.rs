@@ -15,6 +15,11 @@ pub trait ContactAddedCallback {
         body_b: &RigidBody,
         idx: Option<usize>,
     );
+
+    /// Runs between collision detection and the constraint solver, letting
+    /// the callback mutate dynamic bodies in response to the contacts that
+    /// were actually detected this tick.
+    fn post_detection_hook(&mut self, _bodies: &mut [RigidBody]) {}
 }
 
 pub const CONTACT_BREAKING_THRESHOLD: f32 = 0.02;

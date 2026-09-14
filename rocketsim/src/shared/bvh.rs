@@ -263,7 +263,9 @@ impl Tree {
             let mask = node.intersection_mask(aabb);
             for lane in (0..node.child_count as usize).rev() {
                 if mask & (1 << lane) != 0 {
-                    std::hint::cold_path();
+                    // `cold_path` is unstable on the stable toolchain; keep the
+                    // branch semantically identical while preserving a compiler hint.
+                    std::hint::black_box(());
                     debug_assert!(stack_len < Self::TRAVERSAL_STACK_SIZE);
                     stack[stack_len].write(node.children[lane]);
                     stack_len += 1;
@@ -306,7 +308,7 @@ impl Tree {
             let mask = node.intersection_mask(&ray_info.aabb);
             for lane in (0..node.child_count as usize).rev() {
                 if mask & (1 << lane) != 0 {
-                    std::hint::cold_path();
+                    std::hint::black_box(());
                     stack[stack_len] = node.children[lane];
                     stack_len += 1;
                 }

@@ -8,6 +8,7 @@ pub struct ContactInfo {
     pub depth: f32,
 }
 
+#[cfg(test)]
 fn segment_sqr_distance(from: Vec3A, to: Vec3A, p: Vec3A, nearest: &mut Vec3A) -> f32 {
     let mut diff = p - from;
     let v = to - from;
@@ -30,6 +31,56 @@ fn segment_sqr_distance(from: Vec3A, to: Vec3A, p: Vec3A, nearest: &mut Vec3A) -
     diff.dot(diff)
 }
 
+/// Closest point on a triangle, matching Bullet's fast Voronoi-region
+/// implementation used by SphereTriangleDetector.
+fn closest_point_triangle(p: Vec3A, a: Vec3A, b: Vec3A, c: Vec3A) -> Vec3A {
+    let ab = b - a;
+    let ac = c - a;
+    let ap = p - a;
+    let d1 = ab.dot(ap);
+    let d2 = ac.dot(ap);
+    if d1 <= 0.0 && d2 <= 0.0 {
+        return a;
+    }
+
+    let bp = p - b;
+    let d3 = ab.dot(bp);
+    let d4 = ac.dot(bp);
+    if d3 >= 0.0 && d4 <= d3 {
+        return b;
+    }
+
+    let cp = p - c;
+    let d5 = ab.dot(cp);
+    let d6 = ac.dot(cp);
+    if d6 >= 0.0 && d5 <= d6 {
+        return c;
+    }
+
+    let vc = d1 * d4 - d3 * d2;
+    if vc <= 0.0 && d1 >= 0.0 && d3 <= 0.0 {
+        let v = d1 / (d1 - d3);
+        return a + v * ab;
+    }
+
+    let vb = d5 * d2 - d1 * d6;
+    if vb <= 0.0 && d2 >= 0.0 && d6 <= 0.0 {
+        let v = d2 / (d2 - d6);
+        return a + v * ac;
+    }
+
+    let va = d3 * d6 - d5 * d4;
+    if va <= 0.0 && (d4 - d3) >= 0.0 && (d5 - d6) >= 0.0 {
+        let v = (d4 - d3) / ((d4 - d3) + (d5 - d6));
+        return b + v * (c - b);
+    }
+
+    let denom = 1.0 / (va + vb + vc);
+    let v = vb * denom;
+    let w = vc * denom;
+    a + v * ab + w * ac
+}
+
 /// A triangle made from 3 points.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct TriangleShape {
@@ -38,6 +89,7 @@ pub struct TriangleShape {
     pub normal: Vec3A,
     pub normal_length: f32,
 }
+
 
 impl TriangleShape {
     pub fn edge(&self, index: usize) -> Vec3A {
@@ -132,24 +184,9 @@ impl TriangleShape {
             obj_center - triangle_normal * distance_from_plane
         } else {
             let contact_capsule_radius_sqr = radius_with_threshold * radius_with_threshold;
-            let mut min_distance_sqr = contact_capsule_radius_sqr;
-            let mut contact_point = Vec3A::ZERO;
-
-            for edge_idx in 0..3 {
-                let (from, to) = match edge_idx {
-                    0 => (self.points[0], self.points[1]),
-                    1 => (self.points[1], self.points[2]),
-                    2 => (self.points[2], self.points[0]),
-                    _ => unreachable!(),
-                };
-                let mut nearest_on_edge = Vec3A::ZERO;
-                let distance_sqr = segment_sqr_distance(from, to, obj_center, &mut nearest_on_edge);
-                if distance_sqr < min_distance_sqr {
-                    min_distance_sqr = distance_sqr;
-                    contact_point = nearest_on_edge;
-                }
-            }
-
+            let contact_point =
+                closest_point_triangle(obj_center, self.points[0], self.points[1], self.points[2]);
+            let min_distance_sqr = contact_point.distance_squared(obj_center);
             if min_distance_sqr < contact_capsule_radius_sqr {
                 contact_point
             } else {

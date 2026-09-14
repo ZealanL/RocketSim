@@ -104,14 +104,27 @@ impl CollisionWorld {
         &mut self,
         contact_added_callback: &mut T,
     ) {
+        #[cfg(feature = "profile")]
+        let t = std::time::Instant::now();
         self.update_aabbs();
+        #[cfg(feature = "profile")]
+        crate::profiling::record(2, t.elapsed());
 
+        #[cfg(feature = "profile")]
+        let t = std::time::Instant::now();
         self.broadphase_pair_cache.calculate_overlapping_pairs();
+        #[cfg(feature = "profile")]
+        crate::profiling::record(3, t.elapsed());
+
+        #[cfg(feature = "profile")]
+        let t = std::time::Instant::now();
         self.dispatcher1.dispatch_all_collision_pairs(
             &self.collision_objs,
             &mut self.broadphase_pair_cache,
             contact_added_callback,
         );
+        #[cfg(feature = "profile")]
+        crate::profiling::record(4, t.elapsed());
     }
 
     pub(crate) fn quad_ray_test<T: QuadRayResultCallback>(

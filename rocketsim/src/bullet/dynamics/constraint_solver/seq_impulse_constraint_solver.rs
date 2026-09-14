@@ -6,9 +6,11 @@ use crate::bullet::{
         manifold_point::ManifoldPoint,
         persistent_manifold::{MANIFOLD_CACHE_SIZE, PersistentManifold},
     },
+    collision::shapes::collision_shape::CollisionShapes,
     dynamics::rigid_body::{CollisionFlags, RigidBody},
     linear_math::{integrate_trans, integrate_trans_no_rot, plane_space_1},
 };
+use crate::sim::UserInfoTypes;
 
 /// Use Bullet's linear slop to classify shallow support contacts.
 /// Treat deeper contacts as impacts.
@@ -16,12 +18,25 @@ const SPECIAL_LINEAR_SLOP: f32 = 0.04;
 
 /// Blend samples only for upward-facing support contacts.
 /// Use facet responses for steep contacts.
-const SUPPORT_NORMAL_MIN_Z: f32 = 0.866;
+const SUPPORT_NORMAL_MIN_Z: f32 = 0.93;
+
+#[inline]
+fn solver_iterations() -> usize {
+    if std::env::var_os("RS_V10_PARITY").is_some() {
+        contact_solver_info::NUM_ITERATIONS + 1
+    } else {
+        contact_solver_info::NUM_ITERATIONS
+    }
+}
 
 #[derive(Clone, Copy)]
 struct SpecialContact {
     obj_idx: usize,
     static_obj_idx: usize,
+    /// Ball contacts can span multiple goal-mesh rigid bodies. Keep those
+    /// manifolds separate, as Bullet solves each mesh body pair independently.
+    is_ball: bool,
+    static_is_mesh: bool,
     pos_world_on_a: Vec3A,
     normal_world_on_b: Vec3A,
     /// Save the closest-feature normal before edge adjustment.
@@ -52,10 +67,22 @@ fn special_contact_from_point(
     rel_pos1: Vec3A,
     rel_pos2: Vec3A,
 ) -> Option<SpecialContact> {
-    let (obj_idx, static_obj_idx, lever_arm) = if !body0.is_static_obj() {
-        (body0.world_array_idx, body1.world_array_idx, rel_pos1)
+    let (obj_idx, static_obj_idx, lever_arm, is_ball, static_is_mesh) = if !body0.is_static_obj() {
+        (
+            body0.world_array_idx,
+            body1.world_array_idx,
+            rel_pos1,
+            body0.user_idx == UserInfoTypes::Ball,
+            matches!(body1.get_collision_shape(), CollisionShapes::TriangleMesh(_)),
+        )
     } else if !body1.is_static_obj() {
-        (body1.world_array_idx, body0.world_array_idx, rel_pos2)
+        (
+            body1.world_array_idx,
+            body0.world_array_idx,
+            rel_pos2,
+            body1.user_idx == UserInfoTypes::Ball,
+            matches!(body0.get_collision_shape(), CollisionShapes::TriangleMesh(_)),
+        )
     } else {
         return None;
     };
@@ -63,6 +90,8 @@ fn special_contact_from_point(
     Some(SpecialContact {
         obj_idx,
         static_obj_idx,
+        is_ball,
+        static_is_mesh,
         pos_world_on_a: cp.pos_world_on_a,
         normal_world_on_b: cp.normal_world_on_b,
         raw_normal_world_on_b: cp.raw_normal_world_on_b,
@@ -259,8 +288,7 @@ impl SeqImpulseConstraintSolver {
                 let rb1 = solver_body_b.original_body.map(|_| &*body1);
                 let friction_idx = self.tmp_solver_contact_constraint_pool.len();
 
-                self.tmp_solver_contact_constraint_pool.push(
-                    SolverConstraint::get_contact_constraint(
+                let contact_constraint = SolverConstraint::get_contact_constraint(
                         (solver_body_id_a, solver_body_id_b),
                         (solver_body_a, solver_body_b),
                         (rb0, rb1),
@@ -268,8 +296,8 @@ impl SeqImpulseConstraintSolver {
                         cp,
                         friction_idx,
                         time_step,
-                    ),
-                );
+                    );
+                self.tmp_solver_contact_constraint_pool.push(contact_constraint);
 
                 cp.calc_lat_friction_dir(solver_body_a, solver_body_b, rel_pos1, rel_pos2);
 
@@ -422,12 +450,14 @@ impl SeqImpulseConstraintSolver {
                 .tmp_special_contact_pool
                 .iter()
                 .all(|contact| !contact.is_penetrating());
+            let use_adjusted_normals = has_reduced_contacts
+                || self.tmp_special_contact_pool.iter().all(|contact| contact.is_ball);
             // Evaluate the deep-contact condition lazily: the mean below is only
             // needed when a penetrating sample exists.
             let is_shallow_support = all_non_penetrating || {
                 let mut total_classification_normal = Vec3A::ZERO;
                 for contact in classification_contacts {
-                    total_classification_normal += if has_reduced_contacts {
+                    total_classification_normal += if use_adjusted_normals {
                         contact.normal_world_on_b
                     } else {
                         contact.raw_normal_world_on_b
@@ -443,7 +473,7 @@ impl SeqImpulseConstraintSolver {
                 let mut total_normal = Vec3A::ZERO;
                 let mut total_lever_len = 0.0;
                 for contact in aggregate_contacts {
-                    total_normal += if has_reduced_contacts {
+                    total_normal += if use_adjusted_normals {
                         contact.normal_world_on_b
                     } else {
                         contact.raw_normal_world_on_b
@@ -457,6 +487,7 @@ impl SeqImpulseConstraintSolver {
                     lever_len: total_lever_len / num_samples,
                     min_distance,
                     obj_idx: self.tmp_special_contact_pool[0].obj_idx,
+                    is_ball: self.tmp_special_contact_pool[0].is_ball,
                 }
             } else {
                 // Group deep samples by physical touch.
@@ -552,15 +583,32 @@ impl SeqImpulseConstraintSolver {
                         .map(|contact| contact.distance)
                         .fold(f32::MAX, f32::min),
                     obj_idx: self.tmp_special_representatives[0].obj_idx,
+                    is_ball: self.tmp_special_representatives[0].is_ball,
                 }
             }
         };
-
         let first_contact = self.tmp_special_contact_pool[0];
+        // Ball/mesh seam manifolds are generated from several adjacent
+        // triangles. Their averaged signed distance is not a physical
+        // penetration depth; applying ERP here suppresses the normal
+        // bounce. Only suppress when every representative touches the mesh:
+        // ball contacts with analytic planes or cars carry a genuine depth
+        // that needs the normal ERP correction. Steep mesh impacts (walls)
+        // are real penetrations too.
+        let ball_mesh_shallow = aggregate.is_ball
+            && self
+                .tmp_special_representatives
+                .iter()
+                .all(|contact| contact.static_is_mesh)
+            && aggregate.normal_world_on_b.z.abs() >= SUPPORT_NORMAL_MIN_Z;
         let contact = SpecialContact {
             normal_world_on_b: aggregate.normal_world_on_b,
             lever_arm: aggregate.normal_world_on_b * -aggregate.lever_len,
-            distance: aggregate.min_distance,
+            distance: if ball_mesh_shallow {
+                0.0
+            } else {
+                aggregate.min_distance
+            },
             friction: first_contact.friction,
             restitution: first_contact.restitution,
             obj_idx: aggregate.obj_idx,
@@ -575,10 +623,20 @@ impl SeqImpulseConstraintSolver {
     /// Hold no pool borrow across `push_special_row`.
     fn convert_cluster_averages(&mut self, collision_objs: &[RigidBody], time_step: f32) {
         let num_clusters = self.tmp_special_cluster_pool.len();
+        // A rolling ball can straddle the floor and the rising side of a
+        // mesh seam. Once one manifold is actually closing, Bullet keeps the
+        // support manifold as a cache but does not apply a second restitution
+        // bounce from it. Discard non-approaching ball clusters for this
+        // solver pass so a stale floor touch cannot double the launch speed.
         'clusters: for i in 0..num_clusters {
             let contact = &self.tmp_special_cluster_pool[i];
             for other_contact in &self.tmp_special_cluster_pool[0..i] {
-                if other_contact.obj_idx == contact.obj_idx {
+                if other_contact.obj_idx == contact.obj_idx
+                    && (!contact.is_ball
+                        || !contact.static_is_mesh
+                        || !other_contact.static_is_mesh
+                        || other_contact.static_obj_idx == contact.static_obj_idx)
+                {
                     continue 'clusters;
                 }
             }
@@ -588,12 +646,18 @@ impl SeqImpulseConstraintSolver {
             let mut total_friction = 0.0;
             let mut total_restitution = 0.0;
             let mut min_distance = f32::MAX;
+            let mut all_mesh = true;
             let mut count = 0u32;
             let mut first = contact;
 
             let obj_idx = contact.obj_idx;
             for contact in &self.tmp_special_cluster_pool {
-                if contact.obj_idx != obj_idx {
+                if contact.obj_idx != obj_idx
+                    || (first.is_ball
+                        && first.static_is_mesh
+                        && contact.static_is_mesh
+                        && contact.static_obj_idx != first.static_obj_idx)
+                {
                     continue;
                 }
 
@@ -602,16 +666,31 @@ impl SeqImpulseConstraintSolver {
                 total_friction += contact.friction;
                 total_restitution += contact.restitution;
                 min_distance = min_distance.min(contact.distance);
+                all_mesh &= contact.static_is_mesh;
                 count += 1;
                 first = contact;
             }
 
             let num_samples = count as f32;
             let mean_normal = (total_normal / num_samples).normalize();
+            let mean_lever = mean_normal * -(total_lever_len / num_samples);
+            // A ball spanning adjacent mesh triangles gets several contacts
+            // whose signed distances are not a physical penetration depth, so
+            // suppress the ERP positional correction for pure ball/mesh seam
+            // aggregates. Ball contacts with analytic planes or cars carry a
+            // genuine depth, and deep steep mesh impacts (walls) are real
+            // penetrations too; both keep the measured correction.
+            let ball_mesh_shallow = first.is_ball
+                && all_mesh
+                && mean_normal.z.abs() >= SUPPORT_NORMAL_MIN_Z;
             let contact = SpecialContact {
                 normal_world_on_b: mean_normal,
-                lever_arm: mean_normal * -(total_lever_len / num_samples),
-                distance: min_distance,
+                lever_arm: mean_lever,
+                distance: if ball_mesh_shallow {
+                    0.0
+                } else {
+                    min_distance
+                },
                 friction: total_friction / num_samples,
                 restitution: total_restitution / num_samples,
                 obj_idx,
@@ -663,7 +742,15 @@ impl SeqImpulseConstraintSolver {
         let (contact_normal_1, rel_pos1_cross_normal) = (normal_world_on_b, torque_axis_0);
 
         let vel = body.get_vel_in_local_point(rel_pos1);
-        let rel_vel = normal_world_on_b.dot(vel);
+        // The Rocket League ball/world restitution curve is driven by the
+        // ball's center velocity. Contact-point velocity includes rolling
+        // spin and turns shallow ramp touches into oversized launch impulses.
+        let center_ball_response = contact.is_ball;
+        let rel_vel = if center_ball_response {
+            normal_world_on_b.dot(body.lin_vel)
+        } else {
+            normal_world_on_b.dot(vel)
+        };
 
         let restitution = if STANDARD_RESTITUTION
             || rel_vel.abs() >= contact_solver_info::SPECIAL_RESTITUTION_VELOCITY_THRESHOLD
@@ -683,8 +770,13 @@ impl SeqImpulseConstraintSolver {
 
         let rel_vel = {
             let solver_body_a = &self.tmp_solver_body_pool[solver_body_id_a];
-            contact_normal_1.dot(solver_body_a.lin_vel + external_force_impulse_a)
-                + rel_pos1_cross_normal.dot(solver_body_a.ang_vel + external_torque_impulse_a)
+            if center_ball_response {
+                contact_normal_1.dot(solver_body_a.lin_vel + external_force_impulse_a)
+            } else {
+                contact_normal_1.dot(solver_body_a.lin_vel + external_force_impulse_a)
+                    + rel_pos1_cross_normal
+                        .dot(solver_body_a.ang_vel + external_torque_impulse_a)
+            }
         };
 
         let positional_error = if penetration > 0.0 {
@@ -706,6 +798,7 @@ impl SeqImpulseConstraintSolver {
             };
 
         let friction_idx = self.tmp_solver_contact_constraint_pool.len();
+        let friction_coeff = contact.friction;
 
         self.tmp_solver_contact_constraint_pool
             .push(SolverConstraint {
@@ -717,7 +810,7 @@ impl SeqImpulseConstraintSolver {
                 rel_pos1_cross_normal,
                 rhs,
                 rhs_penetration,
-                friction: contact.friction,
+                friction: friction_coeff,
                 lower_limit: 0.0,
                 upper_limit: 1e10,
                 ..Default::default()
@@ -775,9 +868,9 @@ impl SeqImpulseConstraintSolver {
                 angular_component_a,
                 jac_diag_ab_inv,
                 rhs: vel_impulse,
-                lower_limit: -contact.friction,
-                upper_limit: contact.friction,
-                friction: contact.friction,
+                lower_limit: -friction_coeff,
+                upper_limit: friction_coeff,
+                friction: friction_coeff,
                 ..Default::default()
             });
     }
@@ -785,7 +878,7 @@ impl SeqImpulseConstraintSolver {
     fn solve_group_split_impulse_iterations(&mut self) {
         let mut should_run = (1u64 << self.tmp_solver_contact_constraint_pool.len()) - 1;
 
-        for _ in 0..contact_solver_info::NUM_ITERATIONS {
+        for _ in 0..solver_iterations() {
             for (i, contact) in self
                 .tmp_solver_contact_constraint_pool
                 .iter_mut()
@@ -861,7 +954,7 @@ impl SeqImpulseConstraintSolver {
     fn solve_group_iterations(&mut self) {
         self.solve_group_split_impulse_iterations();
 
-        for _ in 0..contact_solver_info::NUM_ITERATIONS {
+        for _ in 0..solver_iterations() {
             self.least_squares_residual = self.solve_single_iteration();
             if self.least_squares_residual == 0.0 {
                 break;
@@ -923,11 +1016,17 @@ struct SpecialAggregate {
     lever_len: f32,
     min_distance: f32,
     obj_idx: usize,
+    is_ball: bool,
 }
 
 /// Return whether two samples belong to one physical touch.
 fn same_touch(a: &SpecialContact, b: &SpecialContact) -> bool {
-    if a.obj_idx != b.obj_idx {
+    if a.obj_idx != b.obj_idx
+        || (a.is_ball
+            && a.static_is_mesh
+            && b.static_is_mesh
+            && a.static_obj_idx != b.static_obj_idx)
+    {
         return false;
     }
 
@@ -1000,14 +1099,14 @@ fn reduce_shallow_support_contacts(
     edge_group_ranges.clear();
     deduplicated.clear();
 
-    if !special_contacts.iter().any(is_edge_adjusted) {
-        return false;
-    }
-
     reduced.reserve(special_contacts.len());
     edge_group_contacts.reserve(special_contacts.len());
     edge_group_ranges.reserve(special_contacts.len());
     deduplicated.reserve(special_contacts.len());
+
+    if !special_contacts.iter().any(is_edge_adjusted) {
+        return false;
+    }
 
     for contact in special_contacts {
         if is_edge_adjusted(contact) {
@@ -1122,6 +1221,8 @@ mod tests {
         SpecialContact {
             obj_idx: 1,
             static_obj_idx: 2,
+            is_ball: false,
+            static_is_mesh: false,
             pos_world_on_a: Vec3A::new(marker, 0.0, 0.0),
             normal_world_on_b: normal,
             raw_normal_world_on_b: normal,

@@ -108,7 +108,7 @@ fn main() {
 
     let mut total_ball_touches = 0;
     let start = Instant::now();
-    for _ in 0..NUM_EPISODE {
+    for _ in 0..cli.episodes {
         for (arena, _, rng, _) in &mut arenas {
             arena.pin_mut().reset_to_random_kickoff(None);
 
@@ -160,5 +160,7 @@ fn main() {
     print_results(
         Instant::now().duration_since(start).as_secs_f32(),
         total_ball_touches,
+        cli.episodes,
+        cli.num_arenas,
     );
 }

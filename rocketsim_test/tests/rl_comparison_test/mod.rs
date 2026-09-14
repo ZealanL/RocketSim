@@ -1,8 +1,9 @@
 use glam::Vec3A;
 use rocketsim::{
-    Arena, CarBodyConfig, CarControls, CarState, GameMode, PhysState, Team, consts::BT_TO_UU,
+    Arena, ArenaConfig, CarBodyConfig, CarControls, CarState, GameMode, PhysState, Team,
+    consts::BT_TO_UU,
 };
-use rocketsim_test::rlpr::{Recording, tick_record::TickRecord};
+use rocketsim_test::rlpr::{Recording, tick_record::TickRecord, wheel_mode};
 
 mod compare;
 
@@ -50,7 +51,11 @@ pub fn set_state_to_record_tick(
 }
 
 fn create_arena(recording: &Recording) -> (Arena, Vec<usize>) {
-    let mut arena = Arena::new(GameMode::Soccar);
+    let wheel_mode =
+        wheel_mode::detect_wheel_raycast_mode(recording, GameMode::Soccar, &CarBodyConfig::OCTANE);
+    let mut arena = Arena::new_with_config(
+        ArenaConfig::new(GameMode::Soccar).with_wheel_raycast_mode(wheel_mode),
+    );
     let car_idcs = (0..recording.info.num_cars as usize)
         .map(|i| {
             let team = if (i % 2) == 0 {
@@ -80,7 +85,6 @@ fn test_recording(recording: &Recording) {
             .collect();
         set_state_to_record_tick(&mut arena, &car_idcs, from_tick, &controls_during);
         arena.step_tick();
-
         // Keep the state update and step above for every transition so
         // persistent manifolds and wheel state stay synchronized. The
         // i == 0 step replaces the old warm-up (same state and controls).

@@ -178,14 +178,43 @@ impl DiscreteDynamicsWorld {
         time_step: f32,
         contact_added_callback: &mut T,
     ) {
+        #[cfg(feature = "profile")]
+        let t = std::time::Instant::now();
         self.predict_unconstraint_motion(time_step);
+        #[cfg(feature = "profile")]
+        crate::profiling::record(1, t.elapsed());
 
         self.collision_world
             .perform_discrete_collision_detection(contact_added_callback);
 
+        // Bullet's island solver visits the broadphase pairs in the reverse
+        // of the grid's insertion order. Preserve that order here because
+        // sequential impulses are order-dependent at multi-surface contacts.
+        self.collision_world
+            .dispatcher1
+            .active_manifolds
+            .reverse();
+
+        contact_added_callback
+            .post_detection_hook(&mut self.collision_world.collision_objs);
+
+        #[cfg(feature = "profile")]
+        let t = std::time::Instant::now();
         self.solve_constraints(time_step);
+        #[cfg(feature = "profile")]
+        crate::profiling::record(5, t.elapsed());
+
+        #[cfg(feature = "profile")]
+        let t = std::time::Instant::now();
         self.integrate_trans(time_step);
+        #[cfg(feature = "profile")]
+        crate::profiling::record(6, t.elapsed());
+
+        #[cfg(feature = "profile")]
+        let t = std::time::Instant::now();
         self.update_activation_state(time_step);
+        #[cfg(feature = "profile")]
+        crate::profiling::record(7, t.elapsed());
     }
 
     pub fn step_simulation<T: ContactAddedCallback>(
@@ -193,7 +222,13 @@ impl DiscreteDynamicsWorld {
         time_step: f32,
         contact_added_callback: &mut T,
     ) {
+        #[cfg(feature = "profile")]
+        let t = std::time::Instant::now();
         self.apply_gravity(time_step);
+        #[cfg(feature = "profile")]
+        crate::profiling::record(0, t.elapsed());
         self.internal_single_step_simulation(time_step, contact_added_callback);
+        #[cfg(feature = "profile")]
+        crate::profiling::tick();
     }
 }

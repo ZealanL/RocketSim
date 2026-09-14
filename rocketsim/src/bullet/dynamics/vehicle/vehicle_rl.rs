@@ -5,13 +5,16 @@ use super::{
     raycaster::VehicleRaycaster,
     wheel_info::{FrictionCurveInput, WheelInfo},
 };
-use crate::bullet::{
-    collision::broadphase::CollisionFilterGroups,
-    dynamics::{
-        discrete_dynamics_world::DiscreteDynamicsWorld,
-        rigid_body::{Impulse, RigidBody},
+use crate::{
+    GameMode, WheelRaycastMode,
+    bullet::{
+        collision::broadphase::CollisionFilterGroups,
+        dynamics::{
+            discrete_dynamics_world::DiscreteDynamicsWorld,
+            rigid_body::{Impulse, RigidBody},
+        },
+        linear_math::QuatExt,
     },
-    linear_math::QuatExt,
 };
 
 pub struct VehicleRL {
@@ -21,9 +24,18 @@ pub struct VehicleRL {
 }
 
 impl VehicleRL {
-    pub const fn new(chassis_body_idx: usize, wheels: [WheelInfo; NUM_WHEELS]) -> Self {
+    pub fn new(
+        chassis_body_idx: usize,
+        wheels: [WheelInfo; NUM_WHEELS],
+        game_mode: GameMode,
+        wheel_raycast_mode: WheelRaycastMode,
+    ) -> Self {
         Self {
-            raycaster: VehicleRaycaster::new(CollisionFilterGroups::DropshotFloor as u8),
+            raycaster: VehicleRaycaster::new(
+                CollisionFilterGroups::DropshotFloor as u8,
+                game_mode,
+                wheel_raycast_mode,
+            ),
             chassis_body_idx,
             wheels,
         }
@@ -69,9 +81,13 @@ impl VehicleRL {
             (sources[i], targets[i]) = wheel.prepare_for_raycast(&chassis_trans);
         }
 
+        #[cfg(feature = "profile")]
+        let ray_t = std::time::Instant::now();
         let ray_results = self
             .raycaster
             .cast_rays(collision_world, &sources, &targets, chassis);
+        #[cfg(feature = "profile")]
+        crate::profiling::record(8, ray_t.elapsed());
 
         // Front wheels normally share one steer angle, so their steered
         // axle is identical. Compute it lazily and reuse it while the

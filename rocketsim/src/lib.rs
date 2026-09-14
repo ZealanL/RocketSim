@@ -11,6 +11,7 @@ mod glam_inc;
 mod logging;
 pub mod shared;
 mod sim;
+pub mod profiling;
 ///////////
 
 pub use base::*;

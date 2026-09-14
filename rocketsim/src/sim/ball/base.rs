@@ -120,6 +120,11 @@ impl Ball {
             matrix3: state.phys.rot_mat,
             translation: state.phys.pos * UU_TO_BT,
         });
+        // Replays restore the ball by teleporting its transform. Keep the
+        // swept/interpolation transform in lockstep so broadphase CCD does
+        // not retain a path from the previous observation and create an
+        // extra wall contact on the next tick.
+        rb.interp_world_trans = *rb.get_world_trans();
 
         rb.set_lin_vel(state.phys.vel * UU_TO_BT);
         rb.set_ang_vel(state.phys.ang_vel);
@@ -232,6 +237,16 @@ impl Ball {
     }
 
     pub(crate) fn finish_physics_tick(&mut self, rb: &mut RigidBody) {
+        // The corrected v10 recorder observes the post-step caps. Keep the
+        // legacy comparison runner on the historical path unless the Foxe
+        // evaluator explicitly enables v10 parity mode. The real game only
+        // enforces the angular cap at the start of a tick — a hard contact
+        // can push the recorded spin past it for one frame — so the
+        // post-step clamp applies to linear speed only.
+        if std::env::var_os("RS_V10_PARITY").is_some() {
+            rb.limit_vels(consts::ball::MAX_SPEED * UU_TO_BT, f32::MAX);
+        }
+
         self.state.phys.vel = rb.lin_vel * BT_TO_UU;
         self.state.phys.ang_vel = rb.ang_vel;
 
@@ -242,14 +257,15 @@ impl Ball {
         self.state.tick_count_since_kickoff += 1;
     }
 
-    pub(crate) fn on_hit(
-        &mut self,
+    /// The Psyonix extra hit impulse this car-ball contact would add to the
+    /// ball's center velocity, in UU. Returns `None` when the pair is not
+    /// moving relative to each other.
+    pub(crate) fn extra_hit_impulse(
+        &self,
         car: &Car,
         game_mode: GameMode,
         mutator_config: &MutatorConfig,
-        tick_count: u64,
-        rb: &mut RigidBody,
-    ) {
+    ) -> Option<Vec3A> {
         let car_forward = car.state.phys.rot_mat.x_axis;
         let rel_pos = self.state.phys.pos - car.state.phys.pos;
         let rel_vel = self.state.phys.vel - car.state.phys.vel;
@@ -258,44 +274,35 @@ impl Ball {
             .length()
             .min(consts::ball::car_hit_impulse::MAX_DELTA_VEL_UU);
 
-        // Prevent repeated extra impulses
-        let can_accel = self
-            .state
-            .last_extra_hit_tick
-            .is_none_or(|last_hit_tick| last_hit_tick + 1 < tick_count);
-
-        if rel_speed > 0.0 && can_accel {
-            let extra_z_scale = game_mode == GameMode::Hoops
-                && car.state.is_on_ground
-                && car.state.phys.rot_mat.z_axis.z
-                    > consts::ball::car_hit_impulse::Z_SCALE_HOOPS_NORMAL_Z_THRESH;
-            let z_scale = if extra_z_scale {
-                consts::ball::car_hit_impulse::Z_SCALE_HOOPS_GROUND
-            } else {
-                consts::ball::car_hit_impulse::Z_SCALE_NORMAL
-            };
-
-            let mut hit_dir = (rel_pos * Vec3A::new(1.0, 1.0, z_scale)).normalize_or_zero();
-            let forward_dir_adjustment = car_forward
-                * hit_dir.dot(car_forward)
-                * const { 1.0 - consts::ball::car_hit_impulse::FORWARD_SCALE };
-            hit_dir = (hit_dir - forward_dir_adjustment).normalize_or_zero();
-
-            let added_hit_impulse = hit_dir
-                * rel_speed
-                * consts::curves::BALL_CAR_EXTRA_IMPULSE_FACTOR.get_output(rel_speed)
-                * mutator_config.ball_hit_extra_force_scale;
-            // Apply the extra impulse after contact solving.
-            rb.add_impulse(
-                None,
-                Impulse::Linear(added_hit_impulse * UU_TO_BT),
-                false,
-                false,
-            );
-
-            self.state.last_extra_hit_tick = Some(tick_count);
+        if rel_speed <= 0.0 {
+            return None;
         }
 
+        let extra_z_scale = game_mode == GameMode::Hoops
+            && car.state.is_on_ground
+            && car.state.phys.rot_mat.z_axis.z
+                > consts::ball::car_hit_impulse::Z_SCALE_HOOPS_NORMAL_Z_THRESH;
+        let z_scale = if extra_z_scale {
+            consts::ball::car_hit_impulse::Z_SCALE_HOOPS_GROUND
+        } else {
+            consts::ball::car_hit_impulse::Z_SCALE_NORMAL
+        };
+
+        let mut hit_dir = (rel_pos * Vec3A::new(1.0, 1.0, z_scale)).normalize_or_zero();
+        let forward_dir_adjustment = car_forward
+            * hit_dir.dot(car_forward)
+            * const { 1.0 - consts::ball::car_hit_impulse::FORWARD_SCALE };
+        hit_dir = (hit_dir - forward_dir_adjustment).normalize_or_zero();
+
+        Some(
+            hit_dir
+                * rel_speed
+                * consts::curves::BALL_CAR_EXTRA_IMPULSE_FACTOR.get_output(rel_speed)
+                * mutator_config.ball_hit_extra_force_scale,
+        )
+    }
+
+    pub(crate) fn on_hit(&mut self, car: &Car, game_mode: GameMode) {
         match game_mode {
             GameMode::Heatseeker => {
                 let can_increase = self.state.hs_info.time_since_hit

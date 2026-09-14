@@ -1,6 +1,7 @@
 pub mod cpp_records;
 mod data_reader;
 pub mod tick_record;
+pub mod wheel_mode;
 
 use std::{io::ErrorKind, mem::size_of, path::Path};
 

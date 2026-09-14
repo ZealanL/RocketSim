@@ -8,6 +8,7 @@ use glam::{Affine3A, EulerRot, Mat3A, Vec3A};
 
 use crate::{
     CarBodyConfig, CarControls, CarState, GameMode, MutatorConfig, PhysState, Team,
+    WheelRaycastMode,
     bullet::{
         collision::{
             broadphase::CollisionFilterGroups,
@@ -39,6 +40,26 @@ pub struct Car {
     pub(crate) vel_impulse_cache: Vec3A,
     pub(crate) state: CarState,
     pub(crate) sticky_gate_prev: bool,
+    /// Geometric ball-surface -> hitbox gap (UU) at the start of the current
+    /// tick; `f32::MAX` while the pair is out of range.
+    pub(crate) ball_hit_gap: f32,
+    /// The same gap measured at the start of the previous tick.
+    pub(crate) ball_hit_gap_prev: f32,
+    /// Approach speed of the car hitbox surface toward the ball along the
+    /// contact normal (UU/s) at the start of the current tick.
+    pub(crate) ball_hit_approach: f32,
+    /// Extra hit impulse computed when the pair entered the detection
+    /// margin, applied once the surfaces actually touch.
+    pub(crate) ball_hit_queued: Option<Vec3A>,
+    /// Extra hit impulse applied to the ball this tick, kept for the
+    /// contact event.
+    pub(crate) ball_hit_impulse: Vec3A,
+    /// True when `ball_hit_impulse` is still to be applied after the solver
+    /// step (penetrating contacts only).
+    pub(crate) ball_hit_impulse_pending: bool,
+    /// Tick on which this car last produced a real ball-contact manifold;
+    /// distinguishes genuinely deferred touches from fresh contacts.
+    pub(crate) ball_contact_tick: Option<u64>,
 }
 
 impl Deref for Car {
@@ -60,6 +81,8 @@ impl Car {
         bullet_world: &mut DiscreteDynamicsWorld,
         mutator_config: &MutatorConfig,
         config: CarBodyConfig,
+        game_mode: GameMode,
+        wheel_raycast_mode: WheelRaycastMode,
     ) -> Self {
         let child_hitbox_shape = BoxShape::new(config.hitbox_size * UU_TO_BT * 0.5);
         let local_inertia = child_hitbox_shape.calculate_local_intertia(mutator_config.car_mass);
@@ -90,6 +113,8 @@ impl Car {
         let mut wheels = [WheelInfo::DEFAULT; NUM_WHEELS];
         for (i, wheel) in wheels.iter_mut().enumerate() {
             let front = i < 2;
+            // Match the reference RocketSim vehicle's wheel order: odd
+            // indices are the left-side wheels.
             let left = i % 2 != 0;
 
             let (wheel_config, suspension_force_scale) = if front {
@@ -123,9 +148,21 @@ impl Car {
         Self {
             info: CarInfo { idx, team, config },
             rigid_body_idx,
-            bullet_vehicle: VehicleRL::new(rigid_body_idx, wheels),
+            bullet_vehicle: VehicleRL::new(
+                rigid_body_idx,
+                wheels,
+                game_mode,
+                wheel_raycast_mode,
+            ),
             vel_impulse_cache: Vec3A::ZERO,
             sticky_gate_prev: false,
+            ball_hit_gap: f32::MAX,
+            ball_hit_gap_prev: f32::MAX,
+            ball_hit_approach: 0.0,
+            ball_hit_queued: None,
+            ball_hit_impulse: Vec3A::ZERO,
+            ball_hit_impulse_pending: false,
+            ball_contact_tick: None,
             state: CarState {
                 boost: mutator_config.car_spawn_boost_amount,
                 ..Default::default()
@@ -198,6 +235,11 @@ impl Car {
             matrix3: state.phys.rot_mat,
             translation: state.phys.pos * UU_TO_BT,
         });
+        // A replay restore teleports the chassis. Keep Bullet's swept
+        // transform synchronized with the restored pose so the next
+        // broadphase pass cannot collide along a stale path from the previous
+        // observation.
+        rb.interp_world_trans = *rb.get_world_trans();
 
         rb.lin_vel = state.phys.vel * UU_TO_BT;
         rb.ang_vel = state.phys.ang_vel;
@@ -224,7 +266,14 @@ impl Car {
         self.state.handbrake_val = (self.state.handbrake_val + handbrake_delta).clamp(0.0, 1.0);
 
         let mut real_brake = 0.0;
-        let real_throttle = self.state.controls.throttle;
+        let real_throttle = if std::env::var_os("RS_V10_PARITY").is_some()
+            && self.state.controls.boost
+            && self.state.boost > 0.0
+        {
+            1.0
+        } else {
+            self.state.controls.throttle
+        };
 
         let abs_forward_speed_uu = forward_speed_uu.abs();
         let mut engine_throttle = real_throttle;
@@ -276,8 +325,13 @@ impl Car {
         self.bullet_vehicle.wheels[0].steer_angle = steer_angle;
         self.bullet_vehicle.wheels[1].steer_angle = steer_angle;
 
-        // fresh raycast contact must not produce sticky force within its own tick
-        if self.sticky_gate_prev {
+        let wheels_have_world_contact = self.bullet_vehicle.wheels.iter().any(|wheel| {
+            wheel
+                .raycast_info
+                .as_ref()
+                .is_some_and(|info| info.is_in_contact_with_world)
+        });
+        if wheels_have_world_contact {
             // The wheel contacts are unchanged between the sticky force and
             // auto-roll in one tick, so share one cached upwards direction.
             let upwards_dir = match *cached_upwards_dir {
@@ -295,7 +349,6 @@ impl Car {
             if full_stick {
                 sticky_force_scale += 1.0 - upwards_dir.z.abs();
             }
-
             rb.add_impulse(
                 Some("StickyForce"),
                 Impulse::Linear(
@@ -325,7 +378,10 @@ impl Car {
         let allow_dodge = num_wheels_in_contact < 3;
         let allow_air = num_wheels_in_contact == 0;
 
-        if self.state.is_flipping && allow_dodge && self.state.flip_rel_torque != Vec3A::ZERO {
+        if self.state.is_flipping
+            && allow_dodge
+            && self.state.flip_rel_torque != Vec3A::ZERO
+        {
             let mut rel_dodge_torque = self.state.flip_rel_torque;
 
             let mut pitch_scale = 1.0;
@@ -385,21 +441,6 @@ impl Car {
             rb.add_impulse(None, Impulse::Angular(rb_torque), false, true);
         }
 
-        if self.state.is_flipping && self.state.flip_rel_torque != Vec3A::ZERO {
-            let proj_x = rb.ang_vel.x + rb.accum_ang_vel.x;
-            if proj_x > flip::SPIN_CAP_X {
-                rb.accum_ang_vel.x -= proj_x - flip::SPIN_CAP_X;
-            } else if proj_x < -flip::SPIN_CAP_X {
-                rb.accum_ang_vel.x -= proj_x + flip::SPIN_CAP_X;
-            }
-            let proj_y = rb.ang_vel.y + rb.accum_ang_vel.y;
-            if proj_y > flip::SPIN_CAP_Y {
-                rb.accum_ang_vel.y -= proj_y - flip::SPIN_CAP_Y;
-            } else if proj_y < -flip::SPIN_CAP_Y {
-                rb.accum_ang_vel.y -= proj_y + flip::SPIN_CAP_Y;
-            }
-        }
-
         let throttle_scale = if self.state.controls.boost {
             1.0
         } else {
@@ -433,8 +474,13 @@ impl Car {
         self.state.jump_ticks += 1;
 
         if self.state.is_jumping {
+            let max_hold_ticks = if std::env::var_os("RS_V10_PARITY").is_some() {
+                18
+            } else {
+                jump::MAX_TICKS
+            };
             self.state.is_jumping = self.state.jump_ticks <= jump::MIN_TICKS
-                || (self.state.controls.jump && self.state.jump_ticks <= jump::MAX_TICKS);
+                || (self.state.controls.jump && self.state.jump_ticks <= max_hold_ticks);
             if !self.state.is_jumping {
                 // Jump ended this tick: counter restarts
                 self.state.jump_ticks = 1;
@@ -624,11 +670,11 @@ impl Car {
         if self.state.is_flipping {
             let flip_time_pre = self.state.flip_time;
             let still_flipping =
-                self.state.has_flipped && flip_time_pre < car_consts::flip::TORQUE_TIME;
+                self.state.has_flipped && flip_time_pre <= car_consts::flip::TORQUE_TIME;
             self.state.is_flipping = still_flipping;
             self.state.flip_time = flip_time_pre + TICK_TIME;
-            if (car_consts::flip::Z_DAMP_START..=car_consts::flip::TORQUE_TIME)
-                .contains(&flip_time_pre)
+            if still_flipping
+                && flip_time_pre >= car_consts::flip::Z_DAMP_START
                 && (rb.lin_vel.z < 0.0 || flip_time_pre < car_consts::flip::Z_DAMP_END)
             {
                 rb.lin_vel.z *= 1.0 - car_consts::flip::Z_DAMP_120;
@@ -699,7 +745,12 @@ impl Car {
     }
 
     fn update_boost(&mut self, rb: &mut RigidBody, mutator_config: &MutatorConfig) {
-        self.state.is_boosting = if self.state.boost > 0.0 {
+        // Rocket League consumes a full tick's boost atomically. A recorder
+        // can expose a tiny positive remainder on the final boost sample,
+        // but that remainder must not produce one more full acceleration tick.
+        let can_pay_tick = self.state.boost
+            >= mutator_config.boost_used_per_second * TICK_TIME;
+        self.state.is_boosting = if can_pay_tick {
             self.state.controls.boost
                 || (self.state.is_boosting
                     && self.state.boosting_time < car_consts::boost::MIN_TIME)
@@ -749,34 +800,31 @@ impl Car {
             self.bullet_vehicle.get_num_wheels() == 4 || self.bullet_vehicle.get_num_wheels() == 3
         );
 
-        // One body lookup per tick: wheel impulses only change velocities,
-        // never the body slot, so `rb` stays valid for the whole pre-tick.
-        let rb = &mut collision_world.bodies_mut()[self.rigid_body_idx];
-        if self.state.is_demoed {
-            self.state.demo_respawn_timer = (self.state.demo_respawn_timer - TICK_TIME).max(0.0);
-            if self.state.demo_respawn_timer == 0.0 {
-                self.respawn(rb, rng, game_mode, mutator_config.car_spawn_boost_amount);
+        {
+            let rb = &mut collision_world.bodies_mut()[self.rigid_body_idx];
+            if self.state.is_demoed {
+                self.state.demo_respawn_timer = (self.state.demo_respawn_timer - TICK_TIME).max(0.0);
+                if self.state.demo_respawn_timer == 0.0 {
+                    self.respawn(rb, rng, game_mode, mutator_config.car_spawn_boost_amount);
+                }
+
+                rb.set_activation_state(ActivationState::DisableSimulation);
+                rb.collision_flags |= CollisionFlags::NoContactResponse as u8;
+                return;
             }
 
-            rb.set_activation_state(ActivationState::DisableSimulation);
-            rb.collision_flags |= CollisionFlags::NoContactResponse as u8;
-            return;
+            rb.force_activate();
+            rb.collision_flags &= !(CollisionFlags::NoContactResponse as u8);
         }
-
-        rb.force_activate();
-        rb.collision_flags &= !(CollisionFlags::NoContactResponse as u8);
         self.state.controls = self.state.controls.clamp();
 
-        let forward_speed_uu = rb.get_forward_speed() * BT_TO_UU;
+        let forward_speed_uu = collision_world.bodies()[self.rigid_body_idx].get_forward_speed() * BT_TO_UU;
 
         let jump_pressed = self.state.controls.jump && !self.state.prev_controls.jump;
-
-        // TODO: Refactor and move
         let num_wheels_in_contact = self.state.num_wheels_in_contact();
 
-        // The wheel contacts only change in `bullet_vehicle.update` below, so
-        // the sticky force and auto-roll share one upwards direction.
         let mut cached_upwards_dir = None;
+        let rb = &mut collision_world.bodies_mut()[self.rigid_body_idx];
         self.update_wheels(
             rb,
             forward_speed_uu,
@@ -810,13 +858,15 @@ impl Car {
 
         self.state.world_contact_normal = None;
 
-        self.update_boost(rb, mutator_config);
-
-        let real_throttle = if self.state.controls.boost && self.state.boost > 0.0 {
+        let real_throttle = if std::env::var_os("RS_V10_PARITY").is_some()
+            && self.state.controls.boost
+            && self.state.boost > 0.0
+        {
             1.0
         } else {
             self.state.controls.throttle
         };
+        self.update_boost(rb, mutator_config);
         self.bullet_vehicle.update(
             collision_world,
             TICK_TIME,
@@ -837,7 +887,6 @@ impl Car {
             num_wheels_in_contact += u8::from(in_contact);
         }
         self.state.is_on_ground = num_wheels_in_contact >= 3;
-
         self.sticky_gate_prev = self.bullet_vehicle.wheels.iter().any(|wheel| {
             wheel
                 .raycast_info
@@ -919,6 +968,12 @@ impl Car {
         if self.vel_impulse_cache != Vec3A::ZERO {
             rb.lin_vel += self.vel_impulse_cache;
             self.vel_impulse_cache = Vec3A::ZERO;
+        }
+
+        // The corrected v10 recorder observes the post-step angular cap. The
+        // legacy comparison recordings use the historical uncapped state.
+        if std::env::var_os("RS_V10_PARITY").is_some() {
+            rb.limit_vels(car_consts::MAX_SPEED * UU_TO_BT, car_consts::MAX_ANG_SPEED);
         }
 
         self.state.phys.pos = rb.get_world_trans().translation * BT_TO_UU;

@@ -195,7 +195,11 @@ impl<T: QuadRayResultCallback> BridgeTriQuadRayCallback<'_, T> {
     }
 
     fn process_triangle(&mut self, triangle: &TriangleShape, lambda_max: &mut f32, ray_idx: usize) {
-        const EDGE_TOLERANCE: f32 = -0.0001;
+        // Bullet scales the raycast edge epsilon by the squared length of
+        // the triangle's unnormalized normal.  `TriangleShape::normal` is
+        // normalized, so use the cached normal length to preserve the same
+        // scale on large arena triangles and accept seam hits identically.
+        let edge_tolerance = -0.0001 * triangle.normal_length * triangle.normal_length;
 
         let dist = triangle.points[0].dot(triangle.normal);
         let dist_a = triangle.normal.dot(self.from[ray_idx]) - dist;
@@ -215,26 +219,35 @@ impl<T: QuadRayResultCallback> BridgeTriQuadRayCallback<'_, T> {
         let v0p = triangle.points[0] - point;
         let v1p = triangle.points[1] - point;
         let cp0 = v0p.cross(v1p);
-        if cp0.dot(triangle.normal) < EDGE_TOLERANCE {
+        if cp0.dot(triangle.normal) < edge_tolerance {
             return;
         }
 
         let v2p = triangle.points[2] - point;
         let cp1 = v1p.cross(v2p);
-        if cp1.dot(triangle.normal) < EDGE_TOLERANCE {
+        if cp1.dot(triangle.normal) < edge_tolerance {
             return;
         }
 
         let cp2 = v2p.cross(v0p);
-        if cp2.dot(triangle.normal) < EDGE_TOLERANCE {
+        if cp2.dot(triangle.normal) < edge_tolerance {
             return;
         }
 
-        *lambda_max = distance;
+        let previous_hit_fraction = self.result_callback.get_base().closest_hit_fraction[ray_idx];
         if dist_a <= 0.0 {
             self.internal_report_hit(-triangle.normal, distance, ray_idx);
         } else {
             self.internal_report_hit(triangle.normal, distance, ray_idx);
+        }
+        // A candidate can be rejected by the outer result callback (for
+        // example by the wheel ray minimum-distance filter).  Only an
+        // accepted hit may tighten the BVH traversal bound; otherwise a
+        // rejected near triangle would incorrectly hide a farther valid one.
+        if self.result_callback.get_base().closest_hit_fraction[ray_idx]
+            < previous_hit_fraction
+        {
+            *lambda_max = self.result_callback.get_base().closest_hit_fraction[ray_idx];
         }
     }
 }

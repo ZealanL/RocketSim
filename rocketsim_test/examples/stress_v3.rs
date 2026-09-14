@@ -1,4 +1,4 @@
-use std::time::Instant;
+use std::{fmt::Write as _, fs, path::Path, time::Instant};
 
 use clap::Parser;
 use fastrand::Rng;
@@ -8,9 +8,8 @@ use rocketsim::{
     CarState, GameMode, Team, consts, init_from_default,
 };
 use stress_common::{
-    Args, BotBallState, BotCarState, BotControls, GameModeArg, MemWeightModeArg, NUM_EPISODE,
-    NUM_EPISODE_TICKS, UPDATE_CHANCE, VEL_ADD_MAG, calc_bot_controls, print_results, rand_axis_val,
-    rand_chance,
+    Args, BotBallState, BotCarState, BotControls, GameModeArg, MemWeightModeArg, NUM_EPISODE_TICKS,
+    UPDATE_CHANCE, VEL_ADD_MAG, calc_bot_controls, print_results, rand_axis_val, rand_chance,
 };
 
 mod stress_common;
@@ -57,6 +56,19 @@ fn bot_ball_state(ball_state: &BallState) -> BotBallState {
     }
 }
 
+fn write_state_snapshot(path: &Path, arenas: &[(Arena, Vec<usize>, Rng)]) {
+    let mut text = String::new();
+    writeln!(text, "RocketSim V3 stress snapshot").unwrap();
+    writeln!(text, "arenas={}", arenas.len()).unwrap();
+    for (arena_idx, (arena, ids, _)) in arenas.iter().enumerate() {
+        writeln!(text, "arena={arena_idx} ball={:?}", arena.get_ball_state()).unwrap();
+        for (car_idx, &id) in ids.iter().enumerate() {
+            writeln!(text, "arena={arena_idx} car={car_idx} state={:?}", arena.get_car_state(id)).unwrap();
+        }
+    }
+    fs::write(path, text).expect("write state snapshot");
+}
+
 fn car_controls(controls: BotControls) -> CarControls {
     CarControls {
         throttle: controls.throttle,
@@ -94,7 +106,7 @@ fn main() {
 
     let mut total_ball_touches = 0;
     let start = Instant::now();
-    for _ in 0..NUM_EPISODE {
+    for _ in 0..cli.episodes {
         for (arena, _, rng) in &mut arenas {
             arena.reset_to_random_kickoff(None);
 
@@ -135,5 +147,14 @@ fn main() {
     print_results(
         Instant::now().duration_since(start).as_secs_f32(),
         total_ball_touches,
+        cli.episodes,
+        cli.num_arenas,
     );
+    if let Some(path) = cli.state_output.as_deref() {
+        write_state_snapshot(path, &arenas);
+    }
+    let profile = rocketsim::profiling::report();
+    if !profile.is_empty() {
+        print!("{profile}");
+    }
 }

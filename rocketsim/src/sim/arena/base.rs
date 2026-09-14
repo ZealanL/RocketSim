@@ -455,6 +455,8 @@ impl Arena {
             &mut self.bullet_world,
             &self.config.mutators,
             config,
+            self.config.game_mode,
+            self.config.wheel_raycast_mode,
         );
         car.respawn(
             &mut self.bullet_world.bodies_mut()[car.rigid_body_idx],
@@ -468,8 +470,22 @@ impl Arena {
         idx
     }
 
-    /// Steps the arena for 1 tick, returning the events produced during that tick
+    /// Steps the arena for 1 tick, returning the events produced during that tick.
     pub fn step_tick(&mut self) -> &[ArenaEvent] {
+        self.step_tick_with_callback(|_, _| {});
+        self.get_last_step_events()
+    }
+
+    /// Steps one physics tick and invokes `callback` after the Rocket League
+    /// physics step has completed: cars and the ball have applied their
+    /// post-tick updates. This matches the state observed by the BakkesMod
+    /// recorder's post-physics callback.
+    /// Normal callers should use [`Self::step_tick`], whose state is unchanged
+    /// by this observation hook.
+    pub fn step_tick_with_callback<F>(&mut self, callback: F) -> &[ArenaEvent]
+    where
+        F: FnOnce(&Self, PhysState),
+    {
         self.events.clear();
 
         // NOTE: This needs to be called manually
@@ -500,7 +516,42 @@ impl Arena {
 
         // Keep resting balls active so same-tick contacts can affect them.
 
+        // The deferred extra-hit machinery models the real game's
+        // cached-impulse order; the legacy comparison corpus was produced
+        // by the C++ reference, which applies the impulse on the manifold
+        // contact tick. Only v10 parity mode tracks the geometric gate.
+        let v10_parity = std::env::var_os("RS_V10_PARITY").is_some();
         for car in &mut self.cars {
+            if v10_parity {
+                // Track the true ball-surface -> hitbox gap from the
+                // tick-start state. Bullet reports speculative margin
+                // contacts well before the ball actually reaches the
+                // hitbox, while the real game's extra hit impulse keys off
+                // the pair's actual touch state; the previous tick's gap
+                // approximates the engine's earlier pair detection for
+                // establishing whether the touch is fresh.
+                car.ball_hit_gap_prev = car.ball_hit_gap;
+                let half_extents = car.config.hitbox_size * 0.5;
+                let local_ball = car.state.phys.rot_mat.transpose()
+                    * (self.ball.state.phys.pos - car.state.phys.pos)
+                    - car.config.hitbox_pos_offset;
+                let clamped = local_ball.clamp(-half_extents, half_extents);
+                let diff = local_ball - clamped;
+                let dist = diff.length();
+                car.ball_hit_gap = dist - self.config.mutators.ball_radius;
+                if dist > 1e-6 {
+                    let rot = car.state.phys.rot_mat;
+                    let normal = rot * (diff / dist);
+                    let contact_point = car.state.phys.pos
+                        + rot * (clamped + car.config.hitbox_pos_offset);
+                    let surface_vel = car.state.phys.vel
+                        + car.state.phys.ang_vel.cross(contact_point - car.state.phys.pos);
+                    car.ball_hit_approach =
+                        (surface_vel - self.ball.state.phys.vel).dot(normal);
+                } else {
+                    car.ball_hit_approach = 0.0;
+                }
+            }
             car.pre_tick_update(
                 &mut self.bullet_world,
                 &mut self.rng,
@@ -513,6 +564,114 @@ impl Arena {
             &mut self.bullet_world.bodies_mut()[self.ball.rigid_body_idx],
             self.config.game_mode,
         );
+
+        // Gate the extra car-ball hit impulse on the pair's geometric
+        // state, then release it once a real manifold contact exists. A
+        // fresh impulse applies after the solver step — matching the
+        // reference engine's cached-impulse order: the solver responds to
+        // the pre-impulse approach first, then the gameplay impulse is
+        // added on top. A deferred impulse instead releases during
+        // narrowphase, ahead of the solver, so the solver sees the
+        // post-impulse (separating) velocity and adds no extra friction.
+        //
+        // The impulse only fires once the surfaces are actually touching.
+        // A pair entering the detection margin already deep applies on the
+        // same tick; a shallow entry defers until an established touch,
+        // while the queued value keeps tracking the latest in-range state.
+        let ball_rb_idx = self.ball.rigid_body_idx;
+        self.contact_tracker.clear_armed_ball_impulses();
+        for car in &mut self.cars {
+            car.ball_hit_impulse = Vec3A::ZERO;
+            car.ball_hit_impulse_pending = false;
+            if !v10_parity {
+                // Legacy corpus path: the extra impulse is applied inside
+                // the manifold contact handler, on the contact tick.
+                continue;
+            }
+            let gap = car.ball_hit_gap;
+            if gap > consts::ball::car_hit_impulse::DETECTION_MARGIN_UU {
+                car.ball_hit_queued = None;
+                continue;
+            }
+
+            let entering =
+                car.ball_hit_gap_prev > consts::ball::car_hit_impulse::DETECTION_MARGIN_UU;
+            let touching = gap
+                <= if entering {
+                    consts::ball::car_hit_impulse::ENTRY_TOUCH_MARGIN_UU
+                } else {
+                    consts::ball::car_hit_impulse::TOUCH_MARGIN_UU
+                };
+            if !touching {
+                // Still converging toward a touch — keep the queued impulse
+                // tracking the latest in-range state.
+                car.ball_hit_queued = self.ball.extra_hit_impulse(
+                    car,
+                    self.config.game_mode,
+                    &self.config.mutators,
+                );
+                continue;
+            }
+
+            let can_accel = self
+                .ball
+                .state
+                .last_extra_hit_tick
+                .is_none_or(|last_hit_tick| last_hit_tick + 1 < self.tick_count);
+            if !can_accel {
+                // A touch during the cooldown consumes the queue — the
+                // next touch computes a fresh impulse.
+                car.ball_hit_queued = None;
+                continue;
+            }
+
+            // A queued impulse only applies when the pair already shared a
+            // manifold contact last tick (a genuinely deferred shallow
+            // touch), and only while the pair is still converging — a
+            // deferred impulse that finds the ball clearly separating is
+            // held. A first contact that is already touching instead
+            // computes the impulse from the current state and always
+            // applies it.
+            let had_manifold =
+                car.ball_contact_tick.is_some_and(|t| t + 1 == self.tick_count);
+            let (impulse, deferred) = match car.ball_hit_queued {
+                Some(queued) if had_manifold => {
+                    if car.ball_hit_approach
+                        < consts::ball::car_hit_impulse::DEFERRED_MIN_APPROACH_UU
+                    {
+                        continue;
+                    }
+                    (queued, true)
+                }
+                _ => match self.ball.extra_hit_impulse(
+                    car,
+                    self.config.game_mode,
+                    &self.config.mutators,
+                ) {
+                    Some(impulse) => (impulse, false),
+                    None => continue,
+                },
+            };
+
+            car.ball_hit_impulse = impulse;
+            car.ball_hit_queued = None;
+            if deferred {
+                // A genuinely deferred impulse is released onto the ball
+                // during narrowphase — ahead of the solver — so the solver
+                // sees the post-impulse (separating) velocity and
+                // contributes no extra friction or spin.
+                self.contact_tracker
+                    .arm_ball_impulse(car.idx, ball_rb_idx, impulse);
+            } else {
+                // A fresh impulse applies after the solver step, matching
+                // the reference engine's cached-impulse order: the solver
+                // responds to the pre-impulse approach first, then the
+                // gameplay impulse is added on top. The impulse only
+                // reaches the ball when the pair produces a real manifold
+                // contact this tick.
+                car.ball_hit_impulse_pending = true;
+            }
+        }
 
         self.bullet_world
             .step_simulation(TICK_TIME, &mut self.contact_tracker);
@@ -529,6 +688,7 @@ impl Arena {
             let user_pointer_a = rb_a.user_pointer;
             let user_pointer_b = rb_b.user_pointer;
 
+
             match user_idx_a {
                 UserInfoTypes::Car => match user_idx_b {
                     UserInfoTypes::Ball => {
@@ -536,6 +696,7 @@ impl Arena {
                             user_pointer_a,
                             &contact.manifold_point,
                             contact.is_swap,
+                            v10_parity,
                         );
                     }
                     UserInfoTypes::Car => {
@@ -585,6 +746,9 @@ impl Arena {
 
         let ball_rb = &mut self.bullet_world.bodies_mut()[self.ball.rigid_body_idx];
         self.ball.finish_physics_tick(ball_rb);
+
+        let completed_ball = self.ball.state.phys;
+        callback(self, completed_ball);
 
         if self.config.game_mode == GameMode::Dropshot
             && self.ball.state.ds_info.last_damage_tick == Some(self.tick_count)
@@ -666,6 +830,26 @@ impl Arena {
             }
         }
         out
+    }
+
+    pub fn get_car_wheel_contact_normals(&self, car_idx: usize) -> [Option<Vec3A>; 4] {
+        std::array::from_fn(|wheel_idx| {
+            self.cars[car_idx].bullet_vehicle.wheels[wheel_idx]
+                .raycast_info
+                .as_ref()
+                .map(|info| info.contact_normal)
+        })
+    }
+
+    /// Debug access: per-wheel `(hard_point, contact_point)` for contacting
+    /// wheels, in BT.
+    pub fn get_car_wheel_rays(&self, car_idx: usize) -> [Option<(Vec3A, Vec3A)>; 4] {
+        std::array::from_fn(|wheel_idx| {
+            let w = &self.cars[car_idx].bullet_vehicle.wheels[wheel_idx];
+            w.raycast_info
+                .as_ref()
+                .map(|info| (w.hard_point, info.contact_point))
+        })
     }
 
     pub fn get_car_info_and_state(&self, car_idx: usize) -> (&CarInfo, &CarState) {
@@ -879,16 +1063,73 @@ impl Arena {
         car_idx: usize,
         manifold_point: &ManifoldPoint,
         ball_is_body_a: bool,
+        v10_parity: bool,
     ) {
-        let ball_rb = &mut self.bullet_world.bodies_mut()[self.ball.rigid_body_idx];
-        let ball_lin_vel_before = ball_rb.lin_vel;
-        self.ball.on_hit(
-            &self.cars[car_idx],
-            self.config.game_mode,
-            &self.config.mutators,
-            self.tick_count,
-            ball_rb,
-        );
+        let tick_count = self.tick_count;
+
+        // The real game fires the extra hit impulse once the ball is actually
+        // touching the hitbox. Fresh contacts that only just entered Bullet's
+        // manifold margin get a solver-only response for a tick; a pair that
+        // was already in range last tick counts as an established touch and
+        // receives the impulse once the surfaces meet.
+        let mut extra_hit_vel = if v10_parity {
+            let car = &mut self.cars[car_idx];
+            car.ball_contact_tick = Some(tick_count);
+            std::mem::take(&mut car.ball_hit_impulse)
+        } else {
+            // Legacy corpus path: the C++ reference applies the extra hit
+            // impulse on the manifold contact tick directly.
+            let can_accel = self
+                .ball
+                .state
+                .last_extra_hit_tick
+                .is_none_or(|last_hit_tick| last_hit_tick + 1 < tick_count);
+            if can_accel {
+                self.ball
+                    .extra_hit_impulse(
+                        &self.cars[car_idx],
+                        self.config.game_mode,
+                        &self.config.mutators,
+                    )
+                    .unwrap_or(Vec3A::ZERO)
+            } else {
+                Vec3A::ZERO
+            }
+        };
+        let car = &mut self.cars[car_idx];
+        car.ball_contact_tick = Some(tick_count);
+        let pending = std::mem::take(&mut car.ball_hit_impulse_pending);
+        // The real game applies at most one extra hit impulse per tick.
+        // A deferred impulse released during narrowphase already landed on
+        // the ball ahead of the solver and consumed this tick's
+        // application, so the record for the firing car only reports it;
+        // every other car's impulse — deferred or pending — is suppressed
+        // regardless of contact-record order.
+        let deferred_applied_car = if v10_parity {
+            self.contact_tracker.applied_ball_impulse_car()
+        } else {
+            None
+        };
+        if deferred_applied_car == Some(car_idx) {
+            self.ball.state.last_extra_hit_tick = Some(tick_count);
+        } else if self.ball.state.last_extra_hit_tick == Some(tick_count)
+            || deferred_applied_car.is_some()
+        {
+            extra_hit_vel = Vec3A::ZERO;
+        } else if extra_hit_vel != Vec3A::ZERO {
+            self.ball.state.last_extra_hit_tick = Some(tick_count);
+            if pending || !v10_parity {
+                // Penetrating contact: the solver already responded to the
+                // pre-impulse approach during the step; add the extra
+                // impulse on top, matching the real game's cached-impulse
+                // order. The legacy path applies on the contact tick the
+                // same way.
+                let ball_rb =
+                    &mut self.bullet_world.bodies_mut()[self.ball.rigid_body_idx];
+                ball_rb.lin_vel += extra_hit_vel * UU_TO_BT;
+            }
+        }
+        self.ball.on_hit(&self.cars[car_idx], self.config.game_mode);
 
         let contact_point = if ball_is_body_a {
             manifold_point.pos_world_on_a
@@ -896,7 +1137,6 @@ impl Arena {
             manifold_point.pos_world_on_b
         } * BT_TO_UU;
 
-        let extra_hit_vel = (ball_rb.lin_vel - ball_lin_vel_before) * BT_TO_UU;
         self.events.push(ArenaEvent::CarHitBall(CarHitBallEvent {
             car_idx,
             contact_point,
