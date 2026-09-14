@@ -336,16 +336,38 @@ impl GridBroadphase {
         debug_assert!(ray_from[1].distance_squared(ray_to[1]) < self.cell_grid.cell_size_sq);
         debug_assert!(ray_from[2].distance_squared(ray_to[2]) < self.cell_grid.cell_size_sq);
         debug_assert!(ray_from[3].distance_squared(ray_to[3]) < self.cell_grid.cell_size_sq);
-        let cell = &self.cell_grid.cells[self.cell_grid.get_cell_idx(ray_from[0])];
         let ray_aabb = ray_from.iter().zip(ray_to).skip(1).fold(
             Aabb::new(ray_from[0].min(ray_to[0]), ray_from[0].max(ray_to[0])),
             |bounds, (from, to)| bounds.combine(&Aabb::new(from.min(*to), from.max(*to))),
         );
 
-        for &other_proxy_idx in cell.static_handles.iter().chain(&cell.dyn_handles) {
-            let other_proxy = &self.handles[other_proxy_idx];
-            if ray_aabb.intersects(&other_proxy.aabb) {
-                ray_callback.process(other_proxy);
+        // One source cell per ray, in ray order. Bullet traverses the full
+        // broadphase for a ray batch, so a single cell misses proxies when
+        // rays start in different cells.
+        let mut cell_idxs = [usize::MAX; 4];
+        let mut num_cells = 0;
+        for from in ray_from {
+            let idx = self.cell_grid.get_cell_idx(*from);
+            if !cell_idxs[..num_cells].contains(&idx) {
+                cell_idxs[num_cells] = idx;
+                num_cells += 1;
+            }
+        }
+
+        // Same proxy can live in several source-cell neighborhoods.
+        // Visit it once, in first-encounter order, to keep results deterministic.
+        let mut visited: Vec<usize> = Vec::new();
+        for &cell_idx in &cell_idxs[..num_cells] {
+            let cell = &self.cell_grid.cells[cell_idx];
+            for &other_proxy_idx in cell.static_handles.iter().chain(&cell.dyn_handles) {
+                if visited.contains(&other_proxy_idx) {
+                    continue;
+                }
+                visited.push(other_proxy_idx);
+                let other_proxy = &self.handles[other_proxy_idx];
+                if ray_aabb.intersects(&other_proxy.aabb) {
+                    ray_callback.process(other_proxy);
+                }
             }
         }
     }
@@ -356,6 +378,75 @@ mod tests {
     use glam::{USizeVec3, Vec3A};
 
     use super::GridBroadphase;
+    use crate::{
+        bullet::{
+            collision::{
+                broadphase::{
+                    CollisionFilterGroups,
+                    broadphase_proxy::{BroadphaseAabbCallback, BroadphaseProxy},
+                },
+                shapes::{collision_shape::CollisionShapes, sphere_shape::SphereShape},
+            },
+            dynamics::rigid_body::{RigidBody, RigidBodyConstructionInfo},
+        },
+        shared::Aabb,
+    };
+
+    struct RecordProxies {
+        seen: Vec<u32>,
+    }
+
+    impl BroadphaseAabbCallback for RecordProxies {
+        fn process(&mut self, proxy: &BroadphaseProxy) -> bool {
+            self.seen.push(proxy.unique_id);
+            true
+        }
+    }
+
+    #[test]
+    fn quad_ray_batch_visits_each_ray_source_cell_once() {
+        let mut broadphase =
+            GridBroadphase::new(Vec3A::ZERO, Vec3A::new(40.0, 10.0, 10.0), 10.0, 1);
+        let make_body = |idx: usize| {
+            let mut body = RigidBody::new(RigidBodyConstructionInfo::new(
+                1.0,
+                CollisionShapes::Sphere(SphereShape::new(0.5)),
+            ));
+            body.world_array_idx = idx;
+            body
+        };
+        let body0 = make_body(0);
+        let body1 = make_body(1);
+        broadphase.create_proxy(
+            Aabb::new(Vec3A::new(1.0, 1.0, 1.0), Vec3A::new(2.0, 2.0, 2.0)),
+            &body0,
+            CollisionFilterGroups::Default as u8,
+            CollisionFilterGroups::ALL,
+        );
+        broadphase.create_proxy(
+            Aabb::new(Vec3A::new(31.0, 1.0, 1.0), Vec3A::new(32.0, 2.0, 2.0)),
+            &body1,
+            CollisionFilterGroups::Default as u8,
+            CollisionFilterGroups::ALL,
+        );
+
+        let ray_from = [
+            Vec3A::new(1.0, 1.0, 1.0),
+            Vec3A::new(31.0, 1.0, 1.0),
+            Vec3A::new(1.0, 1.0, 1.0),
+            Vec3A::new(31.0, 1.0, 1.0),
+        ];
+        let ray_to = [
+            Vec3A::new(2.0, 1.0, 1.0),
+            Vec3A::new(32.0, 1.0, 1.0),
+            Vec3A::new(2.0, 1.0, 1.0),
+            Vec3A::new(32.0, 1.0, 1.0),
+        ];
+        let mut callback = RecordProxies { seen: Vec::new() };
+        broadphase.ray_test(&ray_from, &ray_to, &mut callback);
+
+        assert_eq!(callback.seen, vec![0, 1]);
+    }
 
     #[test]
     fn arena_sized_cell_disables_grid_partitioning() {
