@@ -105,10 +105,10 @@ pub mod car {
         pub const USED_PER_SECOND: f32 = 33.3;
         /// Minimum time we can be boosting for
         pub const MIN_TIME: f32 = 0.1;
-        /// uu/s for vel (on the ground)
+        /// uu/s for vel (on the ground, also used airborne)
         pub const ACCEL_GROUND: f32 = 2975.0 / 3.0;
-        /// uu/s for vel (airborne)
-        pub const ACCEL_AIR: f32 = 3175.0 / 3.0;
+        /// uu/s for vel (airborne, paired with ground)
+        pub const ACCEL_AIR: f32 = ACCEL_GROUND;
         pub const SPAWN_AMOUNT: f32 = MAX / 3.0;
         /// Amount of boost recharged per second when recharging
         pub const RECHARGE_PER_SECOND: f32 = 10.0;
