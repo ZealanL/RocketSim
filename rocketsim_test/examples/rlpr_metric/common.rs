@@ -1229,7 +1229,7 @@ mod tests {
 
     #[test]
     fn car_car_labels_recorded_flag_without_sim() {
-        // `--ignore-sim-events` path: default sim events still get RL support.
+        // Recorded-events default path: empty sim events still get RL support.
         let mut touch = quiet_tick(1, 10.0);
         touch.car_records[0].is_touching_car = true;
         let labels = classify_tick(&touch, 0, SimContactEvents::default());

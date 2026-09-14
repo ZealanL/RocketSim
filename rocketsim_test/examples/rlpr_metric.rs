@@ -42,10 +42,9 @@ struct Args {
     #[arg(long)]
     reset_warmup: bool,
 
-    /// Label ticks from RL flags only; ignore contacts the sim observed.
-    /// Isolates physics fidelity from sim event sensitivity.
+    /// Label ticks from recorded RL flags by default; also include contacts the sim observed.
     #[arg(long)]
-    ignore_sim_events: bool,
+    use_sim_events: bool,
 
     /// Dodge deadzone (|yaw| + |pitch| + |roll| needed to flip).
     /// Match this to the account the recording was made on.
@@ -199,7 +198,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         config.warmup_ticks,
         args.reset_each_tick,
         args.reset_warmup,
-        !args.ignore_sim_events,
+        args.use_sim_events,
         rocketsim_test::rlpr::recording_has_boost_state(recording.version),
     );
     println!(
@@ -222,7 +221,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             config.warmup_ticks,
             args.reset_each_tick,
             args.reset_warmup,
-            !args.ignore_sim_events,
+            args.use_sim_events,
             rocketsim_test::rlpr::recording_has_boost_state(recording.version),
         );
         println!();
