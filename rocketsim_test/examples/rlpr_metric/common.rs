@@ -806,6 +806,9 @@ pub fn evaluate<B: ReplayBackend>(
                 restore_handbrake_seed(backend, ticks, segment_run_start, segment.start);
             }
             restore_recorded_boost_state(backend, ticks, segment.start, has_boost_state);
+            // Seed the prior-tick wheel gate at the recorded pose.
+            // Raycast only. Scored bodies stay at the recorded state.
+            backend.refresh_sticky_gates();
         }
         for offset in 1..segment.len {
             let target_index = segment.start + offset;
@@ -1747,5 +1750,143 @@ mod tests {
         assert_eq!(outcome.report.total.support, 4);
         assert_eq!(outcome.report.total.passed, 4);
         assert_eq!(kickoff_stasis_targets(&ticks), vec![2]);
+    }
+
+    struct StickyGateProbe {
+        snaps: Vec<Vec<Snapshot>>,
+        cursor: usize,
+        refreshes: usize,
+        events: Vec<String>,
+    }
+
+    impl StickyGateProbe {
+        fn new(ticks: &[TickRecord]) -> Self {
+            let snaps = vec![
+                ticks
+                    .iter()
+                    .map(|tick| snapshot_from_tick(tick, 0).unwrap())
+                    .collect(),
+            ];
+            Self {
+                snaps,
+                cursor: 0,
+                refreshes: 0,
+                events: Vec::new(),
+            }
+        }
+    }
+
+    impl ReplayBackend for StickyGateProbe {
+        fn reset(&mut self, start: &TickRecord) {
+            self.events.push("reset".to_string());
+            let want = snapshot_from_tick(start, 0).unwrap();
+            self.cursor = self.snaps[0]
+                .iter()
+                .position(|snap| snap.car.pos == want.car.pos)
+                .unwrap_or(0);
+        }
+
+        fn set_state(&mut self, state: &TickRecord) {
+            self.events.push("set_state".to_string());
+            let want = snapshot_from_tick(state, 0).unwrap();
+            self.cursor = self.snaps[0]
+                .iter()
+                .position(|snap| snap.car.pos == want.car.pos)
+                .unwrap_or(0);
+        }
+
+        fn set_handbrake_value(&mut self, _car_idx: usize, _value: f32) {
+            self.events.push("handbrake".to_string());
+        }
+
+        fn set_boost_state(&mut self, _car_idx: usize, _armed: bool, _time: f32) {
+            self.events.push("boost".to_string());
+        }
+
+        fn refresh_sticky_gates(&mut self) {
+            self.refreshes += 1;
+            self.events.push("refresh".to_string());
+        }
+
+        fn step(&mut self, _controls: &[ControlsRecord]) -> Vec<SimContactEvents> {
+            self.events.push("step".to_string());
+            self.cursor = (self.cursor + 1).min(self.snaps[0].len() - 1);
+            vec![SimContactEvents::default(); self.snaps.len()]
+        }
+
+        fn snapshot(&mut self, car_idx: usize) -> Snapshot {
+            self.snaps[car_idx][self.cursor]
+        }
+    }
+
+    #[test]
+    fn segmented_refresh_runs_once_per_segment() {
+        let ticks: Vec<_> = (0..6).map(|i| quiet_tick(i, i as f32 * 10.0)).collect();
+        let segments = vec![Segment { start: 0, len: 3 }, Segment { start: 3, len: 3 }];
+        let mut backend = StickyGateProbe::new(&ticks);
+        evaluate(
+            &mut backend,
+            &ticks,
+            &segments,
+            1,
+            false,
+            false,
+            true,
+            true,
+            true,
+        );
+        assert_eq!(backend.refreshes, segments.len());
+        let reset_pos = backend.events.iter().position(|e| e == "reset").unwrap();
+        let refresh_pos = backend.events.iter().position(|e| e == "refresh").unwrap();
+        let step_pos = backend.events.iter().position(|e| e == "step").unwrap();
+        let handbrake_pos = backend
+            .events
+            .iter()
+            .position(|e| e == "handbrake")
+            .unwrap();
+        let boost_pos = backend.events.iter().position(|e| e == "boost").unwrap();
+        assert!(reset_pos < handbrake_pos);
+        assert!(handbrake_pos < boost_pos);
+        assert!(boost_pos < refresh_pos);
+        assert!(refresh_pos < step_pos);
+        let mut backend = StickyGateProbe::new(&ticks);
+        evaluate(
+            &mut backend,
+            &ticks,
+            &segments,
+            1,
+            false,
+            false,
+            true,
+            true,
+            false,
+        );
+        assert_eq!(backend.refreshes, segments.len());
+        let mut backend = StickyGateProbe::new(&ticks);
+        evaluate(
+            &mut backend,
+            &ticks,
+            &segments,
+            1,
+            true,
+            false,
+            true,
+            true,
+            true,
+        );
+        assert_eq!(backend.refreshes, 0);
+        let mut backend = StickyGateProbe::new(&ticks);
+        evaluate(
+            &mut backend,
+            &ticks,
+            &segments,
+            1,
+            true,
+            true,
+            true,
+            true,
+            true,
+        );
+        assert_eq!(backend.refreshes, segments.len());
     }
 }
