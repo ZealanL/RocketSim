@@ -201,13 +201,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         args.use_sim_events,
         rocketsim_test::rlpr::recording_has_boost_state(recording.version),
     );
-    println!(
-        "Kickoff stasis skips ({}): {} scored transitions ({} car-ticks across {} cars)",
-        common::KICKOFF_STASIS_RULE,
-        v3_outcome.skipped_transitions,
-        v3_outcome.skipped_car_ticks,
-        num_cars,
-    );
     print_report("v3", &v3_outcome.report);
 
     #[cfg(feature = "v2")]
