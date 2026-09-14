@@ -207,6 +207,7 @@ impl Car {
             matrix3: state.phys.rot_mat,
             translation: state.phys.pos * UU_TO_BT,
         });
+        rb.interp_world_trans = *rb.get_world_trans();
 
         rb.lin_vel = state.phys.vel * UU_TO_BT;
         rb.ang_vel = state.phys.ang_vel;
@@ -933,5 +934,47 @@ impl Car {
         self.state.phys.pos = rb.get_world_trans().translation * BT_TO_UU;
         self.state.phys.vel = rb.lin_vel * BT_TO_UU;
         self.state.phys.ang_vel = rb.ang_vel;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::bullet::collision::broadphase::GridBroadphase;
+
+    #[test]
+    fn set_state_syncs_interp_world_trans() {
+        let broadphase = GridBroadphase::new(Vec3A::splat(-100.0), Vec3A::splat(100.0), 10.0, 1);
+        let mut bullet_world = DiscreteDynamicsWorld::new(broadphase, Vec3A::ZERO);
+        let mut car = Car::new(
+            0,
+            Team::Blue,
+            &mut bullet_world,
+            &MutatorConfig::default(),
+            CarBodyConfig::OCTANE,
+        );
+        let rb = &mut bullet_world.bodies_mut()[car.rigid_body_idx];
+
+        // Force the transforms to differ, as a teleport restore would find them.
+        rb.set_world_trans(Affine3A::IDENTITY);
+        rb.interp_world_trans = Affine3A {
+            matrix3: Mat3A::IDENTITY,
+            translation: Vec3A::new(0.0, 50.0, 0.0),
+        };
+        assert_ne!(*rb.get_world_trans(), rb.interp_world_trans);
+
+        let mut state = CarState::DEFAULT;
+        state.phys.pos = Vec3A::new(-2000.0, 1500.0, 20.0);
+        state.phys.rot_mat = Mat3A::from_rotation_z(-0.5);
+        state.phys.vel = Vec3A::ZERO;
+        state.phys.ang_vel = Vec3A::ZERO;
+        car.set_state(rb, &state);
+
+        let expected = Affine3A {
+            matrix3: state.phys.rot_mat,
+            translation: state.phys.pos * UU_TO_BT,
+        };
+        assert_eq!(*rb.get_world_trans(), expected);
+        assert_eq!(rb.interp_world_trans, expected);
     }
 }

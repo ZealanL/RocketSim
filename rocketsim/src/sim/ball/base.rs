@@ -120,6 +120,7 @@ impl Ball {
             matrix3: state.phys.rot_mat,
             translation: state.phys.pos * UU_TO_BT,
         });
+        rb.interp_world_trans = *rb.get_world_trans();
 
         rb.set_lin_vel(state.phys.vel * UU_TO_BT);
         rb.set_ang_vel(state.phys.ang_vel);
@@ -444,5 +445,52 @@ impl Ball {
         self.state.ds_info.accumulated_hit_force = 0.0;
         self.state.ds_info.charge_level = 1;
         self.state.ds_info.y_target_dir = 0;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use glam::Mat3A;
+
+    use super::*;
+    use crate::{PhysState, bullet::collision::broadphase::GridBroadphase};
+
+    #[test]
+    fn set_state_syncs_interp_world_trans() {
+        let broadphase = GridBroadphase::new(Vec3A::splat(-100.0), Vec3A::splat(100.0), 10.0, 1);
+        let mut bullet_world = DiscreteDynamicsWorld::new(broadphase, Vec3A::ZERO);
+        let mut ball = Ball::new(
+            GameMode::Soccar,
+            &mut bullet_world,
+            &MutatorConfig::default(),
+            false,
+        );
+        let rb = &mut bullet_world.bodies_mut()[ball.rigid_body_idx];
+
+        // Force the transforms to differ, as a teleport restore would find them.
+        rb.set_world_trans(Affine3A::IDENTITY);
+        rb.interp_world_trans = Affine3A {
+            matrix3: Mat3A::IDENTITY,
+            translation: Vec3A::new(50.0, 0.0, 0.0),
+        };
+        assert_ne!(*rb.get_world_trans(), rb.interp_world_trans);
+
+        let state = BallState {
+            phys: PhysState {
+                pos: Vec3A::new(2000.0, -1500.0, 300.0),
+                rot_mat: Mat3A::from_rotation_z(0.5),
+                vel: Vec3A::ZERO,
+                ang_vel: Vec3A::ZERO,
+            },
+            ..BallState::DEFAULT
+        };
+        ball.set_state(rb, state);
+
+        let expected = Affine3A {
+            matrix3: state.phys.rot_mat,
+            translation: state.phys.pos * UU_TO_BT,
+        };
+        assert_eq!(*rb.get_world_trans(), expected);
+        assert_eq!(rb.interp_world_trans, expected);
     }
 }
