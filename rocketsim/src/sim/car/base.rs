@@ -321,7 +321,13 @@ impl Car {
         }
     }
 
-    fn update_air_torque(&mut self, rb: &mut RigidBody, num_wheels_in_contact: usize) {
+    fn update_air_torque(
+        &mut self,
+        rb: &mut RigidBody,
+        num_wheels_in_contact: usize,
+        prev_is_flipping: bool,
+        prev_flip_time: f32,
+    ) {
         use car_consts::{air_control, flip};
 
         let forward_dir = self.state.get_forward_dir();
@@ -364,10 +370,8 @@ impl Car {
                 || self.state.controls.yaw != 0.0
                 || self.state.controls.roll != 0.0
             {
-                if self.state.is_flipping
-                    || self.state.has_flipped
-                        && self.state.flip_time
-                            < const { flip::TORQUE_TIME + flip::PITCHLOCK_EXTRA_TIME }
+                if prev_is_flipping
+                    || self.state.has_flipped && prev_flip_time < flip::PITCHLOCK_EXTRA_TIME
                 {
                     pitch_torque_scale = 0.0;
                 }
@@ -621,7 +625,11 @@ impl Car {
             let still_flipping =
                 self.state.has_flipped && flip_time_pre < car_consts::flip::TORQUE_TIME;
             self.state.is_flipping = still_flipping;
-            self.state.flip_time = flip_time_pre + TICK_TIME;
+            self.state.flip_time = if still_flipping {
+                flip_time_pre + TICK_TIME
+            } else {
+                TICK_TIME
+            };
             if (car_consts::flip::Z_DAMP_START..=car_consts::flip::TORQUE_TIME)
                 .contains(&flip_time_pre)
                 && (rb.lin_vel.z < 0.0 || flip_time_pre < car_consts::flip::Z_DAMP_END)
@@ -810,11 +818,13 @@ impl Car {
 
         self.update_jump(rb, mutator_config, jump_pressed);
         self.update_auto_flip(rb, jump_pressed);
+        let prev_is_flipping = self.state.is_flipping;
+        let prev_flip_time = self.state.flip_time;
         let flip_ended =
             self.update_double_jump_or_flip(rb, mutator_config, jump_pressed, forward_speed_uu);
 
         if !self.state.is_on_ground {
-            self.update_air_torque(rb, num_wheels_in_contact);
+            self.update_air_torque(rb, num_wheels_in_contact, prev_is_flipping, prev_flip_time);
         }
 
         // Skip auto-roll on the tick a flip ends. The car still counts as
@@ -994,7 +1004,14 @@ mod tests {
         car.state.boost = 100.0;
 
         let idx = car.rigid_body_idx;
-        car.update_air_torque(&mut world.bodies_mut()[idx], 0);
+        let prev_is_flipping = car.state.is_flipping;
+        let prev_flip_time = car.state.flip_time;
+        car.update_air_torque(
+            &mut world.bodies_mut()[idx],
+            0,
+            prev_is_flipping,
+            prev_flip_time,
+        );
         car.update_boost(&mut world.bodies_mut()[idx], &mutators);
 
         let forward = Vec3A::X;
@@ -1016,14 +1033,28 @@ mod tests {
         car.state.boost = 100.0;
 
         let idx = car.rigid_body_idx;
-        car.update_air_torque(&mut world.bodies_mut()[idx], 0);
+        let prev_is_flipping = car.state.is_flipping;
+        let prev_flip_time = car.state.flip_time;
+        car.update_air_torque(
+            &mut world.bodies_mut()[idx],
+            0,
+            prev_is_flipping,
+            prev_flip_time,
+        );
         let expected =
             Vec3A::X * 1.0 * (car_consts::drive::THROTTLE_AIR_ACCEL * UU_TO_BT * TICK_TIME);
         assert_eq!(world.bodies()[idx].accum_lin_vel, expected);
 
         world.bodies_mut()[idx].accum_lin_vel = Vec3A::ZERO;
         car.state.is_boosting = false;
-        car.update_air_torque(&mut world.bodies_mut()[idx], 0);
+        let prev_is_flipping = car.state.is_flipping;
+        let prev_flip_time = car.state.flip_time;
+        car.update_air_torque(
+            &mut world.bodies_mut()[idx],
+            0,
+            prev_is_flipping,
+            prev_flip_time,
+        );
         assert_eq!(world.bodies()[idx].accum_lin_vel, Vec3A::ZERO);
 
         car.state.is_boosting = true;
