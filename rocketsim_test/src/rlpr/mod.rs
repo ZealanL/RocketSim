@@ -2,7 +2,11 @@ pub mod cpp_records;
 mod data_reader;
 pub mod tick_record;
 
-use std::{io::ErrorKind, io::Read, mem::size_of, path::Path};
+use std::{
+    io::{ErrorKind, Read},
+    mem::size_of,
+    path::Path,
+};
 
 use cpp_records::*;
 use data_reader::DataReader;

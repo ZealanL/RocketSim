@@ -5,15 +5,17 @@ use super::{
     raycaster::VehicleRaycaster,
     wheel_info::{FrictionCurveInput, WheelInfo},
 };
-use crate::bullet::{
-    collision::broadphase::CollisionFilterGroups,
-    dynamics::{
-        discrete_dynamics_world::DiscreteDynamicsWorld,
-        rigid_body::{Impulse, RigidBody},
+use crate::{
+    bullet::{
+        collision::broadphase::CollisionFilterGroups,
+        dynamics::{
+            discrete_dynamics_world::DiscreteDynamicsWorld,
+            rigid_body::{Impulse, RigidBody},
+        },
+        linear_math::QuatExt,
     },
-    linear_math::QuatExt,
+    sim::UserInfoTypes,
 };
-use crate::sim::UserInfoTypes;
 
 pub struct VehicleRL {
     raycaster: VehicleRaycaster,
