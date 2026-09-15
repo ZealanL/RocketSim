@@ -348,7 +348,7 @@ impl<T: ContactAddedCallback> BoxBoxDetector<'_, T> {
             [c1 - k.x - k.y, c2 - k.z - k.w],
             [c1 - k.x + k.y, c2 - k.z + k.w],
             [c1 + k.x + k.y, c2 + k.z + k.w],
-            [c1 + k.x - k.y, c2 - k.z - k.w],
+            [c1 + k.x - k.y, c2 + k.z - k.w],
         ];
 
         // find the size of the reference face
@@ -607,4 +607,198 @@ fn box_box_sat(obb1: &Obb, r1t: &Mat3A, obb2: &Obb) -> Option<Hit> {
         normal,
         axis_idx: code,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        CarBodyConfig,
+        bullet::collision::{
+            narrowphase::{manifold_point::ManifoldPoint, persistent_manifold::PersistentManifold},
+            shapes::{
+                box_shape::BoxShape, collision_shape::CollisionShapes,
+                compound_shape::CompoundShape,
+            },
+        },
+        bullet::dynamics::rigid_body::{RigidBody, RigidBodyConstructionInfo},
+        consts::UU_TO_BT,
+    };
+    use glam::{Affine3A, Mat3A, Vec3A};
+
+    struct NoopCallback;
+    impl ContactAddedCallback for NoopCallback {
+        fn callback(
+            &mut self,
+            _contact_point: &mut ManifoldPoint,
+            _body_a: &RigidBody,
+            _body_b: &RigidBody,
+            _idx: Option<usize>,
+        ) {
+        }
+    }
+
+    fn octane_child_trans() -> Affine3A {
+        Affine3A {
+            matrix3: Mat3A::IDENTITY,
+            translation: CarBodyConfig::OCTANE.hitbox_pos_offset * UU_TO_BT,
+        }
+    }
+
+    fn make_octane_car(org: Affine3A, idx: usize) -> (RigidBody, CompoundShape) {
+        let config = CarBodyConfig::OCTANE;
+        let half = config.hitbox_size * UU_TO_BT * 0.5;
+        let child_trans = octane_child_trans();
+        let local_inertia = BoxShape::new(half).calculate_local_intertia(180.0);
+        let mut info = RigidBodyConstructionInfo::new(
+            180.0,
+            CollisionShapes::Compound(CompoundShape::new(BoxShape::new(half), child_trans)),
+        );
+        info.local_inertia = local_inertia;
+        info.start_world_trans = org;
+        let mut body = RigidBody::new(info);
+        body.world_array_idx = idx;
+        let holder = CompoundShape::new(BoxShape::new(half), child_trans);
+        (body, holder)
+    }
+
+    /// Replay26328 car-car onset: exact tick-26327 pre-state for recording
+    /// cars 1+2 (`wisp_3v3_300s.rlpr.zst` tick index 26327, Octane
+    /// hitboxes; see rl-exam `carcar-v8-quad-sign-decision.md` +
+    /// `carcar-v8-quad-sign-26328-compare.txt`).
+    /// Pinned `dBoxBox2` emits the 2 captured target contacts in
+    /// shallow-then-deep order; the sign-flipped corner 4 emits 0.
+    #[test]
+    fn quad_corner_sign_replay26328_emits_two_target_contacts() {
+        // Exact RLPR rotation columns (forward, right, up) and positions
+        // (UU). Pair order (car1, car2) matches the sim trace, so the
+        // expected normal mirrors the target log (ordered car2, car1).
+        let pos1 = Vec3A::new(-989.291_56, 217.244_9, 88.034_7);
+        let rot1 = Mat3A::from_cols(
+            Vec3A::new(-0.798_679_6, -0.590_633_03, 0.115_165_88),
+            Vec3A::new(0.569_380_3, -0.803_669_2, -0.172_978_3),
+            Vec3A::new(0.194_722, -0.072_581_07, 0.978_169_4),
+        );
+        let pos2 = Vec3A::new(-1_029.400_9, 105.248_5, 73.287_31);
+        let rot2 = Mat3A::from_cols(
+            Vec3A::new(-0.493_772_5, -0.253_702_34, 0.831_759_75),
+            Vec3A::new(0.290_186_3, 0.853_593_95, 0.432_630_7),
+            Vec3A::new(-0.819_744_5, 0.454_986_3, -0.347_860_22),
+        );
+        let org1 = Affine3A {
+            matrix3: rot1,
+            translation: pos1 * UU_TO_BT,
+        };
+        let org2 = Affine3A {
+            matrix3: rot2,
+            translation: pos2 * UU_TO_BT,
+        };
+        let child_trans = octane_child_trans();
+        let child_world1 = org1 * child_trans;
+        let child_world2 = org2 * child_trans;
+
+        let (body1, holder1) = make_octane_car(org1, 1);
+        let (body2, holder2) = make_octane_car(org2, 2);
+
+        let mut callback = NoopCallback;
+        let mut detector = BoxBoxDetector {
+            box1: &holder1.child_shape,
+            col1: &body1,
+            box2: &holder2.child_shape,
+            col2: &body2,
+            contact_added_callback: &mut callback,
+        };
+        let mut out: Option<PersistentManifold> = None;
+        detector.get_closest_points(child_world1, child_world2, &mut out);
+
+        let manifold = out.expect("quad fix must emit the 26328 manifold (got 0 points)");
+        assert_eq!(manifold.point_cache.len(), 2, "expected exactly 2 contacts");
+
+        // Expected sim-frame values from the target-vs-sim table (BT units).
+        let exp_normal = Vec3A::new(0.290186, 0.853594, 0.432631);
+        let exp_pos = [
+            Vec3A::new(-20.428_83, 2.822553, 1.947287),
+            Vec3A::new(-20.436909, 2.869716, 1.859651),
+        ];
+        let exp_depth = [-0.070_570_59_f32, -0.116478324_f32];
+        // Static test poses use the raw RLPR pre-state while the traced
+        // values come from detector time (after tick-start quantize and
+        // pre-tick updates); OBB centers agree to ~1e-4 BT between the
+        // two (see oracle excerpt). Tolerances cover that pose gap plus
+        // f32 arithmetic and 6-decimal rounding of the table: pos 5e-4
+        // BT (~0.025 UU, 80x below the 2.03 UU breaking threshold),
+        // depth 5e-4 BT (same pose gap, projected on the normal),
+        // normal 1e-5 per component.
+        let pos_tol = 5e-4_f32;
+        let depth_tol = 5e-4_f32;
+        let normal_tol = 1e-5_f32;
+
+        for (i, point) in manifold.point_cache.iter().enumerate() {
+            let n_err = (point.normal_world_on_b - exp_normal).length();
+            assert!(
+                n_err < normal_tol,
+                "contact {i} normal {n_err:e} too far from target"
+            );
+            let p_err = (point.pos_world_on_b - exp_pos[i]).length();
+            assert!(
+                p_err < pos_tol,
+                "contact {i} anchor {p_err:e} BT too far from target"
+            );
+            let d_err = (point.distance_1 - exp_depth[i]).abs();
+            assert!(
+                d_err < depth_tol,
+                "contact {i} depth err {d_err:e} too far from target"
+            );
+        }
+        // Shallow-then-deep order is part of the target signature.
+        assert!(
+            manifold.point_cache[0].distance_1 > manifold.point_cache[1].distance_1,
+            "contacts must stay shallow-then-deep"
+        );
+    }
+
+    /// Axis-aligned Octane overlap along y (SAT code 2): `k.z` is zero so
+    /// the corner-4 sign has no effect. Locks the passing path in place.
+    #[test]
+    fn axis_aligned_code2_overlap_is_unchanged() {
+        let config = CarBodyConfig::OCTANE;
+        let side = config.hitbox_size * UU_TO_BT * 0.5;
+        let pen = 0.05_f32;
+        let dy = 2.0 * side.y - pen;
+        let org1 = Affine3A {
+            matrix3: Mat3A::IDENTITY,
+            translation: Vec3A::ZERO,
+        };
+        let org2 = Affine3A {
+            matrix3: Mat3A::IDENTITY,
+            translation: Vec3A::new(0.0, dy, 0.0),
+        };
+
+        let (body1, holder1) = make_octane_car(org1, 11);
+        let (body2, holder2) = make_octane_car(org2, 12);
+        let child_trans = octane_child_trans();
+        let child_world1 = org1 * child_trans;
+        let child_world2 = org2 * child_trans;
+
+        let mut callback = NoopCallback;
+        let mut detector = BoxBoxDetector {
+            box1: &holder1.child_shape,
+            col1: &body1,
+            box2: &holder2.child_shape,
+            col2: &body2,
+            contact_added_callback: &mut callback,
+        };
+        let mut out: Option<PersistentManifold> = None;
+        detector.get_closest_points(child_world1, child_world2, &mut out);
+
+        let manifold = out.expect("axis-aligned overlap must emit contacts");
+        assert_eq!(manifold.point_cache.len(), 4);
+        let normal = manifold.point_cache[0].normal_world_on_b;
+        assert!(normal.length() > 0.999 && normal.length() < 1.001);
+        assert!(normal.y.abs() > 0.99, "expected a y-dominant normal");
+        for point in manifold.point_cache.iter() {
+            assert!((point.normal_world_on_b - normal).length() < 1e-6);
+            assert!((point.distance_1 - -pen).abs() < 1e-6);
+        }
+    }
 }
