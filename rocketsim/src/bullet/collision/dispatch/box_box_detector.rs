@@ -116,9 +116,7 @@ fn cull_points2(p: &[[f32; 2]], i0: usize, m: usize) -> ArrayVec<usize, 8> {
             let inv = if area.abs() > f32::EPSILON {
                 1.0 / (3.0 * area)
             } else {
-                // todo: use the std's `MAX_EXACT_INTEGER` when it becomes stable
-                const MAX_EXACT_INTEGER: i32 = (1 << f32::MANTISSA_DIGITS) - 1;
-                MAX_EXACT_INTEGER as f32
+                1e18
             };
 
             (
