@@ -400,8 +400,13 @@ pub mod curves {
         LinearPieceCurve::new([(0., 0.1)]);
     pub const HANDBRAKE_LONG_FRICTION_FACTOR: LinearPieceCurve<2> =
         LinearPieceCurve::new([(0., 0.5), (1., 0.9)]);
-    pub const BALL_CAR_EXTRA_IMPULSE_FACTOR: LinearPieceCurve<4> =
-        LinearPieceCurve::new([(0., 0.65), (500., 0.65), (2300., 0.55), (4600., 0.30)]);
+    pub const BALL_CAR_EXTRA_IMPULSE_FACTOR: LinearPieceCurve<5> = LinearPieceCurve::new([
+        (0., 0.65),
+        (500., 0.65),
+        (1400., 0.60),
+        (2300., 0.55),
+        (4600., 0.30),
+    ]);
 
     pub const BUMP_VEL_AMOUNT_GROUND: LinearPieceCurve<3> =
         LinearPieceCurve::new([(0., (5.0 / 6.)), (1400., 1100.), (2200., 1530.)]);
