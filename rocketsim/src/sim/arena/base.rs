@@ -970,7 +970,14 @@ impl Arena {
             let mut is_demo = match self.config.mutators.demo_mode {
                 DemoMode::OnContact => true,
                 DemoMode::Disabled => false,
-                DemoMode::Normal => attacker_state.is_supersonic,
+                DemoMode::Normal => {
+                    attacker_state.is_supersonic
+                        && attacker_state
+                            .phys
+                            .vel
+                            .dot(attacker_state.phys.get_forward_dir())
+                            >= consts::car::supersonic::MAINTAIN_MIN_SPEED
+                }
             };
             if is_demo && !self.config.mutators.enable_team_demos {
                 is_demo = attacker.team != victim.team;
