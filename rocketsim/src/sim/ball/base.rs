@@ -245,7 +245,7 @@ impl Ball {
 
     pub(crate) fn on_hit(
         &mut self,
-        car: &Car,
+        car: &mut Car,
         game_mode: GameMode,
         mutator_config: &MutatorConfig,
         tick_count: u64,
@@ -260,7 +260,7 @@ impl Ball {
             .min(consts::ball::car_hit_impulse::MAX_DELTA_VEL_UU);
 
         // Prevent repeated extra impulses
-        let can_accel = self
+        let can_accel = car
             .state
             .last_extra_hit_tick
             .is_none_or(|last_hit_tick| last_hit_tick + 1 < tick_count);
@@ -294,7 +294,7 @@ impl Ball {
                 false,
             );
 
-            self.state.last_extra_hit_tick = Some(tick_count);
+            car.state.last_extra_hit_tick = Some(tick_count);
         }
 
         match game_mode {

@@ -872,7 +872,7 @@ impl Arena {
         let ball_rb = &mut self.bullet_world.bodies_mut()[self.ball.rigid_body_idx];
         let ball_lin_vel_before = ball_rb.lin_vel;
         self.ball.on_hit(
-            &self.cars[car_idx],
+            &mut self.cars[car_idx],
             self.config.game_mode,
             &self.config.mutators,
             self.tick_count,
