@@ -840,6 +840,72 @@ impl Arena {
     }
 }
 
+fn is_within_demo_cone(
+    forward: Vec3A,
+    right: Vec3A,
+    up: Vec3A,
+    delta: Vec3A,
+    b_reverse: bool,
+) -> bool {
+    const SCALE: f32 = 1.01;
+    const RAD2DEG: f32 = 57.29578;
+    const EPS: f32 = 1e-8;
+    let fwd = if b_reverse { -forward } else { forward };
+    let len2 = delta.length_squared();
+    if len2.is_nan() || len2 < EPS {
+        return false;
+    }
+    let d = delta / len2.sqrt();
+    let dot1 = d.dot(right);
+    let s1 = if dot1 >= 0.0 {
+        dot1 / SCALE
+    } else {
+        dot1 * SCALE
+    };
+    let p1 = d - right * s1;
+    let l1 = p1.length_squared();
+    let q1 = if l1 < EPS {
+        Vec3A::ZERO
+    } else {
+        p1 / l1.sqrt()
+    };
+    let da1 = fwd.dot(q1);
+    let c1 = if da1.is_nan() || da1 < -1.0 {
+        -1.0
+    } else if da1 > 1.0 {
+        1.0
+    } else {
+        da1
+    };
+    let a1 = c1.acos() * RAD2DEG;
+    if a1 > consts::car::demo::PITCH_LIMIT_DEG {
+        return false;
+    }
+    let dot2 = d.dot(up);
+    let s2 = if dot2 >= 0.0 {
+        dot2 / SCALE
+    } else {
+        dot2 * SCALE
+    };
+    let p2 = d - up * s2;
+    let l2 = p2.length_squared();
+    let q2 = if l2 < EPS {
+        Vec3A::ZERO
+    } else {
+        p2 / l2.sqrt()
+    };
+    let da2 = fwd.dot(q2);
+    let c2 = if da2.is_nan() || da2 < -1.0 {
+        -1.0
+    } else if da2 > 1.0 {
+        1.0
+    } else {
+        da2
+    };
+    let a2 = c2.acos() * RAD2DEG;
+    a2 <= consts::car::demo::YAW_LIMIT_DEG
+}
+
 impl Arena {
     fn on_ball_tile_collision(&mut self, tile_idx: usize) {
         self.ball.on_dropshot_tile_collision(
@@ -971,12 +1037,20 @@ impl Arena {
                 DemoMode::OnContact => true,
                 DemoMode::Disabled => false,
                 DemoMode::Normal => {
-                    attacker_state.is_supersonic
-                        && attacker_state
+                    attacker_state.is_supersonic && {
+                        let fwd_speed = attacker_state
                             .phys
                             .vel
-                            .dot(attacker_state.phys.get_forward_dir())
-                            >= consts::car::supersonic::MAINTAIN_MIN_SPEED
+                            .dot(attacker_state.phys.get_forward_dir());
+                        fwd_speed.abs() >= consts::car::supersonic::MAINTAIN_MIN_SPEED
+                            && is_within_demo_cone(
+                                attacker_state.phys.get_forward_dir(),
+                                attacker_state.phys.get_right_dir(),
+                                attacker_state.phys.get_up_dir(),
+                                delta_pos,
+                                fwd_speed < 0.0,
+                            )
+                    }
                 }
             };
             if is_demo && !self.config.mutators.enable_team_demos {
@@ -1032,5 +1106,105 @@ impl Arena {
         let car_rb_index = self.cars[car_idx].rigid_body_idx;
         let rb = &self.bullet_world.bodies()[car_rb_index];
         &rb.dbg_tick_impulse_history
+    }
+}
+
+#[cfg(test)]
+mod demo_cone_tests {
+    use super::is_within_demo_cone;
+    use glam::Vec3A;
+
+    const FWD: Vec3A = Vec3A::X;
+    const RIGHT: Vec3A = Vec3A::Y;
+    const UP: Vec3A = Vec3A::Z;
+
+    fn delta_yaw(yaw_deg: f32) -> Vec3A {
+        let y = yaw_deg.to_radians();
+        Vec3A::new(y.cos(), y.sin(), 0.0)
+    }
+
+    fn delta_pitch(pitch_deg: f32) -> Vec3A {
+        let q = pitch_deg.to_radians();
+        Vec3A::new(q.cos(), 0.0, q.sin())
+    }
+
+    #[test]
+    fn headon_demo() {
+        assert!(is_within_demo_cone(FWD, RIGHT, UP, Vec3A::X, false));
+    }
+
+    #[test]
+    fn off75b_demo() {
+        let d = Vec3A::new(0.844994, 0.534775, -0.000347);
+        assert!(is_within_demo_cone(FWD, RIGHT, UP, d, false));
+    }
+
+    #[test]
+    fn wisp_bump() {
+        let f = Vec3A::new(0.408044, -0.912962, 0.0);
+        let r = Vec3A::new(0.912962, 0.408044, 0.0);
+        let d = Vec3A::new(0.994186, -0.107679, 0.000536);
+        assert!(!is_within_demo_cone(f, r, UP, d, false));
+    }
+
+    #[test]
+    fn backwards_demo() {
+        assert!(is_within_demo_cone(FWD, RIGHT, UP, Vec3A::NEG_X, true));
+    }
+
+    #[test]
+    fn behind_without_reverse_bump() {
+        assert!(!is_within_demo_cone(FWD, RIGHT, UP, Vec3A::NEG_X, false));
+    }
+
+    #[test]
+    fn pitch38_demo() {
+        let f = Vec3A::new(0.78811, 0.0, 0.615534);
+        let u = Vec3A::new(-0.615534, 0.0, 0.78811);
+        let d = Vec3A::new(0.686644, 0.0, 0.726994);
+        assert!(is_within_demo_cone(f, RIGHT, u, d, false));
+    }
+
+    #[test]
+    fn yaw_inside() {
+        assert!(is_within_demo_cone(FWD, RIGHT, UP, delta_yaw(45.0), false));
+    }
+
+    #[test]
+    fn yaw_outside() {
+        assert!(!is_within_demo_cone(FWD, RIGHT, UP, delta_yaw(46.0), false));
+    }
+
+    #[test]
+    fn pitch_inside() {
+        assert!(is_within_demo_cone(
+            FWD,
+            RIGHT,
+            UP,
+            delta_pitch(36.0),
+            false
+        ));
+    }
+
+    #[test]
+    fn pitch_outside() {
+        assert!(!is_within_demo_cone(
+            FWD,
+            RIGHT,
+            UP,
+            delta_pitch(37.0),
+            false
+        ));
+    }
+
+    #[test]
+    fn zero_bump() {
+        assert!(!is_within_demo_cone(FWD, RIGHT, UP, Vec3A::ZERO, false));
+    }
+
+    #[test]
+    fn nan_delta_bump() {
+        let d = Vec3A::new(f32::NAN, 0.0, 0.0);
+        assert!(!is_within_demo_cone(FWD, RIGHT, UP, d, false));
     }
 }

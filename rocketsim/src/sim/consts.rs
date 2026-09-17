@@ -125,6 +125,11 @@ pub mod car {
         pub const MAINTAIN_MAX_TIME: f32 = 1.0;
     }
 
+    pub mod demo {
+        pub const YAW_LIMIT_DEG: f32 = 45.572994;
+        pub const PITCH_LIMIT_DEG: f32 = 36.869896;
+    }
+
     pub mod drive {
         pub const THROTTLE_TORQUE_AMOUNT: f32 = super::MASS_BT * 400.0;
         pub const BRAKE_TORQUE_AMOUNT: f32 = super::MASS_BT * (14.25 + (1.0 / 3.));
