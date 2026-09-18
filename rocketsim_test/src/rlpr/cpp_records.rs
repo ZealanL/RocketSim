@@ -227,6 +227,17 @@ pub struct CarRecord {
     pub prev_controls: ControlsRecord,
 
     pub wheels: [WheelRecord; 4],
+
+    /// RLPR v6 car-car contact flag. False for v2-v5.
+    pub is_touching_car: bool,
+    /// Reserved padding. Keeps v7 `is_boosting` at offset 588. Always zero.
+    pub _touch_pad: [u8; 3],
+    /// RLPR v7 boost latch bit. False for v2-v6.
+    pub is_boosting: bool,
+    /// Reserved padding. Keeps v7 `boosting_time` at offset 592. Always zero.
+    pub _boost_pad: [u8; 3],
+    /// RLPR v7 time since boost armed. 0.0 for v2-v6.
+    pub boosting_time: f32,
 }
 impl From<CarRecord> for CarState {
     fn from(phys_record: CarRecord) -> Self {
