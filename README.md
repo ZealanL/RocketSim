@@ -26,7 +26,7 @@ Balanced reduces marginal memory while retaining most of Heavy's performance. Li
 
 ## Accuracy metric
 
-The metric replays one-second segments from a bundled 90-second Rocket League recording. It reports strict pass percentages for car-ball, ball-world, chassis-world, wheel-world, and no-contact ticks.
+The metric replays one-second segments from a bundled 300-second 3v3 Rocket League recording. It reports strict pass percentages for car-ball, ball-world, chassis-world, wheel-world, and no-contact ticks.
 
 Run the v3 metric:
 

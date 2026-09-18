@@ -1,4 +1,4 @@
-//! Segmented replay metric for one-car RLPR recordings.
+//! Segmented replay metric for RLPR recordings.
 //!
 //! Reset at each segment start, run open-loop, score ticks after warmup.
 //! Print one table row per backend and contact category.
@@ -17,11 +17,10 @@ mod v2;
 mod v3;
 
 /// Segmented RocketSim replay metric against one RLPR recording.
-/// Scores each car independently against its own trajectory; the opponent
-/// is absent from the sim.
+/// Scores each car against its own trajectory. All cars share the sim.
 #[derive(Parser)]
 struct Args {
-    /// RLPR recording file. Uses the bundled Wisp 1v1 capture by default.
+    /// RLPR recording file. Uses the bundled Wisp 3v3 capture by default.
     rlpr_file: Option<PathBuf>,
 
     /// Ticks per segment.
@@ -122,7 +121,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let rlpr_file = args.rlpr_file.unwrap_or_else(|| {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("recordings")
-            .join("wisp_1v1_300s.rlpr")
+            .join("wisp_3v3_300s.rlpr.zst")
     });
     let recording = Recording::from_file(&rlpr_file)?;
     let num_cars = recording

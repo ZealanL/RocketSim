@@ -2,7 +2,7 @@ pub mod cpp_records;
 mod data_reader;
 pub mod tick_record;
 
-use std::{io::ErrorKind, mem::size_of, path::Path};
+use std::{io::ErrorKind, io::Read, mem::size_of, path::Path};
 
 use cpp_records::*;
 use data_reader::DataReader;
@@ -46,10 +46,73 @@ pub struct Recording {
     pub ticks: Vec<TickRecord>,
 }
 
+/// Max decompressed RLPR size. Bounds zstd decode of untrusted files.
+const RLPR_MAX_DECODED_SIZE: u64 = 1 << 30;
+
+/// Wrap a zstd failure as an `InvalidData` recording error.
+fn decode_failed(path: &Path, err: std::io::Error) -> std::io::Error {
+    std::io::Error::new(
+        ErrorKind::InvalidData,
+        format!("RLPR zstd decode failed for {}: {err}", path.display()),
+    )
+}
+
+/// Decode one zstd frame with a 1 GiB output bound.
+fn decode_bounded(raw: &[u8], path: &Path) -> std::io::Result<Vec<u8>> {
+    let mut decoder = zstd::Decoder::new(raw).map_err(|err| decode_failed(path, err))?;
+    let mut out = Vec::new();
+    decoder
+        .by_ref()
+        .take(RLPR_MAX_DECODED_SIZE)
+        .read_to_end(&mut out)
+        .map_err(|err| decode_failed(path, err))?;
+    if out.len() as u64 >= RLPR_MAX_DECODED_SIZE {
+        let mut extra = [0u8; 1];
+        if decoder
+            .read(&mut extra)
+            .map_err(|err| decode_failed(path, err))?
+            > 0
+        {
+            return Err(std::io::Error::new(
+                ErrorKind::InvalidData,
+                format!(
+                    "RLPR zstd output exceeds {} bytes for {}",
+                    RLPR_MAX_DECODED_SIZE,
+                    path.display()
+                ),
+            ));
+        }
+    }
+    Ok(out)
+}
+
 impl Recording {
+    /// Read a plain `.rlpr` file or a compressed `.rlpr.zst` file.
+    ///
+    /// A compressed `x.rlpr.zst` names the recording `x`, as plain `x.rlpr` does.
     pub fn from_file(path: &Path) -> Result<Recording, std::io::Error> {
-        let bytes = std::fs::read(path)?;
-        let name = path
+        // Compressed recordings end in `.rlpr.zst`. Others stay plain.
+        let is_compressed = path.extension().is_some_and(|ext| ext == "zst");
+        let raw = std::fs::read(path)?;
+        let bytes = if is_compressed {
+            decode_bounded(&raw, path)?
+        } else {
+            raw
+        };
+        let logical_path;
+        let name_path = if is_compressed {
+            let stem = path.file_stem().ok_or_else(|| {
+                std::io::Error::new(
+                    ErrorKind::InvalidInput,
+                    "Recording path has no valid file name",
+                )
+            })?;
+            logical_path = Path::new(stem).to_path_buf();
+            &logical_path
+        } else {
+            path
+        };
+        let name = name_path
             .file_stem()
             .and_then(|stem| stem.to_str())
             .ok_or_else(|| {

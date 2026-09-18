@@ -1,4 +1,4 @@
-//! v2 replay backend for one-car RLPR recordings.
+//! v2 replay backend for RLPR recordings.
 //!
 //! Reset builds a new Soccar arena at 120 Hz.
 //! Step applies recorded controls for one tick.
