@@ -1,7 +1,9 @@
-//! Backend-neutral multi-tick metric for one-car RLPR recordings.
+//! Backend-neutral multi-tick metric for RLPR recordings.
 //!
 //! Thin `v3`/`v2` adapters implement [`ReplayBackend`].
-//! The CLI builds [`Segment`]s, runs [`evaluate`], prints [`EvalReport`].
+//! The CLI builds [`Segment`]s, runs [`evaluate`] once per car,
+//! prints one [`EvalReport`] per car. Every recorded car shares the sim,
+//! so car-car contacts are genuine engine observations..
 //!
 //! Each segment holds `segment_ticks` ticks.
 //! The first `warmup_ticks` ticks only advance the sim.
@@ -10,20 +12,13 @@
 use glam::Vec3A;
 use rocketsim_test::rlpr::{cpp_records::ControlsRecord, tick_record::TickRecord};
 
-// Fixed Soccar geometry in Unreal units.
-pub const SOCCAR_HALF_X: f32 = 4096.0;
-pub const SOCCAR_HALF_Y: f32 = 5120.0;
-pub const SOCCAR_CEIL_Z: f32 = 2048.0;
-pub const SOCCAR_BALL_RADIUS: f32 = 91.25;
-pub const SOCCAR_CAR_BOUND_RADIUS: f32 = 90.0;
-// Distance band around a wall plane that counts as near contact.
-pub const WORLD_PROX_MARGIN: f32 = 30.0;
-// Minimum normal speed that counts as a velocity flip.
-pub const VEL_FLIP_MIN: f32 = 50.0;
-// Max car-ball center distance that counts as inferred contact.
-pub const CAR_BALL_DIST: f32 = 220.0;
-// Min velocity jump on either body that confirms inferred contact.
-pub const CAR_BALL_DELTA_VEL: f32 = 300.0;
+// Max plausible per-tick travel in Unreal units. Fastest ball (~6000 UU/s)
+// covers ~50 UU per 120 Hz tick; supersonic cars ~20 UU. Anything beyond
+// this is a teleport: kickoff/goal reset, demo respawn, or respawn snap.
+// Teleports always break runs (see split_segments) so no scored tick ever
+// spans one, and every post-teleport run starts with a fresh state-set.
+pub const CAR_TELEPORT_DIST: f32 = 500.0;
+pub const BALL_TELEPORT_DIST: f32 = 500.0;
 
 // Strict per-component tolerances. See [`normalized_error`].
 pub const POS_TOL_UU: f32 = 10.0;
@@ -48,12 +43,24 @@ pub struct Snapshot {
     pub ball: BodySnapshot,
 }
 
-/// Backend adapter. Holds the sim. Resets only at segment starts.
+/// Backend adapter. Holds the sim with one arena car per recorded car.
+/// `step` reports the contacts the sim itself observed that tick, one
+/// entry per arena car in recording order.
 pub trait ReplayBackend {
     fn reset(&mut self, start: &TickRecord);
     fn set_state(&mut self, state: &TickRecord);
-    fn step(&mut self, controls: &ControlsRecord);
-    fn snapshot(&mut self) -> Snapshot;
+    fn step(&mut self, controls: &[ControlsRecord]) -> Vec<SimContactEvents>;
+    fn snapshot(&mut self, car_idx: usize) -> Snapshot;
+}
+
+/// Contacts the sim observed during one stepped tick, for the scored car.
+/// Ball labels are shared; car labels describe the scored car only.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct SimContactEvents {
+    pub car_ball: bool,
+    pub car_car: bool,
+    pub ball_world: bool,
+    pub chassis_world: bool,
 }
 
 /// Read one body from parts.
@@ -73,11 +80,9 @@ fn body_from_parts(
     }
 }
 
-/// Read ground truth from a one-car tick. `None` without one car.
-pub fn snapshot_from_tick(tick: &TickRecord) -> Option<Snapshot> {
-    let [car] = tick.car_records.as_slice() else {
-        return None;
-    };
+/// Read ground truth for one car from a tick. `None` without that car.
+pub fn snapshot_from_tick(tick: &TickRecord, car_idx: usize) -> Option<Snapshot> {
+    let car = tick.car_records.get(car_idx)?;
     let car_forward = Vec3A::from(car.phys.rot.column(0));
     let car_up = Vec3A::from(car.phys.rot.column(2));
     let ball_forward = Vec3A::from(tick.ball_record.rot.column(0));
@@ -133,34 +138,43 @@ impl Segment {
     }
 }
 
-/// Exactly one car in the tick.
-pub fn tick_has_single_car(tick: &TickRecord) -> bool {
-    tick.car_records.len() == 1
+/// Number of cars in the tick.
+pub fn tick_car_count(tick: &TickRecord) -> usize {
+    tick.car_records.len()
 }
 
-/// Physics frames advance by one for car and ball.
+/// Max cars scored per tick.
+pub const MAX_SCORED_CARS: usize = 8;
+
+/// Physics frames advance by one for every car and the ball.
 pub fn frame_is_contiguous(from: &TickRecord, to: &TickRecord) -> bool {
-    let [from_car] = from.car_records.as_slice() else {
+    let n = from.car_records.len();
+    if n == 0 || n > MAX_SCORED_CARS || to.car_records.len() != n {
         return false;
-    };
-    let [to_car] = to.car_records.as_slice() else {
-        return false;
-    };
-    to_car.phys.physics_frame == from_car.phys.physics_frame + 1
+    }
+    from.car_records
+        .iter()
+        .zip(to.car_records.iter())
+        .all(|(a, b)| b.phys.physics_frame == a.phys.physics_frame + 1)
         && to.ball_record.physics_frame == from.ball_record.physics_frame + 1
 }
 
 /// No body moved between ticks (pause or replay stall).
 pub fn tick_is_frozen(from: &TickRecord, to: &TickRecord) -> bool {
-    let [from_car] = from.car_records.as_slice() else {
+    let n = from.car_records.len();
+    if n == 0 || to.car_records.len() != n {
         return false;
-    };
-    let [to_car] = to.car_records.as_slice() else {
-        return false;
-    };
-    from_car.phys.pos == to_car.phys.pos
-        && from_car.phys.lin_vel == to_car.phys.lin_vel
-        && from_car.phys.ang_vel == to_car.phys.ang_vel
+    }
+    let cars_static = from
+        .car_records
+        .iter()
+        .zip(to.car_records.iter())
+        .all(|(a, b)| {
+            a.phys.pos == b.phys.pos
+                && a.phys.lin_vel == b.phys.lin_vel
+                && a.phys.ang_vel == b.phys.ang_vel
+        });
+    cars_static
         && from.ball_record.pos == to.ball_record.pos
         && from.ball_record.lin_vel == to.ball_record.lin_vel
         && from.ball_record.ang_vel == to.ball_record.ang_vel
@@ -168,7 +182,12 @@ pub fn tick_is_frozen(from: &TickRecord, to: &TickRecord) -> bool {
 
 /// Split ticks into non-overlapping segments.
 ///
-/// Break runs at frame gaps, frozen transitions, and ticks without one car.
+/// Break runs at frame gaps, frozen transitions, ticks without cars,
+/// ticks with too many cars, car-count changes, and teleports (any car
+/// or the ball jumping further than one tick of travel allows: kickoff
+/// and goal resets, demo respawns). A teleport arrival always starts a
+/// new run, so the backend state-sets it before scoring resumes and no
+/// scored tick ever spans the discontinuity.
 /// Chunk each run into groups of `segment_ticks`.
 /// Drop groups with no scored ticks. Reset only at segment starts.
 pub fn split_segments(ticks: &[TickRecord], config: SegmentConfig) -> Vec<Segment> {
@@ -185,17 +204,21 @@ pub fn split_segments(ticks: &[TickRecord], config: SegmentConfig) -> Vec<Segmen
     };
 
     for (index, tick) in ticks.iter().enumerate() {
-        if !tick_has_single_car(tick) {
+        let count = tick_car_count(tick);
+        if count == 0 || count > MAX_SCORED_CARS {
             flush_run(index, &mut run_start);
             continue;
         }
         match run_start {
-            None => run_start = Some(index),
+            None => {
+                run_start = Some(index);
+            }
             Some(_) => {
                 let prev = &ticks[index - 1];
-                if !tick_has_single_car(prev)
+                if tick_car_count(prev) != count
                     || !frame_is_contiguous(prev, tick)
                     || tick_is_frozen(prev, tick)
+                    || any_teleport(prev, tick)
                 {
                     flush_run(index, &mut run_start);
                     run_start = Some(index);
@@ -205,6 +228,29 @@ pub fn split_segments(ticks: &[TickRecord], config: SegmentConfig) -> Vec<Segmen
     }
     flush_run(ticks.len(), &mut run_start);
     segments
+}
+
+/// Any car or the ball teleported between ticks (reset/respawn snap).
+/// Counts are equal here; split_segments guarantees it before calling.
+pub fn any_teleport(from: &TickRecord, to: &TickRecord) -> bool {
+    if ball_teleported(from, to) {
+        return true;
+    }
+    from.car_records
+        .iter()
+        .zip(to.car_records.iter())
+        .any(|(a, b)| {
+            let pa: Vec3A = a.phys.pos.into();
+            let pb: Vec3A = b.phys.pos.into();
+            (pa - pb).length() >= CAR_TELEPORT_DIST
+        })
+}
+
+/// The ball jumped further than one tick of travel allows.
+fn ball_teleported(from: &TickRecord, to: &TickRecord) -> bool {
+    let pa: Vec3A = from.ball_record.pos.into();
+    let pb: Vec3A = to.ball_record.pos.into();
+    (pa - pb).length() >= BALL_TELEPORT_DIST
 }
 
 /// Chunk one clean run. Drop chunks with no scored ticks.
@@ -223,6 +269,7 @@ fn push_chunks(segments: &mut Vec<Segment>, start: usize, end: usize, config: Se
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ContactCategory {
     CarBall,
+    CarCar,
     BallWorld,
     ChassisWorld,
     WheelWorld,
@@ -232,8 +279,9 @@ pub enum ContactCategory {
 
 impl ContactCategory {
     /// All categories in CLI column order.
-    pub const ALL: [ContactCategory; 6] = [
+    pub const ALL: [ContactCategory; 7] = [
         ContactCategory::CarBall,
+        ContactCategory::CarCar,
         ContactCategory::BallWorld,
         ContactCategory::ChassisWorld,
         ContactCategory::WheelWorld,
@@ -245,6 +293,7 @@ impl ContactCategory {
     pub fn as_str(&self) -> &'static str {
         match self {
             ContactCategory::CarBall => "car_ball",
+            ContactCategory::CarCar => "car_car",
             ContactCategory::BallWorld => "ball_world",
             ContactCategory::ChassisWorld => "chassis_world",
             ContactCategory::WheelWorld => "wheel_world",
@@ -258,6 +307,7 @@ impl ContactCategory {
 #[derive(Clone, Copy, Debug, Default)]
 pub struct ContactLabels {
     pub car_ball: bool,
+    pub car_car: bool,
     pub ball_world: bool,
     pub chassis_world: bool,
     pub wheel_world: bool,
@@ -266,13 +316,18 @@ pub struct ContactLabels {
 impl ContactLabels {
     /// No label is set.
     pub fn is_quiet(&self) -> bool {
-        !(self.car_ball || self.ball_world || self.chassis_world || self.wheel_world)
+        !(self.car_ball
+            || self.car_car
+            || self.ball_world
+            || self.chassis_world
+            || self.wheel_world)
     }
 
     /// Membership. `NoContact` holds only when all labels are false.
     pub fn contains(&self, category: ContactCategory) -> bool {
         match category {
             ContactCategory::CarBall => self.car_ball,
+            ContactCategory::CarCar => self.car_car,
             ContactCategory::BallWorld => self.ball_world,
             ContactCategory::ChassisWorld => self.chassis_world,
             ContactCategory::WheelWorld => self.wheel_world,
@@ -282,112 +337,29 @@ impl ContactLabels {
     }
 }
 
-/// Label one target tick from RL flags plus conservative inference.
+/// Label one target tick for one car.
 ///
-/// Side-wall hits can miss `has_world_contact`, so near-wall ticks with a
-/// flipped normal velocity also count. Missed car-ball touches count when
-/// centers are close and either body velocity jumps.
-pub fn classify_tick(tick: &TickRecord, prev: Option<&TickRecord>) -> ContactLabels {
-    let [car] = tick.car_records.as_slice() else {
+/// Each label is true when the RL recording flags it OR the sim observed
+/// it while replaying the tick. Sim-observed contacts are exact engine
+/// events, never trajectory guesses: the sim cannot miss a contact the
+/// way flag-based inference can, and a contact only the sim sees is a
+/// real divergence worth scoring.
+pub fn classify_tick(tick: &TickRecord, car_idx: usize, sim: SimContactEvents) -> ContactLabels {
+    let Some(car) = tick.car_records.get(car_idx) else {
         return ContactLabels::default();
     };
-    let car_ball = car.is_touching_ball || infer_car_ball(tick, prev);
+    let car_ball = car.is_touching_ball || sim.car_ball;
+    let car_car = sim.car_car;
     let wheel_world = car.wheels.iter().any(|wheel| wheel.has_contact);
-    let ball_world =
-        tick.ball_record.has_world_contact || infer_wall_hit(prev_vel(prev, true), tick, true);
-    let chassis_world =
-        car.phys.has_world_contact || infer_wall_hit(prev_vel(prev, false), tick, false);
+    let ball_world = tick.ball_record.has_world_contact || sim.ball_world;
+    let chassis_world = car.phys.has_world_contact || sim.chassis_world;
     ContactLabels {
         car_ball,
+        car_car,
         ball_world,
         chassis_world,
         wheel_world,
     }
-}
-
-/// Prev-tick velocity for ball (`is_ball`) or car.
-fn prev_vel(prev: Option<&TickRecord>, is_ball: bool) -> Option<Vec3A> {
-    let prev = prev?;
-    if is_ball {
-        Some(prev.ball_record.lin_vel.into())
-    } else {
-        let [car] = prev.car_records.as_slice() else {
-            return None;
-        };
-        Some(car.phys.lin_vel.into())
-    }
-}
-
-/// Missed car-ball touch: close centers plus a velocity jump on either body.
-fn infer_car_ball(tick: &TickRecord, prev: Option<&TickRecord>) -> bool {
-    let prev = match prev {
-        Some(prev) => prev,
-        None => return false,
-    };
-    let [car] = tick.car_records.as_slice() else {
-        return false;
-    };
-    let [prev_car] = prev.car_records.as_slice() else {
-        return false;
-    };
-    let car_pos: Vec3A = car.phys.pos.into();
-    let ball_pos: Vec3A = tick.ball_record.pos.into();
-    if (car_pos - ball_pos).length() >= CAR_BALL_DIST {
-        return false;
-    }
-    let car_vel: Vec3A = car.phys.lin_vel.into();
-    let prev_car_vel: Vec3A = prev_car.phys.lin_vel.into();
-    let ball_vel: Vec3A = tick.ball_record.lin_vel.into();
-    let prev_ball_vel: Vec3A = prev.ball_record.lin_vel.into();
-    (car_vel - prev_car_vel).length() >= CAR_BALL_DELTA_VEL
-        || (ball_vel - prev_ball_vel).length() >= CAR_BALL_DELTA_VEL
-}
-/// Missed wall hit: wall proximity plus a flipped normal velocity.
-fn infer_wall_hit(prev_vel: Option<Vec3A>, tick: &TickRecord, is_ball: bool) -> bool {
-    let Some(prev_vel) = prev_vel else {
-        return false;
-    };
-    let (pos, vel): (Vec3A, Vec3A) = if is_ball {
-        (tick.ball_record.pos.into(), tick.ball_record.lin_vel.into())
-    } else {
-        let [car] = tick.car_records.as_slice() else {
-            return false;
-        };
-        (car.phys.pos.into(), car.phys.lin_vel.into())
-    };
-    let radius = if is_ball {
-        SOCCAR_BALL_RADIUS
-    } else {
-        SOCCAR_CAR_BOUND_RADIUS
-    };
-    for axis in 0..3 {
-        let (limit, is_floor_ceil) = match axis {
-            0 => (SOCCAR_HALF_X, false),
-            1 => (SOCCAR_HALF_Y, false),
-            _ => (SOCCAR_CEIL_Z, true),
-        };
-        if !near_plane(pos[axis], limit, radius, is_floor_ceil) {
-            continue;
-        }
-        if flipped(prev_vel[axis], vel[axis]) {
-            return true;
-        }
-    }
-    false
-}
-
-/// Wall proximity on one axis. `limit` is the positive plane distance.
-fn near_plane(pos: f32, limit: f32, radius: f32, is_vertical: bool) -> bool {
-    if is_vertical {
-        pos < radius + WORLD_PROX_MARGIN || (limit - pos) < radius + WORLD_PROX_MARGIN
-    } else {
-        (limit - pos.abs()) < radius + WORLD_PROX_MARGIN
-    }
-}
-
-/// Normal velocity flipped sign with enough speed.
-fn flipped(before: f32, after: f32) -> bool {
-    before.abs() >= VEL_FLIP_MIN && after.abs() >= VEL_FLIP_MIN && before.signum() != after.signum()
 }
 
 /// Normalized physics error over car and ball.
@@ -477,6 +449,7 @@ impl CategoryStats {
 pub struct EvalReport {
     pub total: CategoryStats,
     pub car_ball: CategoryStats,
+    pub car_car: CategoryStats,
     pub ball_world: CategoryStats,
     pub chassis_world: CategoryStats,
     pub wheel_world: CategoryStats,
@@ -488,6 +461,7 @@ impl EvalReport {
     pub fn for_category(&self, category: ContactCategory) -> &CategoryStats {
         match category {
             ContactCategory::CarBall => &self.car_ball,
+            ContactCategory::CarCar => &self.car_car,
             ContactCategory::BallWorld => &self.ball_world,
             ContactCategory::ChassisWorld => &self.chassis_world,
             ContactCategory::WheelWorld => &self.wheel_world,
@@ -500,6 +474,7 @@ impl EvalReport {
     fn for_category_mut(&mut self, category: ContactCategory) -> &mut CategoryStats {
         match category {
             ContactCategory::CarBall => &mut self.car_ball,
+            ContactCategory::CarCar => &mut self.car_car,
             ContactCategory::BallWorld => &mut self.ball_world,
             ContactCategory::ChassisWorld => &mut self.chassis_world,
             ContactCategory::WheelWorld => &mut self.wheel_world,
@@ -518,15 +493,20 @@ impl EvalReport {
     }
 }
 
-/// Run each segment open-loop and aggregate errors.
-/// Resets at each segment start, steps with target `prev_controls`,
-/// skips `warmup_ticks` ticks, labels scored ticks from ground truth..
+/// Run each segment open-loop and aggregate every car-tick into one report.
+/// Every arena car steps with its own recorded controls, so car-car
+/// contacts are real sim observations. Resets at each segment start,
+/// steps with target `prev_controls`, skips `warmup_ticks` ticks.
+/// Support counts car-ticks: each scored tick contributes one sample per car.
+/// With `use_sim_events`, sim-observed contacts also label ticks;
+/// otherwise labels come from RL flags alone.
 pub fn evaluate<B: ReplayBackend>(
     backend: &mut B,
     ticks: &[TickRecord],
     segments: &[Segment],
     warmup_ticks: usize,
     reset_each_tick: bool,
+    use_sim_events: bool,
 ) -> EvalReport {
     let mut report = EvalReport::default();
     for segment in segments {
@@ -542,19 +522,30 @@ pub fn evaluate<B: ReplayBackend>(
             if reset_each_tick {
                 backend.set_state(&ticks[target_index - 1]);
             }
-            let [car] = target.car_records.as_slice() else {
+            let controls: Vec<ControlsRecord> = target
+                .car_records
+                .iter()
+                .map(|car| car.prev_controls)
+                .collect();
+            if controls.is_empty() {
                 continue;
-            };
-            backend.step(&car.prev_controls);
-            let Some(truth) = snapshot_from_tick(target) else {
-                continue;
-            };
+            }
+            let sim_events = backend.step(&controls);
             if !reset_each_tick && offset < warmup_ticks {
                 continue;
             }
-            let norm = normalized_error(&backend.snapshot(), &truth);
-            let prev = ticks.get(target_index.wrapping_sub(1));
-            report.add(classify_tick(target, prev), target_index, norm);
+            for car_idx in 0..controls.len() {
+                let Some(truth) = snapshot_from_tick(target, car_idx) else {
+                    continue;
+                };
+                let sim = if use_sim_events {
+                    sim_events.get(car_idx).copied().unwrap_or_default()
+                } else {
+                    SimContactEvents::default()
+                };
+                let norm = normalized_error(&backend.snapshot(car_idx), &truth);
+                report.add(classify_tick(target, car_idx, sim), target_index, norm);
+            }
         }
     }
     report
@@ -758,7 +749,7 @@ mod tests {
             false,
             true,
         );
-        let labels = classify_tick(&tick, None);
+        let labels = classify_tick(&tick, 0, SimContactEvents::default());
         assert!(labels.car_ball && labels.wheel_world);
         assert!(labels.contains(ContactCategory::CarBall));
         assert!(labels.contains(ContactCategory::WheelWorld));
@@ -769,7 +760,7 @@ mod tests {
     #[test]
     fn no_contact_only_when_all_labels_false() {
         let quiet = quiet_tick(0, 0.0);
-        let labels = classify_tick(&quiet, None);
+        let labels = classify_tick(&quiet, 0, SimContactEvents::default());
         assert!(labels.is_quiet());
         assert!(labels.contains(ContactCategory::NoContact));
         let noisy = make_tick(
@@ -783,96 +774,14 @@ mod tests {
             false,
             false,
         );
-        let labels = classify_tick(&noisy, None);
+        let labels = classify_tick(&noisy, 0, SimContactEvents::default());
         assert!(!labels.contains(ContactCategory::NoContact));
-    }
-
-    #[test]
-    fn infers_missed_car_ball_hit() {
-        let prev = make_tick(
-            0,
-            (0.0, 0.0, 100.0),
-            (100.0, 0.0, 100.0),
-            (0.0, 0.0, 0.0),
-            (0.0, 0.0, 0.0),
-            false,
-            false,
-            false,
-            false,
-        );
-        let tick = make_tick(
-            1,
-            (0.0, 0.0, 100.0),
-            (100.0, 0.0, 100.0),
-            (400.0, 0.0, 0.0),
-            (0.0, 0.0, 0.0),
-            false,
-            false,
-            false,
-            false,
-        );
-        assert!(classify_tick(&tick, Some(&prev)).car_ball);
-    }
-
-    #[test]
-    fn skips_inferred_car_ball_without_velocity_jump() {
-        let prev = make_tick(
-            0,
-            (0.0, 0.0, 100.0),
-            (100.0, 0.0, 100.0),
-            (10.0, 0.0, 0.0),
-            (10.0, 0.0, 0.0),
-            false,
-            false,
-            false,
-            false,
-        );
-        let tick = make_tick(
-            1,
-            (5.0, 0.0, 100.0),
-            (100.0, 0.0, 100.0),
-            (10.0, 0.0, 0.0),
-            (10.0, 0.0, 0.0),
-            false,
-            false,
-            false,
-            false,
-        );
-        assert!(!classify_tick(&tick, Some(&prev)).car_ball);
-    }
-
-    #[test]
-    fn infers_missed_side_wall_hit() {
-        let prev = make_tick(
-            0,
-            (0.0, 0.0, 500.0),
-            (SOCCAR_HALF_X - SOCCAR_BALL_RADIUS - 5.0, 0.0, 500.0),
-            (0.0, 0.0, 0.0),
-            (400.0, 0.0, 0.0),
-            false,
-            false,
-            false,
-            false,
-        );
-        let tick = make_tick(
-            1,
-            (0.0, 0.0, 500.0),
-            (SOCCAR_HALF_X - SOCCAR_BALL_RADIUS - 5.0, 0.0, 500.0),
-            (0.0, 0.0, 0.0),
-            (-400.0, 0.0, 0.0),
-            false,
-            false,
-            false,
-            false,
-        );
-        let labels = classify_tick(&tick, Some(&prev));
-        assert!(labels.ball_world);
     }
 
     #[test]
     fn norm_error_matches_strict_thresholds() {
         let tick = quiet_tick(0, 0.0);
-        let truth = snapshot_from_tick(&tick).unwrap();
+        let truth = snapshot_from_tick(&tick, 0).unwrap();
         assert_eq!(normalized_error(&truth, &truth), 0.0);
         assert!(passes(0.0));
         let mut moved = truth;
@@ -902,27 +811,32 @@ mod tests {
     }
 
     struct MirrorBackend {
-        snaps: Vec<Snapshot>,
+        snaps: Vec<Vec<Snapshot>>,
         cursor: usize,
     }
 
     impl MirrorBackend {
         fn new(ticks: &[TickRecord]) -> Self {
-            Self {
-                snaps: ticks
-                    .iter()
-                    .map(|tick| snapshot_from_tick(tick).unwrap())
-                    .collect(),
-                cursor: 0,
-            }
+            let num_cars = ticks
+                .first()
+                .map(|tick| tick.car_records.len())
+                .unwrap_or(1);
+            let snaps = (0..num_cars)
+                .map(|car_idx| {
+                    ticks
+                        .iter()
+                        .map(|tick| snapshot_from_tick(tick, car_idx).unwrap())
+                        .collect()
+                })
+                .collect();
+            Self { snaps, cursor: 0 }
         }
     }
 
     impl ReplayBackend for MirrorBackend {
         fn reset(&mut self, start: &TickRecord) {
-            let want = snapshot_from_tick(start).unwrap();
-            self.cursor = self
-                .snaps
+            let want = snapshot_from_tick(start, 0).unwrap();
+            self.cursor = self.snaps[0]
                 .iter()
                 .position(|snap| snap.car.pos == want.car.pos)
                 .unwrap_or(0);
@@ -932,13 +846,109 @@ mod tests {
             self.reset(state);
         }
 
-        fn step(&mut self, _controls: &ControlsRecord) {
-            self.cursor = (self.cursor + 1).min(self.snaps.len() - 1);
+        fn step(&mut self, _controls: &[ControlsRecord]) -> Vec<SimContactEvents> {
+            self.cursor = (self.cursor + 1).min(self.snaps[0].len() - 1);
+            vec![SimContactEvents::default(); self.snaps.len()]
         }
 
-        fn snapshot(&mut self) -> Snapshot {
-            self.snaps[self.cursor]
+        fn snapshot(&mut self, car_idx: usize) -> Snapshot {
+            self.snaps[car_idx][self.cursor]
         }
+    }
+
+    #[test]
+    fn labels_sim_observed_contacts() {
+        // Sim-observed contacts label the tick even when RL flags are clear.
+        let tick = quiet_tick(1, 10.0);
+        let sim = SimContactEvents {
+            car_ball: false,
+            car_car: true,
+            ball_world: true,
+            chassis_world: false,
+        };
+        let labels = classify_tick(&tick, 0, sim);
+        assert!(labels.car_car);
+        assert!(labels.ball_world);
+        assert!(!labels.car_ball);
+        assert!(!labels.contains(ContactCategory::NoContact));
+        // No sim events and clear flags: quiet.
+        let quiet = classify_tick(&tick, 0, SimContactEvents::default());
+        assert!(quiet.is_quiet());
+        // RL flags still label without sim events.
+        let mut touch = quiet_tick(1, 10.0);
+        touch.car_records[0].is_touching_ball = true;
+        let labels = classify_tick(&touch, 0, SimContactEvents::default());
+        assert!(labels.car_ball);
+    }
+
+    #[test]
+    fn splits_on_car_teleport() {
+        let mut ticks: Vec<_> = (0..4).map(|i| quiet_tick(i, i as f32 * 10.0)).collect();
+        // Tick 2 snaps 5000 UU away with contiguous frames: a reset, not play.
+        ticks[2].car_records[0].phys.pos = vec(5000.0, 0.0, 100.0);
+        ticks[3].car_records[0].phys.pos = vec(5010.0, 0.0, 100.0);
+        let segments = split_segments(&ticks, config(8, 1));
+        for segment in &segments {
+            let range = segment.start..segment.end();
+            assert!(!(range.contains(&1) && range.contains(&2)));
+        }
+    }
+
+    #[test]
+    fn splits_on_ball_teleport() {
+        let mut ticks: Vec<_> = (0..4).map(|i| quiet_tick(i, i as f32 * 10.0)).collect();
+        ticks[2].ball_record.pos = vec(0.0, 5000.0, 100.0);
+        ticks[3].ball_record.pos = vec(0.0, 5010.0, 100.0);
+        let segments = split_segments(&ticks, config(8, 1));
+        for segment in &segments {
+            let range = segment.start..segment.end();
+            assert!(!(range.contains(&1) && range.contains(&2)));
+        }
+    }
+
+    #[test]
+    fn fast_legal_motion_keeps_run() {
+        // 400 UU per tick is fast but legal: no teleport split.
+        let ticks: Vec<_> = (0..4).map(|i| quiet_tick(i, i as f32 * 400.0)).collect();
+        let segments = split_segments(&ticks, config(8, 1));
+        assert_eq!(segments, vec![Segment { start: 0, len: 4 }]);
+    }
+
+    #[test]
+    fn splits_on_car_count_change_and_labels_per_car() {
+        let mut ticks: Vec<_> = (0..4).map(|i| quiet_tick(i, i as f32 * 10.0)).collect();
+        // Tick 2 gains a second car that touches the ball.
+        let mut second = ticks[2].car_records[0].clone();
+        second.is_touching_ball = true;
+        ticks[2].car_records.push(second);
+        let segments = split_segments(&ticks, config(4, 1));
+        // No segment spans the count change at index 2.
+        assert!(!segments.iter().any(|s| (s.start..s.end()).contains(&2)));
+        // Labels are per car.
+        let tick2 = &ticks[2];
+        assert!(!classify_tick(tick2, 0, SimContactEvents::default()).car_ball);
+        assert!(classify_tick(tick2, 1, SimContactEvents::default()).car_ball);
+        assert!(snapshot_from_tick(&ticks[2], 1).is_some());
+        assert!(snapshot_from_tick(&ticks[2], 2).is_none());
+        // Car 0 still evaluates over the clean run.
+        let mut backend = MirrorBackend::new(&ticks);
+        let report = evaluate(&mut backend, &ticks, &segments, 1, false, true);
+        assert!(report.total.support > 0);
+    }
+
+    #[test]
+    fn evaluate_combines_car_ticks() {
+        // Two-car run: every scored tick counts once per car.
+        let mut ticks: Vec<_> = (0..4).map(|i| quiet_tick(i, i as f32 * 10.0)).collect();
+        for tick in &mut ticks {
+            tick.car_records.push(tick.car_records[0].clone());
+        }
+        let mut backend = MirrorBackend::new(&ticks);
+        let segments = vec![Segment { start: 0, len: 4 }];
+        let report = evaluate(&mut backend, &ticks, &segments, 1, false, true);
+        assert_eq!(report.total.support, 6);
+        assert_eq!(report.total.passed, 6);
+        assert_eq!(report.no_contact.support, 6);
     }
 
     #[test]
@@ -948,7 +958,7 @@ mod tests {
         ticks[4].car_records[0].wheels[0].has_contact = true;
         let mut backend = MirrorBackend::new(&ticks);
         let segments = vec![Segment { start: 0, len: 6 }];
-        let report = evaluate(&mut backend, &ticks, &segments, 1, false);
+        let report = evaluate(&mut backend, &ticks, &segments, 1, false, true);
         assert_eq!(report.total.support, 5);
         assert_eq!(report.total.passed, 5);
         assert_eq!(report.car_ball.support, 1);
@@ -956,7 +966,7 @@ mod tests {
         assert_eq!(report.no_contact.support, 4);
 
         let mut backend = MirrorBackend::new(&ticks);
-        let report = evaluate(&mut backend, &ticks, &segments, 3, true);
+        let report = evaluate(&mut backend, &ticks, &segments, 3, true, true);
         assert_eq!(report.total.support, 5);
         assert_eq!(report.total.passed, 5);
     }

@@ -17,9 +17,11 @@ mod v2;
 mod v3;
 
 /// Segmented RocketSim replay metric against one RLPR recording.
+/// Scores each car independently against its own trajectory; the opponent
+/// is absent from the sim.
 #[derive(Parser)]
 struct Args {
-    /// RLPR recording file. Uses the bundled 90-second capture by default.
+    /// RLPR recording file. Uses the bundled Wisp 1v1 capture by default.
     rlpr_file: Option<PathBuf>,
 
     /// Ticks per segment.
@@ -33,6 +35,16 @@ struct Args {
     /// Reset to the prior RL state before each scored tick.
     #[arg(long)]
     reset_each_tick: bool,
+
+    /// Label ticks from RL flags only; ignore contacts the sim observed.
+    /// Isolates physics fidelity from sim event sensitivity.
+    #[arg(long)]
+    ignore_sim_events: bool,
+
+    /// Dodge deadzone (|yaw| + |pitch| + |roll| needed to flip).
+    /// Match this to the account the recording was made on.
+    #[arg(long, default_value_t = 0.5)]
+    dodge_deadzone: f32,
 }
 
 fn metric_value(support: usize, value: f64) -> String {
@@ -67,6 +79,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if args.segment_ticks <= 1 {
         return Err("--segment-ticks must be greater than 1".into());
     }
+    if !(0.0..=1.0).contains(&args.dodge_deadzone) {
+        return Err("--dodge-deadzone must be within 0.0..=1.0".into());
+    }
     if args.warmup_ticks >= args.segment_ticks {
         return Err("--warmup-ticks must be less than --segment-ticks".into());
     }
@@ -74,11 +89,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let rlpr_file = args.rlpr_file.unwrap_or_else(|| {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("recordings")
-            .join("stress_soccar_90s.rlpr")
+            .join("wisp_1v1_300s.rlpr")
     });
     let recording = Recording::from_file(&rlpr_file)?;
-    if !recording.ticks.iter().all(common::tick_has_single_car) {
-        return Err("recording must have exactly one car in every tick".into());
+    let num_cars = recording
+        .ticks
+        .first()
+        .map(common::tick_car_count)
+        .unwrap_or(0);
+    if num_cars == 0 || num_cars > common::MAX_SCORED_CARS {
+        return Err("recording must hold 1-8 cars in every tick".into());
+    }
+    if !recording
+        .ticks
+        .iter()
+        .all(|tick| common::tick_car_count(tick) == num_cars)
+    {
+        return Err("recording car count must be constant".into());
     }
     if recording.ticks.len() <= args.warmup_ticks {
         return Err("recording has too few ticks for the warmup length".into());
@@ -94,8 +121,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     println!(
-        "Recording: {} (RLPR v{})",
-        recording.name, recording.version
+        "Recording: {} (RLPR v{}, {} car{})",
+        recording.name,
+        recording.version,
+        num_cars,
+        if num_cars == 1 { "" } else { "s" },
     );
     println!("File: {}", rlpr_file.display());
     println!("Ticks: {}", recording.ticks.len());
@@ -109,7 +139,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             config.warmup_ticks,
         );
     }
-    println!("Categories overlap. Support is the number of scored RL ticks.");
+    println!("Categories overlap. Support counts car-ticks (cars x ticks).");
+    if num_cars > 1 {
+        println!("All cars share the sim; car-car contacts are real sim events.");
+    }
+    println!("Dodge deadzone: {:.2}", args.dodge_deadzone);
     println!();
     println!(
         "{:<7} {:<15} {:>9} {:>9} {:>9} {:>12} {:>12} {:>12}",
@@ -118,27 +152,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("{}", "-".repeat(102));
 
     v3::init();
-    let mut v3_backend = v3::V3Backend::new();
+    let mut v3_backend = v3::V3Backend::with_dodge_deadzone(args.dodge_deadzone);
     let v3_report = common::evaluate(
         &mut v3_backend,
         &recording.ticks,
         &segments,
         config.warmup_ticks,
         args.reset_each_tick,
+        !args.ignore_sim_events,
     );
     print_report("v3", &v3_report);
 
     #[cfg(feature = "v2")]
     {
         v2::init();
-        let mut v2_backend = v2::V2Backend::new();
+        let mut v2_backend = v2::V2Backend::with_dodge_deadzone(args.dodge_deadzone);
         let v2_report = common::evaluate(
             &mut v2_backend,
             &recording.ticks,
             &segments,
             config.warmup_ticks,
             args.reset_each_tick,
+            !args.ignore_sim_events,
         );
+        println!();
         print_report("v2", &v2_report);
     }
 

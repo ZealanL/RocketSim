@@ -23,12 +23,34 @@ use rocketsim_test::rlpr::{
     tick_record::TickRecord,
 };
 
-use super::common::{BodySnapshot, ReplayBackend, Snapshot};
+use super::common::{BodySnapshot, ReplayBackend, SimContactEvents, Snapshot};
 
-/// v2 sim holder with one blue Octane car.
+// Bump events observed during the last stepped tick: (bumper, victim).
+// Collected by v2_bump_callback into a thread-local because cxx
+// callbacks cannot capture state.
+thread_local! {
+    static V2_BUMP_EVENTS: std::cell::RefCell<Vec<(u32, u32)>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// v2 car-bump callback. Records ids only; never touches the arena.
+fn v2_bump_callback(
+    _arena: std::pin::Pin<&mut Arena>,
+    bumper: u32,
+    victim: u32,
+    _is_demo: bool,
+    _user_data: usize,
+) {
+    V2_BUMP_EVENTS.with(|events| events.borrow_mut().push((bumper, victim)));
+}
+
+/// v2 sim holder with one Octane per recorded car (Blue first, then Orange).
 pub struct V2Backend {
     arena: rocketsim_rs::cxx::UniquePtr<Arena>,
-    car_id: u32,
+    car_ids: Vec<u32>,
+    dodge_deadzone: f32,
+    /// Last observed ball-hit tick per car, for hit change detection.
+    last_ball_hit: Vec<u64>,
 }
 
 /// Load collision meshes. Call one time before use.
@@ -42,8 +64,29 @@ pub fn init() {
 impl V2Backend {
     /// Make a new backend. Call [`init`] first.
     pub fn new() -> Self {
-        let (arena, car_id) = fresh_arena();
-        Self { arena, car_id }
+        Self::with_dodge_deadzone(0.5)
+    }
+
+    /// Make a new backend with a custom dodge deadzone.
+    pub fn with_dodge_deadzone(dodge_deadzone: f32) -> Self {
+        let (arena, car_ids) = fresh_arena(1, dodge_deadzone);
+        let last_ball_hit = vec![0; car_ids.len()];
+        Self {
+            arena,
+            car_ids,
+            dodge_deadzone,
+            last_ball_hit,
+        }
+    }
+
+    /// Rebuild the arena when the car count changes.
+    fn ensure_cars(&mut self, num_cars: usize) {
+        if self.car_ids.len() != num_cars {
+            let (arena, car_ids) = fresh_arena(num_cars, self.dodge_deadzone);
+            self.arena = arena;
+            self.car_ids = car_ids;
+            self.last_ball_hit = vec![0; num_cars];
+        }
     }
 }
 
@@ -55,42 +98,76 @@ impl Default for V2Backend {
 
 impl ReplayBackend for V2Backend {
     fn reset(&mut self, start: &TickRecord) {
-        let (arena, car_id) = fresh_arena();
-        self.arena = arena;
-        self.car_id = car_id;
+        self.ensure_cars(start.car_records.len());
         self.set_state(start);
     }
 
     fn set_state(&mut self, state_tick: &TickRecord) {
-        let [car] = state_tick.car_records.as_slice() else {
-            panic!("state needs one car");
-        };
-        let mut state = self.arena.pin_mut().get_car(self.car_id);
-        apply_car_record(&mut state, car);
-        self.arena
-            .pin_mut()
-            .set_car(self.car_id, state)
-            .expect("v2 car id is valid");
+        self.ensure_cars(state_tick.car_records.len());
+        for (slot, car) in state_tick.car_records.iter().enumerate() {
+            let Some(&car_id) = self.car_ids.get(slot) else {
+                panic!("state has more cars than the arena");
+            };
+            let mut state = self.arena.pin_mut().get_car(car_id);
+            apply_car_record(&mut state, car);
+            self.arena
+                .pin_mut()
+                .set_car(car_id, state)
+                .expect("v2 car id is valid");
+            self.arena
+                .pin_mut()
+                .set_car_controls(car_id, v2_controls(&car.prev_controls))
+                .expect("v2 car id is valid");
+        }
 
         self.arena
             .pin_mut()
             .set_ball(ball_state_for_tick(state_tick));
-        self.arena
-            .pin_mut()
-            .set_car_controls(self.car_id, v2_controls(&car.prev_controls))
-            .expect("v2 car id is valid");
     }
 
-    fn step(&mut self, controls: &ControlsRecord) {
-        self.arena
-            .pin_mut()
-            .set_car_controls(self.car_id, v2_controls(controls))
-            .expect("v2 car id is valid");
+    fn step(&mut self, controls: &[ControlsRecord]) -> Vec<SimContactEvents> {
+        for (slot, controls) in controls.iter().enumerate() {
+            if let Some(&car_id) = self.car_ids.get(slot) {
+                self.arena
+                    .pin_mut()
+                    .set_car_controls(car_id, v2_controls(controls))
+                    .expect("v2 car id is valid");
+            }
+        }
         self.arena.pin_mut().step(1);
+        // Drain bump events collected by v2_bump_callback during the step.
+        let mut observed = vec![SimContactEvents::default(); self.car_ids.len()];
+        V2_BUMP_EVENTS.with(|events| {
+            for (bumper, victim) in events.borrow_mut().drain(..) {
+                for arena_car in [bumper, victim] {
+                    if let Some(slot) = self.car_ids.iter().position(|&id| id == arena_car) {
+                        observed[slot].car_car = true;
+                    }
+                }
+            }
+        });
+        // Car/ball and chassis/world contacts come from sim state:
+        // ball_hit_info is per-touch (change-detected against latching),
+        // world_contact reflects the current tick.
+        for (slot, &car_id) in self.car_ids.iter().enumerate() {
+            let state = self.arena.pin_mut().get_car(car_id);
+            let hit = state.ball_hit_info;
+            if hit.is_valid && hit.tick_count_when_hit != self.last_ball_hit[slot] {
+                observed[slot].car_ball = true;
+            }
+            self.last_ball_hit[slot] = hit.tick_count_when_hit;
+            if state.world_contact.has_contact {
+                observed[slot].chassis_world = true;
+            }
+        }
+        observed
     }
 
-    fn snapshot(&mut self) -> Snapshot {
-        let car = self.arena.pin_mut().get_car(self.car_id);
+    fn snapshot(&mut self, car_idx: usize) -> Snapshot {
+        let Some(&car_id) = self.car_ids.get(car_idx) else {
+            panic!("snapshot needs car {car_idx}");
+        };
+        let car = self.arena.pin_mut().get_car(car_id);
         let ball = self.arena.pin_mut().get_ball();
         Snapshot {
             car: BodySnapshot {
@@ -111,15 +188,30 @@ impl ReplayBackend for V2Backend {
     }
 }
 
-/// Make a Soccar arena at 120 Hz with one blue Octane.
-fn fresh_arena() -> (rocketsim_rs::cxx::UniquePtr<Arena>, u32) {
+/// Make a Soccar arena at 120 Hz with one Octane per recorded car.
+fn fresh_arena(
+    num_cars: usize,
+    dodge_deadzone: f32,
+) -> (rocketsim_rs::cxx::UniquePtr<Arena>, Vec<u32>) {
     let config = ArenaConfig {
         no_ball_rot: false,
         ..Default::default()
     };
     let mut arena = Arena::new(GameMode::Soccar, config, 120);
-    let car_id = arena.pin_mut().add_car(Team::Blue, CarConfig::octane());
-    (arena, car_id)
+    arena.pin_mut().set_car_bump_callback(v2_bump_callback, 0);
+    let car_ids = (0..num_cars.max(1))
+        .map(|slot| {
+            let team = if slot.is_multiple_of(2) {
+                Team::Blue
+            } else {
+                Team::Orange
+            };
+            let mut car_config = *CarConfig::octane();
+            car_config.dodge_deadzone = dodge_deadzone;
+            arena.pin_mut().add_car(team, &car_config)
+        })
+        .collect();
+    (arena, car_ids)
 }
 
 /// Copy one recorded car into a v2 car state.
