@@ -709,42 +709,73 @@ impl Car {
     }
 
     fn update_boost(&mut self, rb: &mut RigidBody, mutator_config: &MutatorConfig) {
-        self.state.is_boosting = if self.state.boost > 0.0 {
-            self.state.controls.boost
-                || (self.state.is_boosting
-                    && self.state.boosting_time < car_consts::boost::MIN_TIME)
-        } else {
-            false
-        };
-
-        if self.state.is_boosting {
-            self.state.boosting_time += TICK_TIME;
-            self.state.time_since_boosted = 0.0;
-            self.state.boost -= mutator_config.boost_used_per_second * TICK_TIME;
-
-            let accel = if self.state.is_on_ground {
-                mutator_config.boost_accel_ground
+        // Target machine (b737 0x140F1AC20, dispatcher 0x140F1BD40, latch batteries).
+        // DISARMED: held + amount strictly above 0 arms and fires free (no consume).
+        // ARMED: consume first, held or released; post-consume exactly 0 is silent
+        // and disarms; released with 12 latch fires collected is silent and disarms
+        // (consume kept); otherwise fire full with no reset while armed.
+        let cost = mutator_config.boost_used_per_second * TICK_TIME;
+        if !self.state.is_boosting {
+            if self.state.controls.boost && self.state.boost > 0.0 {
+                self.state.is_boosting = true;
+                self.state.boosting_time += TICK_TIME;
+                self.state.time_since_boosted = 0.0;
+                let accel = if self.state.is_on_ground {
+                    mutator_config.boost_accel_ground
+                } else {
+                    mutator_config.boost_accel_air
+                };
+                rb.add_impulse(
+                    None,
+                    Impulse::Linear(accel * self.state.get_forward_dir() * (UU_TO_BT * TICK_TIME)),
+                    false,
+                    true,
+                );
             } else {
-                mutator_config.boost_accel_air
-            };
-
-            rb.add_impulse(
-                None,
-                Impulse::Linear(accel * self.state.get_forward_dir() * (UU_TO_BT * TICK_TIME)),
-                false,
-                true,
-            );
+                self.state.is_boosting = false;
+                self.state.boosting_time = 0.0;
+                self.state.time_since_boosted += TICK_TIME;
+                if mutator_config.recharge_boost_enabled
+                    && self.state.time_since_boosted >= mutator_config.recharge_boost_delay
+                {
+                    self.state.boost += mutator_config.recharge_boost_per_second * TICK_TIME;
+                }
+            }
         } else {
-            self.state.boosting_time = 0.0;
-            self.state.time_since_boosted += TICK_TIME;
-
-            if mutator_config.recharge_boost_enabled
-                && self.state.time_since_boosted >= mutator_config.recharge_boost_delay
-            {
-                self.state.boost += mutator_config.recharge_boost_per_second * TICK_TIME;
+            // ARMED: consume first, held or released, then pick silence or fire.
+            // Silence covers depletion (post-consume exactly 0, disarm) and
+            // the release latch (pre-tick time at/above MIN_TIME, disarm with
+            // the consume kept). Otherwise fire full with no reset while armed.
+            self.state.boost = (self.state.boost - cost).max(0.0);
+            let depleted = self.state.boost == 0.0;
+            let latch_expired = !self.state.controls.boost
+                && self.state.boosting_time >= car_consts::boost::MIN_TIME;
+            if depleted || latch_expired {
+                self.state.is_boosting = false;
+                self.state.boosting_time = 0.0;
+                self.state.time_since_boosted += TICK_TIME;
+                if mutator_config.recharge_boost_enabled
+                    && self.state.time_since_boosted >= mutator_config.recharge_boost_delay
+                {
+                    self.state.boost += mutator_config.recharge_boost_per_second * TICK_TIME;
+                }
+            } else {
+                self.state.is_boosting = true;
+                self.state.boosting_time += TICK_TIME;
+                self.state.time_since_boosted = 0.0;
+                let accel = if self.state.is_on_ground {
+                    mutator_config.boost_accel_ground
+                } else {
+                    mutator_config.boost_accel_air
+                };
+                rb.add_impulse(
+                    None,
+                    Impulse::Linear(accel * self.state.get_forward_dir() * (UU_TO_BT * TICK_TIME)),
+                    false,
+                    true,
+                );
             }
         }
-
         self.state.boost = self.state.boost.clamp(0.0, car_consts::boost::MAX);
     }
 
