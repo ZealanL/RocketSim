@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use clap::{Parser, ValueEnum};
 use fastrand::Rng;
 use glam::Vec3A;
@@ -39,6 +41,9 @@ pub struct Args {
     pub mem_weight_mode: MemWeightModeArg,
     #[arg(long, default_value_t = 1)]
     pub num_arenas: usize,
+    /// Replay an RLPR recording instead of generating random bot input.
+    #[arg(long, value_name = "FILE")]
+    pub rlpr_file: Option<PathBuf>,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
