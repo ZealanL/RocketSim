@@ -416,8 +416,11 @@ pub mod curves {
 
     pub const BUMP_VEL_AMOUNT_GROUND: LinearPieceCurve<3> =
         LinearPieceCurve::new([(0., (5.0 / 6.)), (1400., 1100.), (2200., 1530.)]);
-    pub const BUMP_VEL_AMOUNT_AIR: LinearPieceCurve<3> =
-        LinearPieceCurve::new([(0., (5.0 / 6.)), (1400., 1390.), (2200., 1945.)]);
+    pub const BUMP_VEL_AMOUNT_AIR: LinearPieceCurve<3> = LinearPieceCurve::new([
+        (0., (150.0 / 180.0)),
+        (1400., (250000.0 / 180.0)),
+        (2200., (350000.0 / 180.0)),
+    ]);
     pub const BUMP_UPWARD_VEL_AMOUNT: LinearPieceCurve<3> =
         LinearPieceCurve::new([(0., (2.0 / 6.)), (1400., 278.), (2200., 417.)]);
 }

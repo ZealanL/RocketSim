@@ -1096,24 +1096,25 @@ impl Arena {
                 victim.demolish(self.config.mutators.respawn_delay);
             } else {
                 let ground_hit = victim_state.is_on_ground;
-                let base_scale = if ground_hit {
-                    consts::curves::BUMP_VEL_AMOUNT_GROUND
+                if ground_hit {
+                    let base_scale =
+                        consts::curves::BUMP_VEL_AMOUNT_GROUND.get_output(speed_towards_other_car);
+
+                    let hit_up_dir = victim_state.phys.rot_mat.z_axis;
+
+                    let upward_vel_curve = &consts::curves::BUMP_UPWARD_VEL_AMOUNT;
+                    let upward_force = upward_vel_curve.get_output(speed_towards_other_car)
+                        * self.config.mutators.bump_force_scale;
+                    let bump_impulse = (vel_dir * base_scale) + (hit_up_dir * upward_force);
+                    victim.vel_impulse_cache += bump_impulse * UU_TO_BT;
                 } else {
-                    consts::curves::BUMP_VEL_AMOUNT_AIR
+                    // Airborne victim: total attacker speed (clamped) selects the Air
+                    // curve output along the attacker velocity direction; no up term.
+                    let attacker_speed = attacker_state.phys.vel.length().min(2200.0);
+                    let base_scale = consts::curves::BUMP_VEL_AMOUNT_AIR.get_output(attacker_speed);
+                    let bump_impulse = vel_dir * base_scale;
+                    victim.vel_impulse_cache += bump_impulse * UU_TO_BT;
                 }
-                .get_output(speed_towards_other_car);
-
-                let hit_up_dir = if victim_state.is_on_ground {
-                    victim_state.phys.rot_mat.z_axis
-                } else {
-                    Vec3A::Z
-                };
-
-                let upward_vel_curve = &consts::curves::BUMP_UPWARD_VEL_AMOUNT;
-                let upward_force = upward_vel_curve.get_output(speed_towards_other_car)
-                    * self.config.mutators.bump_force_scale;
-                let bump_impulse = (vel_dir * base_scale) + (hit_up_dir * upward_force);
-                victim.vel_impulse_cache += bump_impulse * UU_TO_BT;
             }
 
             attacker.state.bump_cooldown_timer = self.config.mutators.bump_cooldown_time;
@@ -1287,5 +1288,146 @@ mod bump_cone_tests {
             Vec3A::NEG_X,
             false
         ));
+    }
+}
+
+#[cfg(test)]
+mod air_bump_impulse_tests {
+    use glam::{Mat3A, Vec3A};
+
+    use crate::{
+        Arena, CarBodyConfig, GameMode, Team,
+        bullet::collision::narrowphase::manifold_point::ManifoldPoint,
+        consts::{self, UU_TO_BT},
+    };
+
+    fn bump_test_arena(attacker_vel: Vec3A, victim_grounded: bool) -> Arena {
+        let mut arena = Arena::new(GameMode::TheVoid);
+        arena.add_car(Team::Blue, CarBodyConfig::OCTANE);
+        arena.add_car(Team::Blue, CarBodyConfig::OCTANE);
+
+        let mut attacker = *arena.get_car_state(0);
+        attacker.phys.pos = Vec3A::new(0.0, 0.0, 500.0);
+        attacker.phys.rot_mat = Mat3A::IDENTITY;
+        attacker.phys.vel = attacker_vel;
+        attacker.is_on_ground = false;
+        attacker.is_supersonic = false;
+        attacker.bump_cooldown_timer = 0.0;
+        arena.set_car_state(0, attacker);
+
+        let mut victim = *arena.get_car_state(1);
+        victim.phys.pos = Vec3A::new(100.0, 0.0, 500.0);
+        victim.phys.rot_mat = Mat3A::IDENTITY;
+        victim.phys.vel = Vec3A::ZERO;
+        victim.is_on_ground = victim_grounded;
+        victim.is_supersonic = false;
+        victim.bump_cooldown_timer = 0.0;
+        arena.set_car_state(1, victim);
+
+        arena
+    }
+
+    fn fire_bump(arena: &mut Arena) {
+        let manifold = ManifoldPoint::new(Vec3A::ZERO, Vec3A::ZERO, Vec3A::Z, 0.0);
+        arena.on_car_car_collision(0, 1, &manifold);
+    }
+
+    #[test]
+    fn airborne_uses_total_speed_clamped_at_2200() {
+        // Total speed ~2291 clamps to 2200 (Air max) while closing speed is 2000.
+        let attacker_vel = Vec3A::new(2000.0, 1000.0, 500.0);
+        assert!(attacker_vel.length() > 2200.0);
+        let mut arena = bump_test_arena(attacker_vel, false);
+        fire_bump(&mut arena);
+
+        let vel_dir = attacker_vel.normalize_or_zero();
+        let expected_max = 350000.0f32 / 180.0f32;
+        let expected = vel_dir * expected_max * UU_TO_BT;
+        let got = arena.cars[1].vel_impulse_cache;
+        assert!(
+            (got - expected).length() < 1e-3,
+            "airborne bump should use total speed clamped at 2200, got {got} expected {expected}"
+        );
+        // Guard against closing-speed lookup via the live curve at speed 2000.
+        let towards_based =
+            vel_dir * consts::curves::BUMP_VEL_AMOUNT_AIR.get_output(2000.0) * UU_TO_BT;
+        assert!(
+            (got - towards_based).length() > 1.0 * UU_TO_BT,
+            "airborne bump must not use speed_towards_other_car, got {got}"
+        );
+    }
+
+    #[test]
+    fn airborne_air_knots_match_target_force_over_180() {
+        // Target Soccar force knots divided by car mass 180, exact f32 bits.
+        let air = &consts::curves::BUMP_VEL_AMOUNT_AIR;
+        assert_eq!(
+            air.get_output(0.0).to_bits(),
+            (150.0f32 / 180.0f32).to_bits()
+        );
+        assert_eq!(
+            air.get_output(1400.0).to_bits(),
+            (250000.0f32 / 180.0f32).to_bits()
+        );
+        assert_eq!(
+            air.get_output(2200.0).to_bits(),
+            (350000.0f32 / 180.0f32).to_bits()
+        );
+        // Mid-segment lerp agrees with live target PushFactor 178614 at speed
+        // ~1000 (178614/180 ~= 992.3).
+        assert!((air.get_output(1000.0) - 992.3).abs() < 0.5);
+    }
+
+    #[test]
+    fn airborne_has_zero_up_term() {
+        let attacker_vel = Vec3A::new(1500.0, 0.0, 500.0);
+        let mut arena = bump_test_arena(attacker_vel, false);
+        fire_bump(&mut arena);
+
+        let total_speed = attacker_vel.length();
+        assert!(total_speed < 2200.0);
+        let base_scale = consts::curves::BUMP_VEL_AMOUNT_AIR.get_output(total_speed);
+        let vel_dir = attacker_vel.normalize_or_zero();
+        let expected = vel_dir * base_scale * UU_TO_BT;
+        let got = arena.cars[1].vel_impulse_cache;
+        assert!(
+            (got - expected).length() < 1e-3,
+            "airborne bump should have no upward term, got {got} expected {expected}"
+        );
+        // Impulse must stay parallel to the attacker velocity direction.
+        assert!(
+            vel_dir.cross(got).length() < 1e-3,
+            "airborne impulse must be parallel to vel_dir, got {got} vel_dir {vel_dir}"
+        );
+    }
+
+    #[test]
+    fn grounded_behavior_unchanged() {
+        // Curves themselves are pinned: no ad hoc tuning.
+        assert!(
+            (consts::curves::BUMP_VEL_AMOUNT_GROUND.get_output(0.0) - (5.0 / 6.0)).abs() < 1e-6
+        );
+        assert!((consts::curves::BUMP_VEL_AMOUNT_GROUND.get_output(1400.0) - 1100.0).abs() < 1e-3);
+        assert!((consts::curves::BUMP_VEL_AMOUNT_GROUND.get_output(2200.0) - 1530.0).abs() < 1e-3);
+        assert!((consts::curves::BUMP_UPWARD_VEL_AMOUNT.get_output(1400.0) - 278.0).abs() < 1e-3);
+
+        let attacker_vel = Vec3A::new(1500.0, 0.0, 500.0);
+        let mut arena = bump_test_arena(attacker_vel, true);
+        fire_bump(&mut arena);
+
+        // Grounded path still uses closing speed with the victim-up plus upward term.
+        let speed_towards = 1500.0;
+        let base_scale = consts::curves::BUMP_VEL_AMOUNT_GROUND.get_output(speed_towards);
+        let upward_force = consts::curves::BUMP_UPWARD_VEL_AMOUNT.get_output(speed_towards);
+        let vel_dir = attacker_vel.normalize_or_zero();
+        let expected = (vel_dir * base_scale + Vec3A::Z * upward_force) * UU_TO_BT;
+        let got = arena.cars[1].vel_impulse_cache;
+        assert!(
+            (got - expected).length() < 1e-3,
+            "grounded bump must keep closing-speed plus upward term, got {got} expected {expected}"
+        );
+        // Spot-check the pinned interpolation: Ground(1500) = 1153.75, Up(1500) = 295.375.
+        assert!((base_scale - 1153.75).abs() < 1e-2);
+        assert!((upward_force - 295.375).abs() < 1e-2);
     }
 }
