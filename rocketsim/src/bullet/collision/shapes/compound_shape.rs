@@ -89,9 +89,6 @@ impl CompoundShape {
         ray_idx: usize,
     ) {
         debug_assert_eq!(self.child_trans.matrix3, Mat3A::IDENTITY);
-        if self.child_trans.matrix3 != Mat3A::IDENTITY {
-            return;
-        }
         let delta = ray_target - ray_source;
         let dist = delta.length();
         if !dist.is_finite() || dist <= 0.0 {
@@ -233,9 +230,6 @@ impl CompoundShape {
         margin: f32,
     ) -> Option<(f32, Vec3A)> {
         debug_assert_eq!(self.child_trans.matrix3, Mat3A::IDENTITY);
-        if self.child_trans.matrix3 != Mat3A::IDENTITY {
-            return None;
-        }
         if !ray_source.is_finite() || !dir.is_finite() {
             return None;
         }
@@ -456,19 +450,26 @@ fn solve_rounded_box(
 
 #[cfg(test)]
 mod tests {
-    use std::f32::consts::FRAC_PI_2;
+    use std::f32::consts::{FRAC_1_SQRT_2, FRAC_PI_2};
 
     use glam::{Affine3A, Mat3A, Vec3A, Vec4};
 
     use super::CompoundShape;
-    use crate::bullet::collision::dispatch::quad_ray_callbacks::{
-        BridgeTriQuadRayCallback, ClosestQuadRayResultCallback, QuadRayResultCallback,
+    use crate::{
+        bullet::{
+            collision::{
+                dispatch::quad_ray_callbacks::{
+                    BridgeTriQuadRayCallback, ClosestQuadRayResultCallback, QuadRayResultCallback,
+                },
+                shapes::{
+                    box_shape::BoxShape, collision_shape::CollisionShapes,
+                    sphere_shape::SphereShape,
+                },
+            },
+            dynamics::rigid_body::{RigidBody, RigidBodyConstructionInfo},
+        },
+        shared::QuadRayInfo,
     };
-    use crate::bullet::collision::shapes::box_shape::BoxShape;
-    use crate::bullet::collision::shapes::collision_shape::CollisionShapes;
-    use crate::bullet::collision::shapes::sphere_shape::SphereShape;
-    use crate::bullet::dynamics::rigid_body::{RigidBody, RigidBodyConstructionInfo};
-    use crate::shared::QuadRayInfo;
 
     fn unit_box() -> BoxShape {
         BoxShape::new(Vec3A::new(1.0, 1.0, 1.0))
@@ -552,7 +553,7 @@ mod tests {
         let dz = 0.0008f32.sqrt();
         let hit_z = 0.96 + dz;
         let expected_fraction = (5.0 - hit_z) / 10.0;
-        let expected_normal = Vec3A::new(0.5, 0.5, 0.70710678).normalize();
+        let expected_normal = Vec3A::new(0.5, 0.5, FRAC_1_SQRT_2).normalize();
         assert!(
             (fraction - expected_fraction).abs() < 1e-4,
             "fraction {fraction} vs {expected_fraction}"
@@ -609,7 +610,7 @@ mod tests {
         let to = Vec3A::new(x, x, -5.0);
         let (fraction, normal) = cast_one(&compound, from, to).expect("tangency must hit");
         assert!((fraction - 0.404).abs() < 1e-4, "fraction {fraction}");
-        let expected = Vec3A::new(0.70710678, 0.70710678, 0.0).normalize();
+        let expected = Vec3A::new(FRAC_1_SQRT_2, FRAC_1_SQRT_2, 0.0).normalize();
         assert!(normal.dot(expected) > 0.999, "normal {normal:?}");
     }
 
