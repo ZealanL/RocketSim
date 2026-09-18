@@ -18,7 +18,7 @@ pub struct RaycastInfo {
     pub ground_body_idx: usize,
     pub suspension_length: f32,
     pub impulse: Vec3A,
-    pub ground_stick: Vec3A,
+    pub ground_stick: Option<Vec3A>,
     pub is_in_contact_with_world: bool,
     pub clipped_inv_contact_dot_suspension: f32,
     pub suspension_relative_vel: f32,
@@ -170,12 +170,11 @@ impl WheelInfo {
             }
         }
 
-        // Dynamic ray hits apply stick to the hit body.
         let ground_stick =
             if !ray_results.rigid_body.is_static_obj() && ray_results.rigid_body.inv_mass != 0.0 {
-                -contact_normal
+                Some(-contact_normal)
             } else {
-                Vec3A::ZERO
+                None
             };
 
         self.raycast_info = Some(RaycastInfo {
