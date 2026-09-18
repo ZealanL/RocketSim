@@ -1147,8 +1147,9 @@ impl Arena {
 
 #[cfg(test)]
 mod demo_cone_tests {
-    use super::is_within_demo_cone;
     use glam::Vec3A;
+
+    use super::is_within_demo_cone;
 
     const FWD: Vec3A = Vec3A::X;
     const RIGHT: Vec3A = Vec3A::Y;
@@ -1247,8 +1248,9 @@ mod demo_cone_tests {
 
 #[cfg(test)]
 mod bump_cone_tests {
-    use super::is_within_bump_cone;
     use glam::Vec3A;
+
+    use super::is_within_bump_cone;
 
     #[test]
     fn side_graze_bump() {

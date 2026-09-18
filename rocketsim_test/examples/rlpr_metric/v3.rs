@@ -5,7 +5,8 @@
 //! Step applies each recorded car's controls for one tick.
 
 use rocketsim::{
-    Arena, ArenaEvent, CarBodyConfig, CarControls, CarState, GameMode, PhysState, Team,
+    Arena, ArenaConfig, ArenaEvent, ArenaMemWeightMode, CarBodyConfig, CarControls, CarState,
+    GameMode, PhysState, Team,
 };
 use rocketsim_test::rlpr::{cpp_records::ControlsRecord, tick_record::TickRecord};
 
@@ -16,6 +17,7 @@ pub struct V3Backend {
     arena: Arena,
     car_ids: Vec<usize>,
     dodge_deadzone: f32,
+    mem_weight_mode: ArenaMemWeightMode,
 }
 
 /// Init RocketSim collision meshes for this example tool.
@@ -37,11 +39,25 @@ impl V3Backend {
 
     /// Make a backend with a custom dodge deadzone.
     pub fn with_dodge_deadzone(dodge_deadzone: f32) -> Self {
+        Self::with_mem_weight_mode(dodge_deadzone, ArenaMemWeightMode::Heavy)
+    }
+
+    /// Make a backend with an explicit arena memory mode.
+    pub fn with_mem_weight_mode(dodge_deadzone: f32, mem_weight_mode: ArenaMemWeightMode) -> Self {
         Self {
-            arena: Arena::new(GameMode::Soccar),
+            arena: Arena::new_with_config(
+                ArenaConfig::new(GameMode::Soccar).with_mem_weight_mode(mem_weight_mode),
+            ),
             car_ids: Vec::new(),
             dodge_deadzone,
+            mem_weight_mode,
         }
+    }
+
+    fn new_arena(&self) -> Arena {
+        Arena::new_with_config(
+            ArenaConfig::new(GameMode::Soccar).with_mem_weight_mode(self.mem_weight_mode),
+        )
     }
 
     /// Octane config with this backend's dodge deadzone.
@@ -79,7 +95,7 @@ impl V3Backend {
     /// Rebuild the arena when the car count changes.
     fn ensure_cars(&mut self, num_cars: usize) {
         if self.car_ids.len() != num_cars {
-            self.arena = Arena::new(GameMode::Soccar);
+            self.arena = self.new_arena();
             let config = self.car_config();
             self.car_ids = (0..num_cars)
                 .map(|slot| self.arena.add_car(Self::team_for_slot(slot), config))
@@ -100,6 +116,17 @@ impl V3Backend {
         for &car_id in &self.car_ids {
             self.arena.refresh_car_sticky_gate(car_id);
         }
+    }
+
+    /// Step the arena without collecting replay metric events.
+    #[allow(dead_code)]
+    pub fn benchmark_step(&mut self, controls: &[CarControls]) {
+        for (slot, &controls) in controls.iter().enumerate() {
+            if let Some(&car_id) = self.car_ids.get(slot) {
+                self.arena.set_car_controls(car_id, controls);
+            }
+        }
+        let _ = self.arena.step_tick();
     }
 }
 

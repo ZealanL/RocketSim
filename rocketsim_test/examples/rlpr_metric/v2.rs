@@ -16,7 +16,10 @@
 use glam::Vec3A;
 use rocketsim_rs::{
     math::{RotMat, Vec3},
-    sim::{Arena, ArenaConfig, BallState, CarConfig, CarControls, CarState, GameMode, Team},
+    sim::{
+        Arena, ArenaConfig, ArenaMemWeightMode, BallState, CarConfig, CarControls, CarState,
+        GameMode, Team,
+    },
 };
 use rocketsim_test::rlpr::{
     cpp_records::{CarRecord, ControlsRecord, Mat3Record, VecRecord},
@@ -49,6 +52,8 @@ pub struct V2Backend {
     arena: rocketsim_rs::cxx::UniquePtr<Arena>,
     car_ids: Vec<u32>,
     dodge_deadzone: f32,
+    mem_weight_mode: ArenaMemWeightMode,
+    capture_events: bool,
     /// Last observed ball-hit tick per car, for hit change detection.
     last_ball_hit: Vec<u64>,
 }
@@ -69,12 +74,30 @@ impl V2Backend {
 
     /// Make a new backend with a custom dodge deadzone.
     pub fn with_dodge_deadzone(dodge_deadzone: f32) -> Self {
-        let (arena, car_ids) = fresh_arena(1, dodge_deadzone);
+        Self::with_options(dodge_deadzone, ArenaMemWeightMode::Heavy, true)
+    }
+
+    /// Make a backend for the throughput benchmark.
+    ///
+    /// The benchmark does not install the metric event callback.
+    #[allow(dead_code)]
+    pub fn benchmark(mem_weight_mode: ArenaMemWeightMode) -> Self {
+        Self::with_options(0.5, mem_weight_mode, false)
+    }
+
+    fn with_options(
+        dodge_deadzone: f32,
+        mem_weight_mode: ArenaMemWeightMode,
+        capture_events: bool,
+    ) -> Self {
+        let (arena, car_ids) = fresh_arena(1, dodge_deadzone, mem_weight_mode, capture_events);
         let last_ball_hit = vec![0; car_ids.len()];
         Self {
             arena,
             car_ids,
             dodge_deadzone,
+            mem_weight_mode,
+            capture_events,
             last_ball_hit,
         }
     }
@@ -82,11 +105,36 @@ impl V2Backend {
     /// Rebuild the arena when the car count changes.
     fn ensure_cars(&mut self, num_cars: usize) {
         if self.car_ids.len() != num_cars {
-            let (arena, car_ids) = fresh_arena(num_cars, self.dodge_deadzone);
+            let (arena, car_ids) = fresh_arena(
+                num_cars,
+                self.dodge_deadzone,
+                self.mem_weight_mode,
+                self.capture_events,
+            );
             self.arena = arena;
             self.car_ids = car_ids;
             self.last_ball_hit = vec![0; num_cars];
         }
+    }
+
+    /// Step the arena without callbacks, event scans, or metric allocations.
+    #[allow(dead_code)]
+    pub fn benchmark_step(&mut self, controls: &[CarControls]) {
+        for (slot, controls) in controls.iter().enumerate() {
+            if let Some(&car_id) = self.car_ids.get(slot) {
+                self.arena
+                    .pin_mut()
+                    .set_car_controls(car_id, *controls)
+                    .expect("v2 car id is valid");
+            }
+        }
+        self.arena.pin_mut().step(1);
+    }
+
+    /// Convert one recording control before the timed loop.
+    #[allow(dead_code)]
+    pub fn benchmark_control(controls: ControlsRecord) -> CarControls {
+        v2_controls(&controls)
     }
 }
 
@@ -192,13 +240,18 @@ impl ReplayBackend for V2Backend {
 fn fresh_arena(
     num_cars: usize,
     dodge_deadzone: f32,
+    mem_weight_mode: ArenaMemWeightMode,
+    capture_events: bool,
 ) -> (rocketsim_rs::cxx::UniquePtr<Arena>, Vec<u32>) {
     let config = ArenaConfig {
+        mem_weight_mode,
         no_ball_rot: false,
         ..Default::default()
     };
     let mut arena = Arena::new(GameMode::Soccar, config, 120);
-    arena.pin_mut().set_car_bump_callback(v2_bump_callback, 0);
+    if capture_events {
+        arena.pin_mut().set_car_bump_callback(v2_bump_callback, 0);
+    }
     let car_ids = (0..num_cars.max(1))
         .map(|slot| {
             let team = if slot.is_multiple_of(2) {
