@@ -156,6 +156,21 @@ impl PhysRecord {
     pub fn impulse_records(&self) -> &[ImpulseRecord] {
         &self.impulse_records_data[..self.num_impulse_records as usize]
     }
+
+    /// Test-only helper: attach impulse records of the given types.
+    #[cfg(test)]
+    pub(crate) fn set_test_impulses(&mut self, types: &[ImpulseRecordType]) {
+        let n = types.len().min(self.impulse_records_data.len());
+        for (slot, ty) in self.impulse_records_data.iter_mut().zip(types.iter()) {
+            *slot = ImpulseRecord {
+                lin_impulse: VecRecord::new(0.0, 0.0, 0.0),
+                ang_impulse: VecRecord::new(0.0, 0.0, 0.0),
+                impulse_type: *ty,
+                is_accum: true,
+            };
+        }
+        self.num_impulse_records = n as u32;
+    }
 }
 impl From<PhysRecord> for PhysState {
     fn from(phys_record: PhysRecord) -> Self {
