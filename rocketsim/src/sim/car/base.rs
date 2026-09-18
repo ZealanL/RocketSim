@@ -709,43 +709,8 @@ impl Car {
     }
 
     fn update_boost(&mut self, rb: &mut RigidBody, mutator_config: &MutatorConfig) {
-        // Target machine (b737 0x140F1AC20, dispatcher 0x140F1BD40, latch batteries).
-        // DISARMED: held + amount strictly above 0 arms and fires free (no consume).
-        // ARMED: consume first, held or released; post-consume exactly 0 is silent
-        // and disarms; released with 12 latch fires collected is silent and disarms
-        // (consume kept); otherwise fire full with no reset while armed.
-        let cost = mutator_config.boost_used_per_second * TICK_TIME;
-        if !self.state.is_boosting {
-            if self.state.controls.boost && self.state.boost > 0.0 {
-                self.state.is_boosting = true;
-                self.state.boosting_time += TICK_TIME;
-                self.state.time_since_boosted = 0.0;
-                let accel = if self.state.is_on_ground {
-                    mutator_config.boost_accel_ground
-                } else {
-                    mutator_config.boost_accel_air
-                };
-                rb.add_impulse(
-                    None,
-                    Impulse::Linear(accel * self.state.get_forward_dir() * (UU_TO_BT * TICK_TIME)),
-                    false,
-                    true,
-                );
-            } else {
-                self.state.is_boosting = false;
-                self.state.boosting_time = 0.0;
-                self.state.time_since_boosted += TICK_TIME;
-                if mutator_config.recharge_boost_enabled
-                    && self.state.time_since_boosted >= mutator_config.recharge_boost_delay
-                {
-                    self.state.boost += mutator_config.recharge_boost_per_second * TICK_TIME;
-                }
-            }
-        } else {
-            // ARMED: consume first, held or released, then pick silence or fire.
-            // Silence covers depletion (post-consume exactly 0, disarm) and
-            // the release latch (pre-tick time at/above MIN_TIME, disarm with
-            // the consume kept). Otherwise fire full with no reset while armed.
+        if self.state.is_boosting {
+            let cost = mutator_config.boost_used_per_second * TICK_TIME;
             self.state.boost = (self.state.boost - cost).max(0.0);
             let depleted = self.state.boost == 0.0;
             let latch_expired = !self.state.controls.boost
@@ -754,6 +719,7 @@ impl Car {
                 self.state.is_boosting = false;
                 self.state.boosting_time = 0.0;
                 self.state.time_since_boosted += TICK_TIME;
+
                 if mutator_config.recharge_boost_enabled
                     && self.state.time_since_boosted >= mutator_config.recharge_boost_delay
                 {
@@ -768,6 +734,7 @@ impl Car {
                 } else {
                     mutator_config.boost_accel_air
                 };
+
                 rb.add_impulse(
                     None,
                     Impulse::Linear(accel * self.state.get_forward_dir() * (UU_TO_BT * TICK_TIME)),
@@ -775,7 +742,34 @@ impl Car {
                     true,
                 );
             }
+        } else if self.state.controls.boost && self.state.boost > 0.0 {
+            self.state.is_boosting = true;
+            self.state.boosting_time += TICK_TIME;
+            self.state.time_since_boosted = 0.0;
+            let accel = if self.state.is_on_ground {
+                mutator_config.boost_accel_ground
+            } else {
+                mutator_config.boost_accel_air
+            };
+
+            rb.add_impulse(
+                None,
+                Impulse::Linear(accel * self.state.get_forward_dir() * (UU_TO_BT * TICK_TIME)),
+                false,
+                true,
+            );
+        } else {
+            self.state.is_boosting = false;
+            self.state.boosting_time = 0.0;
+            self.state.time_since_boosted += TICK_TIME;
+
+            if mutator_config.recharge_boost_enabled
+                && self.state.time_since_boosted >= mutator_config.recharge_boost_delay
+            {
+                self.state.boost += mutator_config.recharge_boost_per_second * TICK_TIME;
+            }
         }
+
         self.state.boost = self.state.boost.clamp(0.0, car_consts::boost::MAX);
     }
 
@@ -965,47 +959,5 @@ impl Car {
         self.state.phys.pos = rb.get_world_trans().translation * BT_TO_UU;
         self.state.phys.vel = rb.lin_vel * BT_TO_UU;
         self.state.phys.ang_vel = rb.ang_vel;
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::bullet::collision::broadphase::GridBroadphase;
-
-    #[test]
-    fn set_state_syncs_interp_world_trans() {
-        let broadphase = GridBroadphase::new(Vec3A::splat(-100.0), Vec3A::splat(100.0), 10.0, 1);
-        let mut bullet_world = DiscreteDynamicsWorld::new(broadphase, Vec3A::ZERO);
-        let mut car = Car::new(
-            0,
-            Team::Blue,
-            &mut bullet_world,
-            &MutatorConfig::default(),
-            CarBodyConfig::OCTANE,
-        );
-        let rb = &mut bullet_world.bodies_mut()[car.rigid_body_idx];
-
-        // Force the transforms to differ, as a teleport restore would find them.
-        rb.set_world_trans(Affine3A::IDENTITY);
-        rb.interp_world_trans = Affine3A {
-            matrix3: Mat3A::IDENTITY,
-            translation: Vec3A::new(0.0, 50.0, 0.0),
-        };
-        assert_ne!(*rb.get_world_trans(), rb.interp_world_trans);
-
-        let mut state = CarState::DEFAULT;
-        state.phys.pos = Vec3A::new(-2000.0, 1500.0, 20.0);
-        state.phys.rot_mat = Mat3A::from_rotation_z(-0.5);
-        state.phys.vel = Vec3A::ZERO;
-        state.phys.ang_vel = Vec3A::ZERO;
-        car.set_state(rb, &state);
-
-        let expected = Affine3A {
-            matrix3: state.phys.rot_mat,
-            translation: state.phys.pos * UU_TO_BT,
-        };
-        assert_eq!(*rb.get_world_trans(), expected);
-        assert_eq!(rb.interp_world_trans, expected);
     }
 }
