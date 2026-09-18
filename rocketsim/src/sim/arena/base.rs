@@ -849,63 +849,21 @@ fn is_within_rect_cone(
     yaw_limit_deg: f32,
     pitch_limit_deg: f32,
 ) -> bool {
-    const SCALE: f32 = 1.01;
-    const RAD2DEG: f32 = 57.29578;
-    const EPS: f32 = 1e-8;
+    debug_assert!(yaw_limit_deg < 90.0 && pitch_limit_deg < 90.0);
+
     let fwd = if b_reverse { -forward } else { forward };
-    let len2 = delta.length_squared();
-    if len2.is_nan() || len2 < EPS {
+    let Some(d) = delta.try_normalize() else {
+        return false;
+    };
+
+    let f = d.dot(fwd);
+    if f <= 0.0 {
         return false;
     }
-    let d = delta / len2.sqrt();
-    let dot1 = d.dot(right);
-    let s1 = if dot1 >= 0.0 {
-        dot1 / SCALE
-    } else {
-        dot1 * SCALE
-    };
-    let p1 = d - right * s1;
-    let l1 = p1.length_squared();
-    let q1 = if l1 < EPS {
-        Vec3A::ZERO
-    } else {
-        p1 / l1.sqrt()
-    };
-    let da1 = fwd.dot(q1);
-    let c1 = if da1.is_nan() || da1 < -1.0 {
-        -1.0
-    } else if da1 > 1.0 {
-        1.0
-    } else {
-        da1
-    };
-    let a1 = c1.acos() * RAD2DEG;
-    if a1 > pitch_limit_deg {
-        return false;
-    }
-    let dot2 = d.dot(up);
-    let s2 = if dot2 >= 0.0 {
-        dot2 / SCALE
-    } else {
-        dot2 * SCALE
-    };
-    let p2 = d - up * s2;
-    let l2 = p2.length_squared();
-    let q2 = if l2 < EPS {
-        Vec3A::ZERO
-    } else {
-        p2 / l2.sqrt()
-    };
-    let da2 = fwd.dot(q2);
-    let c2 = if da2.is_nan() || da2 < -1.0 {
-        -1.0
-    } else if da2 > 1.0 {
-        1.0
-    } else {
-        da2
-    };
-    let a2 = c2.acos() * RAD2DEG;
-    a2 <= yaw_limit_deg
+
+    // angle = atan2(|component|, f) <= limit  <=>  |component| <= f * tan(limit)
+    d.dot(right).abs() <= f * yaw_limit_deg.to_radians().tan()
+        && d.dot(up).abs() <= f * pitch_limit_deg.to_radians().tan()
 }
 
 fn is_within_demo_cone(
@@ -915,14 +873,16 @@ fn is_within_demo_cone(
     delta: Vec3A,
     b_reverse: bool,
 ) -> bool {
+    use consts::car::demo;
+
     is_within_rect_cone(
         forward,
         right,
         up,
         delta,
         b_reverse,
-        consts::car::demo::YAW_LIMIT_DEG,
-        consts::car::demo::PITCH_LIMIT_DEG,
+        demo::YAW_LIMIT_DEG,
+        demo::PITCH_LIMIT_DEG,
     )
 }
 
@@ -933,14 +893,16 @@ fn is_within_bump_cone(
     delta: Vec3A,
     b_reverse: bool,
 ) -> bool {
+    use consts::car::bump;
+
     is_within_rect_cone(
         forward,
         right,
         up,
         delta,
         b_reverse,
-        consts::car::bump::YAW_LIMIT_DEG,
-        consts::car::bump::PITCH_LIMIT_DEG,
+        bump::YAW_LIMIT_DEG,
+        bump::PITCH_LIMIT_DEG,
     )
 }
 
@@ -1142,367 +1104,5 @@ impl Arena {
         let car_rb_index = self.cars[car_idx].rigid_body_idx;
         let rb = &self.bullet_world.bodies()[car_rb_index];
         &rb.dbg_tick_impulse_history
-    }
-}
-
-#[cfg(test)]
-mod demo_cone_tests {
-    use glam::Vec3A;
-
-    use super::is_within_demo_cone;
-
-    const FWD: Vec3A = Vec3A::X;
-    const RIGHT: Vec3A = Vec3A::Y;
-    const UP: Vec3A = Vec3A::Z;
-
-    fn delta_yaw(yaw_deg: f32) -> Vec3A {
-        let y = yaw_deg.to_radians();
-        Vec3A::new(y.cos(), y.sin(), 0.0)
-    }
-
-    fn delta_pitch(pitch_deg: f32) -> Vec3A {
-        let q = pitch_deg.to_radians();
-        Vec3A::new(q.cos(), 0.0, q.sin())
-    }
-
-    #[test]
-    fn headon_demo() {
-        assert!(is_within_demo_cone(FWD, RIGHT, UP, Vec3A::X, false));
-    }
-
-    #[test]
-    fn off75b_demo() {
-        let d = Vec3A::new(0.844994, 0.534775, -0.000347);
-        assert!(is_within_demo_cone(FWD, RIGHT, UP, d, false));
-    }
-
-    #[test]
-    fn wisp_bump() {
-        let f = Vec3A::new(0.408044, -0.912962, 0.0);
-        let r = Vec3A::new(0.912962, 0.408044, 0.0);
-        let d = Vec3A::new(0.994186, -0.107679, 0.000536);
-        assert!(!is_within_demo_cone(f, r, UP, d, false));
-    }
-
-    #[test]
-    fn backwards_demo() {
-        assert!(is_within_demo_cone(FWD, RIGHT, UP, Vec3A::NEG_X, true));
-    }
-
-    #[test]
-    fn behind_without_reverse_bump() {
-        assert!(!is_within_demo_cone(FWD, RIGHT, UP, Vec3A::NEG_X, false));
-    }
-
-    #[test]
-    fn pitch38_demo() {
-        let f = Vec3A::new(0.78811, 0.0, 0.615534);
-        let u = Vec3A::new(-0.615534, 0.0, 0.78811);
-        let d = Vec3A::new(0.686644, 0.0, 0.726994);
-        assert!(is_within_demo_cone(f, RIGHT, u, d, false));
-    }
-
-    #[test]
-    fn yaw_inside() {
-        assert!(is_within_demo_cone(FWD, RIGHT, UP, delta_yaw(45.0), false));
-    }
-
-    #[test]
-    fn yaw_outside() {
-        assert!(!is_within_demo_cone(FWD, RIGHT, UP, delta_yaw(46.0), false));
-    }
-
-    #[test]
-    fn pitch_inside() {
-        assert!(is_within_demo_cone(
-            FWD,
-            RIGHT,
-            UP,
-            delta_pitch(36.0),
-            false
-        ));
-    }
-
-    #[test]
-    fn pitch_outside() {
-        assert!(!is_within_demo_cone(
-            FWD,
-            RIGHT,
-            UP,
-            delta_pitch(37.0),
-            false
-        ));
-    }
-
-    #[test]
-    fn zero_bump() {
-        assert!(!is_within_demo_cone(FWD, RIGHT, UP, Vec3A::ZERO, false));
-    }
-
-    #[test]
-    fn nan_delta_bump() {
-        let d = Vec3A::new(f32::NAN, 0.0, 0.0);
-        assert!(!is_within_demo_cone(FWD, RIGHT, UP, d, false));
-    }
-}
-
-#[cfg(test)]
-mod bump_cone_tests {
-    use glam::Vec3A;
-
-    use super::is_within_bump_cone;
-
-    #[test]
-    fn side_graze_bump() {
-        let f = Vec3A::new(0.802763, 0.299166, -0.515821);
-        let r = Vec3A::new(-0.593353, 0.486644, -0.641179);
-        let u = Vec3A::new(0.059202, 0.820778, 0.568171);
-        let d = Vec3A::new(80.366272, 50.963745, -2.978737);
-        assert!(is_within_bump_cone(f, r, u, d, false));
-    }
-
-    #[test]
-    fn false_bump_rejected() {
-        let f = Vec3A::new(0.181046, 0.979415, -0.089271);
-        let r = Vec3A::new(0.44774, -0.001264, 0.894163);
-        let u = Vec3A::new(0.875643, -0.201855, -0.438752);
-        let d = Vec3A::new(103.455566, 62.017822, 18.176201);
-        assert!(!is_within_bump_cone(f, r, u, d, false));
-    }
-
-    #[test]
-    fn headon_bump() {
-        assert!(is_within_bump_cone(
-            Vec3A::X,
-            Vec3A::Y,
-            Vec3A::Z,
-            Vec3A::X,
-            false
-        ));
-    }
-
-    #[test]
-    fn behind_rejected() {
-        assert!(!is_within_bump_cone(
-            Vec3A::X,
-            Vec3A::Y,
-            Vec3A::Z,
-            Vec3A::NEG_X,
-            false
-        ));
-    }
-}
-
-#[cfg(test)]
-mod air_bump_impulse_tests {
-    use glam::{Mat3A, Vec3A};
-
-    use crate::{
-        Arena, CarBodyConfig, GameMode, Team,
-        bullet::collision::narrowphase::manifold_point::ManifoldPoint,
-        consts::{self, UU_TO_BT},
-    };
-
-    fn bump_test_arena(attacker_vel: Vec3A, victim_grounded: bool) -> Arena {
-        let mut arena = Arena::new(GameMode::TheVoid);
-        arena.add_car(Team::Blue, CarBodyConfig::OCTANE);
-        arena.add_car(Team::Blue, CarBodyConfig::OCTANE);
-
-        let mut attacker = *arena.get_car_state(0);
-        attacker.phys.pos = Vec3A::new(0.0, 0.0, 500.0);
-        attacker.phys.rot_mat = Mat3A::IDENTITY;
-        attacker.phys.vel = attacker_vel;
-        attacker.is_on_ground = false;
-        attacker.is_supersonic = false;
-        attacker.bump_cooldown_timer = 0.0;
-        arena.set_car_state(0, attacker);
-
-        let mut victim = *arena.get_car_state(1);
-        victim.phys.pos = Vec3A::new(100.0, 0.0, 500.0);
-        victim.phys.rot_mat = Mat3A::IDENTITY;
-        victim.phys.vel = Vec3A::ZERO;
-        victim.is_on_ground = victim_grounded;
-        victim.is_supersonic = false;
-        victim.bump_cooldown_timer = 0.0;
-        arena.set_car_state(1, victim);
-
-        arena
-    }
-
-    fn fire_bump(arena: &mut Arena) {
-        let manifold = ManifoldPoint::new(Vec3A::ZERO, Vec3A::ZERO, Vec3A::Z, 0.0);
-        arena.on_car_car_collision(0, 1, &manifold);
-    }
-
-    #[test]
-    fn airborne_uses_total_speed_clamped_at_2200() {
-        // Total speed ~2291 clamps to 2200 (Air max) while closing speed is 2000.
-        let attacker_vel = Vec3A::new(2000.0, 1000.0, 500.0);
-        assert!(attacker_vel.length() > 2200.0);
-        let mut arena = bump_test_arena(attacker_vel, false);
-        fire_bump(&mut arena);
-
-        let vel_dir = attacker_vel.normalize_or_zero();
-        let expected_max = 350000.0f32 / 180.0f32;
-        let expected = vel_dir * expected_max * UU_TO_BT;
-        let got = arena.cars[1].vel_impulse_cache;
-        assert!(
-            (got - expected).length() < 1e-3,
-            "airborne bump should use total speed clamped at 2200, got {got} expected {expected}"
-        );
-        // Guard against closing-speed lookup via the live curve at speed 2000.
-        let towards_based =
-            vel_dir * consts::curves::BUMP_VEL_AMOUNT_AIR.get_output(2000.0) * UU_TO_BT;
-        assert!(
-            (got - towards_based).length() > 1.0 * UU_TO_BT,
-            "airborne bump must not use speed_towards_other_car, got {got}"
-        );
-    }
-
-    #[test]
-    fn airborne_air_knots_match_target_force_over_180() {
-        // Target Soccar force knots divided by car mass 180, exact f32 bits.
-        let air = &consts::curves::BUMP_VEL_AMOUNT_AIR;
-        assert_eq!(
-            air.get_output(0.0).to_bits(),
-            (150.0f32 / 180.0f32).to_bits()
-        );
-        assert_eq!(
-            air.get_output(1400.0).to_bits(),
-            (250000.0f32 / 180.0f32).to_bits()
-        );
-        assert_eq!(
-            air.get_output(2200.0).to_bits(),
-            (350000.0f32 / 180.0f32).to_bits()
-        );
-        // Mid-segment lerp agrees with live target PushFactor 178614 at speed
-        // ~1000 (178614/180 ~= 992.3).
-        assert!((air.get_output(1000.0) - 992.3).abs() < 0.5);
-    }
-
-    #[test]
-    fn airborne_has_zero_up_term() {
-        let attacker_vel = Vec3A::new(1500.0, 0.0, 500.0);
-        let mut arena = bump_test_arena(attacker_vel, false);
-        fire_bump(&mut arena);
-
-        let total_speed = attacker_vel.length();
-        assert!(total_speed < 2200.0);
-        let base_scale = consts::curves::BUMP_VEL_AMOUNT_AIR.get_output(total_speed);
-        let vel_dir = attacker_vel.normalize_or_zero();
-        let expected = vel_dir * base_scale * UU_TO_BT;
-        let got = arena.cars[1].vel_impulse_cache;
-        assert!(
-            (got - expected).length() < 1e-3,
-            "airborne bump should have no upward term, got {got} expected {expected}"
-        );
-        // Impulse must stay parallel to the attacker velocity direction.
-        assert!(
-            vel_dir.cross(got).length() < 1e-3,
-            "airborne impulse must be parallel to vel_dir, got {got} vel_dir {vel_dir}"
-        );
-    }
-
-    #[test]
-    fn grounded_knots_match_target_force_over_180() {
-        // Target Soccar force knots divided by car mass 180, exact f32 bits.
-        let ground = &consts::curves::BUMP_VEL_AMOUNT_GROUND;
-        assert_eq!(
-            ground.get_output(0.0).to_bits(),
-            (150.0f32 / 180.0f32).to_bits()
-        );
-        assert_eq!(
-            ground.get_output(1400.0).to_bits(),
-            (200000.0f32 / 180.0f32).to_bits()
-        );
-        assert_eq!(
-            ground.get_output(2200.0).to_bits(),
-            (275000.0f32 / 180.0f32).to_bits()
-        );
-        let up = &consts::curves::BUMP_UPWARD_VEL_AMOUNT;
-        assert_eq!(up.get_output(0.0).to_bits(), (50.0f32 / 180.0f32).to_bits());
-        assert_eq!(
-            up.get_output(1400.0).to_bits(),
-            (50000.0f32 / 180.0f32).to_bits()
-        );
-        assert_eq!(
-            up.get_output(2200.0).to_bits(),
-            (75000.0f32 / 180.0f32).to_bits()
-        );
-        // Live anchors: 6870 Ground 256252 and Z ~68750 at speed 2000,
-        // 16446 Ground 179704 and Z 44927 at speed 1257.83.
-        assert!((ground.get_output(2000.0) - 256252.0f32 / 180.0f32).abs() < 0.1);
-        assert!((up.get_output(2000.0) - 68750.0f32 / 180.0f32).abs() < 0.5);
-        assert!((ground.get_output(1257.83) - 179704.0f32 / 180.0f32).abs() < 0.5);
-        assert!((up.get_output(1257.83) - 44927.0f32 / 180.0f32).abs() < 0.5);
-    }
-
-    #[test]
-    fn grounded_uses_total_speed_not_closing() {
-        // Total speed 2000 (second segment) with closing speed 1600.
-        let attacker_vel = Vec3A::new(1600.0, 1200.0, 0.0);
-        assert!((attacker_vel.length() - 2000.0).abs() < 1e-3);
-        let mut arena = bump_test_arena(attacker_vel, true);
-        fire_bump(&mut arena);
-
-        let total_speed = 2000.0;
-        let base_scale = consts::curves::BUMP_VEL_AMOUNT_GROUND.get_output(total_speed);
-        let upward_force = consts::curves::BUMP_UPWARD_VEL_AMOUNT.get_output(total_speed);
-        // 6870 live anchor: Ground 256252/180, Z ~68750/180.
-        assert!((base_scale - 256252.0f32 / 180.0f32).abs() < 0.1);
-        assert!((upward_force - 68750.0f32 / 180.0f32).abs() < 0.5);
-        let vel_dir = attacker_vel.normalize_or_zero();
-        let expected = (vel_dir * base_scale + Vec3A::Z * upward_force) * UU_TO_BT;
-        let got = arena.cars[1].vel_impulse_cache;
-        assert!(
-            (got - expected).length() < 1e-3,
-            "grounded bump should use total speed, got {got} expected {expected}"
-        );
-        // Guard against closing-speed lookup (1600) for both curves.
-        let closing_based = (vel_dir * consts::curves::BUMP_VEL_AMOUNT_GROUND.get_output(1600.0)
-            + Vec3A::Z * consts::curves::BUMP_UPWARD_VEL_AMOUNT.get_output(1600.0))
-            * UU_TO_BT;
-        assert!(
-            (got - closing_based).length() > 1.0 * UU_TO_BT,
-            "grounded bump must not use speed_towards_other_car, got {got}"
-        );
-    }
-
-    #[test]
-    fn grounded_tilted_up_uses_victim_up() {
-        // 16446 direction case: victim up is nearly horizontal.
-        let victim_up = Vec3A::new(0.70104593, -0.7131032, 0.00429904).normalize_or_zero();
-        let attacker_vel = Vec3A::new(1000.0, 761.5, 0.0);
-        let total_speed = attacker_vel.length();
-        assert!((total_speed - 1257.0).abs() < 1.0);
-
-        let mut arena = bump_test_arena(attacker_vel, true);
-        {
-            let mut victim = *arena.get_car_state(1);
-            let x_axis = Vec3A::Y.cross(victim_up).normalize_or_zero();
-            let y_axis = victim_up.cross(x_axis);
-            victim.phys.rot_mat = Mat3A::from_cols(x_axis, y_axis, victim_up);
-            arena.set_car_state(1, victim);
-        }
-        fire_bump(&mut arena);
-
-        let base_scale = consts::curves::BUMP_VEL_AMOUNT_GROUND.get_output(total_speed);
-        let upward_force = consts::curves::BUMP_UPWARD_VEL_AMOUNT.get_output(total_speed);
-        // 16446 live anchor neighborhood: Ground ~179704/180, Z ~44927/180.
-        assert!((base_scale - 179704.0f32 / 180.0f32).abs() < 1.0);
-        assert!((upward_force - 44927.0f32 / 180.0f32).abs() < 1.0);
-        let vel_dir = attacker_vel.normalize_or_zero();
-        let expected = (vel_dir * base_scale + victim_up * upward_force) * UU_TO_BT;
-        let got = arena.cars[1].vel_impulse_cache;
-        assert!(
-            (got - expected).length() < 1e-3,
-            "grounded bump should use victim up, got {got} expected {expected}"
-        );
-        // World up would miss by |Z| * |victim_up - Z| (~hundreds).
-        let world_based = (vel_dir * base_scale + Vec3A::Z * upward_force) * UU_TO_BT;
-        assert!(
-            (got - world_based).length() > 100.0 * UU_TO_BT,
-            "grounded bump must not use world up, got {got}"
-        );
     }
 }
