@@ -11,10 +11,12 @@ use crate::rlpr::tick_record::TickRecord;
 
 const RLPR_MAGIC_BYTES: [u8; 4] = [82, 76, 80, 82];
 const RLPR_MIN_VERSION: u32 = 2;
-const RLPR_MAX_VERSION: u32 = 7;
+const RLPR_MAX_VERSION: u32 = 8;
 const RLPR_MAX_CARS: usize = 8;
 /// First version carrying recorded boost latch state.
 const RLPR_BOOST_STATE_VERSION: u32 = 7;
+/// First version carrying recorded handbrake integrator state.
+const RLPR_HANDBRAKE_STATE_VERSION: u32 = 8;
 const CAR_RECORD_PREFIX_SIZE: usize = std::mem::offset_of!(CarRecord, wheels);
 const WHEEL_CONTACT_OFFSET: usize = std::mem::offset_of!(WheelRecord, has_contact);
 /// Legacy v2 file size. Stays explicit: `CarRecord` is now 588 bytes.
@@ -29,6 +31,10 @@ const CAR_RECORD_V7_SIZE: usize = 596;
 const CAR_BOOST_BIT_OFFSET: usize = 588;
 /// File offset of the v7 `boosting_time` float.
 const CAR_BOOST_TIME_OFFSET: usize = 592;
+/// V8 file size: 596 legacy bytes plus handbrake value.
+const CAR_RECORD_V8_SIZE: usize = 600;
+/// File offset of the v8 `handbrake_val` float.
+const CAR_HANDBRAKE_OFFSET: usize = 596;
 
 /// True when the recording version carries recorded boost latch state.
 ///
@@ -36,6 +42,14 @@ const CAR_BOOST_TIME_OFFSET: usize = 592;
 /// must keep live-latch evolution instead of forcing those defaults.
 pub fn recording_has_boost_state(version: u32) -> bool {
     version >= RLPR_BOOST_STATE_VERSION
+}
+
+/// True when the recording version carries recorded handbrake state.
+///
+/// Older versions default `handbrake_val` to 0.0 and must keep the
+/// reconstruction fallback instead of forcing that default.
+pub fn recording_has_handbrake_state(version: u32) -> bool {
+    version >= RLPR_HANDBRAKE_STATE_VERSION
 }
 
 #[allow(dead_code)]
@@ -259,6 +273,7 @@ fn read_car_record(bytes: &[u8], version: u32) -> std::io::Result<CarRecord> {
         5 => 872,
         6 => CAR_RECORD_V6_SIZE,
         7 => CAR_RECORD_V7_SIZE,
+        8 => CAR_RECORD_V8_SIZE,
         _ => unreachable!(),
     };
     if bytes.len() != expected_size {
@@ -305,6 +320,7 @@ fn read_car_record(bytes: &[u8], version: u32) -> std::io::Result<CarRecord> {
             record.is_touching_car = touch == 1;
             record.is_boosting = false;
             record.boosting_time = 0.0;
+            record.handbrake_val = 0.0;
             Ok(record)
         }
     } else if version == 7 {
@@ -344,6 +360,56 @@ fn read_car_record(bytes: &[u8], version: u32) -> std::io::Result<CarRecord> {
             record.is_touching_car = touch == 1;
             record.is_boosting = boost_bit == 1;
             record.boosting_time = boosting_time;
+            record.handbrake_val = 0.0;
+            Ok(record)
+        }
+    } else if version == 8 {
+        let touch = bytes[CAR_TOUCH_OFFSET];
+        if touch > 1 {
+            return Err(std::io::Error::new(
+                ErrorKind::InvalidData,
+                format!("RLPR car touch byte must be 0 or 1, got {touch}"),
+            ));
+        }
+        let boost_bit = bytes[CAR_BOOST_BIT_OFFSET];
+        if boost_bit > 1 {
+            return Err(std::io::Error::new(
+                ErrorKind::InvalidData,
+                format!("RLPR boost bit byte must be 0 or 1, got {boost_bit}"),
+            ));
+        }
+        let mut boost_bytes = [0u8; 4];
+        boost_bytes.copy_from_slice(&bytes[CAR_BOOST_TIME_OFFSET..CAR_BOOST_TIME_OFFSET + 4]);
+        let boosting_time = f32::from_le_bytes(boost_bytes);
+        if !boosting_time.is_finite() {
+            return Err(std::io::Error::new(
+                ErrorKind::InvalidData,
+                format!("RLPR boosting_time must be finite, got {boosting_time}"),
+            ));
+        }
+        let mut brake_bytes = [0u8; 4];
+        brake_bytes.copy_from_slice(&bytes[CAR_HANDBRAKE_OFFSET..CAR_HANDBRAKE_OFFSET + 4]);
+        let handbrake_val = f32::from_le_bytes(brake_bytes);
+        if !handbrake_val.is_finite() {
+            return Err(std::io::Error::new(
+                ErrorKind::InvalidData,
+                format!("RLPR handbrake_val must be finite, got {handbrake_val}"),
+            ));
+        }
+        // Copy the 584 legacy bytes. Ignore all padding bytes.
+        validate_legacy_wheel_contacts(bytes)?;
+        let mut record = std::mem::MaybeUninit::<CarRecord>::zeroed();
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                bytes.as_ptr(),
+                record.as_mut_ptr().cast::<u8>(),
+                CAR_RECORD_V2_SIZE,
+            );
+            let mut record = record.assume_init();
+            record.is_touching_car = touch == 1;
+            record.is_boosting = boost_bit == 1;
+            record.boosting_time = boosting_time;
+            record.handbrake_val = handbrake_val;
             Ok(record)
         }
     } else {
@@ -396,20 +462,25 @@ mod tests {
     }
 
     #[test]
-    fn v7_layout_matches_contract() {
+    fn v8_layout_matches_contract() {
         assert_eq!(std::mem::offset_of!(CarRecord, is_touching_car), 584);
         assert_eq!(std::mem::offset_of!(CarRecord, is_boosting), 588);
         assert_eq!(std::mem::offset_of!(CarRecord, boosting_time), 592);
-        assert_eq!(size_of::<CarRecord>(), 596);
+        assert_eq!(std::mem::offset_of!(CarRecord, handbrake_val), 596);
+        assert_eq!(size_of::<CarRecord>(), 600);
         assert_eq!(CAR_RECORD_V2_SIZE, 584);
         assert_eq!(CAR_RECORD_V6_SIZE, 588);
         assert_eq!(CAR_TOUCH_OFFSET, 584);
         assert_eq!(CAR_RECORD_V7_SIZE, 596);
         assert_eq!(CAR_BOOST_BIT_OFFSET, 588);
         assert_eq!(CAR_BOOST_TIME_OFFSET, 592);
-        assert_eq!(RLPR_MAX_VERSION, 7);
+        assert_eq!(CAR_RECORD_V8_SIZE, 600);
+        assert_eq!(CAR_HANDBRAKE_OFFSET, 596);
+        assert_eq!(RLPR_MAX_VERSION, 8);
         assert!(!recording_has_boost_state(6));
         assert!(recording_has_boost_state(7));
+        assert!(!recording_has_handbrake_state(7));
+        assert!(recording_has_handbrake_state(8));
     }
 
     #[test]
@@ -420,9 +491,9 @@ mod tests {
             record.is_touching_car = true;
             record.is_boosting = armed;
             record.boosting_time = time;
-            let bytes = record_bytes(&record);
-            assert_eq!(bytes.len(), CAR_RECORD_V7_SIZE);
-            let parsed = read_car_record(&bytes, 7).unwrap();
+            let full = record_bytes(&record);
+            let bytes = &full[..CAR_RECORD_V7_SIZE];
+            let parsed = read_car_record(bytes, 7).unwrap();
             assert_eq!(parsed.is_boosting, armed);
             assert_eq!(parsed.boosting_time, time);
             assert!(parsed.is_touching_car);
@@ -433,7 +504,8 @@ mod tests {
     #[test]
     fn v7_rejects_invalid_boost_bit() {
         let record = blank_car_record();
-        let mut bytes = record_bytes(&record);
+        let full = record_bytes(&record);
+        let mut bytes = full[..CAR_RECORD_V7_SIZE].to_vec();
         bytes[CAR_BOOST_BIT_OFFSET] = 2;
         let err = read_car_record(&bytes, 7).unwrap_err();
         assert_eq!(err.kind(), ErrorKind::InvalidData);
@@ -444,8 +516,9 @@ mod tests {
         for time in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
             let mut record = blank_car_record();
             record.boosting_time = time;
-            let bytes = record_bytes(&record);
-            let err = read_car_record(&bytes, 7).unwrap_err();
+            let full = record_bytes(&record);
+            let bytes = &full[..CAR_RECORD_V7_SIZE];
+            let err = read_car_record(bytes, 7).unwrap_err();
             assert_eq!(err.kind(), ErrorKind::InvalidData);
         }
     }
@@ -456,7 +529,8 @@ mod tests {
         record.is_touching_car = true;
         record.is_boosting = true;
         record.boosting_time = 0.05;
-        let mut bytes = record_bytes(&record);
+        let full = record_bytes(&record);
+        let mut bytes = full[..CAR_RECORD_V7_SIZE].to_vec();
         bytes[CAR_TOUCH_OFFSET + 1] = 0xAB;
         bytes[CAR_TOUCH_OFFSET + 2] = 0xCD;
         bytes[CAR_TOUCH_OFFSET + 3] = 0xEF;
@@ -497,21 +571,33 @@ mod tests {
     }
 
     #[test]
-    fn v2_through_v6_default_boost_state() {
+    fn v2_through_v7_default_boost_state() {
         let mut record = blank_car_record();
         record.is_boosting = true;
         record.boosting_time = 0.1;
+        record.handbrake_val = 0.875;
         let full = record_bytes(&record);
-        for (version, size) in [(2u32, CAR_RECORD_V2_SIZE), (6u32, CAR_RECORD_V6_SIZE)] {
+        for (version, size) in [
+            (2u32, CAR_RECORD_V2_SIZE),
+            (6u32, CAR_RECORD_V6_SIZE),
+            (7u32, CAR_RECORD_V7_SIZE),
+        ] {
             let parsed = read_car_record(&full[..size], version).unwrap();
-            assert!(!parsed.is_boosting);
-            assert_eq!(parsed.boosting_time, 0.0);
+            if version == 7 {
+                assert!(parsed.is_boosting);
+                assert_eq!(parsed.boosting_time, 0.1);
+            } else {
+                assert!(!parsed.is_boosting);
+                assert_eq!(parsed.boosting_time, 0.0);
+            }
+            assert_eq!(parsed.handbrake_val, 0.0);
         }
         for (version, size) in [(3u32, 744usize), (4u32, 864usize), (5u32, 872usize)] {
             let bytes = vec![0u8; size];
             let parsed = read_car_record(&bytes, version).unwrap();
             assert!(!parsed.is_boosting);
             assert_eq!(parsed.boosting_time, 0.0);
+            assert_eq!(parsed.handbrake_val, 0.0);
         }
     }
 
@@ -645,7 +731,8 @@ mod tests {
         car.is_touching_car = true;
         car.is_boosting = true;
         car.boosting_time = 0.05;
-        let car_bytes = record_bytes(&car);
+        let full = record_bytes(&car);
+        let car_bytes = &full[..CAR_RECORD_V7_SIZE];
         assert_eq!(car_bytes.len(), CAR_RECORD_V7_SIZE);
         let ball: PhysRecord = unsafe { std::mem::zeroed() };
         let ball_bytes: &[u8] = unsafe {
@@ -673,7 +760,7 @@ mod tests {
         };
         push_sized_v7(&mut file, info_bytes);
         file.extend_from_slice(&1u32.to_le_bytes());
-        push_sized_v7(&mut file, &car_bytes);
+        push_sized_v7(&mut file, car_bytes);
         push_sized_v7(&mut file, ball_bytes);
 
         let recording = Recording::from_bytes("v7test", &file).unwrap();
@@ -681,6 +768,87 @@ mod tests {
         assert!(recording.ticks[0].car_records[0].is_touching_car);
         assert!(recording.ticks[0].car_records[0].is_boosting);
         assert_eq!(recording.ticks[0].car_records[0].boosting_time, 0.05);
+        assert_eq!(recording.ticks[0].car_records[0].handbrake_val, 0.0);
         assert!(recording_has_boost_state(recording.version));
+        assert!(!recording_has_handbrake_state(recording.version));
+    }
+
+    #[test]
+    fn v8_round_trip_preserves_handbrake_value() {
+        for value in [0.0, 0.875, 1.0] {
+            let mut record = blank_car_record();
+            record.phys.physics_frame = 13;
+            record.is_touching_car = true;
+            record.is_boosting = true;
+            record.boosting_time = 0.05;
+            record.handbrake_val = value;
+            let bytes = record_bytes(&record);
+            assert_eq!(bytes.len(), CAR_RECORD_V8_SIZE);
+            let parsed = read_car_record(&bytes, 8).unwrap();
+            assert_eq!(parsed.handbrake_val, value);
+            assert!(parsed.is_touching_car);
+            assert!(parsed.is_boosting);
+            assert_eq!(parsed.boosting_time, 0.05);
+            assert_eq!(parsed.phys.physics_frame, 13);
+        }
+    }
+
+    #[test]
+    fn v8_rejects_non_finite_handbrake_value() {
+        for value in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+            let mut record = blank_car_record();
+            record.handbrake_val = value;
+            let bytes = record_bytes(&record);
+            let err = read_car_record(&bytes, 8).unwrap_err();
+            assert_eq!(err.kind(), ErrorKind::InvalidData);
+        }
+    }
+
+    #[test]
+    fn v8_file_round_trip_through_recording() {
+        let mut car = blank_car_record();
+        car.is_touching_car = true;
+        car.is_boosting = true;
+        car.boosting_time = 0.05;
+        car.handbrake_val = 0.875;
+        let car_bytes = record_bytes(&car);
+        assert_eq!(car_bytes.len(), CAR_RECORD_V8_SIZE);
+        let ball: PhysRecord = unsafe { std::mem::zeroed() };
+        let ball_bytes: &[u8] = unsafe {
+            std::slice::from_raw_parts(
+                (&ball as *const PhysRecord).cast::<u8>(),
+                size_of::<PhysRecord>(),
+            )
+        };
+        fn push_sized_v8(out: &mut Vec<u8>, payload: &[u8]) {
+            out.extend_from_slice(&(payload.len() as u32).to_le_bytes());
+            out.extend_from_slice(payload);
+        }
+
+        let mut file = Vec::new();
+        file.extend_from_slice(&RLPR_MAGIC_BYTES);
+        file.push(0);
+        file.extend_from_slice(&8u32.to_le_bytes());
+        let mut info_with_car: RecordingInfo = unsafe { std::mem::zeroed() };
+        info_with_car.num_cars = 1;
+        let info_bytes: &[u8] = unsafe {
+            std::slice::from_raw_parts(
+                (&info_with_car as *const RecordingInfo).cast::<u8>(),
+                size_of::<RecordingInfo>(),
+            )
+        };
+        push_sized_v8(&mut file, info_bytes);
+        file.extend_from_slice(&1u32.to_le_bytes());
+        push_sized_v8(&mut file, &car_bytes);
+        push_sized_v8(&mut file, ball_bytes);
+
+        let recording = Recording::from_bytes("v8test", &file).unwrap();
+        assert_eq!(recording.version, 8);
+        assert!(recording.ticks[0].car_records[0].is_touching_car);
+        assert!(recording.ticks[0].car_records[0].is_boosting);
+        assert_eq!(recording.ticks[0].car_records[0].boosting_time, 0.05);
+        assert_eq!(recording.ticks[0].car_records[0].handbrake_val, 0.875);
+        assert!(recording_has_boost_state(recording.version));
+        assert!(recording_has_handbrake_state(recording.version));
     }
 }

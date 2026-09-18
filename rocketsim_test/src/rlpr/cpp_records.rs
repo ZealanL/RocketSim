@@ -238,6 +238,8 @@ pub struct CarRecord {
     pub _boost_pad: [u8; 3],
     /// RLPR v7 time since boost armed. 0.0 for v2-v6.
     pub boosting_time: f32,
+    /// RLPR v8 handbrake integrator value. 0.0 for v2-v7.
+    pub handbrake_val: f32,
 }
 impl From<CarRecord> for CarState {
     fn from(phys_record: CarRecord) -> Self {
