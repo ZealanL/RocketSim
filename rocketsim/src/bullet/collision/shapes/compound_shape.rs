@@ -88,6 +88,10 @@ impl CompoundShape {
         ray_target: Vec3A,
         ray_idx: usize,
     ) {
+        debug_assert_eq!(self.child_trans.matrix3, Mat3A::IDENTITY);
+        if self.child_trans.matrix3 != Mat3A::IDENTITY {
+            return;
+        }
         let delta = ray_target - ray_source;
         let dist = delta.length();
         if !dist.is_finite() || dist <= 0.0 {
@@ -170,9 +174,9 @@ impl CompoundShape {
             return;
         }
 
-        // Pure-face fast path for identity child rotation.
+        // Pure-face fast path for translation-only child transform.
         // Keep the original slab normal and fraction bit-identical.
-        if self.child_trans.matrix3 == Mat3A::IDENTITY {
+        {
             let entry = ray_source + dir * tenter;
             if entry.is_finite() {
                 let local = entry - self.child_trans.translation;
@@ -200,7 +204,7 @@ impl CompoundShape {
             }
         }
 
-        // Edge, corner, or rotated child: exact rounded box solve.
+        // Edge or corner entry: exact rounded box solve.
         let Some((t_hit, normal_compound)) =
             self.analytic_rounded_hit(ray_source, dir, dist, inner_half, margin)
         else {
@@ -228,48 +232,22 @@ impl CompoundShape {
         inner_half: Vec3A,
         margin: f32,
     ) -> Option<(f32, Vec3A)> {
-        let is_identity = self.child_trans.matrix3 == Mat3A::IDENTITY;
-        let (source_l, dir_l) = if is_identity {
-            if !ray_source.is_finite() || !dir.is_finite() {
-                return None;
-            }
-            (ray_source - self.child_trans.translation, dir)
-        } else {
-            let inv = self.child_trans.inverse();
-            if !inv.is_finite() {
-                return None;
-            }
-            let target = ray_source + dir * dist;
-            if !target.is_finite() || !ray_source.is_finite() {
-                return None;
-            }
-            let source_l = inv.transform_point3a(ray_source);
-            let target_l = inv.transform_point3a(target);
-            if !source_l.is_finite() || !target_l.is_finite() {
-                return None;
-            }
-            let dir_l = (target_l - source_l) / dist;
-            if !dir_l.is_finite() {
-                return None;
-            }
-            (source_l, dir_l)
-        };
+        debug_assert_eq!(self.child_trans.matrix3, Mat3A::IDENTITY);
+        if self.child_trans.matrix3 != Mat3A::IDENTITY {
+            return None;
+        }
+        if !ray_source.is_finite() || !dir.is_finite() {
+            return None;
+        }
+        let source_l = ray_source - self.child_trans.translation;
+        let dir_l = dir;
 
         if !source_l.is_finite() || !dir_l.is_finite() {
             return None;
         }
 
         let (t_hit, normal_l) = solve_rounded_box(source_l, dir_l, dist, inner_half, margin)?;
-
-        let normal_c = if is_identity {
-            normal_l
-        } else {
-            let n = self.child_trans.matrix3 * normal_l;
-            if !n.is_finite() || n.length_squared() <= 0.0 {
-                return None;
-            }
-            n / n.length()
-        };
+        let normal_c = normal_l;
 
         if !normal_c.is_finite() || normal_c.length_squared() <= 0.0 {
             return None;
@@ -280,10 +258,6 @@ impl CompoundShape {
         }
         // Entering hit must oppose the ray. Allow exact tangency (dot == 0).
         if normal_c.dot(dir) > 0.0 {
-            return None;
-        }
-        // Local oppose check guards rotated frames where `dir` differs from `dir_l`.
-        if normal_l.dot(dir_l) > 0.0 {
             return None;
         }
 
@@ -711,30 +685,32 @@ mod tests {
     }
 
     #[test]
-    fn rotated_child_swaps_extents() {
+    fn valid_constructors_use_identity_child_rotation() {
+        let car_child = Affine3A {
+            matrix3: Mat3A::IDENTITY,
+            translation: Vec3A::new(0.277514, 0.0, 0.4151),
+        };
+        let car = CompoundShape::new(unit_box(), car_child);
+        assert_eq!(car.child_trans.matrix3, Mat3A::IDENTITY);
+        let wheel = CompoundShape::new(unit_box(), Affine3A::IDENTITY);
+        assert_eq!(wheel.child_trans.matrix3, Mat3A::IDENTITY);
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    #[should_panic]
+    fn rotated_child_triggers_debug_assert() {
         let shape = BoxShape::new(Vec3A::new(2.0, 0.5, 0.5));
         let child = Affine3A {
             matrix3: Mat3A::from_rotation_z(FRAC_PI_2),
             translation: Vec3A::ZERO,
         };
         let compound = CompoundShape::new(shape, child);
-        assert!(
-            cast_one(
-                &compound,
-                Vec3A::new(1.0, 0.0, 5.0),
-                Vec3A::new(1.0, 0.0, -5.0)
-            )
-            .is_none(),
-            "x=1 is outside after 90deg z rotation"
-        );
-        let (fraction, normal) = cast_one(
+        let _ = cast_one(
             &compound,
             Vec3A::new(0.0, 1.0, 5.0),
             Vec3A::new(0.0, 1.0, -5.0),
-        )
-        .expect("y=1 is inside after 90deg z rotation");
-        assert!((fraction - 0.45).abs() < 1e-4, "fraction {fraction}");
-        assert!(normal.dot(Vec3A::Z) > 0.999, "normal {normal:?}");
+        );
     }
 
     #[test]
