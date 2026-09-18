@@ -118,6 +118,14 @@ impl ReplayBackend for V3Backend {
         V3Backend::refresh_sticky_gates(self);
     }
 
+    fn set_boost_state(&mut self, car_idx: usize, armed: bool, time: f32) {
+        let car_id = self.car_id(car_idx, "set_boost_state");
+        let mut state = *self.arena.get_car_state(car_id);
+        state.is_boosting = armed;
+        state.boosting_time = time;
+        self.arena.set_car_state(car_id, state);
+    }
+
     fn reset(&mut self, start: &TickRecord) {
         self.ensure_cars(start.car_records.len());
         self.set_state(start);

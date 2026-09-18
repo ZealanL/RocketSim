@@ -56,6 +56,13 @@ pub trait ReplayBackend {
     /// their default when they do not expose this state.
     fn set_handbrake_value(&mut self, _car_idx: usize, _value: f32) {}
 
+    /// Restore the boost armed bit plus time-since-arm from the recording.
+    ///
+    /// Only the v3 backend implements this; others keep live-bit evolution.
+    /// Callers pass recorded state only when the format carries it; older
+    /// versions must keep live-latch evolution instead of forcing false/zero.
+    fn set_boost_state(&mut self, _car_idx: usize, _armed: bool, _time: f32) {}
+
     /// Refresh hidden prior-tick wheel state without advancing dynamics.
     fn refresh_sticky_gates(&mut self) {}
 
@@ -489,7 +496,7 @@ pub fn classify_tick(tick: &TickRecord, car_idx: usize, sim: SimContactEvents) -
         return ContactLabels::default();
     };
     let car_ball = car.is_touching_ball || sim.car_ball;
-    let car_car = sim.car_car;
+    let car_car = car.is_touching_car || sim.car_car;
     let wheel_world = car.wheels.iter().any(|wheel| wheel.has_contact);
     let ball_world = tick.ball_record.has_world_contact || sim.ball_world;
     let chassis_world = car.phys.has_world_contact || sim.chassis_world;
@@ -692,6 +699,36 @@ pub fn restore_handbrake_seed<B: ReplayBackend>(
     }
 }
 
+/// Restore recorded boost latch state after a reset.
+///
+/// Apply direct recorded state only when the format carries it.
+/// Write raw time only when armed. Write zero when disarmed.
+/// A stale disarmed time would inflate the next arm and expire the latch early.
+/// Older versions keep live-latch evolution: this is a no-op for them.
+/// The parser keeps the raw value. This guard is adaptation, not physics.
+/// Harness only, not physics.
+pub fn restore_recorded_boost_state<B: ReplayBackend>(
+    backend: &mut B,
+    ticks: &[TickRecord],
+    state_index: usize,
+    has_boost_state: bool,
+) {
+    if !has_boost_state {
+        return;
+    }
+    let Some(state) = ticks.get(state_index) else {
+        return;
+    };
+    for (car_idx, car) in state.car_records.iter().enumerate() {
+        let time = if car.is_boosting {
+            car.boosting_time
+        } else {
+            0.0
+        };
+        backend.set_boost_state(car_idx, car.is_boosting, time);
+    }
+}
+
 /// Report plus kickoff-stasis skip counts from one [`evaluate`] run.
 /// Skipped counts hold scored transitions removed after warmup.
 /// The sim still steps through them.
@@ -712,6 +749,9 @@ pub struct EvalOutcome {
 /// Kickoff-stasis transitions still step the sim but add no support,
 /// pass, or error. Runs, chunks, and seeds are unchanged. Counts land
 /// in [`EvalOutcome`].
+/// `has_boost_state` must be true only when the recording version carries
+/// recorded boost latch state; older versions keep live-latch evolution.
+#[allow(clippy::too_many_arguments)]
 pub fn evaluate<B: ReplayBackend>(
     backend: &mut B,
     ticks: &[TickRecord],
@@ -720,6 +760,7 @@ pub fn evaluate<B: ReplayBackend>(
     reset_each_tick: bool,
     reset_warmup: bool,
     use_sim_events: bool,
+    has_boost_state: bool,
 ) -> EvalOutcome {
     let mut outcome = EvalOutcome::default();
     let report = &mut outcome.report;
@@ -731,6 +772,7 @@ pub fn evaluate<B: ReplayBackend>(
         if !reset_each_tick {
             backend.reset(&ticks[segment.start]);
             restore_handbrake_seed(backend, ticks, segment_run_start, segment.start);
+            restore_recorded_boost_state(backend, ticks, segment.start, has_boost_state);
         }
         for offset in 1..segment.len {
             let target_index = segment.start + offset;
@@ -742,6 +784,7 @@ pub fn evaluate<B: ReplayBackend>(
                 } else {
                     backend.set_state(&ticks[state_index]);
                 }
+                restore_recorded_boost_state(backend, ticks, state_index, has_boost_state);
                 if offset == 1 {
                     restore_handbrake_seed(backend, ticks, segment_run_start, state_index);
                 }
@@ -840,6 +883,11 @@ mod tests {
                 long_friction: 0.0,
                 extra_pushback: 0.0,
             }; 4],
+            is_touching_car: false,
+            _touch_pad: [0; 3],
+            is_boosting: false,
+            _boost_pad: [0; 3],
+            boosting_time: 0.0,
         }
     }
 
@@ -1044,6 +1092,75 @@ mod tests {
         cursor: usize,
     }
 
+    struct BoostProbe {
+        boost_calls: Vec<(usize, bool, f32)>,
+    }
+
+    impl ReplayBackend for BoostProbe {
+        fn reset(&mut self, _start: &TickRecord) {}
+        fn set_state(&mut self, _state: &TickRecord) {}
+        fn set_boost_state(&mut self, car_idx: usize, armed: bool, time: f32) {
+            self.boost_calls.push((car_idx, armed, time));
+        }
+        fn step(&mut self, _controls: &[ControlsRecord]) -> Vec<SimContactEvents> {
+            vec![]
+        }
+        fn snapshot(&mut self, _car_idx: usize) -> Snapshot {
+            let body = BodySnapshot {
+                pos: Vec3A::ZERO,
+                vel: Vec3A::ZERO,
+                ang_vel: Vec3A::ZERO,
+                forward: Vec3A::X,
+                up: Vec3A::Z,
+            };
+            Snapshot {
+                car: body,
+                ball: body,
+            }
+        }
+    }
+
+    #[test]
+    fn recorded_boost_state_restores_exact_values() {
+        let mut tick = quiet_tick(1, 10.0);
+        tick.car_records[0].is_boosting = true;
+        tick.car_records[0].boosting_time = 0.05;
+        let ticks = vec![quiet_tick(0, 0.0), tick];
+        let mut probe = BoostProbe {
+            boost_calls: vec![],
+        };
+        restore_recorded_boost_state(&mut probe, &ticks, 1, true);
+        assert_eq!(probe.boost_calls, vec![(0, true, 0.05)]);
+    }
+
+    #[test]
+    fn disarmed_large_time_restores_as_zero() {
+        let mut tick = quiet_tick(1, 10.0);
+        tick.car_records[0].is_boosting = false;
+        tick.car_records[0].boosting_time = 5.0;
+        let ticks = vec![quiet_tick(0, 0.0), tick];
+        let mut probe = BoostProbe {
+            boost_calls: vec![],
+        };
+        restore_recorded_boost_state(&mut probe, &ticks, 1, true);
+        assert_eq!(probe.boost_calls, vec![(0, false, 0.0)]);
+    }
+
+    #[test]
+    fn legacy_recordings_do_not_overwrite_the_latch() {
+        let mut tick = quiet_tick(1, 10.0);
+        tick.car_records[0].is_boosting = true;
+        tick.car_records[0].boosting_time = 0.05;
+        let ticks = vec![quiet_tick(0, 0.0), tick];
+        let mut probe = BoostProbe {
+            boost_calls: vec![],
+        };
+        restore_recorded_boost_state(&mut probe, &ticks, 1, false);
+        assert!(probe.boost_calls.is_empty());
+        restore_recorded_boost_state(&mut probe, &ticks, 99, true);
+        assert!(probe.boost_calls.is_empty());
+    }
+
     impl MirrorBackend {
         fn new(ticks: &[TickRecord]) -> Self {
             let num_cars = ticks
@@ -1108,6 +1225,61 @@ mod tests {
         touch.car_records[0].is_touching_ball = true;
         let labels = classify_tick(&touch, 0, SimContactEvents::default());
         assert!(labels.car_ball);
+    }
+
+    #[test]
+    fn car_car_labels_recorded_flag_without_sim() {
+        // `--ignore-sim-events` path: default sim events still get RL support.
+        let mut touch = quiet_tick(1, 10.0);
+        touch.car_records[0].is_touching_car = true;
+        let labels = classify_tick(&touch, 0, SimContactEvents::default());
+        assert!(labels.car_car);
+        assert!(!labels.is_quiet());
+        assert!(labels.contains(ContactCategory::CarCar));
+    }
+
+    #[test]
+    fn car_car_labels_either_source() {
+        for (recorded, sim_flag, want) in [
+            (false, false, false),
+            (true, false, true),
+            (false, true, true),
+            (true, true, true),
+        ] {
+            let mut tick = quiet_tick(1, 10.0);
+            tick.car_records[0].is_touching_car = recorded;
+            let sim = SimContactEvents {
+                car_car: sim_flag,
+                ..SimContactEvents::default()
+            };
+            assert_eq!(
+                classify_tick(&tick, 0, sim).car_car,
+                want,
+                "recorded={recorded} sim_flag={sim_flag}",
+            );
+        }
+    }
+
+    #[test]
+    fn car_car_labels_are_per_car_asymmetric() {
+        let mut tick = quiet_tick(1, 10.0);
+        let mut other = blank_car();
+        other.phys.physics_frame = 1;
+        tick.car_records.push(other);
+        tick.car_records[0].is_touching_car = false;
+        tick.car_records[1].is_touching_car = true;
+        let car0 = classify_tick(&tick, 0, SimContactEvents::default());
+        let car1 = classify_tick(&tick, 1, SimContactEvents::default());
+        assert!(!car0.car_car);
+        assert!(car1.car_car);
+        assert!(car0.is_quiet());
+        assert!(!car1.is_quiet());
+        // Sim events also apply per scored car.
+        let sim = SimContactEvents {
+            car_car: true,
+            ..SimContactEvents::default()
+        };
+        assert!(classify_tick(&tick, 0, sim).car_car);
     }
 
     #[test]
@@ -1195,7 +1367,17 @@ mod tests {
         assert!(snapshot_from_tick(&ticks[2], 2).is_none());
         // Car 0 still evaluates over the clean run.
         let mut backend = MirrorBackend::new(&ticks);
-        let report = evaluate(&mut backend, &ticks, &segments, 1, false, false, true).report;
+        let report = evaluate(
+            &mut backend,
+            &ticks,
+            &segments,
+            1,
+            false,
+            false,
+            true,
+            false,
+        )
+        .report;
         assert!(report.total.support > 0);
     }
 
@@ -1208,7 +1390,17 @@ mod tests {
         }
         let mut backend = MirrorBackend::new(&ticks);
         let segments = vec![Segment { start: 0, len: 4 }];
-        let report = evaluate(&mut backend, &ticks, &segments, 1, false, false, true).report;
+        let report = evaluate(
+            &mut backend,
+            &ticks,
+            &segments,
+            1,
+            false,
+            false,
+            true,
+            false,
+        )
+        .report;
         assert_eq!(report.total.support, 6);
         assert_eq!(report.total.passed, 6);
         assert_eq!(report.no_contact.support, 6);
@@ -1221,7 +1413,17 @@ mod tests {
         ticks[4].car_records[0].wheels[0].has_contact = true;
         let mut backend = MirrorBackend::new(&ticks);
         let segments = vec![Segment { start: 0, len: 6 }];
-        let report = evaluate(&mut backend, &ticks, &segments, 1, false, false, true).report;
+        let report = evaluate(
+            &mut backend,
+            &ticks,
+            &segments,
+            1,
+            false,
+            false,
+            true,
+            false,
+        )
+        .report;
         assert_eq!(report.total.support, 5);
         assert_eq!(report.total.passed, 5);
         assert_eq!(report.car_ball.support, 1);
@@ -1229,7 +1431,7 @@ mod tests {
         assert_eq!(report.no_contact.support, 4);
 
         let mut backend = MirrorBackend::new(&ticks);
-        let report = evaluate(&mut backend, &ticks, &segments, 3, true, false, true).report;
+        let report = evaluate(&mut backend, &ticks, &segments, 3, true, false, true, false).report;
         assert_eq!(report.total.support, 5);
         assert_eq!(report.total.passed, 5);
     }
@@ -1426,7 +1628,7 @@ mod tests {
         assert!(!tick_is_kickoff_stasis(&ticks[2], &ticks[3]));
         let segments = vec![Segment { start: 0, len: 4 }];
         let mut backend = MirrorBackend::new(&ticks);
-        let outcome = evaluate(&mut backend, &ticks, &segments, 1, true, false, true);
+        let outcome = evaluate(&mut backend, &ticks, &segments, 1, true, false, true, false);
         assert_eq!(outcome.skipped_transitions, 1);
         assert_eq!(outcome.skipped_car_ticks, 2);
         assert_eq!(outcome.report.total.support, 4);

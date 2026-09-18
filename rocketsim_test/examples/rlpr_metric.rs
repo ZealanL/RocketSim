@@ -200,6 +200,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         args.reset_each_tick,
         args.reset_warmup,
         !args.ignore_sim_events,
+        rocketsim_test::rlpr::recording_has_boost_state(recording.version),
     );
     println!(
         "Kickoff stasis skips ({}): {} scored transitions ({} car-ticks across {} cars)",
@@ -222,6 +223,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             args.reset_each_tick,
             args.reset_warmup,
             !args.ignore_sim_events,
+            rocketsim_test::rlpr::recording_has_boost_state(recording.version),
         );
         println!();
         print_report("v2", &v2_outcome.report);
