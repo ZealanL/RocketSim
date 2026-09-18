@@ -101,7 +101,8 @@ pub mod car {
 
     pub mod boost {
         pub const MAX: f32 = 100.0;
-        pub const USED_PER_SECOND: f32 = MAX / 3.0;
+        /// Boost is consumed at 0.333 * 100 per second - not MAX / 3.
+        pub const USED_PER_SECOND: f32 = 33.3;
         /// Minimum time we can be boosting for
         pub const MIN_TIME: f32 = 0.1;
         /// uu/s for vel (on the ground)
