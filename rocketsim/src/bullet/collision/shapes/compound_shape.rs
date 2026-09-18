@@ -479,3 +479,311 @@ fn solve_rounded_box(
 
     None
 }
+
+#[cfg(test)]
+mod tests {
+    use std::f32::consts::FRAC_PI_2;
+
+    use glam::{Affine3A, Mat3A, Vec3A, Vec4};
+
+    use super::CompoundShape;
+    use crate::bullet::collision::dispatch::quad_ray_callbacks::{
+        BridgeTriQuadRayCallback, ClosestQuadRayResultCallback, QuadRayResultCallback,
+    };
+    use crate::bullet::collision::shapes::box_shape::BoxShape;
+    use crate::bullet::collision::shapes::collision_shape::CollisionShapes;
+    use crate::bullet::collision::shapes::sphere_shape::SphereShape;
+    use crate::bullet::dynamics::rigid_body::{RigidBody, RigidBodyConstructionInfo};
+    use crate::shared::QuadRayInfo;
+
+    fn unit_box() -> BoxShape {
+        BoxShape::new(Vec3A::new(1.0, 1.0, 1.0))
+    }
+
+    fn ident_compound(shape: BoxShape, translation: Vec3A) -> CompoundShape {
+        CompoundShape::new(
+            shape,
+            Affine3A {
+                matrix3: Mat3A::IDENTITY,
+                translation,
+            },
+        )
+    }
+
+    fn cast_one(compound: &CompoundShape, from: Vec3A, to: Vec3A) -> Option<(f32, Vec3A)> {
+        let froms = [from; 4];
+        let tos = [to; 4];
+        let dummy = RigidBody::new(RigidBodyConstructionInfo::new(
+            0.0,
+            CollisionShapes::Sphere(SphereShape::new(1.0)),
+        ));
+        let mut cb = ClosestQuadRayResultCallback::new(&froms, &tos, None);
+        {
+            let mut bridge = BridgeTriQuadRayCallback {
+                from: &froms,
+                to: &tos,
+                hit_fraction: Vec4::ONE,
+                collision_obj: &dummy,
+                collision_obj_idx: 0,
+                result_callback: &mut cb,
+            };
+            let info = QuadRayInfo::new(&froms, &tos);
+            compound.perform_quad_raycast(&mut bridge, &info);
+        }
+        if cb.has_hit(0) {
+            Some((cb.base.closest_hit_fraction[0], cb.hit_normal_world[0]))
+        } else {
+            None
+        }
+    }
+
+    #[test]
+    fn pure_face_returns_exact_slab_fraction_and_normal() {
+        let compound = ident_compound(unit_box(), Vec3A::ZERO);
+        let from = Vec3A::new(0.0, 0.0, 5.0);
+        let to = Vec3A::new(0.0, 0.0, -5.0);
+        let (fraction, normal) = cast_one(&compound, from, to).expect("face must hit");
+        assert_eq!(fraction, 4.0f32 / 10.0);
+        assert_eq!(normal, Vec3A::Z);
+    }
+
+    #[test]
+    fn edge_cylinder_hit_matches_analytic() {
+        let compound = ident_compound(unit_box(), Vec3A::ZERO);
+        let from = Vec3A::new(0.98, 0.0, 5.0);
+        let to = Vec3A::new(0.98, 0.0, -5.0);
+        let (fraction, normal) = cast_one(&compound, from, to).expect("edge must hit");
+        let dz = 0.0012f32.sqrt();
+        let hit_z = 0.96 + dz;
+        let expected_fraction = (5.0 - hit_z) / 10.0;
+        let expected_normal = Vec3A::new(0.5, 0.0, 0.8660254).normalize();
+        assert!(
+            (fraction - expected_fraction).abs() < 1e-4,
+            "fraction {fraction} vs {expected_fraction}"
+        );
+        assert!(
+            normal.dot(expected_normal) > 0.999,
+            "normal {normal:?} vs {expected_normal:?}"
+        );
+        let dir = (to - from).normalize();
+        assert!(normal.dot(dir) < 0.0);
+    }
+
+    #[test]
+    fn corner_sphere_hit_matches_analytic() {
+        let compound = ident_compound(unit_box(), Vec3A::ZERO);
+        let from = Vec3A::new(0.98, 0.98, 5.0);
+        let to = Vec3A::new(0.98, 0.98, -5.0);
+        let (fraction, normal) = cast_one(&compound, from, to).expect("corner must hit");
+        let dz = 0.0008f32.sqrt();
+        let hit_z = 0.96 + dz;
+        let expected_fraction = (5.0 - hit_z) / 10.0;
+        let expected_normal = Vec3A::new(0.5, 0.5, 0.70710678).normalize();
+        assert!(
+            (fraction - expected_fraction).abs() < 1e-4,
+            "fraction {fraction} vs {expected_fraction}"
+        );
+        assert!(
+            normal.dot(expected_normal) > 0.999,
+            "normal {normal:?} vs {expected_normal:?}"
+        );
+    }
+
+    #[test]
+    fn clear_miss_reports_none() {
+        let compound = ident_compound(unit_box(), Vec3A::ZERO);
+        assert!(
+            cast_one(
+                &compound,
+                Vec3A::new(2.0, 0.0, 5.0),
+                Vec3A::new(2.0, 0.0, -5.0)
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn parallel_hit_and_parallel_miss() {
+        let compound = ident_compound(unit_box(), Vec3A::ZERO);
+        let (fraction, normal) = cast_one(
+            &compound,
+            Vec3A::new(-5.0, 0.0, 0.0),
+            Vec3A::new(5.0, 0.0, 0.0),
+        )
+        .expect("parallel inside must hit");
+        assert_eq!(fraction, 4.0f32 / 10.0);
+        assert_eq!(normal, Vec3A::NEG_X);
+        assert!(
+            cast_one(
+                &compound,
+                Vec3A::new(-5.0, 2.0, 0.0),
+                Vec3A::new(5.0, 2.0, 0.0)
+            )
+            .is_none(),
+            "parallel outside must miss"
+        );
+    }
+
+    #[test]
+    fn exact_tangency_reports_hit() {
+        // Tangent to the vertical edge (0.96, 0.96) with dx = dy = margin / sqrt(2).
+        // Discriminant is zero; packet AABB still passes since x/y stay inside outer.
+        let compound = ident_compound(unit_box(), Vec3A::ZERO);
+        let offset = 0.04f32 / 2.0f32.sqrt();
+        let x = 0.96 + offset;
+        let from = Vec3A::new(x, x, 5.0);
+        let to = Vec3A::new(x, x, -5.0);
+        let (fraction, normal) = cast_one(&compound, from, to).expect("tangency must hit");
+        assert!((fraction - 0.404).abs() < 1e-4, "fraction {fraction}");
+        let expected = Vec3A::new(0.70710678, 0.70710678, 0.0).normalize();
+        assert!(normal.dot(expected) > 0.999, "normal {normal:?}");
+    }
+
+    #[test]
+    fn starts_inside_and_on_surface_preserve_miss() {
+        let compound = ident_compound(unit_box(), Vec3A::ZERO);
+        assert!(
+            cast_one(&compound, Vec3A::ZERO, Vec3A::new(0.0, 0.0, 5.0)).is_none(),
+            "starts inside must miss"
+        );
+        assert!(
+            cast_one(
+                &compound,
+                Vec3A::new(0.0, 0.0, 1.0),
+                Vec3A::new(0.0, 0.0, -5.0)
+            )
+            .is_none(),
+            "on-surface inward must miss"
+        );
+        assert!(
+            cast_one(
+                &compound,
+                Vec3A::new(0.0, 0.0, 1.0),
+                Vec3A::new(0.0, 0.0, 5.0)
+            )
+            .is_none(),
+            "on-surface outward must miss"
+        );
+    }
+
+    #[test]
+    fn zero_length_and_nonfinite_safety() {
+        let compound = ident_compound(unit_box(), Vec3A::ZERO);
+        assert!(
+            cast_one(
+                &compound,
+                Vec3A::new(1.0, 1.0, 1.0),
+                Vec3A::new(1.0, 1.0, 1.0)
+            )
+            .is_none()
+        );
+        assert!(
+            cast_one(
+                &compound,
+                Vec3A::new(f32::NAN, 0.0, 0.0),
+                Vec3A::new(0.0, 0.0, 5.0)
+            )
+            .is_none()
+        );
+        assert!(
+            cast_one(
+                &compound,
+                Vec3A::new(f32::INFINITY, 0.0, 0.0),
+                Vec3A::new(0.0, 0.0, 5.0)
+            )
+            .is_none()
+        );
+        assert!(cast_one(&compound, Vec3A::ZERO, Vec3A::new(f32::NAN, 0.0, 0.0)).is_none());
+        assert!(cast_one(&compound, Vec3A::ZERO, Vec3A::new(f32::INFINITY, 0.0, 0.0)).is_none());
+    }
+
+    #[test]
+    fn translated_child_recenters_hit() {
+        let compound = ident_compound(unit_box(), Vec3A::new(1.0, 0.0, 0.0));
+        let (fraction, normal) = cast_one(
+            &compound,
+            Vec3A::new(1.0, 0.0, 5.0),
+            Vec3A::new(1.0, 0.0, -5.0),
+        )
+        .expect("translated center must hit");
+        assert_eq!(fraction, 4.0f32 / 10.0);
+        assert_eq!(normal, Vec3A::Z);
+    }
+
+    #[test]
+    fn rotated_child_swaps_extents() {
+        let shape = BoxShape::new(Vec3A::new(2.0, 0.5, 0.5));
+        let child = Affine3A {
+            matrix3: Mat3A::from_rotation_z(FRAC_PI_2),
+            translation: Vec3A::ZERO,
+        };
+        let compound = CompoundShape::new(shape, child);
+        assert!(
+            cast_one(
+                &compound,
+                Vec3A::new(1.0, 0.0, 5.0),
+                Vec3A::new(1.0, 0.0, -5.0)
+            )
+            .is_none(),
+            "x=1 is outside after 90deg z rotation"
+        );
+        let (fraction, normal) = cast_one(
+            &compound,
+            Vec3A::new(0.0, 1.0, 5.0),
+            Vec3A::new(0.0, 1.0, -5.0),
+        )
+        .expect("y=1 is inside after 90deg z rotation");
+        assert!((fraction - 0.45).abs() < 1e-4, "fraction {fraction}");
+        assert!(normal.dot(Vec3A::Z) > 0.999, "normal {normal:?}");
+    }
+
+    #[test]
+    fn mirror_symmetry_and_deterministic_tie() {
+        let compound = ident_compound(unit_box(), Vec3A::ZERO);
+        let from_a = Vec3A::new(0.98, 0.0, 5.0);
+        let to_a = Vec3A::new(0.98, 0.0, -5.0);
+        let from_b = Vec3A::new(-0.98, 0.0, 5.0);
+        let to_b = Vec3A::new(-0.98, 0.0, -5.0);
+        let (fa, na) = cast_one(&compound, from_a, to_a).expect("mirror A must hit");
+        let (fb, nb) = cast_one(&compound, from_b, to_b).expect("mirror B must hit");
+        assert!((fa - fb).abs() < 1e-6, "fractions {fa} vs {fb}");
+        assert!((na.x + nb.x).abs() < 1e-6, "normals {na:?} vs {nb:?}");
+        assert!((na.y - nb.y).abs() < 1e-6);
+        assert!((na.z - nb.z).abs() < 1e-6);
+        let repeat = cast_one(&compound, from_a, to_a).expect("repeat must hit");
+        assert_eq!(fa, repeat.0);
+        assert_eq!(na, repeat.1);
+        let diag_from = Vec3A::new(2.0, 2.0, 0.0);
+        let diag_to = Vec3A::new(-2.0, -2.0, 0.0);
+        let first = cast_one(&compound, diag_from, diag_to).expect("diagonal must hit");
+        let second = cast_one(&compound, diag_from, diag_to).expect("repeat must hit");
+        assert_eq!(first.0, second.0);
+        assert_eq!(first.1, second.1);
+    }
+
+    #[test]
+    fn wisp_9704_recorded_geometry_regression() {
+        // Recorded-geometry regression data only, copied as test numbers.
+        // Live staging did not reproduce the exact contact; this guards the analytic solve.
+        let shape = BoxShape::new(Vec3A::new(1.20507, 0.866994, 0.386591));
+        let child = Affine3A {
+            matrix3: Mat3A::IDENTITY,
+            translation: Vec3A::new(0.277514, 0.0, 0.4151),
+        };
+        let compound = CompoundShape::new(shape, child);
+        let from_a = Vec3A::new(1.085316, 0.145283, 1.635977);
+        let to_a = Vec3A::new(1.507248, 0.29966, 0.714581);
+        let (fraction, normal) = cast_one(&compound, from_a, to_a).expect("9704 ray must hit");
+        let target_n = Vec3A::new(0.76937, 0.000005, 0.638803).normalize();
+        assert!(
+            normal.dot(target_n) > 0.999,
+            "normal {normal:?} vs target {target_n:?}"
+        );
+        let ray_len = (to_a - from_a).length();
+        let trace = fraction * ray_len;
+        assert!(
+            (trace - 0.943611).abs() < 0.01,
+            "trace {trace} fraction {fraction}"
+        );
+    }
+}
