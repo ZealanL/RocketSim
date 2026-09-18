@@ -80,6 +80,34 @@ fn print_report(backend: &str, report: &common::EvalReport) {
     }
 }
 
+fn stasis_span_list(targets: &[usize]) -> String {
+    if targets.is_empty() {
+        return "-".to_string();
+    }
+    let mut spans = Vec::new();
+    let mut start = targets[0];
+    let mut prev = targets[0];
+    for &t in &targets[1..] {
+        if t == prev + 1 {
+            prev = t;
+        } else {
+            spans.push(if start == prev {
+                start.to_string()
+            } else {
+                format!("{start}-{prev}")
+            });
+            start = t;
+            prev = t;
+        }
+    }
+    spans.push(if start == prev {
+        start.to_string()
+    } else {
+        format!("{start}-{prev}")
+    });
+    spans.join(", ")
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
     if args.segment_ticks <= 1 {
@@ -150,6 +178,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("All cars share the sim; car-car contacts are real sim events.");
     }
     println!("Dodge deadzone: {:.2}", args.dodge_deadzone);
+    println!(
+        "Kickoff stasis spans ({}): {}",
+        common::KICKOFF_STASIS_RULE,
+        stasis_span_list(&common::kickoff_stasis_targets(&recording.ticks)),
+    );
     println!();
     println!(
         "{:<7} {:<15} {:>9} {:>9} {:>9} {:>12} {:>12} {:>12}",
@@ -159,7 +192,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     v3::init();
     let mut v3_backend = v3::V3Backend::with_dodge_deadzone(args.dodge_deadzone);
-    let v3_report = common::evaluate(
+    let v3_outcome = common::evaluate(
         &mut v3_backend,
         &recording.ticks,
         &segments,
@@ -168,13 +201,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         args.reset_warmup,
         !args.ignore_sim_events,
     );
-    print_report("v3", &v3_report);
+    println!(
+        "Kickoff stasis skips ({}): {} scored transitions ({} car-ticks across {} cars)",
+        common::KICKOFF_STASIS_RULE,
+        v3_outcome.skipped_transitions,
+        v3_outcome.skipped_car_ticks,
+        num_cars,
+    );
+    print_report("v3", &v3_outcome.report);
 
     #[cfg(feature = "v2")]
     {
         v2::init();
         let mut v2_backend = v2::V2Backend::with_dodge_deadzone(args.dodge_deadzone);
-        let v2_report = common::evaluate(
+        let v2_outcome = common::evaluate(
             &mut v2_backend,
             &recording.ticks,
             &segments,
@@ -184,7 +224,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             !args.ignore_sim_events,
         );
         println!();
-        print_report("v2", &v2_report);
+        print_report("v2", &v2_outcome.report);
     }
 
     Ok(())
