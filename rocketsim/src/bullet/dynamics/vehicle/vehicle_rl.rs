@@ -13,6 +13,7 @@ use crate::bullet::{
     },
     linear_math::QuatExt,
 };
+use crate::sim::UserInfoTypes;
 
 pub struct VehicleRL {
     raycaster: VehicleRaycaster,
@@ -107,6 +108,41 @@ impl VehicleRL {
 
     pub const fn get_num_wheels(&self) -> usize {
         self.wheels.len()
+    }
+
+    /// Target I23 hit-body reaction: each wheel with a resolved car
+    /// pushback applies the equal-and-opposite impulse to the hit car at
+    /// contact minus victim origin. Runs before chassis suspension.
+    fn apply_hit_car_pushback(&self, collision_world: &mut DiscreteDynamicsWorld) {
+        for wheel in &self.wheels {
+            let Some(info) = wheel.raycast_info.as_ref() else {
+                continue;
+            };
+            if wheel.extra_pushback <= 0.0 {
+                continue;
+            }
+            let victim_idx = info.ground_body_idx;
+            if victim_idx == self.chassis_body_idx || victim_idx >= collision_world.bodies().len() {
+                continue;
+            }
+            if collision_world.bodies()[victim_idx].user_idx != UserInfoTypes::Car {
+                continue;
+            }
+            let contact_point = info.contact_point;
+            let contact_normal = info.contact_normal;
+            let full_pushback = wheel.extra_pushback * NUM_WHEELS as f32;
+            let victim = &mut collision_world.bodies_mut()[victim_idx];
+            if victim.inv_mass == 0.0 {
+                continue;
+            }
+            let victim_offset = contact_point - victim.get_world_trans().translation;
+            victim.add_impulse(
+                None,
+                Impulse::LinearRelPos(-contact_normal * full_pushback, victim_offset),
+                true,
+                false,
+            );
+        }
     }
 
     pub fn update(
@@ -223,6 +259,12 @@ impl VehicleRL {
             );
         }
 
+        // Target I23 hit-body order: the equal-and-opposite car pushback
+        // lands before the chassis suspension in the same tick, beside the
+        // stick block. Lever arm is contact minus victim origin, matching
+        // the upstream two-body resolve shape.
+        self.apply_hit_car_pushback(collision_world);
+
         let chassis = &mut collision_world.bodies_mut()[self.chassis_body_idx];
         for wheel in &mut self.wheels {
             wheel.update_suspension(chassis, chassis_translation, time_step);
@@ -238,5 +280,164 @@ impl VehicleRL {
         for wheel in &mut self.wheels {
             wheel.apply_friction_impulses(chassis, &chassis_trans, time_step);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use glam::{Affine3A, Mat3A, Vec3A};
+
+    use super::VehicleRL;
+    use crate::{
+        bullet::{
+            collision::{
+                broadphase::GridBroadphase,
+                shapes::{
+                    box_shape::BoxShape, collision_shape::CollisionShapes,
+                    compound_shape::CompoundShape,
+                },
+            },
+            dynamics::{
+                discrete_dynamics_world::DiscreteDynamicsWorld,
+                rigid_body::{RigidBody, RigidBodyConstructionInfo},
+                vehicle::{NUM_WHEELS, wheel_info::RaycastInfo},
+            },
+        },
+        consts::UU_TO_BT,
+        sim::UserInfoTypes,
+    };
+
+    fn make_body(mass: f32, translation: Vec3A, user_idx: UserInfoTypes) -> RigidBody {
+        let child = BoxShape::new(Vec3A::new(1.0, 0.5, 0.3));
+        let local_inertia = child.calculate_local_intertia(mass);
+        let mut info = RigidBodyConstructionInfo::new(
+            mass,
+            CollisionShapes::Compound(CompoundShape::new(child, Affine3A::IDENTITY)),
+        );
+        info.local_inertia = local_inertia;
+        info.start_world_trans = Affine3A {
+            matrix3: Mat3A::IDENTITY,
+            translation,
+        };
+        let mut body = RigidBody::new(info);
+        body.user_idx = user_idx;
+        body
+    }
+
+    fn make_world() -> DiscreteDynamicsWorld {
+        let broadphase = GridBroadphase::new(
+            Vec3A::new(-5600.0, -6000.0, 0.0) * UU_TO_BT,
+            Vec3A::new(5600.0, 6000.0, 2200.0) * UU_TO_BT,
+            370.0 * UU_TO_BT,
+            8,
+        );
+        DiscreteDynamicsWorld::new(broadphase, Vec3A::ZERO)
+    }
+
+    fn contact_info(contact_point: Vec3A, ground_body_idx: usize) -> RaycastInfo {
+        RaycastInfo {
+            contact_normal: Vec3A::Z,
+            contact_point,
+            ground_body_idx,
+            suspension_length: 0.5,
+            impulse: Vec3A::ZERO,
+            ground_stick: Vec3A::ZERO,
+            is_in_contact_with_world: false,
+            clipped_inv_contact_dot_suspension: 1.0,
+            suspension_relative_vel: 0.0,
+        }
+    }
+
+    #[test]
+    fn car_victim_gets_opposite_reaction() {
+        let mut world = make_world();
+        let chassis_idx = world.add_rigid_body_default(make_body(
+            180.0,
+            Vec3A::new(0.0, 0.0, 5.0),
+            UserInfoTypes::Car,
+        ));
+        let victim_idx =
+            world.add_rigid_body_default(make_body(180.0, Vec3A::ZERO, UserInfoTypes::Car));
+        let contact = Vec3A::new(0.5, 0.0, 1.0);
+        let extra = 2.0;
+        let full = extra * NUM_WHEELS as f32;
+
+        let inv_mass = world.bodies()[victim_idx].inv_mass;
+        let tensor = world.bodies()[victim_idx].inv_inertia_tensor_world;
+        let offset = contact - world.bodies()[victim_idx].get_world_trans().translation;
+        let expected_lin = -Vec3A::Z * full * inv_mass;
+        let expected_ang = tensor * offset.cross(-Vec3A::Z * full);
+        assert!(expected_ang.y > 0.0);
+
+        let mut vehicle = VehicleRL::new(
+            chassis_idx,
+            [crate::bullet::dynamics::vehicle::WheelInfo::DEFAULT; NUM_WHEELS],
+        );
+        vehicle.wheels[0].extra_pushback = extra;
+        vehicle.wheels[0].raycast_info = Some(contact_info(contact, victim_idx));
+        vehicle.apply_hit_car_pushback(&mut world);
+
+        let victim = &world.bodies()[victim_idx];
+        assert!((victim.lin_vel - expected_lin).length() < 1e-5);
+        assert!((victim.ang_vel - expected_ang).length() < 1e-5);
+        assert_eq!(world.bodies()[chassis_idx].lin_vel, Vec3A::ZERO);
+    }
+
+    #[test]
+    fn self_hit_applies_no_reaction() {
+        let mut world = make_world();
+        let chassis_idx =
+            world.add_rigid_body_default(make_body(180.0, Vec3A::ZERO, UserInfoTypes::Car));
+        let mut vehicle = VehicleRL::new(
+            chassis_idx,
+            [crate::bullet::dynamics::vehicle::WheelInfo::DEFAULT; NUM_WHEELS],
+        );
+        vehicle.wheels[0].extra_pushback = 2.0;
+        vehicle.wheels[0].raycast_info = Some(contact_info(Vec3A::new(0.5, 0.0, 1.0), chassis_idx));
+        vehicle.apply_hit_car_pushback(&mut world);
+        assert_eq!(world.bodies()[chassis_idx].lin_vel, Vec3A::ZERO);
+        assert_eq!(world.bodies()[chassis_idx].ang_vel, Vec3A::ZERO);
+    }
+
+    #[test]
+    fn ball_victim_applies_no_reaction() {
+        let mut world = make_world();
+        let chassis_idx = world.add_rigid_body_default(make_body(
+            180.0,
+            Vec3A::new(0.0, 0.0, 5.0),
+            UserInfoTypes::Car,
+        ));
+        let ball_idx =
+            world.add_rigid_body_default(make_body(30.0, Vec3A::ZERO, UserInfoTypes::Ball));
+        let mut vehicle = VehicleRL::new(
+            chassis_idx,
+            [crate::bullet::dynamics::vehicle::WheelInfo::DEFAULT; NUM_WHEELS],
+        );
+        vehicle.wheels[0].extra_pushback = 2.0;
+        vehicle.wheels[0].raycast_info = Some(contact_info(Vec3A::new(0.5, 0.0, 1.0), ball_idx));
+        vehicle.apply_hit_car_pushback(&mut world);
+        assert_eq!(world.bodies()[ball_idx].lin_vel, Vec3A::ZERO);
+        assert_eq!(world.bodies()[ball_idx].ang_vel, Vec3A::ZERO);
+    }
+
+    #[test]
+    fn zero_pushback_applies_no_reaction() {
+        let mut world = make_world();
+        let chassis_idx = world.add_rigid_body_default(make_body(
+            180.0,
+            Vec3A::new(0.0, 0.0, 5.0),
+            UserInfoTypes::Car,
+        ));
+        let victim_idx =
+            world.add_rigid_body_default(make_body(180.0, Vec3A::ZERO, UserInfoTypes::Car));
+        let mut vehicle = VehicleRL::new(
+            chassis_idx,
+            [crate::bullet::dynamics::vehicle::WheelInfo::DEFAULT; NUM_WHEELS],
+        );
+        vehicle.wheels[0].extra_pushback = 0.0;
+        vehicle.wheels[0].raycast_info = Some(contact_info(Vec3A::new(0.5, 0.0, 1.0), victim_idx));
+        vehicle.apply_hit_car_pushback(&mut world);
+        assert_eq!(world.bodies()[victim_idx].lin_vel, Vec3A::ZERO);
+        assert_eq!(world.bodies()[victim_idx].ang_vel, Vec3A::ZERO);
     }
 }
