@@ -291,10 +291,10 @@ pub fn run_start(ticks: &[TickRecord], segment_start: usize) -> usize {
 /// Reconstruct the handbrake integrator at one recorded state.
 ///
 /// RLPR does not store `handbrake_val`. `prev_controls` at tick `i` is the
-/// control used to produce tick `i`, so include tick `state_index`. A fall
-/// from 1.0 takes 60 ticks at 120 Hz. A 60-tick window is therefore enough
-/// to remove all state from before the window for the fall-only case. At a
-/// run boundary, assume the value before the run was zero.
+/// control used to produce tick `i`, so include tick `state_index`.
+/// Integrate from the true contiguous `run_start`. Alternating histories
+/// can retain state older than 60 ticks, so do not truncate the window.
+/// At a run boundary, assume the value before the run was zero.
 pub fn reconstruct_handbrake(
     ticks: &[TickRecord],
     run_start: usize,
@@ -305,7 +305,7 @@ pub fn reconstruct_handbrake(
         return None;
     }
 
-    let first = state_index.saturating_sub(59).max(run_start);
+    let first = run_start;
     let mut value = 0.0;
     for tick in &ticks[first..=state_index] {
         let car = tick.car_records.get(car_idx)?;
@@ -1057,12 +1057,31 @@ mod tests {
             tick.car_records[0].prev_controls.handbrake = true;
         }
         assert_eq!(reconstruct_handbrake(&ticks, 0, 23, 0), Some(1.0));
-        assert_eq!(reconstruct_handbrake(&ticks, 0, 83, 0), Some(0.0));
+        let washed = reconstruct_handbrake(&ticks, 0, 83, 0).unwrap();
+        assert!(washed.abs() < 1e-6, "washout {washed}");
 
         ticks[0].car_records[0].prev_controls.handbrake = true;
         ticks[1].car_records[0].prev_controls.handbrake = false;
         let bounded = reconstruct_handbrake(&ticks, 1, 1, 0).unwrap();
         assert_eq!(bounded, 0.0);
+    }
+
+    #[test]
+    fn reconstructs_handbrake_from_history_older_than_sixty_ticks() {
+        // 70 alternating ticks stay below saturation: full run keeps the
+        // first 5 press cycles that a 60-tick window drops.
+        let mut ticks: Vec<_> = (0..70).map(|i| quiet_tick(i, i as f32)).collect();
+        for (i, tick) in ticks.iter_mut().enumerate() {
+            tick.car_records[0].prev_controls.handbrake = i % 2 == 0;
+        }
+        let full = reconstruct_handbrake(&ticks, 0, 69, 0).unwrap();
+        let truncated = reconstruct_handbrake(&ticks, 10, 69, 0).unwrap();
+        assert!((full - 0.875).abs() < 1e-5, "full run value {full}");
+        assert!(
+            (truncated - 0.75).abs() < 1e-5,
+            "truncated value {truncated}"
+        );
+        assert!((full - truncated - 0.125).abs() < 1e-5);
     }
 
     #[test]
