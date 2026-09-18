@@ -9,6 +9,7 @@ use crate::{
         rigid_body::{Impulse, RigidBody},
     },
     consts::{BT_TO_UU, UU_TO_BT, bullet_vehicle, curves},
+    sim::UserInfoTypes,
 };
 
 pub struct RaycastInfo {
@@ -145,8 +146,12 @@ impl WheelInfo {
         // The pushback resolve is a per-raycast transient: refresh it on
         // every contact tick so a wheel above the penetration threshold
         // reports 0 instead of keeping the previous tick's value.
+        // Target I23 uses a rigid-plus-mask gate. Static plus Car is the
+        // current proxy for that gate. Ball and tile mask behavior remains
+        // open per the v8 decision.
         self.extra_pushback = 0.0;
-        if is_in_contact_with_world {
+        let is_car_hit = ray_results.rigid_body.user_idx == UserInfoTypes::Car;
+        if is_in_contact_with_world || is_car_hit {
             let ray_pushback_thresh = self.suspension_rest_length_1 + self.wheels_radius
                 - bullet_vehicle::SUSPENSION_SUBTRACTION;
             if wheel_trace_len_sq < ray_pushback_thresh {
@@ -359,5 +364,101 @@ impl WheelInfo {
             true,
             false,
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use glam::{Affine3A, Mat3A, Vec3A};
+
+    use super::{VehicleRaycasterResult, WheelInfo};
+    use crate::{
+        bullet::{
+            collision::shapes::{
+                box_shape::BoxShape, collision_shape::CollisionShapes,
+                compound_shape::CompoundShape,
+            },
+            dynamics::rigid_body::{RigidBody, RigidBodyConstructionInfo},
+        },
+        sim::UserInfoTypes,
+    };
+
+    const TIME_STEP: f32 = 1.0 / 120.0;
+
+    fn make_body(mass: f32, translation: Vec3A, user_idx: UserInfoTypes) -> RigidBody {
+        let child = BoxShape::new(Vec3A::new(1.0, 0.5, 0.3));
+        let local_inertia = child.calculate_local_intertia(mass);
+        let mut info = RigidBodyConstructionInfo::new(
+            mass,
+            CollisionShapes::Compound(CompoundShape::new(child, Affine3A::IDENTITY)),
+        );
+        info.local_inertia = local_inertia;
+        info.start_world_trans = Affine3A {
+            matrix3: Mat3A::IDENTITY,
+            translation,
+        };
+        let mut body = RigidBody::new(info);
+        body.user_idx = user_idx;
+        body
+    }
+
+    fn make_wheel(chassis_trans: &Affine3A) -> WheelInfo {
+        let mut wheel = WheelInfo::DEFAULT;
+        wheel.set_params(Vec3A::ZERO, 0.6, 0.3, 1.0);
+        wheel.prepare_for_raycast(chassis_trans);
+        wheel
+    }
+
+    fn cast_at(wheel: &mut WheelInfo, chassis: &RigidBody, victim: &RigidBody, trace: f32) {
+        let chassis_trans = *chassis.get_world_trans();
+        let up = chassis_trans.matrix3.z_axis;
+        let contact_point = wheel.hard_point - up * trace;
+        let result = VehicleRaycasterResult {
+            hit_point_in_world: contact_point,
+            hit_normal_in_world: Vec3A::Z,
+            rigid_body_idx: 7,
+            rigid_body: victim,
+        };
+        wheel.apply_ray_cast(chassis, &chassis_trans, Vec3A::Y, result, TIME_STEP, true);
+    }
+
+    #[test]
+    fn car_hit_resolves_pushback() {
+        let chassis = make_body(180.0, Vec3A::ZERO, UserInfoTypes::Car);
+        let victim = make_body(180.0, Vec3A::new(0.0, 0.0, -2.0), UserInfoTypes::Car);
+        let mut wheel = make_wheel(chassis.get_world_trans());
+        cast_at(&mut wheel, &chassis, &victim, 0.5);
+        assert!(wheel.extra_pushback > 0.0);
+        let info = wheel.raycast_info.as_ref().unwrap();
+        assert!(!info.is_in_contact_with_world);
+    }
+
+    #[test]
+    fn static_hit_resolves_pushback() {
+        let chassis = make_body(180.0, Vec3A::ZERO, UserInfoTypes::Car);
+        let victim = make_body(0.0, Vec3A::new(0.0, 0.0, -2.0), UserInfoTypes::None);
+        let mut wheel = make_wheel(chassis.get_world_trans());
+        cast_at(&mut wheel, &chassis, &victim, 0.5);
+        assert!(wheel.extra_pushback > 0.0);
+        let info = wheel.raycast_info.as_ref().unwrap();
+        assert!(info.is_in_contact_with_world);
+    }
+
+    #[test]
+    fn ball_hit_resolves_no_pushback() {
+        let chassis = make_body(180.0, Vec3A::ZERO, UserInfoTypes::Car);
+        let victim = make_body(30.0, Vec3A::new(0.0, 0.0, -2.0), UserInfoTypes::Ball);
+        let mut wheel = make_wheel(chassis.get_world_trans());
+        cast_at(&mut wheel, &chassis, &victim, 0.5);
+        assert_eq!(wheel.extra_pushback, 0.0);
+    }
+
+    #[test]
+    fn above_threshold_car_hit_resolves_no_pushback() {
+        let chassis = make_body(180.0, Vec3A::ZERO, UserInfoTypes::Car);
+        let victim = make_body(180.0, Vec3A::new(0.0, 0.0, -2.0), UserInfoTypes::Car);
+        let mut wheel = make_wheel(chassis.get_world_trans());
+        cast_at(&mut wheel, &chassis, &victim, 1.0);
+        assert_eq!(wheel.extra_pushback, 0.0);
     }
 }
