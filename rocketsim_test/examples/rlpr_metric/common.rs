@@ -371,8 +371,10 @@ pub fn run_start(ticks: &[TickRecord], segment_start: usize) -> usize {
 
 /// Reconstruct the handbrake integrator at one recorded state.
 ///
-/// RLPR does not store `handbrake_val`. `prev_controls` at tick `i` is the
-/// control used to produce tick `i`, so include tick `state_index`.
+/// Versions v2-v7 do not store `handbrake_val`. Version v8 records it.
+/// Use this fallback only when the format lacks direct state.
+/// `prev_controls` at tick `i` is the control used to produce tick `i`,
+/// so include tick `state_index`.
 /// Integrate from the true contiguous `run_start`. Alternating histories
 /// can retain state older than 60 ticks, so do not truncate the window.
 /// At a run boundary, assume the value before the run was zero.
@@ -682,7 +684,10 @@ pub fn settle_reset_state<B: ReplayBackend>(backend: &mut B, state: &TickRecord)
     backend.refresh_sticky_gates();
 }
 
-/// Restore state that RLPR does not store at a segment state.
+/// Restore reconstructed handbrake state at a segment state.
+///
+/// Use this fallback only for versions v2-v7. Version v8 records the value.
+/// Harness only, not physics.
 pub fn restore_handbrake_seed<B: ReplayBackend>(
     backend: &mut B,
     ticks: &[TickRecord],
@@ -729,6 +734,28 @@ pub fn restore_recorded_boost_state<B: ReplayBackend>(
     }
 }
 
+/// Restore recorded handbrake integrator state after a reset.
+///
+/// Apply direct recorded state only when the format carries it.
+/// Older versions keep the reconstruction fallback: this is a no-op for them.
+/// The backend setter clamps the value. Harness only, not physics.
+pub fn restore_recorded_handbrake<B: ReplayBackend>(
+    backend: &mut B,
+    ticks: &[TickRecord],
+    state_index: usize,
+    has_handbrake_state: bool,
+) {
+    if !has_handbrake_state {
+        return;
+    }
+    let Some(state) = ticks.get(state_index) else {
+        return;
+    };
+    for (car_idx, car) in state.car_records.iter().enumerate() {
+        backend.set_handbrake_value(car_idx, car.handbrake_val);
+    }
+}
+
 /// Report plus kickoff-stasis skip counts from one [`evaluate`] run.
 /// Skipped counts hold scored transitions removed after warmup.
 /// The sim still steps through them.
@@ -751,6 +778,8 @@ pub struct EvalOutcome {
 /// in [`EvalOutcome`].
 /// `has_boost_state` must be true only when the recording version carries
 /// recorded boost latch state; older versions keep live-latch evolution.
+/// `has_handbrake_state` must be true only when the recording version
+/// carries recorded handbrake state; older versions keep reconstruction.
 #[allow(clippy::too_many_arguments)]
 pub fn evaluate<B: ReplayBackend>(
     backend: &mut B,
@@ -761,6 +790,7 @@ pub fn evaluate<B: ReplayBackend>(
     reset_warmup: bool,
     use_sim_events: bool,
     has_boost_state: bool,
+    has_handbrake_state: bool,
 ) -> EvalOutcome {
     let mut outcome = EvalOutcome::default();
     let report = &mut outcome.report;
@@ -771,7 +801,10 @@ pub fn evaluate<B: ReplayBackend>(
         let segment_run_start = run_start(ticks, segment.start);
         if !reset_each_tick {
             backend.reset(&ticks[segment.start]);
-            restore_handbrake_seed(backend, ticks, segment_run_start, segment.start);
+            restore_recorded_handbrake(backend, ticks, segment.start, has_handbrake_state);
+            if !has_handbrake_state {
+                restore_handbrake_seed(backend, ticks, segment_run_start, segment.start);
+            }
             restore_recorded_boost_state(backend, ticks, segment.start, has_boost_state);
         }
         for offset in 1..segment.len {
@@ -785,7 +818,8 @@ pub fn evaluate<B: ReplayBackend>(
                     backend.set_state(&ticks[state_index]);
                 }
                 restore_recorded_boost_state(backend, ticks, state_index, has_boost_state);
-                if offset == 1 {
+                restore_recorded_handbrake(backend, ticks, state_index, has_handbrake_state);
+                if !has_handbrake_state && offset == 1 {
                     restore_handbrake_seed(backend, ticks, segment_run_start, state_index);
                 }
             }
@@ -888,6 +922,7 @@ mod tests {
             is_boosting: false,
             _boost_pad: [0; 3],
             boosting_time: 0.0,
+            handbrake_val: 0.0,
         }
     }
 
@@ -1161,6 +1196,60 @@ mod tests {
         assert!(probe.boost_calls.is_empty());
     }
 
+    struct HandbrakeProbe {
+        brake_calls: Vec<(usize, f32)>,
+    }
+
+    impl ReplayBackend for HandbrakeProbe {
+        fn reset(&mut self, _start: &TickRecord) {}
+        fn set_state(&mut self, _state: &TickRecord) {}
+        fn set_handbrake_value(&mut self, car_idx: usize, value: f32) {
+            self.brake_calls.push((car_idx, value));
+        }
+        fn step(&mut self, _controls: &[ControlsRecord]) -> Vec<SimContactEvents> {
+            vec![]
+        }
+        fn snapshot(&mut self, _car_idx: usize) -> Snapshot {
+            let body = BodySnapshot {
+                pos: Vec3A::ZERO,
+                vel: Vec3A::ZERO,
+                ang_vel: Vec3A::ZERO,
+                forward: Vec3A::X,
+                up: Vec3A::Z,
+            };
+            Snapshot {
+                car: body,
+                ball: body,
+            }
+        }
+    }
+
+    #[test]
+    fn recorded_handbrake_restores_exact_value() {
+        let mut tick = quiet_tick(1, 10.0);
+        tick.car_records[0].handbrake_val = 0.875;
+        let ticks = vec![quiet_tick(0, 0.0), tick];
+        let mut probe = HandbrakeProbe {
+            brake_calls: vec![],
+        };
+        restore_recorded_handbrake(&mut probe, &ticks, 1, true);
+        assert_eq!(probe.brake_calls, vec![(0, 0.875)]);
+    }
+
+    #[test]
+    fn legacy_handbrake_fallback_stays_live() {
+        let mut tick = quiet_tick(1, 10.0);
+        tick.car_records[0].handbrake_val = 0.875;
+        let ticks = vec![quiet_tick(0, 0.0), tick];
+        let mut probe = HandbrakeProbe {
+            brake_calls: vec![],
+        };
+        restore_recorded_handbrake(&mut probe, &ticks, 1, false);
+        assert!(probe.brake_calls.is_empty());
+        restore_recorded_handbrake(&mut probe, &ticks, 99, true);
+        assert!(probe.brake_calls.is_empty());
+    }
+
     impl MirrorBackend {
         fn new(ticks: &[TickRecord]) -> Self {
             let num_cars = ticks
@@ -1376,6 +1465,7 @@ mod tests {
             false,
             true,
             false,
+            false,
         )
         .report;
         assert!(report.total.support > 0);
@@ -1398,6 +1488,7 @@ mod tests {
             false,
             false,
             true,
+            false,
             false,
         )
         .report;
@@ -1422,6 +1513,7 @@ mod tests {
             false,
             true,
             false,
+            false,
         )
         .report;
         assert_eq!(report.total.support, 5);
@@ -1431,7 +1523,18 @@ mod tests {
         assert_eq!(report.no_contact.support, 4);
 
         let mut backend = MirrorBackend::new(&ticks);
-        let report = evaluate(&mut backend, &ticks, &segments, 3, true, false, true, false).report;
+        let report = evaluate(
+            &mut backend,
+            &ticks,
+            &segments,
+            3,
+            true,
+            false,
+            true,
+            false,
+            false,
+        )
+        .report;
         assert_eq!(report.total.support, 5);
         assert_eq!(report.total.passed, 5);
     }
@@ -1628,7 +1731,17 @@ mod tests {
         assert!(!tick_is_kickoff_stasis(&ticks[2], &ticks[3]));
         let segments = vec![Segment { start: 0, len: 4 }];
         let mut backend = MirrorBackend::new(&ticks);
-        let outcome = evaluate(&mut backend, &ticks, &segments, 1, true, false, true, false);
+        let outcome = evaluate(
+            &mut backend,
+            &ticks,
+            &segments,
+            1,
+            true,
+            false,
+            true,
+            false,
+            false,
+        );
         assert_eq!(outcome.skipped_transitions, 1);
         assert_eq!(outcome.skipped_car_ticks, 2);
         assert_eq!(outcome.report.total.support, 4);

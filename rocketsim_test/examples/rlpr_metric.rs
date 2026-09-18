@@ -199,6 +199,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         args.reset_warmup,
         args.use_sim_events,
         rocketsim_test::rlpr::recording_has_boost_state(recording.version),
+        rocketsim_test::rlpr::recording_has_handbrake_state(recording.version),
     );
     print_report("v3", &v3_outcome.report);
 
@@ -215,6 +216,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             args.reset_warmup,
             args.use_sim_events,
             rocketsim_test::rlpr::recording_has_boost_state(recording.version),
+            rocketsim_test::rlpr::recording_has_handbrake_state(recording.version),
         );
         println!();
         print_report("v2", &v2_outcome.report);
