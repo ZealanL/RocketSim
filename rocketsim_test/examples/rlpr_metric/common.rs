@@ -190,6 +190,80 @@ pub fn tick_is_frozen(from: &TickRecord, to: &TickRecord) -> bool {
         && from.ball_record.ang_vel == to.ball_record.ang_vel
 }
 
+/// Kickoff countdown stasis, rule `kickoff-stasis-v1`. Metric only.
+///
+/// True when the game step is paused at kickoff while the recorder still
+/// emits live controls and wheel contact flags. The ball sits unchanged
+/// at the kickoff spot with a world-contact flag. Every car creeps with
+/// epsilon motion and near-zero horizontal velocity. Exact `tick_is_frozen`
+/// misses these rows because cars drift up to ~0.67 UU per tick. The
+/// horizontal-velocity and ball-contact gates separate countdown spans
+/// from genuine drive-off (ball contact false, horizontal speed 20+ UU/s)
+/// and from slow play elsewhere (ball off center or cars driving).
+/// Epsilon-only: exact-frozen pairs return false and stay on that path.
+pub const KICKOFF_STASIS_RULE: &str = "kickoff-stasis-v1";
+pub const KICKOFF_STASIS_MAX_CAR_MOVE: f32 = 1.0;
+pub const KICKOFF_STASIS_MAX_CAR_SPEED: f32 = 100.0;
+pub const KICKOFF_STASIS_MAX_CAR_HXY: f32 = 5.0;
+pub const KICKOFF_STASIS_BALL_CENTER_TOL: f32 = 1.0;
+
+/// True when one transition is kickoff countdown stasis. See above.
+pub fn tick_is_kickoff_stasis(from: &TickRecord, to: &TickRecord) -> bool {
+    if tick_is_frozen(from, to) {
+        return false;
+    }
+    let n = from.car_records.len();
+    if n == 0 || to.car_records.len() != n {
+        return false;
+    }
+    if !frame_is_contiguous(from, to) || any_teleport(from, to) {
+        return false;
+    }
+    let from_ball: Vec3A = from.ball_record.pos.into();
+    let to_ball: Vec3A = to.ball_record.pos.into();
+    if (to_ball - from_ball).length() != 0.0 {
+        return false;
+    }
+    if to_ball.x.abs() > KICKOFF_STASIS_BALL_CENTER_TOL
+        || to_ball.y.abs() > KICKOFF_STASIS_BALL_CENTER_TOL
+    {
+        return false;
+    }
+    if !to.ball_record.has_world_contact {
+        return false;
+    }
+    from.car_records
+        .iter()
+        .zip(to.car_records.iter())
+        .all(|(a, b)| {
+            let pa: Vec3A = a.phys.pos.into();
+            let pb: Vec3A = b.phys.pos.into();
+            if (pb - pa).length() >= KICKOFF_STASIS_MAX_CAR_MOVE {
+                return false;
+            }
+            let v: Vec3A = b.phys.lin_vel.into();
+            if v.length() >= KICKOFF_STASIS_MAX_CAR_SPEED {
+                return false;
+            }
+            if glam::Vec2::new(v.x, v.y).length() >= KICKOFF_STASIS_MAX_CAR_HXY {
+                return false;
+            }
+            b.wheels.iter().any(|wheel| wheel.has_contact)
+        })
+}
+
+/// Target tick indices with a kickoff-stasis incoming transition.
+/// One entry per detected transition.
+pub fn kickoff_stasis_targets(ticks: &[TickRecord]) -> Vec<usize> {
+    let mut out = Vec::new();
+    for i in 1..ticks.len() {
+        if tick_is_kickoff_stasis(&ticks[i - 1], &ticks[i]) {
+            out.push(i);
+        }
+    }
+    out
+}
+
 /// Split ticks into non-overlapping segments.
 ///
 /// Break runs at frame gaps, frozen transitions, ticks without cars,
@@ -618,6 +692,16 @@ pub fn restore_handbrake_seed<B: ReplayBackend>(
     }
 }
 
+/// Report plus kickoff-stasis skip counts from one [`evaluate`] run.
+/// Skipped counts hold scored transitions removed after warmup.
+/// The sim still steps through them.
+#[derive(Clone, Debug, Default)]
+pub struct EvalOutcome {
+    pub report: EvalReport,
+    pub skipped_transitions: usize,
+    pub skipped_car_ticks: usize,
+}
+
 /// Run each segment open-loop and aggregate every car-tick into one report.
 /// Every arena car steps with its own recorded controls, so car-car
 /// contacts are real sim observations. Resets at each segment start,
@@ -625,6 +709,9 @@ pub fn restore_handbrake_seed<B: ReplayBackend>(
 /// Support counts car-ticks: each scored tick contributes one sample per car.
 /// With `use_sim_events`, sim-observed contacts also label ticks;
 /// otherwise labels come from RL flags alone.
+/// Kickoff-stasis transitions still step the sim but add no support,
+/// pass, or error. Runs, chunks, and seeds are unchanged. Counts land
+/// in [`EvalOutcome`].
 pub fn evaluate<B: ReplayBackend>(
     backend: &mut B,
     ticks: &[TickRecord],
@@ -633,8 +720,9 @@ pub fn evaluate<B: ReplayBackend>(
     reset_each_tick: bool,
     reset_warmup: bool,
     use_sim_events: bool,
-) -> EvalReport {
-    let mut report = EvalReport::default();
+) -> EvalOutcome {
+    let mut outcome = EvalOutcome::default();
+    let report = &mut outcome.report;
     for segment in segments {
         if segment.end() > ticks.len() {
             continue;
@@ -670,6 +758,11 @@ pub fn evaluate<B: ReplayBackend>(
             if !reset_each_tick && offset < warmup_ticks {
                 continue;
             }
+            if target_index > 0 && tick_is_kickoff_stasis(&ticks[target_index - 1], target) {
+                outcome.skipped_transitions += 1;
+                outcome.skipped_car_ticks += controls.len();
+                continue;
+            }
             for car_idx in 0..controls.len() {
                 let Some(truth) = snapshot_from_tick(target, car_idx) else {
                     continue;
@@ -684,7 +777,7 @@ pub fn evaluate<B: ReplayBackend>(
             }
         }
     }
-    report
+    outcome
 }
 
 #[cfg(test)]
@@ -1102,7 +1195,7 @@ mod tests {
         assert!(snapshot_from_tick(&ticks[2], 2).is_none());
         // Car 0 still evaluates over the clean run.
         let mut backend = MirrorBackend::new(&ticks);
-        let report = evaluate(&mut backend, &ticks, &segments, 1, false, false, true);
+        let report = evaluate(&mut backend, &ticks, &segments, 1, false, false, true).report;
         assert!(report.total.support > 0);
     }
 
@@ -1115,7 +1208,7 @@ mod tests {
         }
         let mut backend = MirrorBackend::new(&ticks);
         let segments = vec![Segment { start: 0, len: 4 }];
-        let report = evaluate(&mut backend, &ticks, &segments, 1, false, false, true);
+        let report = evaluate(&mut backend, &ticks, &segments, 1, false, false, true).report;
         assert_eq!(report.total.support, 6);
         assert_eq!(report.total.passed, 6);
         assert_eq!(report.no_contact.support, 6);
@@ -1128,7 +1221,7 @@ mod tests {
         ticks[4].car_records[0].wheels[0].has_contact = true;
         let mut backend = MirrorBackend::new(&ticks);
         let segments = vec![Segment { start: 0, len: 6 }];
-        let report = evaluate(&mut backend, &ticks, &segments, 1, false, false, true);
+        let report = evaluate(&mut backend, &ticks, &segments, 1, false, false, true).report;
         assert_eq!(report.total.support, 5);
         assert_eq!(report.total.passed, 5);
         assert_eq!(report.car_ball.support, 1);
@@ -1136,8 +1229,208 @@ mod tests {
         assert_eq!(report.no_contact.support, 4);
 
         let mut backend = MirrorBackend::new(&ticks);
-        let report = evaluate(&mut backend, &ticks, &segments, 3, true, false, true);
+        let report = evaluate(&mut backend, &ticks, &segments, 3, true, false, true).report;
         assert_eq!(report.total.support, 5);
         assert_eq!(report.total.passed, 5);
+    }
+
+    fn kickoff_pair(
+        car_move: f32,
+        car_hxy: f32,
+        car_vz: f32,
+        ball_pos: (f32, f32, f32),
+        ball_world: bool,
+        wheels: bool,
+    ) -> (TickRecord, TickRecord) {
+        let mut from = make_tick(
+            100,
+            (2048.0, -2560.0, 17.0),
+            ball_pos,
+            (car_hxy, 0.0, car_vz),
+            (0.0, 0.0, 0.0),
+            false,
+            ball_world,
+            true,
+            wheels,
+        );
+        from.car_records[0].phys.lin_vel = vec(car_hxy, 0.0, car_vz);
+        let mut to = make_tick(
+            101,
+            (2048.0 + car_move, -2560.0, 17.0),
+            ball_pos,
+            (car_hxy, 0.0, car_vz),
+            (0.0, 0.0, 0.0),
+            false,
+            ball_world,
+            true,
+            wheels,
+        );
+        to.car_records[0].phys.lin_vel = vec(car_hxy, 0.0, car_vz);
+        (from, to)
+    }
+
+    #[test]
+    fn stasis_flags_observed_spawn_variants() {
+        let spawns = [
+            (2048.0, -2560.0),
+            (-256.0, -3840.0),
+            (256.0, -3840.0),
+            (-2048.0, -2560.0),
+            (0.0, -4608.0),
+        ];
+        for (x, y) in spawns {
+            let from = make_tick(
+                100,
+                (x, y, 17.0),
+                (0.0, 0.0, 92.75),
+                (0.0, 0.0, -79.88),
+                (0.0, 0.0, 0.0),
+                false,
+                true,
+                true,
+                true,
+            );
+            let mut to = from.clone();
+            to.car_records[0].phys.pos.x += 0.5;
+            to.car_records[0].phys.physics_frame = 101;
+            to.ball_record.physics_frame = 101;
+            assert!(!tick_is_frozen(&from, &to));
+            assert!(tick_is_kickoff_stasis(&from, &to));
+        }
+    }
+
+    #[test]
+    fn stasis_rejects_driveoff_idle_and_edges() {
+        let (from, to) = kickoff_pair(0.3, 30.0, 0.0, (0.0, 0.0, 92.75), false, true);
+        assert!(!tick_is_kickoff_stasis(&from, &to));
+        let (from, to) = kickoff_pair(0.3, 30.0, 0.0, (0.0, 0.0, 92.75), true, true);
+        assert!(!tick_is_kickoff_stasis(&from, &to));
+        let (from, to) = kickoff_pair(0.3, 0.0, 0.0, (1000.0, 500.0, 92.75), true, true);
+        assert!(!tick_is_kickoff_stasis(&from, &to));
+        let (from, to) = kickoff_pair(5.0, 200.0, 0.0, (0.0, 0.0, 92.75), true, true);
+        assert!(!tick_is_kickoff_stasis(&from, &to));
+        let (from, to) = kickoff_pair(0.99, 0.0, 0.0, (0.0, 0.0, 92.75), true, true);
+        assert!(tick_is_kickoff_stasis(&from, &to));
+        let (from, to) = kickoff_pair(1.01, 0.0, 0.0, (0.0, 0.0, 92.75), true, true);
+        assert!(!tick_is_kickoff_stasis(&from, &to));
+        let (from, to) = kickoff_pair(0.3, 4.9, 0.0, (0.0, 0.0, 92.75), true, true);
+        assert!(tick_is_kickoff_stasis(&from, &to));
+        let (from, to) = kickoff_pair(0.3, 5.1, 0.0, (0.0, 0.0, 92.75), true, true);
+        assert!(!tick_is_kickoff_stasis(&from, &to));
+        let from = make_tick(
+            100,
+            (2048.0, -2560.0, 17.0),
+            (0.0, 0.0, 92.75),
+            (0.0, 0.0, 0.0),
+            (0.0, 0.0, 0.0),
+            false,
+            true,
+            true,
+            true,
+        );
+        let mut to = from.clone();
+        to.car_records[0].phys.physics_frame = 101;
+        to.ball_record.physics_frame = 101;
+        assert!(tick_is_frozen(&from, &to));
+        assert!(!tick_is_kickoff_stasis(&from, &to));
+    }
+
+    #[test]
+    fn stasis_keeps_segmentation_and_seeds() {
+        let lead = make_tick(
+            99,
+            (0.0, 0.0, 17.0),
+            (0.0, 0.0, 92.75),
+            (0.0, 0.0, 0.0),
+            (0.0, 0.0, 0.0),
+            false,
+            true,
+            true,
+            true,
+        );
+        let from = make_tick(
+            100,
+            (10.0, 0.0, 17.0),
+            (0.0, 0.0, 92.75),
+            (0.0, 0.0, -79.88),
+            (0.0, 0.0, 0.0),
+            false,
+            true,
+            true,
+            true,
+        );
+        let to = make_tick(
+            101,
+            (10.5, 0.0, 17.0),
+            (0.0, 0.0, 92.75),
+            (0.0, 0.0, -79.88),
+            (0.0, 0.0, 0.0),
+            false,
+            true,
+            true,
+            true,
+        );
+        let after = make_tick(
+            102,
+            (20.0, 0.0, 17.0),
+            (0.0, 0.0, 92.75),
+            (200.0, 0.0, 0.0),
+            (0.0, 0.0, 0.0),
+            false,
+            false,
+            true,
+            true,
+        );
+        assert!(tick_is_kickoff_stasis(&from, &to));
+        let ticks = vec![lead, from, to, after];
+        assert_eq!(
+            split_segments(&ticks, config(8, 1)),
+            vec![Segment { start: 0, len: 4 }]
+        );
+        assert_eq!(run_start(&ticks, 2), 0);
+    }
+
+    #[test]
+    fn evaluate_skips_stasis_but_steps() {
+        let ticks: Vec<TickRecord> = [99u32, 100, 101, 102]
+            .iter()
+            .map(|&f| {
+                let x = match f {
+                    99 => 0.0,
+                    100 => 10.0,
+                    101 => 10.5,
+                    _ => 20.0,
+                };
+                let (ball_world, hxy) = if f == 100 || f == 101 {
+                    (true, 0.0)
+                } else {
+                    (false, 200.0)
+                };
+                let mut t = make_tick(
+                    f,
+                    (x, 0.0, 17.0),
+                    (0.0, 0.0, 92.75),
+                    (hxy, 0.0, 0.0),
+                    (0.0, 0.0, 0.0),
+                    false,
+                    ball_world,
+                    true,
+                    true,
+                );
+                t.car_records[0].phys.lin_vel = vec(hxy, 0.0, 0.0);
+                t.car_records.push(t.car_records[0].clone());
+                t
+            })
+            .collect();
+        assert!(tick_is_kickoff_stasis(&ticks[1], &ticks[2]));
+        assert!(!tick_is_kickoff_stasis(&ticks[2], &ticks[3]));
+        let segments = vec![Segment { start: 0, len: 4 }];
+        let mut backend = MirrorBackend::new(&ticks);
+        let outcome = evaluate(&mut backend, &ticks, &segments, 1, true, false, true);
+        assert_eq!(outcome.skipped_transitions, 1);
+        assert_eq!(outcome.skipped_car_ticks, 2);
+        assert_eq!(outcome.report.total.support, 4);
+        assert_eq!(outcome.report.total.passed, 4);
+        assert_eq!(kickoff_stasis_targets(&ticks), vec![2]);
     }
 }
