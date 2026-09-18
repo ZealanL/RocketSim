@@ -840,12 +840,14 @@ impl Arena {
     }
 }
 
-fn is_within_demo_cone(
+fn is_within_rect_cone(
     forward: Vec3A,
     right: Vec3A,
     up: Vec3A,
     delta: Vec3A,
     b_reverse: bool,
+    yaw_limit_deg: f32,
+    pitch_limit_deg: f32,
 ) -> bool {
     const SCALE: f32 = 1.01;
     const RAD2DEG: f32 = 57.29578;
@@ -878,7 +880,7 @@ fn is_within_demo_cone(
         da1
     };
     let a1 = c1.acos() * RAD2DEG;
-    if a1 > consts::car::demo::PITCH_LIMIT_DEG {
+    if a1 > pitch_limit_deg {
         return false;
     }
     let dot2 = d.dot(up);
@@ -903,7 +905,43 @@ fn is_within_demo_cone(
         da2
     };
     let a2 = c2.acos() * RAD2DEG;
-    a2 <= consts::car::demo::YAW_LIMIT_DEG
+    a2 <= yaw_limit_deg
+}
+
+fn is_within_demo_cone(
+    forward: Vec3A,
+    right: Vec3A,
+    up: Vec3A,
+    delta: Vec3A,
+    b_reverse: bool,
+) -> bool {
+    is_within_rect_cone(
+        forward,
+        right,
+        up,
+        delta,
+        b_reverse,
+        consts::car::demo::YAW_LIMIT_DEG,
+        consts::car::demo::PITCH_LIMIT_DEG,
+    )
+}
+
+fn is_within_bump_cone(
+    forward: Vec3A,
+    right: Vec3A,
+    up: Vec3A,
+    delta: Vec3A,
+    b_reverse: bool,
+) -> bool {
+    is_within_rect_cone(
+        forward,
+        right,
+        up,
+        delta,
+        b_reverse,
+        consts::car::bump::YAW_LIMIT_DEG,
+        consts::car::bump::PITCH_LIMIT_DEG,
+    )
 }
 
 impl Arena {
@@ -1020,16 +1058,13 @@ impl Arena {
                 continue;
             }
 
-            let local_point_x = if is_swapped {
-                manifold_point.local_point_b
-            } else {
-                manifold_point.local_point_a
-            }
-            .x;
-
-            let hit_with_bumper = local_point_x * BT_TO_UU > consts::car::bump::MIN_FORWARD_DIST;
-            if !hit_with_bumper {
-                // Didn't hit with bumper
+            if !is_within_bump_cone(
+                attacker_state.phys.get_forward_dir(),
+                attacker_state.phys.get_right_dir(),
+                attacker_state.phys.get_up_dir(),
+                delta_pos,
+                false,
+            ) {
                 continue;
             }
 
@@ -1206,5 +1241,51 @@ mod demo_cone_tests {
     fn nan_delta_bump() {
         let d = Vec3A::new(f32::NAN, 0.0, 0.0);
         assert!(!is_within_demo_cone(FWD, RIGHT, UP, d, false));
+    }
+}
+
+#[cfg(test)]
+mod bump_cone_tests {
+    use super::is_within_bump_cone;
+    use glam::Vec3A;
+
+    #[test]
+    fn side_graze_bump() {
+        let f = Vec3A::new(0.802763, 0.299166, -0.515821);
+        let r = Vec3A::new(-0.593353, 0.486644, -0.641179);
+        let u = Vec3A::new(0.059202, 0.820778, 0.568171);
+        let d = Vec3A::new(80.366272, 50.963745, -2.978737);
+        assert!(is_within_bump_cone(f, r, u, d, false));
+    }
+
+    #[test]
+    fn false_bump_rejected() {
+        let f = Vec3A::new(0.181046, 0.979415, -0.089271);
+        let r = Vec3A::new(0.44774, -0.001264, 0.894163);
+        let u = Vec3A::new(0.875643, -0.201855, -0.438752);
+        let d = Vec3A::new(103.455566, 62.017822, 18.176201);
+        assert!(!is_within_bump_cone(f, r, u, d, false));
+    }
+
+    #[test]
+    fn headon_bump() {
+        assert!(is_within_bump_cone(
+            Vec3A::X,
+            Vec3A::Y,
+            Vec3A::Z,
+            Vec3A::X,
+            false
+        ));
+    }
+
+    #[test]
+    fn behind_rejected() {
+        assert!(!is_within_bump_cone(
+            Vec3A::X,
+            Vec3A::Y,
+            Vec3A::Z,
+            Vec3A::NEG_X,
+            false
+        ));
     }
 }

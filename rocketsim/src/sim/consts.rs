@@ -205,7 +205,8 @@ pub mod car {
 
     pub mod bump {
         pub const COOLDOWN_TIME: f32 = 0.25;
-        pub const MIN_FORWARD_DIST: f32 = 64.5;
+        pub const YAW_LIMIT_DEG: f32 = 70.0;
+        pub const PITCH_LIMIT_DEG: f32 = 36.869896;
     }
 
     pub mod spawn {
