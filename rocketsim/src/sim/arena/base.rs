@@ -433,6 +433,7 @@ impl Arena {
                 ball_state.phys.vel.z = f32::EPSILON;
             }
             GameMode::Dropshot => {
+                self.tile_states = Some(TileStates::DEFAULT);
                 self.update_tile_states();
             }
             _ => {}
