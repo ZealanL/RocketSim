@@ -66,6 +66,8 @@ pub struct CarState {
     pub auto_flip_timer: f32,
     pub auto_flip_torque_scale: f32,
     pub bump_cooldown_timer: f32,
+    /// Last arena tick when this car applied an extra ball-hit impulse.
+    pub last_extra_hit_tick: Option<u64>,
     /// If in contact with a static mesh/body, this is the collision normal of that contact on said body
     pub world_contact_normal: Option<Vec3A>,
     pub is_demoed: bool,
@@ -108,10 +110,11 @@ impl CarState {
         supersonic_grace_timer: 0.0,
         handbrake_val: 0.0,
         is_auto_flipping: false,
-        world_contact_normal: None,
-        bump_cooldown_timer: 0.0,
         auto_flip_timer: 0.0,
         auto_flip_torque_scale: 0.0,
+        bump_cooldown_timer: 0.0,
+        last_extra_hit_tick: None,
+        world_contact_normal: None,
         is_demoed: false,
         demo_respawn_timer: 0.0,
     };

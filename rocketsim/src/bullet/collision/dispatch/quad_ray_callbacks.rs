@@ -206,8 +206,9 @@ impl<T: QuadRayResultCallback> BridgeTriQuadRayCallback<'_, T> {
 
         let proj_length = dist_a - dist_b;
         let distance = dist_a / proj_length;
-        if distance >= self.hit_fraction[ray_idx] {
-            *lambda_max = self.hit_fraction[ray_idx];
+        let hit_fraction = self.hit_fraction[ray_idx];
+        if distance >= hit_fraction {
+            *lambda_max = (*lambda_max).min(hit_fraction);
             return;
         }
 
@@ -230,11 +231,15 @@ impl<T: QuadRayResultCallback> BridgeTriQuadRayCallback<'_, T> {
             return;
         }
 
-        *lambda_max = distance;
+        let prev_fraction = self.result_callback.get_base().closest_hit_fraction[ray_idx];
         if dist_a <= 0.0 {
             self.internal_report_hit(-triangle.normal, distance, ray_idx);
         } else {
             self.internal_report_hit(triangle.normal, distance, ray_idx);
+        }
+
+        if self.result_callback.get_base().closest_hit_fraction[ray_idx] < prev_fraction {
+            *lambda_max = self.result_callback.get_base().closest_hit_fraction[ray_idx];
         }
     }
 }

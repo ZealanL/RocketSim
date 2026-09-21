@@ -38,9 +38,6 @@ struct ConvexTriangleCallback<'a, T: ContactAddedCallback> {
 
 impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> {
     fn process_triangle(&mut self, triangle: &TriangleShape, triangle_idx: usize) {
-        // Exact per-triangle AABB test, mirroring
-        // `TriangleShape::aabb().intersects(&box_aabb)` with the cached box
-        // AABB (same min/max order, same comparisons, no pointer chase).
         let tri_min = triangle.points[0]
             .min(triangle.points[1])
             .min(triangle.points[2]);
@@ -53,12 +50,6 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
             return;
         }
 
-        // Pure-SAT box-vs-triangle leaf. The kernel takes the box world transform
-        // (for final witness/normal conversion only), unmargined half extents plus
-        // margin, the triangle already in the box-local frame, and `margin +
-        // breaking` as the admission limit. All box/limit values are cached per
-        // compound/mesh collision below, so the hot per-triangle path copies
-        // values instead of chasing `BoxShape` and manifold references.
         let q = [
             self.mesh_to_box.transform_point3a(triangle.points[0]),
             self.mesh_to_box.transform_point3a(triangle.points[1]),
@@ -74,21 +65,7 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
             return;
         };
 
-        // Face-normal terminal (the adapter convention preserved from the
-        // reference detector): the emitted normal is always the analytic
-        // triangle face normal, aligned to the SAT normal hemisphere. Depth
-        // and witness come from the SAT kernel unchanged. The mesh body is
-        // static for the whole BVH walk, so its rotation is cached per
-        // compound/mesh collision (`transform_vector3a` is exactly this
-        // matrix-vector product).
-        let mut emit_normal: Vec3A = self.tri_matrix * triangle.normal;
-        if emit_normal.dot(contact.normal_on_b_world) < 0.0 {
-            emit_normal = -emit_normal;
-        }
-        if emit_normal.length_squared() <= f32::EPSILON * f32::EPSILON {
-            emit_normal = contact.normal_on_b_world;
-        }
-
+        let emit_normal = self.tri_matrix * triangle.normal;
         let (convex_obj, tri_obj) = (self.convex_obj, self.tri_obj);
         let manifold = self
             .manifold

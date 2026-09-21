@@ -26,7 +26,7 @@ Balanced reduces marginal memory while retaining most of Heavy's performance. Li
 
 ## Accuracy metric
 
-The metric replays one-second segments from a bundled 90-second Rocket League recording. It reports strict pass percentages for car-ball, ball-world, chassis-world, wheel-world, and no-contact ticks.
+The metric replays one-second segments from a bundled 300-second 3v3 Rocket League recording. It reports strict pass percentages for car-ball, ball-world, chassis-world, wheel-world, and no-contact ticks.
 
 Run the v3 metric:
 
@@ -46,3 +46,17 @@ Run the comparable stress benchmarks with these commands:
 cargo run --release -p rocketsim_test --example stress_v3
 cargo run --release -p rocketsim_test --features v2 --example stress_v2
 ```
+
+Replay the bundled 3v3 recording for a deterministic throughput comparison:
+
+```sh
+cargo run --release -p rocketsim_test --example stress_v3 -- \\
+  --rlpr-file rocketsim_test/recordings/wisp_3v3_300s.rlpr.zst
+cargo run --release -p rocketsim_test --features v2 --example stress_v2 -- \\
+  --rlpr-file rocketsim_test/recordings/wisp_3v3_300s.rlpr.zst
+```
+
+Replay mode requires six cars and Soccar. It decodes the recording and
+prepares all controls before timing starts. The timed loop applies controls,
+steps the simulation, and restores state only at discontinuities such as
+kickoff or demo respawn. It does not collect metrics or inspect events.

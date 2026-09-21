@@ -1,4 +1,4 @@
-//! Segmented replay metric for one-car RLPR recordings.
+//! Segmented replay metric for RLPR recordings.
 //!
 //! Reset at each segment start, run open-loop, score ticks after warmup.
 //! Print one table row per backend and contact category.
@@ -17,9 +17,10 @@ mod v2;
 mod v3;
 
 /// Segmented RocketSim replay metric against one RLPR recording.
+/// Scores each car against its own trajectory. All cars share the sim.
 #[derive(Parser)]
 struct Args {
-    /// RLPR recording file. Uses the bundled 90-second capture by default.
+    /// RLPR recording file. Uses the bundled Wisp 3v3 capture by default.
     rlpr_file: Option<PathBuf>,
 
     /// Ticks per segment.
@@ -33,6 +34,21 @@ struct Args {
     /// Reset to the prior RL state before each scored tick.
     #[arg(long)]
     reset_each_tick: bool,
+
+    /// Refresh prior-state wheel rays at each segment start. This settles the
+    /// sticky-wheel gate without advancing dynamics.
+    /// Applies only with `--reset-each-tick`, at the first tick of each segment.
+    #[arg(long)]
+    reset_warmup: bool,
+
+    /// Label ticks from recorded RL flags by default; also include contacts the sim observed.
+    #[arg(long)]
+    use_sim_events: bool,
+
+    /// Dodge deadzone (|yaw| + |pitch| + |roll| needed to flip).
+    /// Match this to the account the recording was made on.
+    #[arg(long, default_value_t = 0.5)]
+    dodge_deadzone: f32,
 }
 
 fn metric_value(support: usize, value: f64) -> String {
@@ -62,10 +78,41 @@ fn print_report(backend: &str, report: &common::EvalReport) {
     }
 }
 
+fn stasis_span_list(targets: &[usize]) -> String {
+    if targets.is_empty() {
+        return "-".to_string();
+    }
+    let mut spans = Vec::new();
+    let mut start = targets[0];
+    let mut prev = targets[0];
+    for &t in &targets[1..] {
+        if t == prev + 1 {
+            prev = t;
+        } else {
+            spans.push(if start == prev {
+                start.to_string()
+            } else {
+                format!("{start}-{prev}")
+            });
+            start = t;
+            prev = t;
+        }
+    }
+    spans.push(if start == prev {
+        start.to_string()
+    } else {
+        format!("{start}-{prev}")
+    });
+    spans.join(", ")
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
     if args.segment_ticks <= 1 {
         return Err("--segment-ticks must be greater than 1".into());
+    }
+    if !(0.0..=1.0).contains(&args.dodge_deadzone) {
+        return Err("--dodge-deadzone must be within 0.0..=1.0".into());
     }
     if args.warmup_ticks >= args.segment_ticks {
         return Err("--warmup-ticks must be less than --segment-ticks".into());
@@ -74,11 +121,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let rlpr_file = args.rlpr_file.unwrap_or_else(|| {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("recordings")
-            .join("stress_soccar_90s.rlpr")
+            .join("wisp_3v3_300s.rlpr.zst")
     });
     let recording = Recording::from_file(&rlpr_file)?;
-    if !recording.ticks.iter().all(common::tick_has_single_car) {
-        return Err("recording must have exactly one car in every tick".into());
+    let num_cars = recording
+        .ticks
+        .first()
+        .map(common::tick_car_count)
+        .unwrap_or(0);
+    if num_cars == 0 || num_cars > common::MAX_SCORED_CARS {
+        return Err("recording must hold 1-8 cars in every tick".into());
+    }
+    if !recording
+        .ticks
+        .iter()
+        .all(|tick| common::tick_car_count(tick) == num_cars)
+    {
+        return Err("recording car count must be constant".into());
     }
     if recording.ticks.len() <= args.warmup_ticks {
         return Err("recording has too few ticks for the warmup length".into());
@@ -94,8 +153,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     println!(
-        "Recording: {} (RLPR v{})",
-        recording.name, recording.version
+        "Recording: {} (RLPR v{}, {} car{})",
+        recording.name,
+        recording.version,
+        num_cars,
+        if num_cars == 1 { "" } else { "s" },
     );
     println!("File: {}", rlpr_file.display());
     println!("Ticks: {}", recording.ticks.len());
@@ -109,7 +171,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             config.warmup_ticks,
         );
     }
-    println!("Categories overlap. Support is the number of scored RL ticks.");
+    println!("Categories overlap. Support counts car-ticks (cars x ticks).");
+    if num_cars > 1 {
+        println!("All cars share the sim; car-car contacts are real sim events.");
+    }
+    println!("Dodge deadzone: {:.2}", args.dodge_deadzone);
+    println!(
+        "Kickoff stasis spans ({}): {}",
+        common::KICKOFF_STASIS_RULE,
+        stasis_span_list(&common::kickoff_stasis_targets(&recording.ticks)),
+    );
     println!();
     println!(
         "{:<7} {:<15} {:>9} {:>9} {:>9} {:>12} {:>12} {:>12}",
@@ -118,28 +189,37 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("{}", "-".repeat(102));
 
     v3::init();
-    let mut v3_backend = v3::V3Backend::new();
-    let v3_report = common::evaluate(
+    let mut v3_backend = v3::V3Backend::with_dodge_deadzone(args.dodge_deadzone);
+    let v3_outcome = common::evaluate(
         &mut v3_backend,
         &recording.ticks,
         &segments,
         config.warmup_ticks,
         args.reset_each_tick,
+        args.reset_warmup,
+        args.use_sim_events,
+        rocketsim_test::rlpr::recording_has_boost_state(recording.version),
+        rocketsim_test::rlpr::recording_has_handbrake_state(recording.version),
     );
-    print_report("v3", &v3_report);
+    print_report("v3", &v3_outcome.report);
 
     #[cfg(feature = "v2")]
     {
         v2::init();
-        let mut v2_backend = v2::V2Backend::new();
-        let v2_report = common::evaluate(
+        let mut v2_backend = v2::V2Backend::with_dodge_deadzone(args.dodge_deadzone);
+        let v2_outcome = common::evaluate(
             &mut v2_backend,
             &recording.ticks,
             &segments,
             config.warmup_ticks,
             args.reset_each_tick,
+            args.reset_warmup,
+            args.use_sim_events,
+            rocketsim_test::rlpr::recording_has_boost_state(recording.version),
+            rocketsim_test::rlpr::recording_has_handbrake_state(recording.version),
         );
-        print_report("v2", &v2_report);
+        println!();
+        print_report("v2", &v2_outcome.report);
     }
 
     Ok(())

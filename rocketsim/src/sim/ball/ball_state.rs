@@ -61,9 +61,6 @@ pub struct BallState {
     pub phys: PhysState,
     pub hs_info: HeatseekerInfo,
     pub ds_info: DropshotInfo,
-
-    /// Used for preventing repeated extra impulse updates
-    pub last_extra_hit_tick: Option<u64>,
     pub tick_count_since_kickoff: u64,
 }
 
@@ -83,7 +80,6 @@ impl BallState {
         },
         hs_info: HeatseekerInfo::DEFAULT,
         ds_info: DropshotInfo::DEFAULT,
-        last_extra_hit_tick: None,
         tick_count_since_kickoff: 0,
     };
 }

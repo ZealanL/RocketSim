@@ -101,13 +101,14 @@ pub mod car {
 
     pub mod boost {
         pub const MAX: f32 = 100.0;
-        pub const USED_PER_SECOND: f32 = MAX / 3.0;
+        /// Boost is consumed at 0.333 * 100 per second - not MAX / 3.
+        pub const USED_PER_SECOND: f32 = 33.3;
         /// Minimum time we can be boosting for
         pub const MIN_TIME: f32 = 0.1;
-        /// uu/s for vel (on the ground)
+        /// uu/s for vel (on the ground, also used airborne)
         pub const ACCEL_GROUND: f32 = 2975.0 / 3.0;
-        /// uu/s for vel (airborne)
-        pub const ACCEL_AIR: f32 = 3175.0 / 3.0;
+        /// uu/s for vel (airborne, paired with ground)
+        pub const ACCEL_AIR: f32 = ACCEL_GROUND;
         pub const SPAWN_AMOUNT: f32 = MAX / 3.0;
         /// Amount of boost recharged per second when recharging
         pub const RECHARGE_PER_SECOND: f32 = 10.0;
@@ -122,6 +123,11 @@ pub mod car {
         pub const START_SPEED: f32 = 2200.0;
         pub const MAINTAIN_MIN_SPEED: f32 = START_SPEED - 100.0;
         pub const MAINTAIN_MAX_TIME: f32 = 1.0;
+    }
+
+    pub mod demo {
+        pub const YAW_LIMIT_DEG: f32 = 45.572994;
+        pub const PITCH_LIMIT_DEG: f32 = 36.869896;
     }
 
     pub mod drive {
@@ -166,8 +172,6 @@ pub mod car {
         /// X: Left/Right
         /// Y: Forward/Backward
         pub const TORQUE: Vec3A = Vec3A::new(260.0, 224.0, 0.0);
-        pub const SPIN_CAP_X: f32 = 7.4396;
-        pub const SPIN_CAP_Y: f32 = 7.2348;
         pub const FORWARD_IMPULSE_MAX_SPEED_SCALE: f32 = 1.0;
         pub const SIDE_IMPULSE_MAX_SPEED_SCALE: f32 = 1.9;
         pub const BACKWARD_IMPULSE_MAX_SPEED_SCALE: f32 = 2.5;
@@ -201,7 +205,8 @@ pub mod car {
 
     pub mod bump {
         pub const COOLDOWN_TIME: f32 = 0.25;
-        pub const MIN_FORWARD_DIST: f32 = 64.5;
+        pub const YAW_LIMIT_DEG: f32 = 70.0;
+        pub const PITCH_LIMIT_DEG: f32 = 36.869896;
     }
 
     pub mod spawn {
@@ -401,15 +406,29 @@ pub mod curves {
         LinearPieceCurve::new([(0., 0.1)]);
     pub const HANDBRAKE_LONG_FRICTION_FACTOR: LinearPieceCurve<2> =
         LinearPieceCurve::new([(0., 0.5), (1., 0.9)]);
-    pub const BALL_CAR_EXTRA_IMPULSE_FACTOR: LinearPieceCurve<4> =
-        LinearPieceCurve::new([(0., 0.65), (500., 0.65), (2300., 0.55), (4600., 0.30)]);
+    pub const BALL_CAR_EXTRA_IMPULSE_FACTOR: LinearPieceCurve<5> = LinearPieceCurve::new([
+        (0., 0.65),
+        (500., 0.65),
+        (1400., 0.60),
+        (2300., 0.55),
+        (4600., 0.30),
+    ]);
 
-    pub const BUMP_VEL_AMOUNT_GROUND: LinearPieceCurve<3> =
-        LinearPieceCurve::new([(0., (5.0 / 6.)), (1400., 1100.), (2200., 1530.)]);
-    pub const BUMP_VEL_AMOUNT_AIR: LinearPieceCurve<3> =
-        LinearPieceCurve::new([(0., (5.0 / 6.)), (1400., 1390.), (2200., 1945.)]);
-    pub const BUMP_UPWARD_VEL_AMOUNT: LinearPieceCurve<3> =
-        LinearPieceCurve::new([(0., (2.0 / 6.)), (1400., 278.), (2200., 417.)]);
+    pub const BUMP_VEL_AMOUNT_GROUND: LinearPieceCurve<3> = LinearPieceCurve::new([
+        (0., (150.0 / 180.0)),
+        (1400., (200000.0 / 180.0)),
+        (2200., (275000.0 / 180.0)),
+    ]);
+    pub const BUMP_VEL_AMOUNT_AIR: LinearPieceCurve<3> = LinearPieceCurve::new([
+        (0., (150.0 / 180.0)),
+        (1400., (250000.0 / 180.0)),
+        (2200., (350000.0 / 180.0)),
+    ]);
+    pub const BUMP_UPWARD_VEL_AMOUNT: LinearPieceCurve<3> = LinearPieceCurve::new([
+        (0., (50.0 / 180.0)),
+        (1400., (50000.0 / 180.0)),
+        (2200., (75000.0 / 180.0)),
+    ]);
 }
 
 pub mod heatseeker {

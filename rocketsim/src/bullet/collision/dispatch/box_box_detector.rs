@@ -4,7 +4,7 @@ use std::{
 };
 
 use arrayvec::ArrayVec;
-use glam::{Affine3A, FloatExt, Mat3A, Vec3A, Vec4};
+use glam::{Affine3A, Mat3A, Vec3A, Vec4};
 
 use crate::bullet::{
     collision::{
@@ -52,25 +52,22 @@ pub fn intersect_rect_quad2(h: [f32; 2], poly: &[[f32; 2]; 4]) -> ArrayVec<[f32;
                 let cur_val = cur[dir];
                 let next_val = next[dir];
 
-                let inside_cur = sign * cur_val <= h[dir];
+                let inside_cur = sign * cur_val < h[dir];
 
                 // If current point is inside, keep it
                 if inside_cur {
                     r.push(cur);
                 }
 
-                let inside_next = sign * next_val <= h[dir];
+                let inside_next = sign * next_val < h[dir];
 
                 // If the edge crosses the boundary, add intersection
                 if inside_cur ^ inside_next {
-                    let denom = next_val - cur_val;
-                    let t = if denom.abs() < f32::EPSILON {
-                        0.0
-                    } else {
-                        (clip_val - cur_val) / denom
-                    };
+                    let p = cur[1 - dir]
+                        + (next[1 - dir] - cur[1 - dir]) / (next_val - cur_val)
+                            * (clip_val - cur_val);
 
-                    let mut p1 = cur[1 - dir].lerp(next[1 - dir], t);
+                    let mut p1 = p;
                     let mut p2 = clip_val;
                     if dir == 0 {
                         mem::swap(&mut p1, &mut p2);
@@ -119,7 +116,7 @@ fn cull_points2(p: &[[f32; 2]], i0: usize, m: usize) -> ArrayVec<usize, 8> {
             let inv = if area.abs() > f32::EPSILON {
                 1.0 / (3.0 * area)
             } else {
-                f32::INFINITY
+                1e18
             };
 
             (
@@ -140,9 +137,10 @@ fn cull_points2(p: &[[f32; 2]], i0: usize, m: usize) -> ArrayVec<usize, 8> {
     // Select points with closest angles
     let mut result: ArrayVec<usize, 8> = ArrayVec::new();
     let mut avail = [false; 8];
-    for a in &mut avail[1..n] {
+    for a in &mut avail[..n] {
         *a = true;
     }
+    avail[i0] = false;
 
     result.push(i0);
 
@@ -339,16 +337,16 @@ impl<T: ContactAddedCallback> BoxBoxDetector<'_, T> {
 
         let k = m * Vec4::new(
             obb2.extent[a1],
-            obb2.extent[a1],
             obb2.extent[a2],
+            obb2.extent[a1],
             obb2.extent[a2],
         );
 
         let quad = [
-            [c1 - k.x - k.z, c2 - k.y - k.w],
-            [c1 - k.x + k.z, c2 - k.y + k.w],
-            [c1 + k.x + k.z, c2 + k.y + k.w],
-            [c1 + k.x - k.z, c2 + k.y - k.w],
+            [c1 - k.x - k.y, c2 - k.z - k.w],
+            [c1 - k.x + k.y, c2 - k.z + k.w],
+            [c1 + k.x + k.y, c2 + k.z + k.w],
+            [c1 + k.x - k.y, c2 + k.z - k.w],
         ];
 
         // find the size of the reference face
@@ -422,12 +420,10 @@ impl<T: ContactAddedCallback> BoxBoxDetector<'_, T> {
 
         // we have more contacts than are wanted, some of them must be culled.
         // find the deepest point, it is always the first contact.
-        let (i1, _) = dep[..cnum]
+        let i1 = dep[..cnum]
             .iter()
-            .copied()
             .enumerate()
-            .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
-            .unwrap();
+            .fold(0, |i1, (i, &d)| if d > dep[i1] { i } else { i1 });
 
         let iret = cull_points2(&ret[..cnum], i1, maxc);
 
@@ -611,37 +607,315 @@ fn box_box_sat(obb1: &Obb, r1t: &Mat3A, obb2: &Obb) -> Option<Hit> {
 
 #[cfg(test)]
 mod tests {
-    use glam::{Mat3A, Vec3A};
+    use glam::{Affine3A, Mat3A, Vec3A};
 
-    use super::{Obb, box_box_sat};
-    use crate::{CarBodyConfig, consts::UU_TO_BT};
+    use super::*;
+    use crate::{
+        CarBodyConfig,
+        bullet::{
+            collision::{
+                narrowphase::{
+                    manifold_point::ManifoldPoint, persistent_manifold::PersistentManifold,
+                },
+                shapes::{
+                    box_shape::BoxShape, collision_shape::CollisionShapes,
+                    compound_shape::CompoundShape,
+                },
+            },
+            dynamics::rigid_body::{RigidBody, RigidBodyConstructionInfo},
+        },
+        consts::UU_TO_BT,
+    };
 
-    fn octane_obb(pos_uu: Vec3A, rot_mat: Mat3A) -> Obb {
-        let config = CarBodyConfig::OCTANE;
-        Obb::new(
-            (pos_uu + rot_mat * config.hitbox_pos_offset) * UU_TO_BT,
-            rot_mat,
-            config.hitbox_size * UU_TO_BT * 0.5,
-        )
+    struct NoopCallback;
+    impl ContactAddedCallback for NoopCallback {
+        fn callback(
+            &mut self,
+            _contact_point: &mut ManifoldPoint,
+            _body_a: &RigidBody,
+            _body_b: &RigidBody,
+            _idx: Option<usize>,
+        ) {
+        }
     }
 
+    fn octane_child_trans() -> Affine3A {
+        Affine3A {
+            matrix3: Mat3A::IDENTITY,
+            translation: CarBodyConfig::OCTANE.hitbox_pos_offset * UU_TO_BT,
+        }
+    }
+
+    fn make_octane_car(org: Affine3A, idx: usize) -> (RigidBody, CompoundShape) {
+        let config = CarBodyConfig::OCTANE;
+        let half = config.hitbox_size * UU_TO_BT * 0.5;
+        let child_trans = octane_child_trans();
+        let local_inertia = BoxShape::new(half).calculate_local_intertia(180.0);
+        let mut info = RigidBodyConstructionInfo::new(
+            180.0,
+            CollisionShapes::Compound(CompoundShape::new(BoxShape::new(half), child_trans)),
+        );
+        info.local_inertia = local_inertia;
+        info.start_world_trans = org;
+        let mut body = RigidBody::new(info);
+        body.world_array_idx = idx;
+        let holder = CompoundShape::new(BoxShape::new(half), child_trans);
+        (body, holder)
+    }
+
+    /// Replay26328 car-car onset: exact tick-26327 pre-state for recording
+    /// cars 1+2 (`wisp_3v3_300s.rlpr.zst` tick index 26327, Octane
+    /// hitboxes; see rl-exam `carcar-v8-quad-sign-decision.md` +
+    /// `carcar-v8-quad-sign-26328-compare.txt`).
+    /// Pinned `dBoxBox2` emits the 2 captured target contacts in
+    /// shallow-then-deep order; the sign-flipped corner 4 emits 0.
     #[test]
-    fn rotated_offset_octane_hitboxes_overlap() {
-        let car_a_rot = Mat3A::from_cols(
-            Vec3A::new(-0.197_008_49, -0.710_327_74, -0.675_738_2),
-            Vec3A::new(-0.328_847_1, -0.592_099, 0.735_586_46),
-            Vec3A::new(0.924_127_6, -0.364_699_04, 0.113_941_91),
+    fn quad_corner_sign_replay26328_emits_two_target_contacts() {
+        // Exact RLPR rotation columns (forward, right, up) and positions
+        // (UU). Pair order (car1, car2) matches the sim trace, so the
+        // expected normal mirrors the target log (ordered car2, car1).
+        let pos1 = Vec3A::new(-989.291_56, 217.244_9, 88.034_7);
+        let rot1 = Mat3A::from_cols(
+            Vec3A::new(-0.798_679_6, -0.590_633_03, 0.115_165_88),
+            Vec3A::new(0.569_380_3, -0.803_669_2, -0.172_978_3),
+            Vec3A::new(0.194_722, -0.072_581_07, 0.978_169_4),
         );
-        let car_b_rot = Mat3A::from_cols(
-            Vec3A::new(0.031_831_503, 0.093_713_61, 0.995_090_25),
-            Vec3A::new(0.937_990_5, -0.346_187_98, 0.003_024_293_8),
-            Vec3A::new(0.344_967_37, 0.933_385_7, -0.098_937_63),
+        let pos2 = Vec3A::new(-1_029.400_9, 105.248_5, 73.287_31);
+        let rot2 = Mat3A::from_cols(
+            Vec3A::new(-0.493_772_5, -0.253_702_34, 0.831_759_75),
+            Vec3A::new(0.290_186_3, 0.853_593_95, 0.432_630_7),
+            Vec3A::new(-0.819_744_5, 0.454_986_3, -0.347_860_22),
         );
+        let org1 = Affine3A {
+            matrix3: rot1,
+            translation: pos1 * UU_TO_BT,
+        };
+        let org2 = Affine3A {
+            matrix3: rot2,
+            translation: pos2 * UU_TO_BT,
+        };
+        let child_trans = octane_child_trans();
+        let child_world1 = org1 * child_trans;
+        let child_world2 = org2 * child_trans;
 
-        let car_a = octane_obb(Vec3A::new(161.537_67, -40.835_064, 366.293_03), car_a_rot);
-        let car_b = octane_obb(Vec3A::new(148.926_6, -160.566_18, 400.462_95), car_b_rot);
+        let (body1, holder1) = make_octane_car(org1, 1);
+        let (body2, holder2) = make_octane_car(org2, 2);
 
-        let hit = box_box_sat(&car_a, &car_a.axis.transpose(), &car_b);
-        assert!(hit.is_some());
+        let mut callback = NoopCallback;
+        let mut detector = BoxBoxDetector {
+            box1: &holder1.child_shape,
+            col1: &body1,
+            box2: &holder2.child_shape,
+            col2: &body2,
+            contact_added_callback: &mut callback,
+        };
+        let mut out: Option<PersistentManifold> = None;
+        detector.get_closest_points(child_world1, child_world2, &mut out);
+
+        let manifold = out.expect("quad fix must emit the 26328 manifold (got 0 points)");
+        assert_eq!(manifold.point_cache.len(), 2, "expected exactly 2 contacts");
+
+        // Expected sim-frame values from the target-vs-sim table (BT units).
+        let exp_normal = Vec3A::new(0.290186, 0.853594, 0.432631);
+        let exp_pos = [
+            Vec3A::new(-20.428_83, 2.822553, 1.947287),
+            Vec3A::new(-20.436909, 2.869716, 1.859651),
+        ];
+        let exp_depth = [-0.070_570_59_f32, -0.116478324_f32];
+        // Static test poses use the raw RLPR pre-state while the traced
+        // values come from detector time (after tick-start quantize and
+        // pre-tick updates); OBB centers agree to ~1e-4 BT between the
+        // two (see oracle excerpt). Tolerances cover that pose gap plus
+        // f32 arithmetic and 6-decimal rounding of the table: pos 5e-4
+        // BT (~0.025 UU, 80x below the 2.03 UU breaking threshold),
+        // depth 5e-4 BT (same pose gap, projected on the normal),
+        // normal 1e-5 per component.
+        let pos_tol = 5e-4_f32;
+        let depth_tol = 5e-4_f32;
+        let normal_tol = 1e-5_f32;
+
+        for (i, point) in manifold.point_cache.iter().enumerate() {
+            let n_err = (point.normal_world_on_b - exp_normal).length();
+            assert!(
+                n_err < normal_tol,
+                "contact {i} normal {n_err:e} too far from target"
+            );
+            let p_err = (point.pos_world_on_b - exp_pos[i]).length();
+            assert!(
+                p_err < pos_tol,
+                "contact {i} anchor {p_err:e} BT too far from target"
+            );
+            let d_err = (point.distance_1 - exp_depth[i]).abs();
+            assert!(
+                d_err < depth_tol,
+                "contact {i} depth err {d_err:e} too far from target"
+            );
+        }
+        // Shallow-then-deep order is part of the target signature.
+        assert!(
+            manifold.point_cache[0].distance_1 > manifold.point_cache[1].distance_1,
+            "contacts must stay shallow-then-deep"
+        );
+    }
+
+    /// Axis-aligned Octane overlap along y (SAT code 2): `k.z` is zero so
+    /// the corner-4 sign has no effect. Locks the passing path in place.
+    #[test]
+    fn axis_aligned_code2_overlap_is_unchanged() {
+        let config = CarBodyConfig::OCTANE;
+        let side = config.hitbox_size * UU_TO_BT * 0.5;
+        let pen = 0.05_f32;
+        let dy = 2.0 * side.y - pen;
+        let org1 = Affine3A {
+            matrix3: Mat3A::IDENTITY,
+            translation: Vec3A::ZERO,
+        };
+        let org2 = Affine3A {
+            matrix3: Mat3A::IDENTITY,
+            translation: Vec3A::new(0.0, dy, 0.0),
+        };
+
+        let (body1, holder1) = make_octane_car(org1, 11);
+        let (body2, holder2) = make_octane_car(org2, 12);
+        let child_trans = octane_child_trans();
+        let child_world1 = org1 * child_trans;
+        let child_world2 = org2 * child_trans;
+
+        let mut callback = NoopCallback;
+        let mut detector = BoxBoxDetector {
+            box1: &holder1.child_shape,
+            col1: &body1,
+            box2: &holder2.child_shape,
+            col2: &body2,
+            contact_added_callback: &mut callback,
+        };
+        let mut out: Option<PersistentManifold> = None;
+        detector.get_closest_points(child_world1, child_world2, &mut out);
+
+        let manifold = out.expect("axis-aligned overlap must emit contacts");
+        assert_eq!(manifold.point_cache.len(), 4);
+        let normal = manifold.point_cache[0].normal_world_on_b;
+        assert!(normal.length() > 0.999 && normal.length() < 1.001);
+        assert!(normal.y.abs() > 0.99, "expected a y-dominant normal");
+        for point in manifold.point_cache.iter() {
+            assert!((point.normal_world_on_b - normal).length() < 1e-6);
+            assert!((point.distance_1 - -pen).abs() < 1e-6);
+        }
+    }
+
+    /// Pinned `cullPoints2` regression: with deepest index != 0, index 0
+    /// stays selectable and the deepest index is never repeated.
+    #[test]
+    fn cull_points2_deepest_nonzero_matches_pinned() {
+        // Five points on the unit circle at hand-picked angles. Deepest
+        // index is 2, keep 4. Pinned order is [2, 4, 0, 1]: j=1 target
+        // 290deg -> idx4 (10deg off); j=2 target 20deg -> idx0 (20deg off,
+        // next best 80deg off); j=3 target 110deg -> idx1 (10deg off).
+        let degs = [0.0_f32, 100.0, 200.0, 260.0, 300.0];
+        let pts: Vec<[f32; 2]> = degs
+            .iter()
+            .map(|d| {
+                let a = d.to_radians();
+                [a.cos(), a.sin()]
+            })
+            .collect();
+        let got = cull_points2(&pts, 2, 4);
+        assert_eq!(got.as_slice(), &[2, 4, 0, 1]);
+    }
+
+    /// Pinned `intersectRectQuad2` order: strict `<` drops boundary points
+    /// and re-adds them as crossings, so a coincident clip starts at the
+    /// second input corner.
+    #[test]
+    fn intersect_rect_quad2_coincident_matches_pinned_order() {
+        let h = [1.0_f32, 2.0];
+        let quad = [[-1.0_f32, -2.0], [1.0, -2.0], [1.0, 2.0], [-1.0, 2.0]];
+        let got = intersect_rect_quad2(h, &quad);
+        assert_eq!(
+            got.as_slice(),
+            &[[1.0, -2.0], [1.0, 2.0], [-1.0, 2.0], [-1.0, -2.0]]
+        );
+    }
+
+    /// Degenerate zero-area input uses a finite fallback scale like pinned
+    /// `BT_LARGE_FLOAT`, so all angles stay finite and picks stay distinct.
+    #[test]
+    fn cull_points2_degenerate_coincident_points_stay_distinct() {
+        let pts = [[0.3_f32, -0.7]; 4];
+        let got = cull_points2(&pts, 1, 4);
+        assert_eq!(got.as_slice(), &[1, 0, 2, 3]);
+    }
+
+    /// Edge-edge SAT path (code 8 = u1 x v2): single contact, normal
+    /// perpendicular to both edge directions, support-point placement.
+    /// Pose from the audit fuzz (pinned code 8, depth 0.336127).
+    #[test]
+    fn edge_edge_code8_emits_single_orthogonal_contact() {
+        fn make_box(org: Affine3A, idx: usize) -> (RigidBody, CompoundShape) {
+            let half = Vec3A::new(1.0, 1.0, 1.0);
+            let child = Affine3A::IDENTITY;
+            let inertia = BoxShape::new(half).calculate_local_intertia(10.0);
+            let mut info = RigidBodyConstructionInfo::new(
+                10.0,
+                CollisionShapes::Compound(CompoundShape::new(BoxShape::new(half), child)),
+            );
+            info.local_inertia = inertia;
+            info.start_world_trans = org;
+            let mut body = RigidBody::new(info);
+            body.world_array_idx = idx;
+            (body, CompoundShape::new(BoxShape::new(half), child))
+        }
+        let org1 = Affine3A::IDENTITY;
+        let rot2 = Mat3A::from_cols(
+            Vec3A::new(-0.741332, 0.570802, -0.353004),
+            Vec3A::new(-0.287898, -0.745592, -0.601006),
+            Vec3A::new(-0.606252, -0.343916, 0.717064),
+        );
+        let org2 = Affine3A {
+            matrix3: rot2,
+            translation: Vec3A::new(-0.392614, 1.809769, -1.722986),
+        };
+        let (body1, holder1) = make_box(org1, 31);
+        let (body2, holder2) = make_box(org2, 32);
+        let mut cb = NoopCallback;
+        let mut det = BoxBoxDetector {
+            box1: &holder1.child_shape,
+            col1: &body1,
+            box2: &holder2.child_shape,
+            col2: &body2,
+            contact_added_callback: &mut cb,
+        };
+        let mut out = None;
+        det.get_closest_points(org1, org2, &mut out);
+        let m = out.expect("edge-edge overlap must emit");
+
+        // Edge path emits exactly one contact.
+        assert_eq!(m.point_cache.len(), 1);
+        let p = &m.point_cache[0];
+        assert!((p.normal_world_on_b.length() - 1.0).abs() < 1e-6);
+
+        // Normal locks the axis pair: u1 (x == 0) and box2 v2.
+        assert!(p.normal_world_on_b.x.abs() < 1e-6);
+        assert!(p.normal_world_on_b.dot(rot2.y_axis).abs() < 1e-4);
+
+        // Non-face: normal stays clear of every box axis.
+        for ax in [
+            Vec3A::X,
+            Vec3A::Y,
+            Vec3A::Z,
+            rot2.x_axis,
+            rot2.y_axis,
+            rot2.z_axis,
+        ] {
+            assert!(p.normal_world_on_b.dot(ax).abs() < 0.999);
+        }
+
+        // Support placement: v1/v3 coords pinned to -1/+1, v2 free.
+        let d = p.pos_world_on_b - org2.translation;
+        assert!((d.dot(rot2.x_axis) + 1.0).abs() < 1e-3);
+        assert!((d.dot(rot2.z_axis) - 1.0).abs() < 1e-3);
+
+        // Depth matches the pinned f64 oracle 0.336127.
+        assert!((p.distance_1 + 0.336127).abs() < 5e-4);
     }
 }

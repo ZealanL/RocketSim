@@ -156,6 +156,21 @@ impl PhysRecord {
     pub fn impulse_records(&self) -> &[ImpulseRecord] {
         &self.impulse_records_data[..self.num_impulse_records as usize]
     }
+
+    /// Test-only helper: attach impulse records of the given types.
+    #[cfg(test)]
+    pub(crate) fn set_test_impulses(&mut self, types: &[ImpulseRecordType]) {
+        let n = types.len().min(self.impulse_records_data.len());
+        for (slot, ty) in self.impulse_records_data.iter_mut().zip(types.iter()) {
+            *slot = ImpulseRecord {
+                lin_impulse: VecRecord::new(0.0, 0.0, 0.0),
+                ang_impulse: VecRecord::new(0.0, 0.0, 0.0),
+                impulse_type: *ty,
+                is_accum: true,
+            };
+        }
+        self.num_impulse_records = n as u32;
+    }
 }
 impl From<PhysRecord> for PhysState {
     fn from(phys_record: PhysRecord) -> Self {
@@ -212,6 +227,19 @@ pub struct CarRecord {
     pub prev_controls: ControlsRecord,
 
     pub wheels: [WheelRecord; 4],
+
+    /// RLPR v6 car-car contact flag. False for v2-v5.
+    pub is_touching_car: bool,
+    /// Reserved padding. Keeps v7 `is_boosting` at offset 588. Always zero.
+    pub _touch_pad: [u8; 3],
+    /// RLPR v7 boost latch bit. False for v2-v6.
+    pub is_boosting: bool,
+    /// Reserved padding. Keeps v7 `boosting_time` at offset 592. Always zero.
+    pub _boost_pad: [u8; 3],
+    /// RLPR v7 time since boost armed. 0.0 for v2-v6.
+    pub boosting_time: f32,
+    /// RLPR v8 handbrake integrator value. 0.0 for v2-v7.
+    pub handbrake_val: f32,
 }
 impl From<CarRecord> for CarState {
     fn from(phys_record: CarRecord) -> Self {

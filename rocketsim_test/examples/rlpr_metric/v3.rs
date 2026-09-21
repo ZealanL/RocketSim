@@ -1,18 +1,23 @@
-//! V3 replay backend for one-car RLPR recordings.
+//! V3 replay backend for RLPR recordings.
 //!
-//! Use one Octane car in Soccar.
-//! Reset restores car and ball state from the start tick.
-//! Step applies recorded controls for one tick.
+//! Uses one Octane car per recorded car in Soccar (Blue first, then Orange).
+//! Reset restores every car and ball state from the start tick.
+//! Step applies each recorded car's controls for one tick.
 
-use rocketsim::{Arena, CarBodyConfig, CarControls, CarState, GameMode, PhysState, Team};
+use rocketsim::{
+    Arena, ArenaConfig, ArenaEvent, ArenaMemWeightMode, CarBodyConfig, CarControls, CarState,
+    GameMode, PhysState, Team,
+};
 use rocketsim_test::rlpr::{cpp_records::ControlsRecord, tick_record::TickRecord};
 
-use super::common::{BodySnapshot, ReplayBackend, Snapshot};
+use super::common::{BodySnapshot, ReplayBackend, SimContactEvents, Snapshot};
 
-/// Sim holder for one blue Octane car in Soccar.
+/// Sim holder: one Octane per recorded car in Soccar.
 pub struct V3Backend {
     arena: Arena,
-    car_id: usize,
+    car_ids: Vec<usize>,
+    dodge_deadzone: f32,
+    mem_weight_mode: ArenaMemWeightMode,
 }
 
 /// Init RocketSim collision meshes for this example tool.
@@ -25,13 +30,103 @@ pub fn init() {
 }
 
 impl V3Backend {
-    /// Make a backend with one blue Octane car.
+    /// Make a backend with no cars. [`reset`] sizes the arena.
     ///
     /// Call [`init`] once before use.
     pub fn new() -> Self {
-        let mut arena = Arena::new(GameMode::Soccar);
-        let car_id = arena.add_car(Team::Blue, CarBodyConfig::OCTANE);
-        Self { arena, car_id }
+        Self::with_dodge_deadzone(0.5)
+    }
+
+    /// Make a backend with a custom dodge deadzone.
+    pub fn with_dodge_deadzone(dodge_deadzone: f32) -> Self {
+        Self::with_mem_weight_mode(dodge_deadzone, ArenaMemWeightMode::Heavy)
+    }
+
+    /// Make a backend with an explicit arena memory mode.
+    pub fn with_mem_weight_mode(dodge_deadzone: f32, mem_weight_mode: ArenaMemWeightMode) -> Self {
+        Self {
+            arena: Arena::new_with_config(
+                ArenaConfig::new(GameMode::Soccar).with_mem_weight_mode(mem_weight_mode),
+            ),
+            car_ids: Vec::new(),
+            dodge_deadzone,
+            mem_weight_mode,
+        }
+    }
+
+    fn new_arena(&self) -> Arena {
+        Arena::new_with_config(
+            ArenaConfig::new(GameMode::Soccar).with_mem_weight_mode(self.mem_weight_mode),
+        )
+    }
+
+    /// Octane config with this backend's dodge deadzone.
+    fn car_config(&self) -> CarBodyConfig {
+        let mut config = CarBodyConfig::OCTANE;
+        config.dodge_deadzone = self.dodge_deadzone;
+        config
+    }
+
+    /// Team per slot: Blue first, then alternating.
+    fn team_for_slot(slot: usize) -> Team {
+        if slot.is_multiple_of(2) {
+            Team::Blue
+        } else {
+            Team::Orange
+        }
+    }
+
+    /// Recording slot for one arena car id.
+    fn slot_for_arena_car(&self, arena_car: usize) -> Option<usize> {
+        self.car_ids.iter().position(|&stored| stored == arena_car)
+    }
+
+    /// Arena car id for one recording slot.
+    ///
+    /// Panics as `<caller> needs car <index>` on a missing slot.
+    #[track_caller]
+    fn car_id(&self, car_idx: usize, caller: &str) -> usize {
+        match self.car_ids.get(car_idx) {
+            Some(&id) => id,
+            None => panic!("{caller} needs car {car_idx}"),
+        }
+    }
+
+    /// Rebuild the arena when the car count changes.
+    fn ensure_cars(&mut self, num_cars: usize) {
+        if self.car_ids.len() != num_cars {
+            self.arena = self.new_arena();
+            let config = self.car_config();
+            self.car_ids = (0..num_cars)
+                .map(|slot| self.arena.add_car(Self::team_for_slot(slot), config))
+                .collect();
+        }
+    }
+
+    /// Restore the handbrake integrator before a replayed tick.
+    pub fn set_handbrake_value(&mut self, car_idx: usize, value: f32) {
+        let car_id = self.car_id(car_idx, "set_handbrake_value");
+        let mut state = *self.arena.get_car_state(car_id);
+        state.handbrake_val = value.clamp(0.0, 1.0);
+        self.arena.set_car_state(car_id, state);
+    }
+
+    /// Refresh prior-tick wheel gates without advancing dynamics.
+    pub fn refresh_sticky_gates(&mut self) {
+        for &car_id in &self.car_ids {
+            self.arena.refresh_car_sticky_gate(car_id);
+        }
+    }
+
+    /// Step the arena without collecting replay metric events.
+    #[allow(dead_code)]
+    pub fn benchmark_step(&mut self, controls: &[CarControls]) {
+        for (slot, &controls) in controls.iter().enumerate() {
+            if let Some(&car_id) = self.car_ids.get(slot) {
+                self.arena.set_car_controls(car_id, controls);
+            }
+        }
+        let _ = self.arena.step_tick();
     }
 }
 
@@ -42,44 +137,62 @@ impl Default for V3Backend {
 }
 
 impl ReplayBackend for V3Backend {
+    fn set_handbrake_value(&mut self, car_idx: usize, value: f32) {
+        V3Backend::set_handbrake_value(self, car_idx, value);
+    }
+
+    fn refresh_sticky_gates(&mut self) {
+        V3Backend::refresh_sticky_gates(self);
+    }
+
+    fn set_boost_state(&mut self, car_idx: usize, armed: bool, time: f32) {
+        let car_id = self.car_id(car_idx, "set_boost_state");
+        let mut state = *self.arena.get_car_state(car_id);
+        state.is_boosting = armed;
+        state.boosting_time = time;
+        self.arena.set_car_state(car_id, state);
+    }
+
     fn reset(&mut self, start: &TickRecord) {
-        self.arena = Arena::new(GameMode::Soccar);
-        self.car_id = self.arena.add_car(Team::Blue, CarBodyConfig::OCTANE);
+        self.ensure_cars(start.car_records.len());
         self.set_state(start);
     }
 
     fn set_state(&mut self, state_tick: &TickRecord) {
-        let [car] = state_tick.car_records.as_slice() else {
-            panic!("state needs one car");
-        };
-        let recorded: CarState = (*car).into();
-        let mut state = *self.arena.get_car_state(self.car_id);
-        state.phys = recorded.phys;
-        state.is_on_ground = recorded.is_on_ground;
-        state.wheels_with_contact = recorded.wheels_with_contact;
-        state.is_jumping = recorded.is_jumping;
-        state.is_flipping = recorded.is_flipping;
-        state.jump_ticks = recorded.jump_ticks;
-        state.flip_time = recorded.flip_time;
-        state.has_jumped = recorded.has_jumped;
-        state.prev_controls = car.prev_controls.into();
-        state.controls = car.prev_controls.into();
-        state.flip_rel_torque = recorded.flip_rel_torque;
-        state.boost = recorded.boost;
-        state.is_demoed = false;
-        state.demo_respawn_timer = 0.0;
+        self.ensure_cars(state_tick.car_records.len());
+        for (slot, car) in state_tick.car_records.iter().enumerate() {
+            let Some(&car_id) = self.car_ids.get(slot) else {
+                panic!("state has more cars than the arena");
+            };
+            let recorded: CarState = (*car).into();
+            let mut state = *self.arena.get_car_state(car_id);
+            state.phys = recorded.phys;
+            state.is_on_ground = recorded.is_on_ground;
+            state.wheels_with_contact = recorded.wheels_with_contact;
+            state.is_jumping = recorded.is_jumping;
+            state.is_flipping = recorded.is_flipping;
+            state.jump_ticks = recorded.jump_ticks;
+            state.flip_time = recorded.flip_time;
+            state.has_jumped = recorded.has_jumped;
+            state.prev_controls = car.prev_controls.into();
+            state.controls = car.prev_controls.into();
+            state.flip_rel_torque = recorded.flip_rel_torque;
+            state.boost = recorded.boost;
+            state.is_demoed = false;
+            state.demo_respawn_timer = 0.0;
 
-        if car.has_flip {
-            state.has_double_jumped = false;
-            state.has_flipped = false;
-        } else if car.is_flipping {
-            state.has_double_jumped = false;
-            state.has_flipped = true;
-        } else if car.double_jumped_or_flipped && !state.has_flipped {
-            state.has_double_jumped = true;
+            if car.has_flip {
+                state.has_double_jumped = false;
+                state.has_flipped = false;
+            } else if car.is_flipping {
+                state.has_double_jumped = false;
+                state.has_flipped = true;
+            } else if car.double_jumped_or_flipped && !state.has_flipped {
+                state.has_double_jumped = true;
+            }
+
+            self.arena.set_car_state(car_id, state);
         }
-
-        self.arena.set_car_state(self.car_id, state);
 
         let recorded_ball: PhysState = state_tick.ball_record.into();
         let mut ball = *self.arena.get_ball_state();
@@ -87,14 +200,48 @@ impl ReplayBackend for V3Backend {
         self.arena.set_ball_state(ball);
     }
 
-    fn step(&mut self, controls: &ControlsRecord) {
-        let controls: CarControls = (*controls).into();
-        self.arena.set_car_controls(self.car_id, controls);
+    fn step(&mut self, controls: &[ControlsRecord]) -> Vec<SimContactEvents> {
+        for (slot, controls) in controls.iter().enumerate() {
+            if let Some(&car_id) = self.car_ids.get(slot) {
+                let controls: CarControls = (*controls).into();
+                self.arena.set_car_controls(car_id, controls);
+            }
+        }
         self.arena.step_tick();
+        let mut observed = vec![SimContactEvents::default(); self.car_ids.len()];
+        for event in self.arena.get_last_step_events() {
+            match event {
+                ArenaEvent::BallHitWorld(_) => {
+                    for slot in observed.iter_mut() {
+                        slot.ball_world = true;
+                    }
+                }
+                ArenaEvent::CarHitBall(hit) => {
+                    if let Some(slot) = self.slot_for_arena_car(hit.car_idx) {
+                        observed[slot].car_ball = true;
+                    }
+                }
+                ArenaEvent::CarHitCar(hit) => {
+                    for arena_car in [hit.bumper_car_idx, hit.victim_car_idx] {
+                        if let Some(slot) = self.slot_for_arena_car(arena_car) {
+                            observed[slot].car_car = true;
+                        }
+                    }
+                }
+                ArenaEvent::CarHitWorld(hit) => {
+                    if let Some(slot) = self.slot_for_arena_car(hit.car_idx) {
+                        observed[slot].chassis_world = true;
+                    }
+                }
+                _ => {}
+            }
+        }
+        observed
     }
 
-    fn snapshot(&mut self) -> Snapshot {
-        let car = *self.arena.get_car_state(self.car_id);
+    fn snapshot(&mut self, car_idx: usize) -> Snapshot {
+        let car_id = self.car_id(car_idx, "snapshot");
+        let car = *self.arena.get_car_state(car_id);
         let ball = *self.arena.get_ball_state();
         Snapshot {
             car: BodySnapshot {

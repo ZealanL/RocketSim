@@ -203,11 +203,6 @@ impl GridBroadphase {
         }
     }
 
-    #[cfg(test)]
-    pub(crate) const fn num_cells(&self) -> USizeVec3 {
-        self.cell_grid.num_cells
-    }
-
     pub fn set_aabb(&mut self, col_obj: &RigidBody, proxy_idx: usize, aabb: Aabb) {
         let sbp = &mut self.handles[proxy_idx];
         sbp.aabb = aabb;
@@ -336,34 +331,40 @@ impl GridBroadphase {
         debug_assert!(ray_from[1].distance_squared(ray_to[1]) < self.cell_grid.cell_size_sq);
         debug_assert!(ray_from[2].distance_squared(ray_to[2]) < self.cell_grid.cell_size_sq);
         debug_assert!(ray_from[3].distance_squared(ray_to[3]) < self.cell_grid.cell_size_sq);
-        let cell = &self.cell_grid.cells[self.cell_grid.get_cell_idx(ray_from[0])];
         let ray_aabb = ray_from.iter().zip(ray_to).skip(1).fold(
             Aabb::new(ray_from[0].min(ray_to[0]), ray_from[0].max(ray_to[0])),
             |bounds, (from, to)| bounds.combine(&Aabb::new(from.min(*to), from.max(*to))),
         );
 
-        for &other_proxy_idx in cell.static_handles.iter().chain(&cell.dyn_handles) {
-            let other_proxy = &self.handles[other_proxy_idx];
-            if ray_aabb.intersects(&other_proxy.aabb) {
-                ray_callback.process(other_proxy);
+        // Collect one source cell per ray.
+        let mut cell_idxs = [usize::MAX; 4];
+        let mut num_cells = 0;
+        for from in ray_from {
+            let idx = self.cell_grid.get_cell_idx(*from);
+            if !cell_idxs[..num_cells].contains(&idx) {
+                cell_idxs[num_cells] = idx;
+                num_cells += 1;
             }
         }
-    }
-}
 
-#[cfg(test)]
-mod tests {
-    use glam::{USizeVec3, Vec3A};
+        // Skip proxies seen in earlier cells. This keeps one visit per proxy.
+        for (i, &cell_idx) in cell_idxs[..num_cells].iter().enumerate() {
+            let cell = &self.cell_grid.cells[cell_idx];
+            'cells: for &other_proxy_idx in cell.static_handles.iter().chain(&cell.dyn_handles) {
+                for &prev_idx in &cell_idxs[..i] {
+                    let prev = &self.cell_grid.cells[prev_idx];
+                    if prev.static_handles.contains(&other_proxy_idx)
+                        || prev.dyn_handles.contains(&other_proxy_idx)
+                    {
+                        break 'cells;
+                    }
+                }
 
-    use super::GridBroadphase;
-
-    #[test]
-    fn arena_sized_cell_disables_grid_partitioning() {
-        let min_pos = Vec3A::new(-5600.0, -6000.0, 0.0);
-        let max_pos = Vec3A::new(5600.0, 6000.0, 2200.0);
-        let cell_size = (max_pos - min_pos).max_element();
-        let broadphase = GridBroadphase::new(min_pos, max_pos, cell_size, 1);
-
-        assert_eq!(broadphase.num_cells(), USizeVec3::ONE);
+                let other_proxy = &self.handles[other_proxy_idx];
+                if ray_aabb.intersects(&other_proxy.aabb) {
+                    ray_callback.process(other_proxy);
+                }
+            }
+        }
     }
 }

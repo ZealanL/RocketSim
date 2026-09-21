@@ -5,13 +5,16 @@ use super::{
     raycaster::VehicleRaycaster,
     wheel_info::{FrictionCurveInput, WheelInfo},
 };
-use crate::bullet::{
-    collision::broadphase::CollisionFilterGroups,
-    dynamics::{
-        discrete_dynamics_world::DiscreteDynamicsWorld,
-        rigid_body::{Impulse, RigidBody},
+use crate::{
+    bullet::{
+        collision::broadphase::CollisionFilterGroups,
+        dynamics::{
+            discrete_dynamics_world::DiscreteDynamicsWorld,
+            rigid_body::{Impulse, RigidBody},
+        },
+        linear_math::QuatExt,
     },
-    linear_math::QuatExt,
+    sim::UserInfoTypes,
 };
 
 pub struct VehicleRL {
@@ -42,8 +45,97 @@ impl VehicleRL {
             .unwrap_or_else(|| cb.get_up_vector())
     }
 
+    /// Refresh wheel raycast records for the sticky gate.
+    #[must_use]
+    pub(crate) fn refresh_wheel_contacts(
+        &mut self,
+        collision_world: &DiscreteDynamicsWorld,
+        chassis: &RigidBody,
+        time_step: f32,
+    ) -> bool {
+        let chassis_trans = *chassis.get_world_trans();
+        let mut sources = [Vec3A::ZERO; NUM_WHEELS];
+        let mut targets = [Vec3A::ZERO; NUM_WHEELS];
+        for (i, wheel) in self.wheels.iter_mut().enumerate() {
+            (sources[i], targets[i]) = wheel.prepare_for_raycast(&chassis_trans);
+        }
+
+        let ray_results = self
+            .raycaster
+            .cast_rays(collision_world, &sources, &targets, chassis);
+
+        let mut front_axle_cache: Option<(f32, Vec3A)> = None;
+        for (i, wheel) in self.wheels.iter_mut().enumerate() {
+            let front = i < 2;
+            if let Some(ray_result) = ray_results[i] {
+                let steer_angle = wheel.steer_angle;
+                let axle_dir = if front {
+                    match front_axle_cache {
+                        Some((cached_angle, cached_axle)) if cached_angle == steer_angle => {
+                            cached_axle
+                        }
+                        _ => {
+                            let axle = Quat::from_axis_angle_simd(
+                                chassis_trans.matrix3.z_axis,
+                                steer_angle,
+                            ) * chassis_trans.matrix3.y_axis;
+                            front_axle_cache = Some((steer_angle, axle));
+                            axle
+                        }
+                    }
+                } else {
+                    chassis_trans.matrix3.y_axis
+                };
+
+                wheel.apply_ray_cast(
+                    chassis,
+                    &chassis_trans,
+                    axle_dir,
+                    ray_result,
+                    time_step,
+                    front,
+                );
+            } else {
+                wheel.reset_wheel_suspension();
+            }
+        }
+
+        self.wheels.iter().any(|wheel| {
+            wheel
+                .raycast_info
+                .as_ref()
+                .is_some_and(|info| info.is_in_contact_with_world)
+        })
+    }
+
     pub const fn get_num_wheels(&self) -> usize {
         self.wheels.len()
+    }
+
+    fn apply_hit_car_pushback(&self, collision_world: &mut DiscreteDynamicsWorld) {
+        for wheel in &self.wheels {
+            let Some(info) = wheel.raycast_info.as_ref() else {
+                continue;
+            };
+
+            if wheel.extra_pushback <= 0.0 {
+                continue;
+            }
+
+            let victim = &mut collision_world.bodies_mut()[info.ground_body_idx];
+            if victim.user_idx != UserInfoTypes::Car {
+                continue;
+            }
+
+            let full_pushback = wheel.extra_pushback * NUM_WHEELS as f32;
+            let victim_offset = info.contact_point - victim.get_world_trans().translation;
+            victim.add_impulse(
+                None,
+                Impulse::LinearRelPos(-info.contact_normal * full_pushback, victim_offset),
+                true,
+                false,
+            );
+        }
     }
 
     pub fn update(
@@ -55,15 +147,12 @@ impl VehicleRL {
         three_wheels: bool,
     ) {
         let chassis = &collision_world.bodies()[self.chassis_body_idx];
-        // The chassis transform and mass are invariant for the whole update:
-        // wheel impulses only change velocities, never the transform or mass.
-        // Cache them once instead of re-reading them for every wheel.
         let chassis_trans = *chassis.get_world_trans();
         let chassis_translation = chassis_trans.translation;
         let friction_scale = chassis.get_mass() / 3.0;
 
-        let mut sources = [Vec3A::ZERO; 4];
-        let mut targets = [Vec3A::ZERO; 4];
+        let mut sources = [Vec3A::ZERO; NUM_WHEELS];
+        let mut targets = [Vec3A::ZERO; NUM_WHEELS];
 
         for (i, wheel) in self.wheels.iter_mut().enumerate() {
             (sources[i], targets[i]) = wheel.prepare_for_raycast(&chassis_trans);
@@ -102,6 +191,7 @@ impl VehicleRL {
                 } else {
                     chassis_trans.matrix3.y_axis
                 };
+
                 wheel.apply_ray_cast(
                     chassis,
                     &chassis_trans,
@@ -110,6 +200,7 @@ impl VehicleRL {
                     time_step,
                     front,
                 );
+
                 let is_dynamic_hit = !ray_result.rigid_body.is_static_obj();
                 wheel.refresh_friction_curves(
                     chassis,
@@ -138,27 +229,22 @@ impl VehicleRL {
             let Some(info) = wheel.raycast_info.as_ref() else {
                 continue;
             };
-            let ground_idx = info.ground_body_idx;
-            if info.ground_stick == Vec3A::ZERO
-                || ground_idx == self.chassis_body_idx
-                || ground_idx >= collision_world.bodies().len()
-            {
-                continue;
-            }
 
-            let ground = &mut collision_world.bodies_mut()[ground_idx];
-            if ground.is_static_obj() || ground.inv_mass == 0.0 {
+            let Some(ground_stick) = info.ground_stick else {
                 continue;
-            }
+            };
 
+            let ground = &mut collision_world.bodies_mut()[info.ground_body_idx];
             let ground_offset = info.contact_point - ground.get_world_trans().translation;
             ground.add_impulse(
                 None,
-                Impulse::LinearRelPos(info.ground_stick, ground_offset),
+                Impulse::LinearRelPos(ground_stick, ground_offset),
                 true,
                 false,
             );
         }
+
+        self.apply_hit_car_pushback(collision_world);
 
         let chassis = &mut collision_world.bodies_mut()[self.chassis_body_idx];
         for wheel in &mut self.wheels {

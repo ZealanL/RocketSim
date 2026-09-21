@@ -9,6 +9,7 @@ use crate::{
         rigid_body::{Impulse, RigidBody},
     },
     consts::{BT_TO_UU, UU_TO_BT, bullet_vehicle, curves},
+    sim::UserInfoTypes,
 };
 
 pub struct RaycastInfo {
@@ -17,7 +18,7 @@ pub struct RaycastInfo {
     pub ground_body_idx: usize,
     pub suspension_length: f32,
     pub impulse: Vec3A,
-    pub ground_stick: Vec3A,
+    pub ground_stick: Option<Vec3A>,
     pub is_in_contact_with_world: bool,
     pub clipped_inv_contact_dot_suspension: f32,
     pub suspension_relative_vel: f32,
@@ -142,11 +143,9 @@ impl WheelInfo {
 
         let suspension_length = (wheel_trace_len_sq - self.wheels_radius).min(max_suspension_len);
 
-        // The pushback resolve is a per-raycast transient: refresh it on
-        // every contact tick so a wheel above the penetration threshold
-        // reports 0 instead of keeping the previous tick's value.
         self.extra_pushback = 0.0;
-        if is_in_contact_with_world {
+        let is_car_hit = ray_results.rigid_body.user_idx == UserInfoTypes::Car;
+        if is_in_contact_with_world || is_car_hit {
             let ray_pushback_thresh = self.suspension_rest_length_1 + self.wheels_radius
                 - bullet_vehicle::SUSPENSION_SUBTRACTION;
             if wheel_trace_len_sq < ray_pushback_thresh {
@@ -165,13 +164,11 @@ impl WheelInfo {
             }
         }
 
-        // Dynamic ray hits apply stick to the hit body.
-        let ground_stick =
-            if !ray_results.rigid_body.is_static_obj() && ray_results.rigid_body.inv_mass != 0.0 {
-                -contact_normal
-            } else {
-                Vec3A::ZERO
-            };
+        let ground_stick = if !is_in_contact_with_world {
+            Some(-contact_normal)
+        } else {
+            None
+        };
 
         self.raycast_info = Some(RaycastInfo {
             contact_normal,
@@ -215,14 +212,6 @@ impl WheelInfo {
                     * input.handbrake_val;
         }
 
-        // Wheels on a dynamic hit body cannot use sticky ground: the lateral
-        // bilateral resolves against a fixed body (target GetFakeBulletObj),
-        // so a ball hit grips like static ground in the vehicle layer. RL
-        // wheel records keep the 0.1 non-sticky scale on ball contacts even
-        // with throttle (e.g. cb_reset_fling i67 lat 0.049/long 0.081 vs a
-        // 0.49/0.81 unscaled vehicle computation), while flat ground
-        // (normal.z = 1) scales by 1.0 and is unaffected. Gate on the
-        // static-vs-dynamic hit classifier, not on recording or body names.
         if input.real_throttle == 0.0 || input.is_dynamic_hit {
             let non_sticky_scale =
                 curves::NON_STICKY_FRICTION_FACTOR.get_output(input.contact_normal.z);

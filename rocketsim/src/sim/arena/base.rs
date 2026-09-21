@@ -653,20 +653,9 @@ impl Arena {
         &self.cars[car_idx].state.controls
     }
 
-    /// Debug access: per-wheel `(in_contact, suspension_length, suspension_rel_vel)`.
-    pub fn get_car_wheel_debug(&self, car_idx: usize) -> [(bool, f32, f32); 4] {
-        let mut out = [(false, 0.0f32, 0.0f32); 4];
-        for (w, o) in self.cars[car_idx]
-            .bullet_vehicle
-            .wheels
-            .iter()
-            .zip(out.iter_mut())
-        {
-            if let Some(ri) = &w.raycast_info {
-                *o = (true, ri.suspension_length, ri.suspension_relative_vel);
-            }
-        }
-        out
+    /// Refresh the prior-tick wheel gate from the current car body.
+    pub fn refresh_car_sticky_gate(&mut self, car_idx: usize) {
+        self.cars[car_idx].refresh_sticky_gate(&self.bullet_world);
     }
 
     pub fn get_car_info_and_state(&self, car_idx: usize) -> (&CarInfo, &CarState) {
@@ -853,6 +842,72 @@ impl Arena {
     }
 }
 
+fn is_within_rect_cone(
+    forward: Vec3A,
+    right: Vec3A,
+    up: Vec3A,
+    delta: Vec3A,
+    b_reverse: bool,
+    yaw_limit_deg: f32,
+    pitch_limit_deg: f32,
+) -> bool {
+    debug_assert!(yaw_limit_deg < 90.0 && pitch_limit_deg < 90.0);
+
+    let fwd = if b_reverse { -forward } else { forward };
+    let Some(d) = delta.try_normalize() else {
+        return false;
+    };
+
+    let f = d.dot(fwd);
+    if f <= 0.0 {
+        return false;
+    }
+
+    // angle = atan2(|component|, f) <= limit  <=>  |component| <= f * tan(limit)
+    d.dot(right).abs() <= f * yaw_limit_deg.to_radians().tan()
+        && d.dot(up).abs() <= f * pitch_limit_deg.to_radians().tan()
+}
+
+fn is_within_demo_cone(
+    forward: Vec3A,
+    right: Vec3A,
+    up: Vec3A,
+    delta: Vec3A,
+    b_reverse: bool,
+) -> bool {
+    use consts::car::demo;
+
+    is_within_rect_cone(
+        forward,
+        right,
+        up,
+        delta,
+        b_reverse,
+        demo::YAW_LIMIT_DEG,
+        demo::PITCH_LIMIT_DEG,
+    )
+}
+
+fn is_within_bump_cone(
+    forward: Vec3A,
+    right: Vec3A,
+    up: Vec3A,
+    delta: Vec3A,
+    b_reverse: bool,
+) -> bool {
+    use consts::car::bump;
+
+    is_within_rect_cone(
+        forward,
+        right,
+        up,
+        delta,
+        b_reverse,
+        bump::YAW_LIMIT_DEG,
+        bump::PITCH_LIMIT_DEG,
+    )
+}
+
 impl Arena {
     fn on_ball_tile_collision(&mut self, tile_idx: usize) {
         self.ball.on_dropshot_tile_collision(
@@ -885,7 +940,7 @@ impl Arena {
         let ball_rb = &mut self.bullet_world.bodies_mut()[self.ball.rigid_body_idx];
         let ball_lin_vel_before = ball_rb.lin_vel;
         self.ball.on_hit(
-            &self.cars[car_idx],
+            &mut self.cars[car_idx],
             self.config.game_mode,
             &self.config.mutators,
             self.tick_count,
@@ -967,23 +1022,35 @@ impl Arena {
                 continue;
             }
 
-            let local_point_x = if is_swapped {
-                manifold_point.local_point_b
-            } else {
-                manifold_point.local_point_a
-            }
-            .x;
-
-            let hit_with_bumper = local_point_x * BT_TO_UU > consts::car::bump::MIN_FORWARD_DIST;
-            if !hit_with_bumper {
-                // Didn't hit with bumper
+            if !is_within_bump_cone(
+                attacker_state.phys.get_forward_dir(),
+                attacker_state.phys.get_right_dir(),
+                attacker_state.phys.get_up_dir(),
+                delta_pos,
+                false,
+            ) {
                 continue;
             }
 
             let mut is_demo = match self.config.mutators.demo_mode {
                 DemoMode::OnContact => true,
                 DemoMode::Disabled => false,
-                DemoMode::Normal => attacker_state.is_supersonic,
+                DemoMode::Normal => {
+                    attacker_state.is_supersonic && {
+                        let fwd_speed = attacker_state
+                            .phys
+                            .vel
+                            .dot(attacker_state.phys.get_forward_dir());
+                        fwd_speed.abs() >= consts::car::supersonic::MAINTAIN_MIN_SPEED
+                            && is_within_demo_cone(
+                                attacker_state.phys.get_forward_dir(),
+                                attacker_state.phys.get_right_dir(),
+                                attacker_state.phys.get_up_dir(),
+                                delta_pos,
+                                fwd_speed < 0.0,
+                            )
+                    }
+                }
             };
             if is_demo && !self.config.mutators.enable_team_demos {
                 is_demo = attacker.team != victim.team;
@@ -993,24 +1060,25 @@ impl Arena {
                 victim.demolish(self.config.mutators.respawn_delay);
             } else {
                 let ground_hit = victim_state.is_on_ground;
-                let base_scale = if ground_hit {
-                    consts::curves::BUMP_VEL_AMOUNT_GROUND
+                let attacker_speed = attacker_state.phys.vel.length().min(2200.0);
+                if ground_hit {
+                    // Grounded victim: Ground and Z curves on total attacker speed.
+                    let base_scale =
+                        consts::curves::BUMP_VEL_AMOUNT_GROUND.get_output(attacker_speed);
+
+                    let hit_up_dir = victim_state.phys.rot_mat.z_axis;
+
+                    let upward_vel_curve = &consts::curves::BUMP_UPWARD_VEL_AMOUNT;
+                    let upward_force = upward_vel_curve.get_output(attacker_speed)
+                        * self.config.mutators.bump_force_scale;
+                    let bump_impulse = (vel_dir * base_scale) + (hit_up_dir * upward_force);
+                    victim.vel_impulse_cache += bump_impulse * UU_TO_BT;
                 } else {
-                    consts::curves::BUMP_VEL_AMOUNT_AIR
+                    // Airborne victim: Air curve on total attacker speed; no up term.
+                    let base_scale = consts::curves::BUMP_VEL_AMOUNT_AIR.get_output(attacker_speed);
+                    let bump_impulse = vel_dir * base_scale;
+                    victim.vel_impulse_cache += bump_impulse * UU_TO_BT;
                 }
-                .get_output(speed_towards_other_car);
-
-                let hit_up_dir = if victim_state.is_on_ground {
-                    victim_state.phys.rot_mat.z_axis
-                } else {
-                    Vec3A::Z
-                };
-
-                let upward_vel_curve = &consts::curves::BUMP_UPWARD_VEL_AMOUNT;
-                let upward_force = upward_vel_curve.get_output(speed_towards_other_car)
-                    * self.config.mutators.bump_force_scale;
-                let bump_impulse = (vel_dir * base_scale) + (hit_up_dir * upward_force);
-                victim.vel_impulse_cache += bump_impulse * UU_TO_BT;
             }
 
             attacker.state.bump_cooldown_timer = self.config.mutators.bump_cooldown_time;
