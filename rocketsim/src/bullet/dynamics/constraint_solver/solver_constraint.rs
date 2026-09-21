@@ -29,9 +29,17 @@ pub struct SolverConstraint {
     pub friction_idx: usize,
     pub solver_body_id_a: usize,
     pub solver_body_id_b: usize,
+    /// Row membership: true joins split response only, false joins split and velocity.
+    /// Per-point rows use true with no friction child and no velocity warmstart.
+    /// Ordinary rows and synthetic rows use false with velocity and friction.
+    /// Live wall 19565 shows per-point rows with zero velocity visits and one friction child on the synthetic.
+    pub(super) is_split_only: bool,
 }
 
 impl SolverConstraint {
+    /// Sentinel parent for rows that own no friction child.
+    pub(super) const NO_FRICTION_PARENT: usize = usize::MAX;
+
     pub fn get_friction_constraint(
         (solver_body_id_a, solver_body_id_b): (usize, usize),
         (solver_body_a, solver_body_b): (&mut SolverBody, &mut SolverBody),
@@ -86,6 +94,38 @@ impl SolverConstraint {
             (rel_pos1, rel_pos2),
             cp,
             time_step,
+            true,
+        );
+
+        constraint
+    }
+
+    pub(super) fn get_split_only_contact_constraint(
+        (solver_body_id_a, solver_body_id_b): (usize, usize),
+        (solver_body_a, solver_body_b): (&mut SolverBody, &mut SolverBody),
+        (rb0, rb1): (Option<&RigidBody>, Option<&RigidBody>),
+        (rel_pos1, rel_pos2): (Vec3A, Vec3A),
+        cp: &ManifoldPoint,
+        time_step: f32,
+    ) -> Self {
+        let mut constraint = Self {
+            solver_body_id_a,
+            solver_body_id_b,
+            friction_idx: Self::NO_FRICTION_PARENT,
+            friction: cp.combined_friction,
+            lower_limit: 0.0,
+            upper_limit: 1e10,
+            is_split_only: true,
+            ..Default::default()
+        };
+
+        constraint.setup_contact_constraint(
+            (solver_body_a, solver_body_b),
+            (rb0, rb1),
+            (rel_pos1, rel_pos2),
+            cp,
+            time_step,
+            false,
         );
 
         constraint
@@ -102,10 +142,15 @@ impl SolverConstraint {
         (rel_pos1, rel_pos2): (Vec3A, Vec3A),
         cp: &ManifoldPoint,
         time_step: f32,
+        apply_warmstart: bool,
     ) {
         let inv_time_step = 1.0 / time_step;
         let erp = contact_solver_info::ERP_2;
-        self.applied_impulse = cp.applied_impulse * contact_solver_info::WARMSTARTING_FACTOR;
+        self.applied_impulse = if apply_warmstart {
+            cp.applied_impulse * contact_solver_info::WARMSTARTING_FACTOR
+        } else {
+            0.0
+        };
 
         let (denom0, vel0, vel_1_dot_n) = rb0.map_or((0.0, Vec3A::ZERO, 0.0), |rb| {
             let torque_axis = rel_pos1.cross(cp.normal_world_on_b);
@@ -117,11 +162,13 @@ impl SolverConstraint {
             self.contact_normal_1 = cp.normal_world_on_b;
             self.rel_pos1_cross_normal = torque_axis;
 
-            solver_body_a.internal_apply_impulse(
-                cp.normal_world_on_b * solver_body_a.inv_mass,
-                self.angular_component_a,
-                self.applied_impulse,
-            );
+            if apply_warmstart {
+                solver_body_a.internal_apply_impulse(
+                    cp.normal_world_on_b * solver_body_a.inv_mass,
+                    self.angular_component_a,
+                    self.applied_impulse,
+                );
+            }
 
             let vel_dot_n = self
                 .contact_normal_1
@@ -144,11 +191,13 @@ impl SolverConstraint {
             self.contact_normal_2 = -cp.normal_world_on_b;
             self.rel_pos2_cross_normal = -torque_axis;
 
-            solver_body_b.internal_apply_impulse(
-                cp.normal_world_on_b * solver_body_b.inv_mass,
-                -self.angular_component_b,
-                -self.applied_impulse,
-            );
+            if apply_warmstart {
+                solver_body_b.internal_apply_impulse(
+                    cp.normal_world_on_b * solver_body_b.inv_mass,
+                    -self.angular_component_b,
+                    -self.applied_impulse,
+                );
+            }
 
             let vel_dot_n = self
                 .contact_normal_2
