@@ -433,6 +433,7 @@ impl Arena {
                 ball_state.phys.vel.z = f32::EPSILON;
             }
             GameMode::Dropshot => {
+                self.tile_states = Some(TileStates::DEFAULT);
                 self.update_tile_states();
             }
             _ => {}
@@ -757,16 +758,17 @@ impl Arena {
     }
 
     fn update_tile_states(&mut self) {
-        for (team_idx, team_states) in self.tile_states.as_ref().unwrap().states.iter().enumerate()
-        {
-            for (tile_idx, &new_state) in team_states.iter().enumerate() {
-                let rb_idx = tile_idx + consts::dropshot::NUM_TILES_PER_TEAM * team_idx;
-                let tile_rb = &mut self.bullet_world.bodies_mut()[rb_idx];
-                if new_state == TileDamageState::Broken {
-                    tile_rb.collision_flags |= CollisionFlags::NoContactResponse;
-                } else {
-                    tile_rb.collision_flags &= !CollisionFlags::NoContactResponse;
-                }
+        let tile_states = self.tile_states.as_ref().unwrap().states;
+        for rb in self.bullet_world.bodies_mut() {
+            if rb.user_idx != UserInfoTypes::DropshotTile {
+                continue;
+            }
+            let team_idx = rb.user_pointer / consts::dropshot::NUM_TILES_PER_TEAM;
+            let tile_idx = rb.user_pointer % consts::dropshot::NUM_TILES_PER_TEAM;
+            if tile_states[team_idx][tile_idx] == TileDamageState::Broken {
+                rb.collision_flags |= CollisionFlags::NoContactResponse;
+            } else {
+                rb.collision_flags &= !CollisionFlags::NoContactResponse;
             }
         }
     }

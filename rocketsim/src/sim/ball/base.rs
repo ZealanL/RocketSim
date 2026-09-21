@@ -331,10 +331,8 @@ impl Ball {
                     }
                 }
 
-                if *charge_level > 1 {
-                    // Blue -> 1, Orange -> -1
-                    self.state.ds_info.y_target_dir = car.team as i8 * -2 + 1;
-                }
+                // Blue -> 1, Orange -> -1
+                self.state.ds_info.y_target_dir = car.team as i8 * -2 + 1;
             }
             _ => {}
         }
@@ -402,6 +400,11 @@ impl Ball {
             tile_idx,
         );
 
+        // No one has touched the ball yet
+        if self.state.ds_info.y_target_dir == 0 {
+            return;
+        }
+
         // This should be possible in rare circumstances where two tiles are hit simultaneously
         if tile_state == TileDamageState::Broken {
             return;
@@ -418,10 +421,7 @@ impl Ball {
             return; // Not going fast enough downward
         }
 
-        if self.state.ds_info.charge_level > 1
-            && self.state.ds_info.y_target_dir != 0
-            && tile_pos.y.signum() != f32::from(self.state.ds_info.y_target_dir)
-        {
+        if tile_pos.y.signum() != f32::from(self.state.ds_info.y_target_dir) {
             return; // Wrong side of the arena
         }
 
