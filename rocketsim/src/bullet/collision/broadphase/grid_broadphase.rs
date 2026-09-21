@@ -356,7 +356,7 @@ impl GridBroadphase {
                     if prev.static_handles.contains(&other_proxy_idx)
                         || prev.dyn_handles.contains(&other_proxy_idx)
                     {
-                        break 'cells;
+                        continue 'cells;
                     }
                 }
 
