@@ -110,7 +110,7 @@ impl DiscreteDynamicsWorld {
         for &body in &self.dynamic_body_idcs {
             let body = &mut self.collision_world.collision_objs[body];
             if body.is_active() {
-                body.add_impulse(None, Impulse::Linear(self.gravity * time_step), false, true);
+                body.add_impulse(Impulse::Linear(self.gravity * time_step), false, true);
             }
         }
     }

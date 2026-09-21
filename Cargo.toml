@@ -4,7 +4,6 @@ package.license-file = "LICENSE"
 resolver = "3"
 members = [
   "rocketsim",
-  "rocketsim_derive",
   "rocketsim_test",
   "rocketsim_vis",
 ]

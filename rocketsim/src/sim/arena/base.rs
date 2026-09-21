@@ -3,8 +3,6 @@ use std::{any::Any, f32::consts::PI, iter::repeat_n, mem};
 use arrayvec::ArrayVec;
 use fastrand::Rng;
 use glam::{Affine3A, EulerRot, Mat3A, Vec3A};
-#[cfg(debug_assertions)]
-use indexmap::IndexMap;
 
 use super::ArenaContactTracker;
 use crate::{
@@ -1096,15 +1094,5 @@ impl Arena {
                 is_demo,
             }));
         }
-    }
-
-    #[cfg(debug_assertions)]
-    pub fn get_car_impulse_history(
-        &self,
-        car_idx: usize,
-    ) -> &IndexMap<(&'static str, bool), (Vec3A, Vec3A)> {
-        let car_rb_index = self.cars[car_idx].rigid_body_idx;
-        let rb = &self.bullet_world.bodies()[car_rb_index];
-        &rb.dbg_tick_impulse_history
     }
 }
