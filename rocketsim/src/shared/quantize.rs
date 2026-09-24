@@ -24,9 +24,11 @@ fn quantize_vec_ue3(vec: Vec3A, scale: f32, quantize_mode: VecQuantizeMode) -> V
         VecQuantizeMode::Position => (vec * scale + 0.5).floor() / scale,
         VecQuantizeMode::Velocity => {
             let inv_scale = 1.0 / scale;
+            let scaled = vec * scale;
+            let scaled_values = scaled.to_array();
             let mut rounded = Vec3A::ZERO;
             for i in 0..3 {
-                let i_val = (vec[i] * scale) as i32;
+                let i_val = scaled_values[i] as i32;
                 rounded[i] = (i_val as f32) * inv_scale;
             }
 

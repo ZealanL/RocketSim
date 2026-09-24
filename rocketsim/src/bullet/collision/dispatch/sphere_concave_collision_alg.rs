@@ -1,4 +1,4 @@
-use glam::{Affine3A, Vec3A};
+use glam::{Affine3A, Mat3A, Vec3A};
 
 use crate::bullet::{
     collision::{
@@ -24,7 +24,8 @@ struct SphereTriangleCallback<'a> {
     pub tri_obj: &'a RigidBody,
     sphere_center: Vec3A,
     sphere_radius: f32,
-    contact_breaking_threshold: f32,
+    radius_with_threshold: f32,
+    radius_with_threshold_sqr: f32,
 }
 
 impl<'a> SphereTriangleCallback<'a> {
@@ -35,31 +36,29 @@ impl<'a> SphereTriangleCallback<'a> {
         sphere_radius: f32,
         contact_breaking_threshold: f32,
     ) -> Self {
+        let radius_with_threshold = sphere_radius + contact_breaking_threshold;
+        let radius_with_threshold_sqr = radius_with_threshold * radius_with_threshold;
         Self {
             collected,
             tri_obj,
             sphere_center,
             sphere_radius,
-            contact_breaking_threshold,
+            radius_with_threshold,
+            radius_with_threshold_sqr,
         }
     }
 }
 
 impl ProcessTriangle for SphereTriangleCallback<'_> {
     fn process_triangle(&mut self, triangle: &TriangleShape, triangle_idx: usize) {
-        let Some(contact_info) = triangle.intersect_sphere(
+        let Some(contact_info) = triangle.intersect_sphere_front_precomputed(
             self.sphere_center,
             self.sphere_radius,
-            self.contact_breaking_threshold,
+            self.radius_with_threshold,
+            self.radius_with_threshold_sqr,
         ) else {
             return;
         };
-
-        // Keep only front-side triangle contacts.
-        let center_to_tri = self.sphere_center - triangle.points[0];
-        if center_to_tri.dot(triangle.normal) < 0.0 {
-            return;
-        }
 
         let tri_world = self.tri_obj.get_world_trans();
         let normal_on_b = tri_world.transform_vector3a(contact_info.result_normal);
@@ -83,13 +82,22 @@ pub(crate) fn process_collision_into<T: ContactAddedCallback>(
     scratch: &mut Vec<PendingSphereContact>,
     contact_added_callback: &mut T,
 ) -> bool {
-    manifold.most_recently_evicted_point = None;
     scratch.clear();
 
     let xform1 = convex_obj.get_world_trans();
-    let xform2 = concave_obj.get_world_trans().transpose();
+    let mesh_trans = *concave_obj.get_world_trans();
+    let xform2 = if mesh_trans.matrix3 == Mat3A::IDENTITY {
+        Affine3A {
+            matrix3: Mat3A::IDENTITY,
+            translation: -mesh_trans.translation,
+        }
+    } else {
+        mesh_trans.transpose()
+    };
+    // Sphere shape queries only consume the translation. Avoid multiplying
+    // the mesh and sphere rotations, which cannot affect a sphere AABB.
     let convex_in_triangle_space = Affine3A {
-        matrix3: xform2.matrix3 * xform1.matrix3,
+        matrix3: Mat3A::IDENTITY,
         translation: xform2.transform_point3a(xform1.translation),
     };
 

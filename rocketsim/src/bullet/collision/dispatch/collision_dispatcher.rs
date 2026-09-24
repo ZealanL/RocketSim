@@ -356,7 +356,6 @@ impl CollisionDispatcher {
         }
 
         // Dense table lookup; insertion order is unchanged.
-        let wanted = pair_key(rb0_idx, rb1_idx);
         let (lo, hi) = (rb0_idx.min(rb1_idx), rb0_idx.max(rb1_idx));
         let cached_idx = if hi < self.manifold_stride {
             let cell = self.manifold_table[lo * self.manifold_stride + hi];
@@ -371,7 +370,7 @@ impl CollisionDispatcher {
         if let Some(cached_idx) = cached_idx {
             // Push-only vector, so a hit must reference this exact pair.
             let manifold = &self.persistent_manifolds[cached_idx];
-            debug_assert_eq!(manifold.pair_key, wanted);
+            debug_assert_eq!(manifold.pair_key, pair_key(rb0_idx, rb1_idx));
             debug_assert!(
                 (manifold.body0_idx == rb0_idx && manifold.body1_idx == rb1_idx)
                     || (manifold.body0_idx == rb1_idx && manifold.body1_idx == rb0_idx),
@@ -385,7 +384,7 @@ impl CollisionDispatcher {
                 cached_idx
             } else {
                 self.insert_persistent_manifold(
-                    wanted,
+                    pair_key(rb0_idx, rb1_idx),
                     PersistentManifold::new(convex_obj, concave_obj),
                 )
             };
@@ -459,9 +458,10 @@ impl CollisionDispatcher {
                 }
                 cached_idx
             }
-            (None, Some(_)) => {
-                self.insert_persistent_manifold(wanted, fresh.take().expect("fresh hit"))
-            }
+            (None, Some(_)) => self.insert_persistent_manifold(
+                pair_key(rb0_idx, rb1_idx),
+                fresh.take().expect("fresh hit"),
+            ),
             (None, None) => return,
         };
 

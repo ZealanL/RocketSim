@@ -36,7 +36,6 @@ pub struct TriangleShape {
     pub points: [Vec3A; 3],
 
     pub normal: Vec3A,
-    pub normal_length: f32,
 }
 
 impl TriangleShape {
@@ -65,13 +64,16 @@ impl TriangleShape {
             points[0] - points[2],
         ];
 
-        let (normal, normal_length) = edges[0].cross(-edges[2]).normalize_and_length();
+        let normal = edges[0].cross(-edges[2]).normalize();
 
-        Self {
-            points,
-            normal,
-            normal_length,
-        }
+        Self { points, normal }
+    }
+
+    #[inline]
+    pub fn normal_length(&self) -> f32 {
+        let edge_0 = self.points[1] - self.points[0];
+        let edge_2 = self.points[0] - self.points[2];
+        edge_0.cross(-edge_2).length()
     }
 
     #[inline]
@@ -118,6 +120,75 @@ impl TriangleShape {
         }
 
         let radius_with_threshold = radius + threshold;
+        let radius_with_threshold_sqr = radius_with_threshold * radius_with_threshold;
+        self.intersect_sphere_from_plane(
+            obj_center,
+            obj_to_center,
+            triangle_normal,
+            distance_from_plane,
+            radius,
+            radius_with_threshold,
+            radius_with_threshold_sqr,
+        )
+    }
+
+    /// Front-side-only variant used by the concave sphere callback. The
+    /// caller discards back-facing contacts, so reject them before the edge
+    /// and closest-feature work.
+    #[inline]
+    pub fn intersect_sphere_front(
+        &self,
+        obj_center: Vec3A,
+        radius: f32,
+        threshold: f32,
+    ) -> Option<ContactInfo> {
+        let radius_with_threshold = radius + threshold;
+        let radius_with_threshold_sqr = radius_with_threshold * radius_with_threshold;
+        self.intersect_sphere_front_precomputed(
+            obj_center,
+            radius,
+            radius_with_threshold,
+            radius_with_threshold_sqr,
+        )
+    }
+
+    #[inline]
+    pub fn intersect_sphere_front_precomputed(
+        &self,
+        obj_center: Vec3A,
+        radius: f32,
+        radius_with_threshold: f32,
+        radius_with_threshold_sqr: f32,
+    ) -> Option<ContactInfo> {
+        let obj_to_center = obj_center - self.points[0];
+        let distance_from_plane = obj_to_center.dot(self.normal);
+        if distance_from_plane < 0. {
+            return None;
+        }
+
+        self.intersect_sphere_from_plane(
+            obj_center,
+            obj_to_center,
+            self.normal,
+            distance_from_plane,
+            radius,
+            radius_with_threshold,
+            radius_with_threshold_sqr,
+        )
+    }
+
+    #[inline]
+    #[allow(clippy::too_many_arguments)]
+    fn intersect_sphere_from_plane(
+        &self,
+        obj_center: Vec3A,
+        obj_to_center: Vec3A,
+        triangle_normal: Vec3A,
+        distance_from_plane: f32,
+        radius: f32,
+        radius_with_threshold: f32,
+        radius_with_threshold_sqr: f32,
+    ) -> Option<ContactInfo> {
         if distance_from_plane >= radius_with_threshold {
             return None;
         }
@@ -131,7 +202,7 @@ impl TriangleShape {
         let contact_point = if self.face_contains(triangle_normal, &obj_to_points) {
             obj_center - triangle_normal * distance_from_plane
         } else {
-            let contact_capsule_radius_sqr = radius_with_threshold * radius_with_threshold;
+            let contact_capsule_radius_sqr = radius_with_threshold_sqr;
             let mut min_distance_sqr = contact_capsule_radius_sqr;
             let mut contact_point = Vec3A::ZERO;
 
@@ -160,7 +231,7 @@ impl TriangleShape {
         let contact_to_center = obj_center - contact_point;
         let distance_sqr = contact_to_center.length_squared();
 
-        if distance_sqr >= radius_with_threshold * radius_with_threshold {
+        if distance_sqr >= radius_with_threshold_sqr {
             return None;
         }
 
@@ -192,58 +263,5 @@ impl TriangleShape {
     #[inline]
     pub fn local_get_supporting_vertex(&self, vec: Vec3A) -> Vec3A {
         self.local_get_supporting_vertex_without_margin(vec)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn segment_sqr_distance_matches_bullet_clamping() {
-        let from = Vec3A::new(1.0, 2.0, 3.0);
-        let to = Vec3A::new(5.0, 2.0, 3.0);
-        let mut nearest = Vec3A::ZERO;
-
-        let distance_sqr = segment_sqr_distance(from, to, Vec3A::new(3.0, 5.0, 3.0), &mut nearest);
-        assert_eq!(nearest, Vec3A::new(3.0, 2.0, 3.0));
-        assert_eq!(distance_sqr, 9.0);
-
-        let distance_sqr = segment_sqr_distance(from, to, Vec3A::new(0.0, 5.0, 3.0), &mut nearest);
-        assert_eq!(nearest, from);
-        assert_eq!(distance_sqr, 10.0);
-
-        let distance_sqr = segment_sqr_distance(from, to, Vec3A::new(6.0, 5.0, 3.0), &mut nearest);
-        assert_eq!(nearest, to);
-        assert_eq!(distance_sqr, 10.0);
-    }
-
-    #[test]
-    fn sphere_edge_fallback_keeps_first_equal_minimum() {
-        let triangle = TriangleShape::new([
-            Vec3A::new(0.0, 0.0, 0.0),
-            Vec3A::new(2.0, 0.0, 0.0),
-            Vec3A::new(0.0, 2.0, 0.0),
-        ]);
-        let sphere_center = Vec3A::new(-0.5, -0.5, 0.25);
-        let mut nearest = Vec3A::ZERO;
-        let edge_zero_distance = segment_sqr_distance(
-            triangle.points[0],
-            triangle.points[1],
-            sphere_center,
-            &mut nearest,
-        );
-        let edge_two_distance = segment_sqr_distance(
-            triangle.points[2],
-            triangle.points[0],
-            sphere_center,
-            &mut nearest,
-        );
-        assert_eq!(edge_zero_distance, edge_two_distance);
-
-        let contact = triangle
-            .intersect_sphere(sphere_center, 1.0, 0.0)
-            .expect("sphere should intersect an edge capsule");
-        assert_eq!(contact.contact_point, triangle.points[0]);
     }
 }

@@ -161,6 +161,10 @@ pub struct RigidBody {
     pub accum_ang_vel: Vec3A,
 
     pub linear_damping: f32,
+    /// Cached `(1 - linear_damping)^time_step` for the repeated fixed tick.
+    cached_linear_damping: f32,
+    cached_damping_time_step: f32,
+    cached_linear_damping_value: f32,
     pub linear_sleeping_threshold: f32,
     pub angular_sleeping_threshold: f32,
     pub inv_mass_splat: Vec3A,
@@ -219,6 +223,9 @@ impl RigidBody {
             accum_lin_vel: Vec3A::ZERO,
             accum_ang_vel: Vec3A::ZERO,
             linear_damping,
+            cached_linear_damping: 1.0,
+            cached_damping_time_step: 0.0,
+            cached_linear_damping_value: linear_damping,
             linear_sleeping_threshold,
             angular_sleeping_threshold,
             inv_mass_splat: Vec3A::splat(inverse_mass),
@@ -349,7 +356,14 @@ impl RigidBody {
 
     pub fn apply_damping(&mut self, time_step: f32) {
         if self.linear_damping != 0.0 {
-            self.lin_vel *= (1.0 - self.linear_damping).powf(time_step);
+            if self.cached_damping_time_step != time_step
+                || self.cached_linear_damping_value != self.linear_damping
+            {
+                self.cached_linear_damping = (1.0 - self.linear_damping).powf(time_step);
+                self.cached_damping_time_step = time_step;
+                self.cached_linear_damping_value = self.linear_damping;
+            }
+            self.lin_vel *= self.cached_linear_damping;
         }
     }
 

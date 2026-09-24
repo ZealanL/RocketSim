@@ -1,3 +1,4 @@
+use arrayvec::ArrayVec;
 use glam::{Affine3A, Vec3A};
 
 /// Tie window in box-local distance units, shared by deepest-feature
@@ -825,28 +826,50 @@ fn pen_witness_by_kind(
     }
 }
 
+#[derive(Clone, Copy)]
+struct CandidatePair {
+    point_box: Vec3A,
+    point_tri: Vec3A,
+    distance_sq: f32,
+}
+
 /// Every feature-pair candidate between the centered AABB `[-half, half]` and
 /// the triangle `q` (both box-local) in deterministic enumeration order: 3
 /// clamped triangle vertices, 8 box corners vs triangle, then 36 triangle-edge
-/// vs box-edge segment pairs. Returns `(point_on_box, point_on_tri)` pairs.
-fn enum_aabb_triangle_pairs(half: Vec3A, q: &[Vec3A; 3]) -> [(Vec3A, Vec3A); 47] {
-    let mut pairs = [(Vec3A::ZERO, Vec3A::ZERO); 47];
-    let mut n = 0usize;
+/// vs box-edge segment pairs.
+///
+/// Keep the complete candidate set: flat-tie analysis intentionally examines
+/// pairs outside the current distance window.
+fn enum_aabb_triangle_pairs(half: Vec3A, q: &[Vec3A; 3]) -> ArrayVec<CandidatePair, 47> {
+    let mut pairs = ArrayVec::new();
+
     // Triangle vertices vs box (face interiors via clamping).
     for v in q.iter() {
-        pairs[n] = (clamp_point_to_aabb(*v, half), *v);
-        n += 1;
+        let point_box = clamp_point_to_aabb(*v, half);
+        let point_tri = *v;
+        let distance_sq = (point_box - point_tri).length_squared();
+        pairs.push(CandidatePair {
+            point_box,
+            point_tri,
+            distance_sq,
+        });
     }
     // Box corners vs triangle (covers box-vertex vs tri-face).
     for sx in [-1.0f32, 1.0] {
         for sy in [-1.0f32, 1.0] {
             for sz in [-1.0f32, 1.0] {
                 let corner = Vec3A::new(sx * half.x, sy * half.y, sz * half.z);
-                pairs[n] = (corner, closest_point_on_triangle(corner, q));
-                n += 1;
+                let point_tri = closest_point_on_triangle(corner, q);
+                let distance_sq = (corner - point_tri).length_squared();
+                pairs.push(CandidatePair {
+                    point_box: corner,
+                    point_tri,
+                    distance_sq,
+                });
             }
         }
     }
+
     // Edge-edge interiors: 3 triangle edges vs 12 box edges.
     let c = [
         Vec3A::new(-half.x, -half.y, -half.z),
@@ -875,30 +898,33 @@ fn enum_aabb_triangle_pairs(half: Vec3A, q: &[Vec3A; 3]) -> [(Vec3A, Vec3A); 47]
     const TRI_EDGES: [(usize, usize); 3] = [(0, 1), (1, 2), (2, 0)];
     for (ti0, ti1) in TRI_EDGES {
         for (bi0, bi1) in BOX_EDGES {
-            let (ctri, cbox) = segment_segment_closest(q[ti0], q[ti1], c[bi0], c[bi1]);
-            pairs[n] = (cbox, ctri);
-            n += 1;
+            let (point_tri, point_box) = segment_segment_closest(q[ti0], q[ti1], c[bi0], c[bi1]);
+            let distance_sq = (point_box - point_tri).length_squared();
+            pairs.push(CandidatePair {
+                point_box,
+                point_tri,
+                distance_sq,
+            });
         }
     }
-    debug_assert_eq!(n, 47);
+    debug_assert!(pairs.len() <= 47);
     pairs
 }
 
 /// Strict first minimum over the exact closest-feature candidates: the first
 /// pair in enumeration order achieving the minimum distance wins ties, so
 /// repeated queries return the same witness without blending.
-fn first_min_of_pairs(pairs: &[(Vec3A, Vec3A); 47]) -> Option<(Vec3A, Vec3A)> {
+fn first_min_of_pairs(pairs: &[CandidatePair]) -> Option<(Vec3A, Vec3A)> {
     let mut best = pairs[0];
-    let mut best_d2 = (best.0 - best.1).length_squared();
-    for (pa, pb) in pairs.iter().skip(1) {
-        let d2 = (*pa - *pb).length_squared();
+    let mut best_d2 = best.distance_sq;
+    for pair in pairs.iter().skip(1) {
         // Strict `<` keeps the first candidate on exact ties.
-        if d2 < best_d2 {
-            best_d2 = d2;
-            best = (*pa, *pb);
+        if pair.distance_sq < best_d2 {
+            best_d2 = pair.distance_sq;
+            best = *pair;
         }
     }
-    Some(best)
+    Some((best.point_box, best.point_tri))
 }
 
 /// Tie-interval endpoints of a flat closest-feature patch (box-local tri-side
@@ -907,7 +933,7 @@ fn first_min_of_pairs(pairs: &[(Vec3A, Vec3A); 47]) -> Option<(Vec3A, Vec3A)> {
 /// slope toward it stays level and the segment middle is itself at minimum
 /// depth), and returns the diameter endpoints when they span more than the link
 /// length. Returns `None` for a unique minimum.
-fn flat_tie_segment(half: Vec3A, pairs: &[(Vec3A, Vec3A); 47]) -> Option<(Vec3A, Vec3A)> {
+fn flat_tie_segment(half: Vec3A, pairs: &[CandidatePair]) -> Option<(Vec3A, Vec3A)> {
     // Shared `TIE_EPS` tie window (see top of file).
     // Flatness is judged by slope, not by widening the distance window, so distinct
     // minima (steep slopes) still resolve unique. The slope gate is the tie window
@@ -922,54 +948,51 @@ fn flat_tie_segment(half: Vec3A, pairs: &[(Vec3A, Vec3A); 47]) -> Option<(Vec3A,
     let flat_slope: f32 = TIE_EPS / flat_link;
 
     let mut best_d2 = f32::MAX;
-    for (pa, pb) in pairs.iter() {
-        let d2 = (*pa - *pb).length_squared();
-        if d2 < best_d2 {
-            best_d2 = d2;
+    for pair in pairs.iter() {
+        if pair.distance_sq < best_d2 {
+            best_d2 = pair.distance_sq;
         }
     }
     let best_d = best_d2.sqrt();
 
     // Tied pairs (within the tie window) and their mean, which anchors the
     // flat-valley search below.
-    let mut tied = [(Vec3A::ZERO, Vec3A::ZERO); 47];
-    let mut n_tied = 0usize;
-    for (pa, pb) in pairs.iter() {
-        if (*pa - *pb).length() <= best_d + TIE_EPS {
-            tied[n_tied] = (*pa, *pb);
-            n_tied += 1;
+    let mut tied: ArrayVec<CandidatePair, 47> = ArrayVec::new();
+    for pair in pairs.iter() {
+        if pair.distance_sq.sqrt() <= best_d + TIE_EPS {
+            tied.push(*pair);
         }
     }
-    if n_tied == 0 {
+    if tied.is_empty() {
         return None;
     }
     let mut mean_a = Vec3A::ZERO;
     let mut mean_b = Vec3A::ZERO;
-    for (pa, pb) in tied[..n_tied].iter() {
-        mean_a += *pa;
-        mean_b += *pb;
+    for pair in tied.iter() {
+        mean_a += pair.point_box;
+        mean_b += pair.point_tri;
     }
-    let inv = 1.0 / (n_tied as f32);
+    let inv = 1.0 / (tied.len() as f32);
     mean_a *= inv;
     mean_b *= inv;
     let d0 = (mean_a - mean_b).length();
 
     // Flat extension past the tied set: both shapes are convex, so the middle of a
     // true tie segment is itself at minimum depth while distinct minima bulge away.
-    let mut flat: Option<(Vec3A, Vec3A)> = None;
+    let mut flat: Option<CandidatePair> = None;
     let mut best_slope = flat_slope;
-    for (pa, pb) in pairs.iter() {
-        let sep = (*pb - mean_b).length();
+    for pair in pairs.iter() {
+        let sep = (pair.point_tri - mean_b).length();
         if sep <= flat_link {
             continue;
         }
-        let slope = ((pa - pb).length() - d0) / sep;
+        let slope = (pair.distance_sq.sqrt() - d0) / sep;
         if slope <= best_slope {
-            let mid_a = (mean_a + *pa) * 0.5;
-            let mid_b = (mean_b + *pb) * 0.5;
+            let mid_a = (mean_a + pair.point_box) * 0.5;
+            let mid_b = (mean_b + pair.point_tri) * 0.5;
             if (mid_a - mid_b).length() <= d0 + TIE_EPS {
                 best_slope = slope;
-                flat = Some((*pa, *pb));
+                flat = Some(*pair);
             }
         }
     }
@@ -980,18 +1003,18 @@ fn flat_tie_segment(half: Vec3A, pairs: &[(Vec3A, Vec3A); 47]) -> Option<(Vec3A,
     let mut end0 = tied[0];
     let mut end1 = tied[0];
     let mut span = 0.0f32;
-    let mut consider = |cand: (Vec3A, Vec3A)| {
-        for (pa, pb) in tied[..n_tied].iter().chain(flat.iter()) {
-            let s = (cand.1 - *pb).length();
+    let mut consider = |cand: CandidatePair| {
+        for pair in tied.iter().chain(flat.iter()) {
+            let s = (cand.point_tri - pair.point_tri).length();
             if s > span {
                 span = s;
                 end0 = cand;
-                end1 = (*pa, *pb);
+                end1 = *pair;
             }
         }
     };
-    for t in tied[..n_tied].iter() {
-        consider(*t);
+    for pair in tied.iter() {
+        consider(*pair);
     }
     if let Some(f) = flat {
         consider(f);
@@ -1001,10 +1024,10 @@ fn flat_tie_segment(half: Vec3A, pairs: &[(Vec3A, Vec3A); 47]) -> Option<(Vec3A,
     }
     // Final guard: the diameter middle of two distinct minima bulges away
     // (e.g. near-equal coincidences at opposite box ends).
-    let mid_a = (end0.0 + end1.0) * 0.5;
-    let mid_b = (end0.1 + end1.1) * 0.5;
+    let mid_a = (end0.point_box + end1.point_box) * 0.5;
+    let mid_b = (end0.point_tri + end1.point_tri) * 0.5;
     if (mid_a - mid_b).length() > best_d + TIE_EPS {
         return None;
     }
-    Some((end0.1, end1.1))
+    Some((end0.point_tri, end1.point_tri))
 }

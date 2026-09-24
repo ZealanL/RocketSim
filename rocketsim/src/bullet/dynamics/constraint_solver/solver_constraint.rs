@@ -29,32 +29,29 @@ pub struct SolverConstraint {
     pub friction_idx: usize,
     pub solver_body_id_a: usize,
     pub solver_body_id_b: usize,
-    /// Row membership: true joins split response only, false joins split and velocity.
-    /// Per-point rows use true with no friction child and no velocity warmstart.
-    /// Ordinary rows and synthetic rows use false with velocity and friction.
-    /// Live wall 19565 shows per-point rows with zero velocity visits and one friction child on the synthetic.
-    pub(super) is_split_only: bool,
+    pub is_split_only: bool,
 }
 
 impl SolverConstraint {
     /// Sentinel parent for rows that own no friction child.
-    pub(super) const NO_FRICTION_PARENT: usize = usize::MAX;
+    pub const NO_FRICTION_PARENT: usize = usize::MAX;
 
     pub fn get_friction_constraint(
         (solver_body_id_a, solver_body_id_b): (usize, usize),
         (solver_body_a, solver_body_b): (&mut SolverBody, &mut SolverBody),
         (rb0, rb1): (Option<&RigidBody>, Option<&RigidBody>),
         (rel_pos1, rel_pos2): (Vec3A, Vec3A),
-        cp: &ManifoldPoint,
+        friction: f32,
+        normal_axis: Vec3A,
         friction_idx: usize,
     ) -> Self {
         let mut constraint = Self {
             friction_idx,
             solver_body_id_a,
             solver_body_id_b,
-            lower_limit: -cp.combined_friction,
-            upper_limit: cp.combined_friction,
-            friction: cp.combined_friction,
+            lower_limit: -friction,
+            upper_limit: friction,
+            friction,
             ..Default::default()
         };
 
@@ -62,7 +59,7 @@ impl SolverConstraint {
             (solver_body_a, solver_body_b),
             (rb0, rb1),
             (rel_pos1, rel_pos2),
-            cp.lateral_friction_dir_1,
+            normal_axis,
         );
 
         constraint
@@ -102,7 +99,7 @@ impl SolverConstraint {
 
     pub(super) fn get_split_only_contact_constraint(
         (solver_body_id_a, solver_body_id_b): (usize, usize),
-        (solver_body_a, solver_body_b): (&mut SolverBody, &mut SolverBody),
+        (_solver_body_a, _solver_body_b): (&mut SolverBody, &mut SolverBody),
         (rb0, rb1): (Option<&RigidBody>, Option<&RigidBody>),
         (rel_pos1, rel_pos2): (Vec3A, Vec3A),
         cp: &ManifoldPoint,
@@ -119,16 +116,71 @@ impl SolverConstraint {
             ..Default::default()
         };
 
-        constraint.setup_contact_constraint(
-            (solver_body_a, solver_body_b),
-            (rb0, rb1),
-            (rel_pos1, rel_pos2),
-            cp,
-            time_step,
-            false,
-        );
+        constraint.setup_split_contact_constraint(rb0, rb1, rel_pos1, rel_pos2, cp, time_step);
 
         constraint
+    }
+
+    fn setup_split_contact_constraint(
+        &mut self,
+        rb0: Option<&RigidBody>,
+        rb1: Option<&RigidBody>,
+        rel_pos1: Vec3A,
+        rel_pos2: Vec3A,
+        cp: &ManifoldPoint,
+        time_step: f32,
+    ) {
+        let denom0 = rb0.map_or(0.0, |rb| {
+            let torque_axis = rel_pos1.cross(cp.normal_world_on_b);
+            self.angular_component_a = rb.inv_inertia_tensor_world.mul_transpose_vec3a(torque_axis);
+            let vec = self.angular_component_a.cross(rel_pos1);
+            let denom = rb.inv_mass + cp.normal_world_on_b.dot(vec);
+            self.contact_normal_1 = cp.normal_world_on_b;
+            self.rel_pos1_cross_normal = torque_axis;
+            denom
+        });
+
+        let denom1 = rb1.map_or(0.0, |rb| {
+            let torque_axis = rel_pos2.cross(cp.normal_world_on_b);
+            self.angular_component_b = rb
+                .inv_inertia_tensor_world
+                .mul_transpose_vec3a(-torque_axis);
+            let vec = (-self.angular_component_b).cross(rel_pos2);
+            let denom = rb.inv_mass + cp.normal_world_on_b.dot(vec);
+            self.contact_normal_2 = -cp.normal_world_on_b;
+            self.rel_pos2_cross_normal = -torque_axis;
+            denom
+        });
+
+        self.jac_diag_ab_inv = contact_solver_info::SOR / (denom0 + denom1);
+
+        let inv_time_step = 1.0 / time_step;
+        let penetration = cp.distance_1;
+        let positional_error = if penetration > 0.0 {
+            0.0
+        } else {
+            -penetration * contact_solver_info::ERP_2 * inv_time_step
+        };
+        let penetration_impulse = positional_error * self.jac_diag_ab_inv;
+        self.rhs_penetration =
+            if penetration > contact_solver_info::SPLIT_IMPULSE_PENETRATION_THRESHOLD {
+                0.0
+            } else {
+                penetration_impulse
+            };
+    }
+
+    #[inline]
+    pub(super) fn make_dynamic_side_a(&mut self, dynamic_is_b: bool) {
+        if dynamic_is_b {
+            std::mem::swap(&mut self.solver_body_id_a, &mut self.solver_body_id_b);
+            std::mem::swap(
+                &mut self.rel_pos1_cross_normal,
+                &mut self.rel_pos2_cross_normal,
+            );
+            std::mem::swap(&mut self.contact_normal_1, &mut self.contact_normal_2);
+            std::mem::swap(&mut self.angular_component_a, &mut self.angular_component_b);
+        }
     }
 
     pub fn restitution_curve(rel_vel: f32, restitution: f32) -> f32 {
@@ -285,6 +337,95 @@ impl SolverConstraint {
         let vel_error = -rel_vel;
         self.rhs = vel_error * self.jac_diag_ab_inv;
     }
+}
+
+impl SolverConstraint {
+    #[inline]
+    pub(super) fn resolve_single_constraint_row_lower_limit_one_dynamic(
+        &mut self,
+        body: &mut SolverBody,
+    ) -> f32 {
+        let mut delta_impulse = self.rhs;
+        let normal = self.contact_normal_1;
+        let lever = self.rel_pos1_cross_normal;
+        let angular_component = self.angular_component_a;
+
+        let delta_vel_dot_n =
+            bullet_dot(normal, body.delta_lin_vel) + bullet_dot(lever, body.delta_ang_vel);
+        delta_impulse -= delta_vel_dot_n * self.jac_diag_ab_inv;
+
+        let sum = self.applied_impulse + delta_impulse;
+        if sum < self.lower_limit {
+            delta_impulse = self.lower_limit - self.applied_impulse;
+            self.applied_impulse = self.lower_limit;
+        } else {
+            self.applied_impulse = sum;
+        }
+
+        body.delta_lin_vel += normal * body.inv_mass * delta_impulse;
+        body.delta_ang_vel += angular_component * delta_impulse;
+        delta_impulse / self.jac_diag_ab_inv
+    }
+
+    #[inline]
+    pub(super) fn resolve_single_constraint_row_generic_one_dynamic(
+        &mut self,
+        body: &mut SolverBody,
+    ) -> f32 {
+        let mut delta_impulse = self.rhs;
+        let normal = self.contact_normal_1;
+        let lever = self.rel_pos1_cross_normal;
+        let angular_component = self.angular_component_a;
+
+        let delta_vel_dot_n =
+            bullet_dot(normal, body.delta_lin_vel) + bullet_dot(lever, body.delta_ang_vel);
+        delta_impulse -= delta_vel_dot_n * self.jac_diag_ab_inv;
+
+        let sum = self.applied_impulse + delta_impulse;
+        if sum < self.lower_limit {
+            delta_impulse = self.lower_limit - self.applied_impulse;
+            self.applied_impulse = self.lower_limit;
+        } else if sum > self.upper_limit {
+            delta_impulse = self.upper_limit - self.applied_impulse;
+            self.applied_impulse = self.upper_limit;
+        } else {
+            self.applied_impulse = sum;
+        }
+
+        body.delta_lin_vel += normal * body.inv_mass * delta_impulse;
+        body.delta_ang_vel += angular_component * delta_impulse;
+        delta_impulse / self.jac_diag_ab_inv
+    }
+
+    #[inline]
+    pub(super) fn resolve_split_penetration_impulse_one_dynamic(
+        &mut self,
+        body: &mut SolverBody,
+    ) -> f32 {
+        if self.rhs_penetration == 0.0 {
+            return 0.0;
+        }
+
+        let mut delta_impulse = self.rhs_penetration;
+        let normal = self.contact_normal_1;
+        let lever = self.rel_pos1_cross_normal;
+        let angular_component = self.angular_component_a;
+
+        let delta_vel_dot_n = bullet_dot(normal, body.push_vel) + bullet_dot(lever, body.turn_vel);
+        delta_impulse -= delta_vel_dot_n * self.jac_diag_ab_inv;
+
+        let sum = self.applied_push_impulse + delta_impulse;
+        if sum < self.lower_limit {
+            delta_impulse = self.lower_limit - self.applied_push_impulse;
+            self.applied_push_impulse = self.lower_limit;
+        } else {
+            self.applied_push_impulse = sum;
+        }
+
+        body.push_vel += normal * body.inv_mass * delta_impulse;
+        body.turn_vel += angular_component * delta_impulse;
+        delta_impulse / self.jac_diag_ab_inv
+    }
 
     pub fn resolve_single_constraint_row_generic(
         &mut self,
@@ -293,10 +434,18 @@ impl SolverConstraint {
     ) -> f32 {
         let mut delta_impulse = self.rhs;
 
-        let delta_vel_1_dot_n = bullet_dot(self.contact_normal_1, body_a.delta_lin_vel)
-            + bullet_dot(self.rel_pos1_cross_normal, body_a.delta_ang_vel);
-        let delta_vel_2_dot_n = bullet_dot(self.contact_normal_2, body_b.delta_lin_vel)
-            + bullet_dot(self.rel_pos2_cross_normal, body_b.delta_ang_vel);
+        let delta_vel_1_dot_n = if body_a.original_body.is_some() {
+            bullet_dot(self.contact_normal_1, body_a.delta_lin_vel)
+                + bullet_dot(self.rel_pos1_cross_normal, body_a.delta_ang_vel)
+        } else {
+            0.0
+        };
+        let delta_vel_2_dot_n = if body_b.original_body.is_some() {
+            bullet_dot(self.contact_normal_2, body_b.delta_lin_vel)
+                + bullet_dot(self.rel_pos2_cross_normal, body_b.delta_ang_vel)
+        } else {
+            0.0
+        };
 
         delta_impulse -= delta_vel_1_dot_n * self.jac_diag_ab_inv;
         delta_impulse -= delta_vel_2_dot_n * self.jac_diag_ab_inv;
@@ -312,11 +461,15 @@ impl SolverConstraint {
             self.applied_impulse = sum;
         }
 
-        body_a.delta_lin_vel += self.contact_normal_1 * body_a.inv_mass * delta_impulse;
-        body_a.delta_ang_vel += self.angular_component_a * delta_impulse;
+        if body_a.original_body.is_some() {
+            body_a.delta_lin_vel += self.contact_normal_1 * body_a.inv_mass * delta_impulse;
+            body_a.delta_ang_vel += self.angular_component_a * delta_impulse;
+        }
 
-        body_b.delta_lin_vel += self.contact_normal_2 * body_b.inv_mass * delta_impulse;
-        body_b.delta_ang_vel += self.angular_component_b * delta_impulse;
+        if body_b.original_body.is_some() {
+            body_b.delta_lin_vel += self.contact_normal_2 * body_b.inv_mass * delta_impulse;
+            body_b.delta_ang_vel += self.angular_component_b * delta_impulse;
+        }
 
         delta_impulse / self.jac_diag_ab_inv
     }
@@ -328,10 +481,18 @@ impl SolverConstraint {
     ) -> f32 {
         let mut delta_impulse = self.rhs;
 
-        let delta_vel_1_dot_n = bullet_dot(self.contact_normal_1, body_a.delta_lin_vel)
-            + bullet_dot(self.rel_pos1_cross_normal, body_a.delta_ang_vel);
-        let delta_vel_2_dot_n = bullet_dot(self.contact_normal_2, body_b.delta_lin_vel)
-            + bullet_dot(self.rel_pos2_cross_normal, body_b.delta_ang_vel);
+        let delta_vel_1_dot_n = if body_a.original_body.is_some() {
+            bullet_dot(self.contact_normal_1, body_a.delta_lin_vel)
+                + bullet_dot(self.rel_pos1_cross_normal, body_a.delta_ang_vel)
+        } else {
+            0.0
+        };
+        let delta_vel_2_dot_n = if body_b.original_body.is_some() {
+            bullet_dot(self.contact_normal_2, body_b.delta_lin_vel)
+                + bullet_dot(self.rel_pos2_cross_normal, body_b.delta_ang_vel)
+        } else {
+            0.0
+        };
 
         delta_impulse -= delta_vel_1_dot_n * self.jac_diag_ab_inv;
         delta_impulse -= delta_vel_2_dot_n * self.jac_diag_ab_inv;
@@ -344,11 +505,15 @@ impl SolverConstraint {
             self.applied_impulse = sum;
         }
 
-        body_a.delta_lin_vel += self.contact_normal_1 * body_a.inv_mass * delta_impulse;
-        body_a.delta_ang_vel += self.angular_component_a * delta_impulse;
+        if body_a.original_body.is_some() {
+            body_a.delta_lin_vel += self.contact_normal_1 * body_a.inv_mass * delta_impulse;
+            body_a.delta_ang_vel += self.angular_component_a * delta_impulse;
+        }
 
-        body_b.delta_lin_vel += self.contact_normal_2 * body_b.inv_mass * delta_impulse;
-        body_b.delta_ang_vel += self.angular_component_b * delta_impulse;
+        if body_b.original_body.is_some() {
+            body_b.delta_lin_vel += self.contact_normal_2 * body_b.inv_mass * delta_impulse;
+            body_b.delta_ang_vel += self.angular_component_b * delta_impulse;
+        }
 
         delta_impulse / self.jac_diag_ab_inv
     }
@@ -364,10 +529,18 @@ impl SolverConstraint {
 
         let mut delta_impulse = self.rhs_penetration;
 
-        let delta_vel_1_dot_n = bullet_dot(self.contact_normal_1, body_a.push_vel)
-            + bullet_dot(self.rel_pos1_cross_normal, body_a.turn_vel);
-        let delta_vel_2_dot_n = bullet_dot(self.contact_normal_2, body_b.push_vel)
-            + bullet_dot(self.rel_pos2_cross_normal, body_b.turn_vel);
+        let delta_vel_1_dot_n = if body_a.original_body.is_some() {
+            bullet_dot(self.contact_normal_1, body_a.push_vel)
+                + bullet_dot(self.rel_pos1_cross_normal, body_a.turn_vel)
+        } else {
+            0.0
+        };
+        let delta_vel_2_dot_n = if body_b.original_body.is_some() {
+            bullet_dot(self.contact_normal_2, body_b.push_vel)
+                + bullet_dot(self.rel_pos2_cross_normal, body_b.turn_vel)
+        } else {
+            0.0
+        };
 
         delta_impulse -= delta_vel_1_dot_n * self.jac_diag_ab_inv;
         delta_impulse -= delta_vel_2_dot_n * self.jac_diag_ab_inv;
@@ -380,11 +553,15 @@ impl SolverConstraint {
             self.applied_push_impulse = sum;
         }
 
-        body_a.push_vel += self.contact_normal_1 * body_a.inv_mass * delta_impulse;
-        body_a.turn_vel += self.angular_component_a * delta_impulse;
+        if body_a.original_body.is_some() {
+            body_a.push_vel += self.contact_normal_1 * body_a.inv_mass * delta_impulse;
+            body_a.turn_vel += self.angular_component_a * delta_impulse;
+        }
 
-        body_b.push_vel += self.contact_normal_2 * body_b.inv_mass * delta_impulse;
-        body_b.turn_vel += self.angular_component_b * delta_impulse;
+        if body_b.original_body.is_some() {
+            body_b.push_vel += self.contact_normal_2 * body_b.inv_mass * delta_impulse;
+            body_b.turn_vel += self.angular_component_b * delta_impulse;
+        }
 
         delta_impulse / self.jac_diag_ab_inv
     }

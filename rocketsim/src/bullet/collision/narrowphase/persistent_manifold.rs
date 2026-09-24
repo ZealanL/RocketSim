@@ -4,7 +4,7 @@ use glam::{Vec3A, Vec4};
 use super::manifold_point::ManifoldPoint;
 use crate::bullet::{
     dynamics::rigid_body::{CollisionFlags, RigidBody},
-    linear_math::{AffineExt, plane_space_1},
+    linear_math::AffineExt,
 };
 
 pub trait ContactAddedCallback {
@@ -34,7 +34,6 @@ pub fn pair_key(body_a_idx: usize, body_b_idx: usize) -> u64 {
 #[derive(Clone)]
 pub struct PersistentManifold {
     pub point_cache: ArrayVec<ManifoldPoint, MANIFOLD_CACHE_SIZE>,
-    pub(crate) most_recently_evicted_point: Option<ManifoldPoint>,
     pub body0_idx: usize,
     pub body1_idx: usize,
     pub pair_key: u64,
@@ -62,7 +61,6 @@ impl PersistentManifold {
             contact_breaking_threshold,
             contact_processing_threshold,
             point_cache: ArrayVec::new(),
-            most_recently_evicted_point: None,
         }
     }
 
@@ -214,7 +212,6 @@ impl PersistentManifold {
         let num_points = self.point_cache.len();
         if num_points == MANIFOLD_CACHE_SIZE {
             let idx = self.sort_cached_points(&contact);
-            self.most_recently_evicted_point = Some(self.point_cache[idx]);
             self.point_cache[idx] = contact;
             idx
         } else {
@@ -250,8 +247,6 @@ impl PersistentManifold {
 
         new_pt.combined_friction = Self::calculate_combined_friction(body0, body1);
         new_pt.combined_restitution = Self::calculate_combined_restitution(body0, body1);
-
-        new_pt.lateral_friction_dir_1 = plane_space_1(new_pt.normal_world_on_b);
 
         let insert_idx = self.add_contact_without_callback(new_pt);
 

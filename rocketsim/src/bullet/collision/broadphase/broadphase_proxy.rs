@@ -103,8 +103,8 @@ mod layout_tests {
     #[test]
     fn compact_layouts() {
         assert_eq!(size_of::<BroadphaseProxy>(), 64);
-        assert_eq!(size_of::<TriangleShape>(), 80);
-        assert_eq!(size_of::<ManifoldPoint>(), 144);
-        assert_eq!(size_of::<PersistentManifold>(), 768);
+        assert_eq!(size_of::<TriangleShape>(), 64);
+        assert_eq!(size_of::<ManifoldPoint>(), 112);
+        assert_eq!(size_of::<PersistentManifold>(), 496);
     }
 }

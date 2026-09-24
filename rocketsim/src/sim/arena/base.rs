@@ -48,6 +48,7 @@ pub struct Arena {
     pub(crate) tile_states: Option<TileStates>,
     pub(crate) contact_tracker: ArenaContactTracker,
     pub(crate) events: ArenaEventList,
+    ball_only: bool,
 
     pub rng: Rng,
     pub vis: Option<Box<dyn Vis>>,
@@ -125,6 +126,7 @@ impl Arena {
         };
 
         let rng = config.rng_seed.map_or_else(Rng::new, Rng::with_seed);
+        let ball_only = tile_states.is_none();
 
         Self {
             rng,
@@ -138,6 +140,7 @@ impl Arena {
 
             contact_tracker: ArenaContactTracker::new(),
             events: ArenaEventList::new(),
+            ball_only,
 
             vis: None,
         }
@@ -432,6 +435,7 @@ impl Arena {
             }
             GameMode::Dropshot => {
                 self.tile_states = Some(TileStates::DEFAULT);
+                self.ball_only = false;
                 self.update_tile_states();
             }
             _ => {}
@@ -464,6 +468,7 @@ impl Arena {
 
         self.bullet_world.bodies_mut()[car.rigid_body_idx].user_pointer = idx;
         self.cars.push(car);
+        self.ball_only = false;
         idx
     }
 
@@ -479,13 +484,16 @@ impl Arena {
         {
             use consts::{ball, car};
 
-            for car_idx in 0..self.cars.len() {
-                let car_rb = &mut self.bullet_world.bodies_mut()[self.cars[car_idx].rigid_body_idx];
-                car_rb.limit_vels(car::MAX_SPEED * UU_TO_BT, car::MAX_ANG_SPEED);
-                quantize::quantize(car_rb);
-                // Sync the cached state after rigid-body limits.
-                self.cars[car_idx].state.phys.vel = car_rb.lin_vel * BT_TO_UU;
-                self.cars[car_idx].state.phys.ang_vel = car_rb.ang_vel;
+            if !self.ball_only {
+                for car_idx in 0..self.cars.len() {
+                    let car_rb =
+                        &mut self.bullet_world.bodies_mut()[self.cars[car_idx].rigid_body_idx];
+                    car_rb.limit_vels(car::MAX_SPEED * UU_TO_BT, car::MAX_ANG_SPEED);
+                    quantize::quantize(car_rb);
+                    // Sync the cached state after rigid-body limits.
+                    self.cars[car_idx].state.phys.vel = car_rb.lin_vel * BT_TO_UU;
+                    self.cars[car_idx].state.phys.ang_vel = car_rb.ang_vel;
+                }
             }
             let ball_rb = &mut self.bullet_world.bodies_mut()[self.ball.rigid_body_idx];
             ball_rb.limit_vels(
@@ -499,13 +507,15 @@ impl Arena {
 
         // Keep resting balls active so same-tick contacts can affect them.
 
-        for car in &mut self.cars {
-            car.pre_tick_update(
-                &mut self.bullet_world,
-                &mut self.rng,
-                self.config.game_mode,
-                &self.config.mutators,
-            );
+        if !self.ball_only {
+            for car in &mut self.cars {
+                car.pre_tick_update(
+                    &mut self.bullet_world,
+                    &mut self.rng,
+                    self.config.game_mode,
+                    &self.config.mutators,
+                );
+            }
         }
 
         self.ball.pre_tick_update(
@@ -513,71 +523,89 @@ impl Arena {
             self.config.game_mode,
         );
 
+        let ball_only = self.ball_only;
+        self.contact_tracker.set_ball_only(ball_only);
+        self.bullet_world.set_ball_only(ball_only);
+
         self.bullet_world
             .step_simulation(TICK_TIME, &mut self.contact_tracker);
 
-        let contact_count = self.contact_tracker.num_records();
-        for idx in 0..contact_count {
-            let contact = *self.contact_tracker.get_record(idx);
+        if ball_only {
+            let contact_count = self.contact_tracker.num_ball_world_records();
+            for idx in 0..contact_count {
+                let contact = *self.contact_tracker.get_ball_world_record(idx);
+                self.on_ball_world_collision_parts(
+                    contact.rb_idx,
+                    contact.contact_point,
+                    contact.contact_normal,
+                );
+            }
+        } else {
+            let contact_count = self.contact_tracker.num_records();
+            for idx in 0..contact_count {
+                let contact = *self.contact_tracker.get_record(idx);
 
-            let bodies = self.bullet_world.bodies();
-            let rb_a = &bodies[contact.rb_idx_a];
-            let rb_b = &bodies[contact.rb_idx_b];
-            let user_idx_a = rb_a.user_idx;
-            let user_idx_b = rb_b.user_idx;
-            let user_pointer_a = rb_a.user_pointer;
-            let user_pointer_b = rb_b.user_pointer;
+                let bodies = self.bullet_world.bodies();
+                let rb_a = &bodies[contact.rb_idx_a];
+                let rb_b = &bodies[contact.rb_idx_b];
+                let user_idx_a = rb_a.user_idx;
+                let user_idx_b = rb_b.user_idx;
+                let user_pointer_a = rb_a.user_pointer;
+                let user_pointer_b = rb_b.user_pointer;
 
-            match user_idx_a {
-                UserInfoTypes::Car => match user_idx_b {
-                    UserInfoTypes::Ball => {
-                        self.on_car_ball_collision(
-                            user_pointer_a,
-                            &contact.manifold_point,
-                            contact.is_swap,
-                        );
-                    }
-                    UserInfoTypes::Car => {
-                        self.on_car_car_collision(
-                            user_pointer_a,
-                            user_pointer_b,
-                            &contact.manifold_point,
-                        );
-                    }
-                    _ => self.on_car_world_collision(user_pointer_a, &contact.manifold_point),
-                },
-                UserInfoTypes::Ball => match user_idx_b {
-                    UserInfoTypes::DropshotTile => {
-                        self.on_ball_tile_collision(user_pointer_b);
-                    }
-                    UserInfoTypes::None => {
-                        self.on_ball_world_collision(&contact.manifold_point, contact.rb_idx_a);
-                    }
+                match user_idx_a {
+                    UserInfoTypes::Car => match user_idx_b {
+                        UserInfoTypes::Ball => {
+                            self.on_car_ball_collision(
+                                user_pointer_a,
+                                &contact.manifold_point,
+                                contact.is_swap,
+                            );
+                        }
+                        UserInfoTypes::Car => {
+                            self.on_car_car_collision(
+                                user_pointer_a,
+                                user_pointer_b,
+                                &contact.manifold_point,
+                            );
+                        }
+                        _ => self.on_car_world_collision(user_pointer_a, &contact.manifold_point),
+                    },
+                    UserInfoTypes::Ball => match user_idx_b {
+                        UserInfoTypes::DropshotTile => {
+                            self.on_ball_tile_collision(user_pointer_b);
+                        }
+                        UserInfoTypes::None => {
+                            self.on_ball_world_collision(&contact.manifold_point, contact.rb_idx_a);
+                        }
+                        _ => {}
+                    },
                     _ => {}
-                },
-                _ => {}
+                }
             }
         }
 
         self.contact_tracker.clear_records();
 
-        for car in &mut self.cars {
-            car.post_tick_update(&mut self.bullet_world);
-            let rb = &mut self.bullet_world.bodies_mut()[car.rigid_body_idx];
-            car.finish_physics_tick(rb);
+        if !self.ball_only {
+            for car in &mut self.cars {
+                car.post_tick_update(&mut self.bullet_world);
+                let rb = &mut self.bullet_world.bodies_mut()[car.rigid_body_idx];
+                car.finish_physics_tick(rb);
 
-            if let Some(boost_pad_grid) = self.boost_pad_grid.as_mut() {
-                let collected_pad_op = boost_pad_grid.maybe_give_car_boost(
-                    &mut car.state,
-                    &self.config.mutators,
-                    self.tick_count,
-                );
+                if let Some(boost_pad_grid) = self.boost_pad_grid.as_mut() {
+                    let collected_pad_op = boost_pad_grid.maybe_give_car_boost(
+                        &mut car.state,
+                        &self.config.mutators,
+                        self.tick_count,
+                    );
 
-                if let Some(collected_pad_idx) = collected_pad_op {
-                    self.events.push(CarPickupBoost(CarPickupBoostEvent {
-                        car_idx: car.idx,
-                        boost_pad_idx: collected_pad_idx,
-                    }));
+                    if let Some(collected_pad_idx) = collected_pad_op {
+                        self.events.push(CarPickupBoost(CarPickupBoostEvent {
+                            car_idx: car.idx,
+                            boost_pad_idx: collected_pad_idx,
+                        }));
+                    }
                 }
             }
         }
@@ -762,6 +790,7 @@ impl Arena {
 
     pub fn set_tile_states(&mut self, tile_states: TileStates) {
         self.tile_states = Some(tile_states);
+        self.ball_only = false;
         self.update_tile_states();
     }
 
@@ -916,8 +945,20 @@ impl Arena {
     }
 
     fn on_ball_world_collision(&mut self, manifold_point: &ManifoldPoint, rb_index: usize) {
-        let contact_point = manifold_point.pos_world_on_b * BT_TO_UU;
-        let contact_normal = manifold_point.normal_world_on_b;
+        self.on_ball_world_collision_parts(
+            rb_index,
+            manifold_point.pos_world_on_b,
+            manifold_point.normal_world_on_b,
+        );
+    }
+
+    fn on_ball_world_collision_parts(
+        &mut self,
+        rb_index: usize,
+        contact_point: Vec3A,
+        contact_normal: Vec3A,
+    ) {
+        let contact_point = contact_point * BT_TO_UU;
 
         let rb = &mut self.bullet_world.bodies_mut()[rb_index];
         self.ball

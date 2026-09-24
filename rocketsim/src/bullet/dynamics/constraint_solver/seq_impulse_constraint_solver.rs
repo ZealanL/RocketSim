@@ -83,6 +83,8 @@ pub struct SeqImpulseConstraintSolver {
     least_squares_residual: f32,
     tmp_special_accumulators: Vec<SpecialAccumulator>,
     tmp_split_should_run: Vec<bool>,
+    /// Ball-only arenas do not need split rows for separated special points.
+    pub skip_separated_special_rows: bool,
 }
 
 impl Default for SeqImpulseConstraintSolver {
@@ -95,25 +97,37 @@ impl Default for SeqImpulseConstraintSolver {
             least_squares_residual: 0.0,
             tmp_special_accumulators: Vec::new(),
             tmp_split_should_run: Vec::new(),
+            skip_separated_special_rows: false,
         }
     }
 }
 
 impl SeqImpulseConstraintSolver {
     fn get_or_init_solver_body(&mut self, rb: &mut RigidBody) -> usize {
+        if rb.is_static_obj() {
+            return if let Some(fixed_body_id) = self.fixed_body_id {
+                fixed_body_id
+            } else {
+                let solver_body_id = self.tmp_solver_body_pool.len();
+                rb.companion_id = Some(solver_body_id);
+                self.fixed_body_id = Some(solver_body_id);
+
+                self.tmp_solver_body_pool.push(SolverBody::DEFAULT);
+                solver_body_id
+            };
+        }
+
         if let Some(companion_id) = rb.companion_id {
             return companion_id;
         }
 
-        if !rb.is_static_obj() && rb.inv_mass != 0.0 {
+        if rb.inv_mass != 0.0 {
             let solver_body_id = self.tmp_solver_body_pool.len();
             rb.companion_id = Some(solver_body_id);
 
             self.tmp_solver_body_pool.push(SolverBody::new(rb));
-            return solver_body_id;
-        }
-
-        if let Some(fixed_body_id) = self.fixed_body_id {
+            solver_body_id
+        } else if let Some(fixed_body_id) = self.fixed_body_id {
             fixed_body_id
         } else {
             let solver_body_id = self.tmp_solver_body_pool.len();
@@ -198,30 +212,48 @@ impl SeqImpulseConstraintSolver {
                     let rb0 = solver_body_a.original_body.map(|_| &*body0);
                     let rb1 = solver_body_b.original_body.map(|_| &*body1);
 
-                    self.tmp_solver_contact_constraint_pool.push(
-                        SolverConstraint::get_split_only_contact_constraint(
+                    // Separated special points have zero split-impulse
+                    // RHS. Avoid materializing a solver row that can only
+                    // be a no-op; the synthetic row still carries velocity
+                    // and friction response.
+                    if !self.skip_separated_special_rows || cp.distance_1 < 0.0 {
+                        let mut constraint = SolverConstraint::get_split_only_contact_constraint(
                             (solver_body_id_a, solver_body_id_b),
                             (solver_body_a, solver_body_b),
                             (rb0, rb1),
                             (rel_pos1, rel_pos2),
                             cp,
                             time_step,
-                        ),
-                    );
+                        );
+                        if self.skip_separated_special_rows {
+                            constraint.make_dynamic_side_a(rb0.is_none() && rb1.is_some());
+                        }
+                        self.tmp_solver_contact_constraint_pool.push(constraint);
+                    }
 
                     if let Some((obj_idx, lever_arm)) =
                         special_dynamic_side(body0, body1, rel_pos1, rel_pos2)
                     {
-                        accumulate_special_sample(
-                            &mut self.tmp_special_accumulators,
-                            SpecialSample {
-                                obj_idx,
-                                normal_world_on_b: cp.normal_world_on_b,
-                                lever_len: lever_arm.length(),
-                                friction: cp.combined_friction,
-                                restitution: cp.combined_restitution,
-                            },
-                        );
+                        let sample = SpecialSample {
+                            obj_idx,
+                            normal_world_on_b: cp.normal_world_on_b,
+                            lever_len: lever_arm.length(),
+                            friction: cp.combined_friction,
+                            restitution: cp.combined_restitution,
+                        };
+
+                        if self.skip_separated_special_rows
+                            && let Some(acc) = self.tmp_special_accumulators.first_mut()
+                            && acc.obj_idx == sample.obj_idx
+                        {
+                            acc.total_normal += sample.normal_world_on_b;
+                            acc.total_lever_len += sample.lever_len;
+                            acc.total_friction += sample.friction;
+                            acc.total_restitution += sample.restitution;
+                            acc.count += 1;
+                        } else {
+                            accumulate_special_sample(&mut self.tmp_special_accumulators, sample);
+                        }
                     }
 
                     continue;
@@ -230,6 +262,9 @@ impl SeqImpulseConstraintSolver {
                 let rb0 = solver_body_a.original_body.map(|_| &*body0);
                 let rb1 = solver_body_b.original_body.map(|_| &*body1);
                 let friction_idx = self.tmp_solver_contact_constraint_pool.len();
+
+                let lateral_friction_dir_1 =
+                    cp.calc_lat_friction_dir(solver_body_a, solver_body_b, rel_pos1, rel_pos2);
 
                 self.tmp_solver_contact_constraint_pool.push(
                     SolverConstraint::get_contact_constraint(
@@ -243,15 +278,14 @@ impl SeqImpulseConstraintSolver {
                     ),
                 );
 
-                cp.calc_lat_friction_dir(solver_body_a, solver_body_b, rel_pos1, rel_pos2);
-
                 self.tmp_solver_contact_friction_constraint_pool.push(
                     SolverConstraint::get_friction_constraint(
                         (solver_body_id_a, solver_body_id_b),
                         (solver_body_a, solver_body_b),
                         (rb0, rb1),
                         (rel_pos1, rel_pos2),
-                        cp,
+                        cp.combined_friction,
+                        lateral_friction_dir_1,
                         friction_idx,
                     ),
                 );
@@ -281,12 +315,9 @@ impl SeqImpulseConstraintSolver {
         self.tmp_solver_contact_friction_constraint_pool
             .reserve(non_static_bodies.len() * 2);
 
-        for rb in &mut *collision_objs {
-            rb.companion_id = None;
-        }
-
         for &rb_idx in non_static_bodies {
             let rb = &mut collision_objs[rb_idx];
+            rb.companion_id = None;
             debug_assert_ne!(rb.inv_mass, 0.0);
 
             if !rb.is_active() {
@@ -347,7 +378,7 @@ impl SeqImpulseConstraintSolver {
         // Use a radial lever. Use template distance `0.0`.
         let rel_pos1 = mean_normal * -mean_lever_len;
         let rel_pos2 = Vec3A::ZERO;
-        let mut synthetic_point = ManifoldPoint {
+        let synthetic_point = ManifoldPoint {
             normal_world_on_b: mean_normal,
             combined_friction: mean_friction,
             combined_restitution: mean_restitution,
@@ -370,7 +401,8 @@ impl SeqImpulseConstraintSolver {
                 time_step,
             ));
 
-        synthetic_point.calc_lat_friction_dir(solver_body_a, solver_body_b, rel_pos1, rel_pos2);
+        let lateral_friction_dir_1 =
+            synthetic_point.calc_lat_friction_dir(solver_body_a, solver_body_b, rel_pos1, rel_pos2);
 
         self.tmp_solver_contact_friction_constraint_pool.push(
             SolverConstraint::get_friction_constraint(
@@ -378,13 +410,49 @@ impl SeqImpulseConstraintSolver {
                 (solver_body_a, solver_body_b),
                 (rb0, None),
                 (rel_pos1, rel_pos2),
-                &synthetic_point,
+                synthetic_point.combined_friction,
+                lateral_friction_dir_1,
                 friction_idx,
             ),
         );
     }
 
+    fn solve_group_split_impulse_iterations_one_dynamic(&mut self) {
+        let row_count = self.tmp_solver_contact_constraint_pool.len();
+        self.tmp_split_should_run.clear();
+        self.tmp_split_should_run.resize(row_count, true);
+        let mut remaining = row_count;
+
+        for _ in 0..contact_solver_info::NUM_ITERATIONS {
+            if remaining == 0 {
+                break;
+            }
+            for (i, contact) in self
+                .tmp_solver_contact_constraint_pool
+                .iter_mut()
+                .enumerate()
+            {
+                if !self.tmp_split_should_run[i] {
+                    continue;
+                }
+
+                debug_assert_ne!(contact.solver_body_id_a, contact.solver_body_id_b);
+                let body_a = &mut self.tmp_solver_body_pool[contact.solver_body_id_a];
+                let residual = contact.resolve_split_penetration_impulse_one_dynamic(body_a);
+                if residual * residual == 0.0 {
+                    self.tmp_split_should_run[i] = false;
+                    remaining -= 1;
+                }
+            }
+        }
+    }
+
     fn solve_group_split_impulse_iterations(&mut self) {
+        if self.skip_separated_special_rows {
+            self.solve_group_split_impulse_iterations_one_dynamic();
+            return;
+        }
+
         // All rows keep split response, including per-point rows.
         // Synthetic rows use distance 0.0 and no-op when penetration is non-negative.
         let row_count = self.tmp_solver_contact_constraint_pool.len();
@@ -422,7 +490,40 @@ impl SeqImpulseConstraintSolver {
         }
     }
 
+    fn solve_single_iteration_one_dynamic(&mut self) -> f32 {
+        let Some(contact) = self.tmp_solver_contact_constraint_pool.last_mut() else {
+            return 0.0;
+        };
+        debug_assert!(!contact.is_split_only);
+        let body_a = &mut self.tmp_solver_body_pool[contact.solver_body_id_a];
+        let residual = contact.resolve_single_constraint_row_lower_limit_one_dynamic(body_a);
+        let mut least_squares_residual = residual * residual;
+
+        for contact in &mut self.tmp_solver_contact_friction_constraint_pool {
+            let total_impulse =
+                self.tmp_solver_contact_constraint_pool[contact.friction_idx].applied_impulse;
+            if total_impulse <= 0.0 {
+                continue;
+            }
+
+            let limit = contact.friction * total_impulse;
+            contact.lower_limit = -limit;
+            contact.upper_limit = limit;
+
+            debug_assert_ne!(contact.solver_body_id_a, contact.solver_body_id_b);
+            let body_a = &mut self.tmp_solver_body_pool[contact.solver_body_id_a];
+            let residual = contact.resolve_single_constraint_row_generic_one_dynamic(body_a);
+            least_squares_residual = (residual * residual).max(least_squares_residual);
+        }
+
+        least_squares_residual
+    }
+
     fn solve_single_iteration(&mut self) -> f32 {
+        if self.skip_separated_special_rows {
+            return self.solve_single_iteration_one_dynamic();
+        }
+
         let mut least_squares_residual = 0.0;
 
         for contact in &mut self.tmp_solver_contact_constraint_pool {

@@ -34,8 +34,8 @@ struct ConnectivityProcessor<'a> {
 impl ProcessTriangle for ConnectivityProcessor<'_> {
     fn process_triangle(&mut self, tri: &TriangleShape, triangle_idx: usize) {
         if self.idx == triangle_idx
-            || tri.normal_length < TriangleInfoMap::EQUAL_VERTEX_THRESHOLD
-            || self.shape.normal_length < TriangleInfoMap::EQUAL_VERTEX_THRESHOLD
+            || tri.normal_length() < TriangleInfoMap::EQUAL_VERTEX_THRESHOLD
+            || self.shape.normal_length() < TriangleInfoMap::EQUAL_VERTEX_THRESHOLD
         {
             return;
         }
