@@ -1,4 +1,4 @@
-use glam::Vec3A;
+use glam::{U16Vec3, Vec3A};
 
 use super::{triangle_mesh::TriangleMesh, triangle_shape::TriangleShape};
 use crate::shared::{
@@ -28,7 +28,6 @@ impl BvhQuantization {
         let quantized_min = result.quantize_point(result.min, false);
         let unquantized_min = result.unquantize_point(quantized_min);
         result.min = result.min.min(unquantized_min - margin);
-        result.update_scale(QUANTIZED_RANGE);
 
         let quantized_max = result.quantize_point(result.max, true);
         let unquantized_max = result.unquantize_point(quantized_max);
@@ -42,25 +41,21 @@ impl BvhQuantization {
         self.scale = Vec3A::splat(quantized_range) / (self.max - self.min);
     }
 
-    fn quantize_point(&self, point: Vec3A, is_max: bool) -> [u16; 3] {
+    fn quantize_point(&self, point: Vec3A, is_max: bool) -> U16Vec3 {
         let value = (point - self.min) * self.scale;
-        let mut result = [0; 3];
+        let mut result = U16Vec3::ZERO;
         for axis in 0..3 {
             result[axis] = if is_max {
-                ((value[axis] + 1.0) as u16) | 1
+                ((value[axis] + 1.0) as i32 as u16) | 1
             } else {
-                (value[axis] as u16) & 0xfffe
+                (value[axis] as i32 as u16) & 0xfffe
             };
         }
         result
     }
 
-    fn unquantize_point(&self, point: [u16; 3]) -> Vec3A {
-        Vec3A::new(
-            f32::from(point[0]) / self.scale.x,
-            f32::from(point[1]) / self.scale.y,
-            f32::from(point[2]) / self.scale.z,
-        ) + self.min
+    fn unquantize_point(&self, point: U16Vec3) -> Vec3A {
+        point.as_vec3a() / self.scale + self.min
     }
 
     fn quantize_aabb(&self, aabb: Aabb) -> Aabb {
