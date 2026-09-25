@@ -775,10 +775,7 @@ impl Car {
         self.state.controls = self.state.controls.clamp();
 
         let forward_speed_uu = rb.get_forward_speed() * BT_TO_UU;
-
         let jump_pressed = self.state.controls.jump && !self.state.prev_controls.jump;
-
-        // TODO: Refactor and move
         let num_wheels_in_contact = self.state.num_wheels_in_contact();
 
         // The wheel contacts only change in `bullet_vehicle.update` below, so

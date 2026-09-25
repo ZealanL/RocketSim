@@ -193,7 +193,6 @@ impl SeqImpulseConstraintSolver {
             body0.companion_id = Some(solver_body_id_a);
             body1.companion_id = Some(solver_body_id_b);
 
-            // Hoist the (loop-invariant) body translations out of the point loop.
             let trans0 = body0.get_world_trans().translation;
             let trans1 = body1.get_world_trans().translation;
 
@@ -204,18 +203,10 @@ impl SeqImpulseConstraintSolver {
                 let rel_pos2 = cp.pos_world_on_b - trans1;
 
                 if cp.is_special {
-                    // Keep the per-point row for split response only.
-                    // Skip velocity iterations, velocity warmstart, and per-point friction.
-                    // Accumulate the sample for the per-body synthetic.
-                    // The classifier marks ball versus static world, so one side is dynamic.
                     debug_assert!(body0.is_static_obj() != body1.is_static_obj());
                     let rb0 = solver_body_a.original_body.map(|_| &*body0);
                     let rb1 = solver_body_b.original_body.map(|_| &*body1);
 
-                    // Separated special points have zero split-impulse
-                    // RHS. Avoid materializing a solver row that can only
-                    // be a no-op; the synthetic row still carries velocity
-                    // and friction response.
                     if !self.skip_separated_special_rows || cp.distance_1 < 0.0 {
                         let mut constraint = SolverConstraint::get_split_only_contact_constraint(
                             (solver_body_id_a, solver_body_id_b),
@@ -292,8 +283,7 @@ impl SeqImpulseConstraintSolver {
             }
         }
 
-        // Drop this tick's active list. Persistent manifolds keep their
-        // points and warmstart impulses for the next tick.
+        // Persistent manifolds keep their points and warmstart impulses for the next tick.
         active_manifold_idcs.clear();
 
         if !self.tmp_special_accumulators.is_empty() {
@@ -453,8 +443,6 @@ impl SeqImpulseConstraintSolver {
             return;
         }
 
-        // All rows keep split response, including per-point rows.
-        // Synthetic rows use distance 0.0 and no-op when penetration is non-negative.
         let row_count = self.tmp_solver_contact_constraint_pool.len();
         self.tmp_split_should_run.clear();
         self.tmp_split_should_run.resize(row_count, true);
@@ -527,8 +515,6 @@ impl SeqImpulseConstraintSolver {
         let mut least_squares_residual = 0.0;
 
         for contact in &mut self.tmp_solver_contact_constraint_pool {
-            // Per-point rows keep split response only.
-            // They skip velocity iterations. The synthetic row carries velocity and owns friction.
             if contact.is_split_only {
                 continue;
             }
@@ -583,7 +569,6 @@ impl SeqImpulseConstraintSolver {
     }
 
     fn solve_group_finish(&mut self, collision_objs: &mut [RigidBody], time_step: f32) {
-        // Write back body state.
         for solver in &mut self.tmp_solver_body_pool {
             let Some(body) = solver.original_body.map(|idx| &mut collision_objs[idx]) else {
                 continue;
@@ -624,4 +609,3 @@ impl SeqImpulseConstraintSolver {
         self.tmp_split_should_run.clear();
     }
 }
-

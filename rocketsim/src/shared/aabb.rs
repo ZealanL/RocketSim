@@ -1,4 +1,4 @@
-use std::ops::{Add, AddAssign};
+use std::ops::{Add, AddAssign, Sub};
 
 use glam::{Affine3A, Vec3A};
 
@@ -95,5 +95,16 @@ impl AddAssign for Aabb {
     fn add_assign(&mut self, rhs: Self) {
         self.min = self.min.min(rhs.min);
         self.max = self.max.max(rhs.max);
+    }
+}
+
+impl Sub<Vec3A> for Aabb {
+    type Output = Self;
+
+    fn sub(self, rhs: Vec3A) -> Self::Output {
+        Self {
+            min: self.min - rhs,
+            max: self.max - rhs,
+        }
     }
 }

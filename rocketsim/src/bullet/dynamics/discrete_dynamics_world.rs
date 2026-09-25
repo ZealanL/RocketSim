@@ -13,7 +13,6 @@ use crate::{
                 quad_ray_callbacks::{QuadRayCallback, QuadRayResultCallback},
             },
             narrowphase::persistent_manifold::ContactAddedCallback,
-            shapes::collision_shape::CollisionShapes,
         },
         dynamics::rigid_body::Impulse,
     },
@@ -143,24 +142,13 @@ impl DiscreteDynamicsWorld {
             debug_assert!(!body.is_static_obj());
 
             body.apply_damping(time_step);
-            let predicted_trans =
-                if matches!(body.get_collision_shape(), CollisionShapes::Sphere(_)) {
-                    // The interpolated transform is used only for the dynamic
-                    // AABB here, and a sphere AABB depends only on translation.
-                    let mut trans = *body.get_world_trans();
-                    trans.translation += body.lin_vel * time_step;
-                    trans
-                } else {
-                    body.predict_integration_trans(time_step)
-                };
+            let predicted_trans = body.predict_integration_trans(time_step);
             body.interp_world_trans = predicted_trans;
         });
     }
 
     #[inline]
     fn solve_constraints(&mut self, time_step: f32) {
-        // Disjoint dispatcher fields: the solver reads the persistent
-        // manifolds for this tick's active pair indices.
         let dispatcher = &mut self.collision_world.dispatcher1;
         self.solver.solve_group(
             &mut self.collision_world.collision_objs,

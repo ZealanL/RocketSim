@@ -341,7 +341,7 @@ impl SolverConstraint {
 
 impl SolverConstraint {
     #[inline]
-    pub(super) fn resolve_single_constraint_row_lower_limit_one_dynamic(
+    pub fn resolve_single_constraint_row_lower_limit_one_dynamic(
         &mut self,
         body: &mut SolverBody,
     ) -> f32 {
@@ -368,7 +368,7 @@ impl SolverConstraint {
     }
 
     #[inline]
-    pub(super) fn resolve_single_constraint_row_generic_one_dynamic(
+    pub fn resolve_single_constraint_row_generic_one_dynamic(
         &mut self,
         body: &mut SolverBody,
     ) -> f32 {
@@ -398,10 +398,7 @@ impl SolverConstraint {
     }
 
     #[inline]
-    pub(super) fn resolve_split_penetration_impulse_one_dynamic(
-        &mut self,
-        body: &mut SolverBody,
-    ) -> f32 {
+    pub fn resolve_split_penetration_impulse_one_dynamic(&mut self, body: &mut SolverBody) -> f32 {
         if self.rhs_penetration == 0.0 {
             return 0.0;
         }

@@ -10,7 +10,6 @@ use crate::{
             shapes::collision_shape::CollisionShapes,
         },
         dynamics::rigid_body::RigidBody,
-        linear_math::AffineExt,
     },
     shared::Aabb,
 };
@@ -92,23 +91,23 @@ impl CellGrid {
         let min = self.get_cell_indices(proxy.aabb.min.max(self.min_pos));
         let max = self.get_cell_indices(proxy.aabb.max.min(self.max_pos));
 
+        // Goal components carry a body translation
         let tri_mesh_shape = match col_obj.get_collision_shape() {
-            CollisionShapes::TriangleMesh(mesh) => Some(mesh.as_ref()),
+            CollisionShapes::TriangleMesh(mesh) => {
+                Some((mesh.as_ref(), col_obj.get_world_trans().translation))
+            }
             _ => None,
         };
-        // Mesh BVHs hold local triangles. Goal components carry a body
-        // translation, so test world grid cells in mesh-local space.
-        let world_to_local = col_obj.get_world_trans().transpose();
 
         for i in min.x..=max.x {
             for j in min.y..=max.y {
                 for k in min.z..=max.z {
-                    if let Some(mesh_interface) = tri_mesh_shape {
+                    if let Some((mesh_interface, pos)) = tri_mesh_shape {
                         let cell_min = self.get_cell_min_pos(USizeVec3::new(i, j, k));
                         let cell_aabb =
                             Aabb::new(cell_min, cell_min + Vec3A::splat(self.cell_size));
-                        let local_cell = cell_aabb.transform(&world_to_local, 0.0);
 
+                        let local_cell = cell_aabb - pos;
                         if !mesh_interface.check_overlap_with(&local_cell) {
                             continue;
                         }
@@ -339,10 +338,12 @@ impl GridBroadphase {
                     );
                 }
             }
+
             for &other_proxy_idx in &cell.dyn_handles {
                 if proxy_idx >= other_proxy_idx {
                     continue;
                 }
+
                 let other_proxy = &self.handles[other_proxy_idx];
                 if proxy.aabb.intersects(&other_proxy.aabb) {
                     self.pair_cache.add_overlapping_pair(
@@ -353,6 +354,7 @@ impl GridBroadphase {
                     );
                 }
             }
+
             return;
         }
 
@@ -439,6 +441,7 @@ impl GridBroadphase {
                     ray_callback.process(other_proxy);
                 }
             }
+
             return;
         }
 
