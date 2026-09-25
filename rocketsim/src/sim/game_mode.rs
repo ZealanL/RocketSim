@@ -1,5 +1,14 @@
 use rustc_hash::FxHashMap;
 
+/// Which Rocket League game mode to simulate.
+///
+/// Mesh/preset mapping notes:
+/// * `Heatseeker` and `Snowday` reuse the Soccar arena meshes and goals.
+/// * `Hoops` and `Dropshot` have their own meshes and scoring rules.
+/// * [`GameMode::TheVoid`] loads no meshes: no goals, boost pads, or arena
+///   hull — cars and the ball fall forever. Useful for physics unit tests.
+///
+/// See [`crate::MutatorConfig::new`] for the per-mode default physics tweaks.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum GameMode {
     #[default]
@@ -22,11 +31,16 @@ impl GameMode {
         "void",
     ];
 
+    /// Folder/file-stem name used for collision meshes (`soccar`, `hoops`, ...).
+    ///
+    /// Matches the subfolder layout expected by [`crate::init`].
     #[must_use]
     pub const fn name(self) -> &'static str {
         Self::NAMES[self as usize]
     }
 
+    /// Returns `true` for modes that use Soccar goals and Soccar goal scoring
+    /// (`Soccar`, `Heatseeker`, `Snowday`).
     #[must_use]
     pub const fn has_soccar_arena(self) -> bool {
         match self {

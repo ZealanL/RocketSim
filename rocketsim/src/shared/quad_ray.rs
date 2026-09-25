@@ -2,6 +2,10 @@ use glam::{Vec3A, Vec4};
 
 use super::Aabb;
 
+/// Four-wide ray packet + union AABB for the SIMD raycast path.
+///
+/// You normally don't build this directly — use [`crate::Arena::cast_rays`]
+/// with [`crate::RaycastQuery`] slices.
 pub struct QuadRayInfo<'a> {
     pub ray_sources: &'a [Vec3A; 4],
     pub ray_targets: &'a [Vec3A; 4],

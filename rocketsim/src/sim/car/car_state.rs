@@ -4,6 +4,12 @@ use glam::{Mat3A, Vec3A};
 
 use crate::{CarControls, PhysState, consts};
 
+/// Full mutable car simulation state.
+///
+/// Derefs to [`crate::PhysState`] so `car_state.pos/vel/...` work directly.
+/// Read with `Arena::get_car_state`, write with `Arena::set_car_state`.
+/// Times are seconds, ticks use [`crate::consts::TICK_TIME`] (`1/120` s).
+/// `DEFAULT` spawns at rest with spawn boost.
 #[derive(Clone, Copy, Debug)]
 pub struct CarState {
     pub phys: PhysState,
@@ -48,29 +54,36 @@ pub struct CarState {
     pub air_time_since_jump: f32,
     /// Goes from 0 to 100
     pub boost: f32,
-    /// Used for recharge boost, counts up from 0 on spawn (in seconds)
+    /// Seconds since boost was last held (drives recharge delay).
     pub time_since_boosted: f32,
     /// True if we boosted that tick
     ///
     /// There exists a minimum boosting time, thus why we must track boosting time
     pub is_boosting: bool,
+    /// Seconds spent continuously boosting (see `boost::MIN_TIME` latch).
     pub boosting_time: f32,
+    /// True above supersonic speed (with 1 s grace, see `supersonic` consts).
     pub is_supersonic: bool,
     /// Time since the car's speed dropped below `START_SPEED` while still supersonic,
     /// used for the supersonic maintain grace period
     pub supersonic_grace_timer: f32,
-    /// This is a state variable due to the rise/fall rate of handbrake inputs
+    /// Smoothed handbrake `0..1` (rise/fall rates, drives steering curves).
     pub handbrake_val: f32,
+    /// True while the auto-flip recovery is playing.
     pub is_auto_flipping: bool,
     /// Counts down when auto-flipping
     pub auto_flip_timer: f32,
+    /// Roll direction sign for the auto-flip torque.
     pub auto_flip_torque_scale: f32,
+    /// Seconds until this car can bump/demo again.
     pub bump_cooldown_timer: f32,
     /// Last arena tick when this car applied an extra ball-hit impulse.
     pub last_extra_hit_tick: Option<u64>,
     /// If in contact with a static mesh/body, this is the collision normal of that contact on said body
     pub world_contact_normal: Option<Vec3A>,
+    /// True while demolished (physics disabled until the respawn timer ends).
     pub is_demoed: bool,
+    /// Seconds until respawn when demoed.
     pub demo_respawn_timer: f32,
 }
 
@@ -119,6 +132,8 @@ impl CarState {
         demo_respawn_timer: 0.0,
     };
 
+    /// True on ground, or airborne with a flip/double-jump still available
+    /// (within `DOUBLEJUMP_MAX_DELAY`). Gate jump/flip inputs on this.
     #[must_use]
     pub const fn has_flip_or_jump(&self) -> bool {
         self.is_on_ground
@@ -127,16 +142,20 @@ impl CarState {
                 && self.air_time_since_jump < consts::car::jump::DOUBLEJUMP_MAX_DELAY)
     }
 
+    /// True when airborne via wheels (not a jump) with a flip available —
+    /// i.e. a flip reset was just picked up.
     #[must_use]
     pub const fn has_flip_reset(&self) -> bool {
         !self.is_on_ground && self.has_flip_or_jump() && !self.has_jumped
     }
 
+    /// True when airborne and never jumped (wheels-only launch state).
     #[must_use]
     pub const fn got_flip_reset(&self) -> bool {
         !self.is_on_ground && !self.has_jumped
     }
 
+    /// Count of wheels (`0..4`) currently touching something.
     #[must_use]
     pub fn num_wheels_in_contact(&self) -> usize {
         let mut result = 0;
@@ -148,6 +167,7 @@ impl CarState {
         result
     }
 
+    /// Elapsed jump-hold time in seconds (`jump_ticks * TICK_TIME`).
     #[must_use]
     pub const fn jump_time(&self) -> f32 {
         self.jump_ticks as f32 * consts::TICK_TIME

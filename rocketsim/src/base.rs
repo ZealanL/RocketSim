@@ -40,10 +40,22 @@ pub(crate) static ARENA_COLLISION_MESH_FILES: RwLock<
     Option<FxHashMap<GameMode, Vec<CollisionMeshFile>>>,
 > = RwLock::new(None);
 
+/// Returns `true` after a successful [`init`]/[`init_from_default`]/[`init_from_mem`] call.
+///
+/// Useful to guard one-time setup in tests and binaries that may run
+/// initialization from multiple entry points.
 pub fn is_initialized() -> bool {
     HAS_INITIALIZED_LOCK.get().is_some()
 }
 
+/// Returns a copy of the loaded `.cmf` files for a game mode.
+///
+/// `Heatseeker`, `Snowday`, and `Soccar` all share the Soccar meshes.
+/// `TheVoid` has no arena hull, so this always returns an empty [`Vec`].
+///
+/// # Panics
+///
+/// Panics if RocketSim was not initialized with [`init`] first.
 pub fn get_arena_collision_mesh_files(game_mode: GameMode) -> Vec<CollisionMeshFile> {
     let collision_mesh_files = ARENA_COLLISION_MESH_FILES.read().unwrap();
     let meshes_mode = match game_mode {
@@ -56,10 +68,52 @@ pub fn get_arena_collision_mesh_files(game_mode: GameMode) -> Vec<CollisionMeshF
     collision_mesh_files.as_ref().unwrap()[&meshes_mode].clone()
 }
 
+/// Initializes RocketSim from the default `./collision_meshes/` folder.
+///
+/// Equivalent to `init("./collision_meshes/", silent)`. This is the normal
+/// entry point for games and examples.
+///
+/// # Arguments
+///
+/// * `silent` - when `false`, installs the default `stderr` logger; pass
+///   `true` to keep initialization quiet (e.g. in tests).
+///
+/// # Errors
+///
+/// Returns an [`std::io::Error`] if the folder is missing, is not a
+/// directory, or a mesh file cannot be read/parsed.
+///
+/// # Example
+///
+/// ```no_run
+/// rocketsim::init_from_default(true).unwrap();
+/// assert!(rocketsim::is_initialized());
+/// ```
 pub fn init_from_default(silent: bool) -> IoResult<()> {
     init(COLLISION_MESH_BASE_PATH, silent)
 }
 
+/// Initializes RocketSim from a custom collision-mesh folder.
+///
+/// The folder is expected to contain one subfolder per game mode
+/// (`soccar/`, `hoops/`, `dropshot/`, see [`GameMode::name`]) with `.cmf`
+/// files inside. Unknown hashes are skipped with a warning; see
+/// [`CollisionMeshFile::read_from_bytes`].
+///
+/// Initialization runs at most once per process: later calls log a warning
+/// and return `Ok(())` without replacing the loaded meshes.
+///
+/// # Arguments
+///
+/// * `collision_meshes_folder` - e.g. `"./collision_meshes"` or a path
+///   baked in with `env!("CARGO_MANIFEST_DIR")`.
+/// * `silent` - see [`init_from_default`].
+///
+/// # Example
+///
+/// ```no_run
+/// rocketsim::init("./collision_meshes", true).unwrap();
+/// ```
 pub fn init<P: AsRef<Path>>(collision_meshes_folder: P, silent: bool) -> IoResult<()> {
     init_from_path(collision_meshes_folder.as_ref(), silent)
 }
@@ -117,6 +171,17 @@ fn init_from_path(collision_meshes_folder: &Path, silent: bool) -> IoResult<()> 
     init_from_mem(mesh_file_map, silent)
 }
 
+/// Initializes RocketSim from already-loaded `.cmf` byte buffers.
+///
+/// Useful for embedding meshes (e.g. with `include_bytes!`) or for WASM
+/// targets without filesystem access. Keys are game modes; values are the
+/// raw contents of each `.cmf` file for that mode. Modes with no entry (or
+/// an empty list) are skipped.
+///
+/// An empty mesh list for a mode simply leaves that mode unloaded — creating
+/// an [`crate::Arena`] for it later will panic. `TheVoid` never needs meshes.
+///
+/// See [`init`] for the once-only semantics and the `silent` flag.
 pub fn init_from_mem<I, V, B>(byte_mesh_file_map: I, silent: bool) -> IoResult<()>
 where
     I: IntoIterator<Item = (GameMode, V)>,

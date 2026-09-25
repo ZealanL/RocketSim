@@ -9,7 +9,9 @@ use log::info;
 
 use crate::bullet::collision::shapes::triangle_mesh::TriangleMesh;
 
+/// Default folder searched by [`crate::init_from_default`] (`./collision_meshes/`).
 pub const COLLISION_MESH_BASE_PATH: &str = "./collision_meshes/";
+/// Mesh file extension (`.cmf`) scanned by [`crate::init`].
 pub const COLLISION_MESH_FILE_EXTENSION: &str = "cmf";
 
 /// Recovered north/south goal component translation in Bullet units.
@@ -35,6 +37,12 @@ impl FromCursor for Vec3A {
     }
 }
 
+/// One parsed `.cmf` arena component (triangles + vertices in Bullet units).
+///
+/// Obtain via [`crate::get_arena_collision_mesh_files`] after [`crate::init`].
+/// `get_vertices`/`get_indices` stay in world coordinates;
+/// `component_translation`/`make_bullet_mesh_local` expose the goal-component
+/// fixup used internally at init.
 #[derive(Debug, Clone)]
 pub struct CollisionMeshFile {
     indices: Vec<usize>,
@@ -43,6 +51,10 @@ pub struct CollisionMeshFile {
 }
 
 impl CollisionMeshFile {
+    /// Hash identifying which known arena component this is.
+    ///
+    /// [`crate::init`] matches it against the expected per-mode hashes and
+    /// warns/skips unknown or duplicate meshes.
     #[inline]
     pub const fn get_hash(&self) -> u32 {
         self.hash
@@ -70,6 +82,13 @@ impl CollisionMeshFile {
         hash.0
     }
 
+    /// Parses the `.cmf` binary format (`u32 tri_count, u32 vert_count`,
+    /// then packed triangles and `f32 xyz` vertices, little-endian).
+    ///
+    /// # Errors
+    ///
+    /// Returns an I/O error on truncated data; panics (debug) or mis-hashes
+    /// on out-of-range indices / empty / oversized (>1M) headers.
     pub fn read_from_bytes(bytes: &[u8]) -> IoResult<Self> {
         const MAX_VERT_OR_TRI_COUNT: usize = 1_000_000;
 
@@ -115,6 +134,7 @@ impl CollisionMeshFile {
         })
     }
 
+    /// Triangle mesh in stored (world) coordinates.
     pub fn make_bullet_mesh(&self) -> TriangleMesh {
         TriangleMesh::new(&self.vertices, &self.indices)
     }
@@ -156,10 +176,12 @@ impl CollisionMeshFile {
         TriangleMesh::new(&local, &self.indices)
     }
 
+    /// World-space vertices in Bullet units (see `BT_TO_UU` = 50 for uu).
     pub fn get_vertices(&self) -> &[Vec3A] {
         &self.vertices
     }
 
+    /// Triangle indices into [`CollisionMeshFile::get_vertices`] (3 per tri).
     pub fn get_indices(&self) -> &[usize] {
         &self.indices
     }

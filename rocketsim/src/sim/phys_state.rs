@@ -2,9 +2,14 @@ use std::fmt::Display;
 
 use glam::{Mat3A, Vec3A};
 
-/// Default is not implemented for this struct,
-/// because the initial start height of the ball/car is different.
-/// The correct values are set in `BallState::default()` and `CarState::default()`
+/// Rigid-body pose + velocity shared by balls and cars.
+///
+/// All values are in Unreal units (uu): `pos`/`vel` in uu and uu/s,
+/// `ang_vel` in rad/s, `rot_mat` columns are forward (`x`), right (`y`),
+/// up (`z`).
+///
+/// There is deliberately no `Default`: use [`crate::BallState::DEFAULT`] or
+/// [`crate::CarState::DEFAULT`] so the spawn height is correct.
 #[derive(Clone, Copy, Debug)]
 pub struct PhysState {
     pub pos: Vec3A,
@@ -14,8 +19,10 @@ pub struct PhysState {
 }
 
 impl PhysState {
+    /// Flip across the field center (rotate 180° about Z).
+    ///
+    /// Used to mirror Blue spawns to Orange and vice versa.
     #[must_use]
-    /// Flip Y axis (aka rotate 180 degrees around Z axis)
     pub fn flip_y(mut self) -> Self {
         const INVERT_SCALE: Vec3A = Vec3A::new(-1.0, -1.0, 1.0);
 
@@ -30,8 +37,8 @@ impl PhysState {
         self
     }
 
+    /// Mirror across the YZ plane (`x -> -x`), including rotation/ang-vel.
     #[must_use]
-    /// Mirror along X axis (Reflection across the YZ plane)
     pub fn mirror_x(mut self) -> Self {
         const FLIP_SCALES: Vec3A = Vec3A::new(-1.0, 1.0, 1.0);
 
@@ -48,8 +55,8 @@ impl PhysState {
         self
     }
 
+    /// Mirror across the XZ plane (`y -> -y`), including rotation/ang-vel.
     #[must_use]
-    /// Mirror along Y axis (Reflection across the XZ plane)
     pub fn mirror_y(mut self) -> Self {
         const FLIP_SCALES: Vec3A = Vec3A::new(1.0, -1.0, 1.0);
 
@@ -65,16 +72,19 @@ impl PhysState {
         self
     }
 
+    /// Car/ball forward axis (`rot_mat.x_axis`).
     #[must_use]
     pub const fn get_forward_dir(&self) -> Vec3A {
         self.rot_mat.x_axis
     }
 
+    /// Car/ball right axis (`rot_mat.y_axis`).
     #[must_use]
     pub const fn get_right_dir(&self) -> Vec3A {
         self.rot_mat.y_axis
     }
 
+    /// Car/ball up axis (`rot_mat.z_axis`).
     #[must_use]
     pub const fn get_up_dir(&self) -> Vec3A {
         self.rot_mat.z_axis

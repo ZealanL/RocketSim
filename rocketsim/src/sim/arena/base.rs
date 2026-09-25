@@ -33,10 +33,31 @@ use crate::{
     },
 };
 
+/// Optional visualization hook, called with a snapshot after each tick.
+///
+/// Implement this in your own crate (see `rocketsim_vis`) to render or log
+/// the game. Register with `arena.vis = Some(Box::new(my_vis))`.
 pub trait Vis: Send + Sync + Any {
+    /// Called after [`Arena::step_tick`] with the fresh state and `dt`
+    /// ([`crate::consts::TICK_TIME`]).
     fn update(&mut self, arena_state: &ArenaState, dt: f32);
 }
 
+/// A full Rocket League game: ball, cars, boost pads/tiles, and physics.
+///
+/// Create with [`Arena::new`] (Soccar defaults) or
+/// [`Arena::new_with_config`], then [`Arena::add_car`], then
+/// [`Arena::reset_to_random_kickoff`]. Drive with
+/// [`Arena::set_car_controls`] + [`Arena::step_tick`] at 120 Hz.
+///
+/// ```no_run
+/// use rocketsim::{Arena, CarBodyConfig, GameMode, Team, init_from_default};
+/// init_from_default(true).unwrap();
+/// let mut arena = Arena::new(GameMode::Soccar);
+/// arena.add_car(Team::Blue, CarBodyConfig::OCTANE);
+/// arena.reset_to_random_kickoff(Some(0));
+/// let events = arena.step_tick();
+/// ```
 pub struct Arena {
     pub(crate) bullet_world: DiscreteDynamicsWorld,
     config: ArenaConfig,
@@ -55,11 +76,22 @@ pub struct Arena {
 }
 
 impl Arena {
+    /// Creates a Soccar-defaults arena for `game_mode` (see [`ArenaConfig::new`]).
+    ///
+    /// # Panics
+    ///
+    /// Panics if collision meshes were not loaded via `crate::init*` (except
+    /// [`GameMode::TheVoid`], which needs no meshes).
     #[must_use]
     pub fn new(game_mode: GameMode) -> Self {
         Self::new_with_config(ArenaConfig::new(game_mode))
     }
 
+    /// Creates an arena from a full [`ArenaConfig`] (mutators, pads, RNG, ...).
+    ///
+    /// # Panics
+    ///
+    /// Same as [`Arena::new`]: panics without loaded meshes (except `TheVoid`).
     pub fn new_with_config(config: ArenaConfig) -> Self {
         let (cell_size, initial_handle_size) = match config.mem_weight_mode {
             ArenaMemWeightMode::Light => ((config.max_pos - config.min_pos).max_element(), 1),
@@ -146,6 +178,7 @@ impl Arena {
         }
     }
 
+    /// Borrow the config this arena was built with.
     #[must_use]
     pub const fn get_config(&self) -> &ArenaConfig {
         &self.config
@@ -307,6 +340,11 @@ impl Arena {
         dist_sq - RADIUS_SQ
     }
 
+    /// Returns `true` if the ball is fully inside a goal (Soccar/Hoops) or
+    /// has fallen through broken Dropshot tiles. Always `false` for `TheVoid`.
+    ///
+    /// Check this after [`Arena::step_tick`]; RocketSim does not reset or
+    /// award points itself.
     #[must_use]
     pub fn is_ball_scored(&self) -> bool {
         let ball_pos = self.bullet_world.bodies()[self.ball.rigid_body_idx]
@@ -331,6 +369,14 @@ impl Arena {
         }
     }
 
+    /// Teleports cars to kickoff spawns and resets ball/pads (Dropshot tiles too).
+    ///
+    /// Cars are assigned in team order to shuffled
+    /// `consts::car::spawn::get_kickoff_spawn_locations`. Orange spawns are
+    /// mirrored/rotated 180°. Extra cars past the 5 kickoff spots overflow to
+    /// respawn locations. `rng_seed` overrides the arena RNG for this call
+    /// only; `None` uses the arena RNG (seed via `ArenaConfig::with_rng_seed`
+    /// for replays).
     pub fn reset_to_random_kickoff(&mut self, rng_seed: Option<u64>) {
         let kickoff_locs = consts::car::spawn::get_kickoff_spawn_locations(self.config.game_mode);
         let respawn_locs = consts::car::spawn::get_respawn_locations(self.config.game_mode);
@@ -448,7 +494,18 @@ impl Arena {
         }
     }
 
-    /// Creates and adds a car to the arena, returning the index of the car in the cars vector
+    /// Spawns a car, respawns it at a team respawn pad, and returns its index.
+    ///
+    /// The index is the car's id for `get_car_*/set_car_*`. Cars can only be
+    /// added, never removed — build a fresh [`Arena`] to reset the lobby.
+    ///
+    /// ```no_run
+    /// # use rocketsim::{Arena, CarBodyConfig, GameMode, Team, init_from_default};
+    /// # init_from_default(true).unwrap();
+    /// # let mut arena = Arena::new(GameMode::Soccar);
+    /// let blue = arena.add_car(Team::Blue, CarBodyConfig::OCTANE);
+    /// let orange = arena.add_car(Team::Orange, CarBodyConfig::DOMINUS);
+    /// ```
     pub fn add_car(&mut self, team: Team, config: CarBodyConfig) -> usize {
         let idx = self.cars.len();
 
@@ -472,7 +529,22 @@ impl Arena {
         idx
     }
 
-    /// Steps the arena for 1 tick, returning the events produced during that tick
+    /// Advances the game one tick (`1/120` s) and returns that tick's events.
+    ///
+    /// Set inputs with [`Arena::set_car_controls`] before calling. The
+    /// returned slice is only valid until the next `step_tick` — copy it if
+    /// you need it longer. See [`Arena::get_last_step_events`].
+    ///
+    /// ```no_run
+    /// # use rocketsim::{Arena, CarBodyConfig, CarControls, GameMode, Team, init_from_default};
+    /// # init_from_default(true).unwrap();
+    /// # let mut arena = Arena::new(GameMode::Soccar);
+    /// # let car = arena.add_car(Team::Blue, CarBodyConfig::OCTANE);
+    /// arena.set_car_controls(car, CarControls::default().with_throttle(1.0));
+    /// for event in arena.step_tick() {
+    ///     println!("{event:?}");
+    /// }
+    /// ```
     pub fn step_tick(&mut self) -> &[ArenaEvent] {
         self.events.clear();
 
@@ -631,21 +703,28 @@ impl Arena {
         self.get_last_step_events()
     }
 
+    /// Ticks simulated so far (starts at 0, increments per [`Arena::step_tick`]).
     #[inline]
     pub const fn tick_count(&self) -> u64 {
         self.tick_count
     }
 
+    /// The game mode this arena was built with.
     #[inline]
     pub const fn game_mode(&self) -> GameMode {
         self.config.game_mode
     }
 
+    /// Active mutators (physics/rules). Set at construction via `ArenaConfig`.
     #[inline]
     pub const fn mutator_config(&self) -> &MutatorConfig {
         &self.config.mutators
     }
 
+    /// Teleports the ball (position/velocity/rotation + mode state).
+    ///
+    /// Use to place kickoffs, restore snapshots, or inject test states.
+    /// For Heatseeker also set `hs_info`; for Dropshot `ds_info`.
     pub fn set_ball_state(&mut self, ball_state: BallState) {
         self.ball.set_state(
             &mut self.bullet_world.bodies_mut()[self.ball.rigid_body_idx],
@@ -653,42 +732,57 @@ impl Arena {
         );
     }
 
+    /// Current ball state (updated after every [`Arena::step_tick`]).
     pub const fn get_ball_state(&self) -> &BallState {
         &self.ball.state
     }
 
+    /// All cars in add order; index `i` is the id from [`Arena::add_car`].
     #[inline]
     pub const fn cars(&self) -> &Vec<Car> {
         &self.cars
     }
 
+    /// Number of cars added with [`Arena::add_car`].
     #[inline]
     pub const fn num_cars(&self) -> usize {
         self.cars.len()
     }
 
+    /// Immutable car info (team, hitbox preset). Panics if `car_idx` is OOB.
     pub fn get_car_info(&self, car_idx: usize) -> &CarInfo {
         &self.cars[car_idx].info
     }
 
+    /// Current car state (updated after every [`Arena::step_tick`]).
     pub fn get_car_state(&self, car_idx: usize) -> &CarState {
         self.cars[car_idx].get_state()
     }
 
+    /// Last controls set for a car (equals applied controls after the tick).
     pub fn get_car_controls(&self, car_idx: usize) -> &CarControls {
         &self.cars[car_idx].state.controls
     }
 
-    /// Refresh the prior-tick wheel gate from the current car body.
+    /// Re-syncs the sticky wheel-contact gate after externally teleporting a car.
+    ///
+    /// Call after [`Arena::set_car_state`] when you restore snapshots mid-drive,
+    /// otherwise the next tick may apply a one-tick sticking artifact.
+    /// Normal `set_car_controls` + `step_tick` loops don't need this.
     pub fn refresh_car_sticky_gate(&mut self, car_idx: usize) {
         self.cars[car_idx].refresh_sticky_gate(&self.bullet_world);
     }
 
+    /// Convenience getter returning `(info, state)` together.
     pub fn get_car_info_and_state(&self, car_idx: usize) -> (&CarInfo, &CarState) {
         let car = &self.cars[car_idx];
         (&car.info, &car.state)
     }
 
+    /// Teleports a car (position/velocity/boost/...). Clears cached impulses.
+    ///
+    /// If you restore mid-drive snapshots every tick (replay/RLBot), follow
+    /// with [`Arena::refresh_car_sticky_gate`].
     pub fn set_car_state(&mut self, car_idx: usize, state: CarState) {
         let car = &mut self.cars[car_idx];
 
@@ -698,10 +792,18 @@ impl Arena {
         );
     }
 
+    /// Sets the inputs applied on the next [`Arena::step_tick`].
+    ///
+    /// Analog inputs are clamped to `-1..1` (see [`CarControls::clamp`]).
+    /// `jump` is edge-triggered (only the rising edge jumps/flips).
     pub fn set_car_controls(&mut self, car_idx: usize, controls: CarControls) {
         self.cars[car_idx].state.controls = controls;
     }
 
+    /// Respawns a car at a random team respawn pad with spawn boost.
+    ///
+    /// Normally demos auto-respawn after `mutators.respawn_delay`; use this
+    /// to force it (e.g. after [`Arena::reset_to_random_kickoff`] tests).
     pub fn respawn_car(&mut self, car_idx: usize) {
         let car = &mut self.cars[car_idx];
 
@@ -713,6 +815,11 @@ impl Arena {
         );
     }
 
+    /// Remaining cooldown for a pad in seconds (`0` = active).
+    ///
+    /// # Panics
+    ///
+    /// Panics in `TheVoid`/`Dropshot` (no pads) or for an OOB index.
     #[must_use]
     pub fn get_boost_pad_state(&self, idx: usize) -> BoostPadState {
         let pad = self.boost_pads()[idx];
@@ -725,6 +832,8 @@ impl Arena {
         BoostPadState { cooldown }
     }
 
+    /// Forces a pad cooldown (e.g. restore a snapshot). `cooldown <= 0`
+    /// reactivates the pad.
     pub fn set_boost_pad_state(&mut self, idx: usize, state: BoostPadState) {
         let boost_pad_grid = self.boost_pad_grid.as_mut().unwrap();
         let tick_count = self.tick_count;
@@ -738,6 +847,7 @@ impl Arena {
         }
     }
 
+    /// Static pad layout (`pos`, `is_big`). Order is RLBot/RLGym (Y, then X).
     #[must_use]
     pub fn get_boost_pad_config(&self, idx: usize) -> &BoostPadConfig {
         self.boost_pads()[idx].config()
@@ -747,6 +857,7 @@ impl Arena {
         &self.boost_pad_grid.as_ref().unwrap().all_pads
     }
 
+    /// Number of pads (`0` in `TheVoid`/`Dropshot`; 34 Soccar, 20 Hoops).
     #[must_use]
     pub fn num_boost_pads(&self) -> usize {
         self.boost_pad_grid
@@ -754,6 +865,7 @@ impl Arena {
             .map_or(0, |grid| grid.all_pads.len())
     }
 
+    /// All pad cooldowns in pad order (snapshot helper).
     #[must_use]
     pub fn get_all_boost_pad_states(&self) -> Vec<BoostPadState> {
         (0..self.num_boost_pads())
@@ -761,6 +873,7 @@ impl Arena {
             .collect()
     }
 
+    /// All pad layouts in pad order (snapshot helper).
     #[must_use]
     pub fn get_all_boost_pad_configs(&self) -> Vec<BoostPadConfig> {
         (0..self.num_boost_pads())
@@ -768,6 +881,7 @@ impl Arena {
             .collect()
     }
 
+    /// Dropshot tile damage grid. Panics outside Dropshot.
     pub fn get_tile_states(&self) -> &TileStates {
         self.tile_states.as_ref().unwrap()
     }
@@ -788,18 +902,26 @@ impl Arena {
         }
     }
 
+    /// Replaces the Dropshot tile grid and updates collision (broken tiles
+    /// stop colliding). Also clears ball-only mode so tiles simulate.
     pub fn set_tile_states(&mut self, tile_states: TileStates) {
         self.tile_states = Some(tile_states);
         self.ball_only = false;
         self.update_tile_states();
     }
 
+    /// Total tiles across both teams (`0` outside Dropshot, else 140).
     pub fn num_tiles(&self) -> usize {
         self.tile_states
             .as_ref()
             .map_or(0, |ts| ts.states[0].len() * ts.states.len())
     }
 
+    /// Full snapshot (cars, ball, pads, tiles) for replays/debugging.
+    ///
+    /// Cheap clones of state only (no physics-world copy). Pair with
+    /// `set_*` methods to restore. [`crate::ArenaState::new_empty`] builds
+    /// an empty placeholder when you only need the type.
     #[must_use]
     pub fn get_arena_state(&self) -> ArenaState {
         let cars = self
@@ -823,17 +945,48 @@ impl Arena {
         }
     }
 
+    /// Events from the last [`Arena::step_tick`] (same slice `step_tick` returned).
+    ///
+    /// Cleared at the start of each tick. See [`ArenaEvent`] for variants.
     #[must_use]
-    /// Returns the events generated during the last stepped tick
     pub fn get_last_step_events(&self) -> &[ArenaEvent] {
         self.events.events()
     }
 
-    #[must_use]
-    /// Cast N rays in the arena
+    /// Casts rays against arena + cars + ball, 4 at a time via SIMD.
     ///
-    /// Note that rays are batch-casted 4 at a time for SIMD speed,
-    /// so doing multiples of 4 at once is most efficient
+    /// Batch multiples of 4 for best throughput. Each ray must be shorter
+    /// than the broadphase cell size (`ArenaConfig::max_aabb_len`, 370 uu by
+    /// default) — longer rays panic in debug. Set
+    /// [`RaycastQuery::hit_dynamic`] per query (currently informational —
+    /// static + dynamic are both tested).
+    ///
+    /// # Units caveat
+    ///
+    /// Queries are currently passed to the Bullet world **unconverted**, so
+    /// they must be in Bullet units (`uu * UU_TO_BT`, i.e. divide by 50) and
+    /// hits come back in Bullet units too (multiply by `BT_TO_UU`). This
+    /// disagrees with the rest of the API (Unreal units) and is almost
+    /// certainly a bug — TODO: convert inside `cast_rays`. Until then:
+    ///
+    /// ```no_run
+    /// # use rocketsim::{Arena, GameMode, RaycastQuery, init_from_default};
+    /// # use rocketsim::consts::{BT_TO_UU, UU_TO_BT};
+    /// # init_from_default(true).unwrap();
+    /// # let arena = Arena::new(GameMode::Soccar);
+    /// # let from_uu = arena.get_ball_state().pos;
+    /// # let to_uu = from_uu - glam::Vec3A::new(0., 0., 300.);
+    /// let results = arena.cast_rays(&[RaycastQuery {
+    ///     from: from_uu * UU_TO_BT,
+    ///     to: to_uu * UU_TO_BT,
+    ///     hit_dynamic: false,
+    /// }]);
+    /// if let Some(hit) = results[0].hit_info {
+    ///     let point_uu = hit.hit_point * BT_TO_UU;
+    ///     assert!(point_uu.z >= 0.0);
+    /// }
+    /// ```
+    #[must_use]
     pub fn cast_rays(&self, ray_queries: &[RaycastQuery]) -> Vec<RaycastResult> {
         let mut results = Vec::with_capacity(ray_queries.len());
         for query_batch in ray_queries.chunks(4) {
@@ -864,6 +1017,7 @@ impl Arena {
         results
     }
 
+    /// Returns `true` when a [`Vis`] hook is registered.
     pub fn is_vis_enabled(&self) -> bool {
         self.vis.is_some()
     }

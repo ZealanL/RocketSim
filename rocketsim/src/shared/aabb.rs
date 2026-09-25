@@ -2,6 +2,9 @@ use std::ops::{Add, AddAssign, Sub};
 
 use glam::{Affine3A, Vec3A};
 
+/// Axis-aligned bounding box in uu (or BT where noted by the caller).
+///
+/// Used for broadphase bounds, boost-pad queries, and goal volumes.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Aabb {
     pub min: Vec3A,
@@ -20,24 +23,28 @@ impl Aabb {
         Self { min, max }
     }
 
+    /// Center point (`(min + max) / 2`).
     #[inline]
     #[must_use]
     pub fn center(&self) -> Vec3A {
         (self.min + self.max) * 0.5
     }
 
+    /// Surface area (broadphase cost heuristic).
     #[must_use]
     pub fn area(&self) -> f32 {
         let extents = self.max - self.min;
         2.0 * (extents.x * extents.y + extents.x * extents.z + extents.y * extents.z)
     }
 
+    /// True when the boxes overlap (touching counts).
     #[inline]
     #[must_use]
     pub fn intersects(&self, rhs: &Self) -> bool {
         self.min.cmple(rhs.max).all() && self.max.cmpge(rhs.min).all()
     }
 
+    /// Smallest box containing both inputs.
     #[must_use]
     pub fn combine(&self, rhs: &Self) -> Self {
         Self::new(self.min.min(rhs.min), self.max.max(rhs.max))

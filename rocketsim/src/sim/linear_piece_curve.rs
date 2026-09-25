@@ -8,13 +8,20 @@ struct LinearPiece {
     pub y_diff: f32,
 }
 
+/// Continuous piecewise-linear `(x, y)` mapping (e.g. steer vs speed).
+///
+/// Lookup clamps: inputs at/below the first `x` return the first `y`, inputs
+/// above the last `x` return the last `y`. Used throughout `consts::curves`.
 #[derive(Clone, Copy, Debug)]
 pub struct LinearPieceCurve<const N: usize> {
     curve: [LinearPiece; N],
 }
 
 impl<const N: usize> LinearPieceCurve<N> {
-    /// A mapping of `(x, y)` pairs that make up the continuous linear piecewise function
+    /// Builds a curve from ascending `(x, y)` control points.
+    ///
+    /// `x` values should ascend; behavior is linear interpolation between
+    /// neighbors (no validation in `const` context).
     pub const fn new(value_mappings: [(f32, f32); N]) -> Self {
         let mut curve = [LinearPiece {
             base_x: 0.0,
@@ -46,7 +53,7 @@ impl<const N: usize> LinearPieceCurve<N> {
         Self { curve }
     }
 
-    /// Returns the output of the curve
+    /// Samples the curve at `input` (clamped at both ends, see type docs).
     ///
     /// # Arguments
     ///

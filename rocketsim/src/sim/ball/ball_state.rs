@@ -4,12 +4,19 @@ use glam::{Mat3A, Vec3A};
 
 use crate::{PhysState, consts, consts::heatseeker};
 
+/// Heatseeker targeting state: which goal is targeted and how fast.
+///
+/// `y_target_dir`: `0` = no target yet, `1` = Orange goal (`+Y`),
+/// `-1` = Blue goal (`-Y`). `cur_target_speed` (uu/s) grows per hit;
+/// `time_since_hit` (s) gates the speedup.
 #[derive(Clone, Copy, Debug)]
 pub struct HeatseekerInfo {
     /// Which net the ball should seek towards;
     /// When 0, no net
     pub y_target_dir: i8,
+    /// Current seek speed target in uu/s (starts at `INITIAL_TARGET_SPEED`).
     pub cur_target_speed: f32,
+    /// Seconds since the last car touch (gates `MIN_SPEEDUP_INTERVAL`).
     pub time_since_hit: f32,
 }
 
@@ -27,6 +34,12 @@ impl HeatseekerInfo {
     };
 }
 
+/// Dropshot charge/damage state.
+///
+/// The ball charges on hard hits (`accumulated_hit_force`), then damages
+/// tiles on a fast downward impact on the target side (`y_target_dir`:
+/// `0` = none, `-1` = Blue side, `1` = Orange side). Damage AoE grows with
+/// `charge_level` (1/7/19 tiles). `last_damage_tick` rate-limits damage.
 #[derive(Clone, Copy, Debug)]
 pub struct DropshotInfo {
     /// Charge level number, which controls the radius of damage when hitting tiles
@@ -38,6 +51,7 @@ pub struct DropshotInfo {
     pub accumulated_hit_force: f32,
     /// Which side of the field the ball can damage (0=none, -1=blue, 1=orange)
     pub y_target_dir: i8,
+    /// Last arena tick that damaged tiles (rate-limit), if any.
     pub last_damage_tick: Option<u64>,
 }
 
@@ -56,6 +70,11 @@ impl DropshotInfo {
     };
 }
 
+/// Ball physics + mode state.
+///
+/// Derefs to [`crate::PhysState`] so `ball_state.pos` works directly.
+/// `tick_count_since_kickoff` drives the Hoops/Dropshot launch delay.
+/// `DEFAULT` spawns the ball at rest at center (`REST_Z` height).
 #[derive(Clone, Copy, Debug)]
 pub struct BallState {
     pub phys: PhysState,

@@ -5,6 +5,10 @@ use std::{
 
 use glam::Vec3A;
 
+/// Yaw/pitch/roll angles in radians driving Heatseeker steering.
+///
+/// `From<Vec3A>` recovers yaw/pitch from a direction; `roll` stays `0`.
+/// See [`Angle::round_ue3`] for the UE3 quantization RocketSim replicates.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Angle {
     pub yaw: f32,

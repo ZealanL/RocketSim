@@ -32,6 +32,12 @@ use crate::{
     sim::{UserInfoTypes, car::car_info::CarInfo},
 };
 
+/// A car in the arena (physics body + cached state).
+///
+/// Get one via `Arena::cars()[idx]`; the id is stable for the arena's life.
+/// `Car` derefs to [`CarInfo`] (`car.idx/team/config`), while simulation
+/// state lives in `Car::get_state()` ([`CarState`]). Prefer the
+/// `Arena::get_car_*/set_car_*` accessors — they handle body sync for you.
 pub struct Car {
     pub(crate) info: CarInfo,
     pub(crate) bullet_vehicle: VehicleRL,
@@ -176,6 +182,7 @@ impl Car {
         self.set_state(rb, &new_state);
     }
 
+    /// Current simulation state (same as `Arena::get_car_state(idx)`).
     #[must_use]
     pub const fn get_state(&self) -> &CarState {
         &self.state
@@ -190,11 +197,13 @@ impl Car {
         );
     }
 
+    /// Hitbox/suspension preset (same as `info.config`).
     #[must_use]
     pub const fn get_config(&self) -> &CarBodyConfig {
         &self.info.config
     }
 
+    /// Queues inputs for the next tick (same as `Arena::set_car_controls`).
     pub const fn set_controls(&mut self, new_controls: CarControls) {
         self.state.controls = new_controls;
     }
