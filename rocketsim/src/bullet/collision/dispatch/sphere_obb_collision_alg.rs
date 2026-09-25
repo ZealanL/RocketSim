@@ -44,7 +44,7 @@ pub fn process_collision<T: ContactAddedCallback>(
 ) {
     debug_assert!(out.is_none());
     let sphere_trans = sphere_obj.get_world_trans();
-    let aabb_1 = sphere_shape.get_aabb(sphere_trans);
+    let aabb_1 = sphere_shape.get_aabb(sphere_trans.translation);
 
     let org_trans = obb_obj.get_world_trans();
     let aabb_2 = obb_shape.get_aabb(org_trans);

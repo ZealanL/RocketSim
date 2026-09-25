@@ -28,7 +28,6 @@ pub struct CollisionDispatcher {
     /// sites below; any removal/clear must rebuild this table too.
     manifold_table: Vec<u32>,
     manifold_stride: usize,
-    sphere_contact_scratch: Vec<sphere_concave_collision_alg::PendingSphereContact>,
 }
 
 enum MeshCollision<'a> {
@@ -69,9 +68,6 @@ impl Default for CollisionDispatcher {
             active_manifolds: Vec::with_capacity(8),
             manifold_table: Vec::new(),
             manifold_stride: 0,
-            // Ball/convex-vs-mesh sweeps collect a few triangle hits;
-            // keep the buffer across ticks instead of reallocating.
-            sphere_contact_scratch: Vec::with_capacity(16),
         }
     }
 }
@@ -85,12 +81,16 @@ impl CollisionDispatcher {
             manifold.body0_idx.min(manifold.body1_idx),
             manifold.body0_idx.max(manifold.body1_idx),
         );
+
         if hi >= self.manifold_stride {
             self.grow_manifold_table(hi + 1);
         }
+
         self.persistent_manifolds.push(manifold);
+
         let idx = self.persistent_manifolds.len() - 1;
         let table_idx = lo * self.manifold_stride + hi;
+
         debug_assert_eq!(self.manifold_table[table_idx], 0);
         self.manifold_table[table_idx] = u32::try_from(idx + 1).expect("manifold index overflow");
         idx
@@ -107,6 +107,7 @@ impl CollisionDispatcher {
             new_table[lo * new_stride + hi] =
                 u32::try_from(idx + 1).expect("manifold index overflow");
         }
+
         self.manifold_table = new_table;
         self.manifold_stride = new_stride;
     }
@@ -304,7 +305,6 @@ impl CollisionDispatcher {
     fn process_mesh_collision_into<T: ContactAddedCallback>(
         mesh_collision: MeshCollision<'_>,
         manifold: &mut PersistentManifold,
-        sphere_contact_scratch: &mut Vec<sphere_concave_collision_alg::PendingSphereContact>,
         contact_added_callback: &mut T,
     ) -> bool {
         match mesh_collision {
@@ -319,7 +319,6 @@ impl CollisionDispatcher {
                 concave_obj,
                 tri_mesh,
                 manifold,
-                sphere_contact_scratch,
                 contact_added_callback,
             ),
             MeshCollision::Convex {
@@ -367,6 +366,7 @@ impl CollisionDispatcher {
         } else {
             None
         };
+
         if let Some(cached_idx) = cached_idx {
             // Push-only vector, so a hit must reference this exact pair.
             let manifold = &self.persistent_manifolds[cached_idx];
@@ -388,10 +388,10 @@ impl CollisionDispatcher {
                     PersistentManifold::new(convex_obj, concave_obj),
                 )
             };
+
             let has_contacts = Self::process_mesh_collision_into(
                 mesh_collision,
                 &mut self.persistent_manifolds[persistent_idx],
-                &mut self.sphere_contact_scratch,
                 contact_added_callback,
             );
 
@@ -409,37 +409,18 @@ impl CollisionDispatcher {
         // unchanged from the clone path above.
         let active_idx = match (cached_idx, fresh.as_ref()) {
             (Some(cached_idx), Some(fresh_manifold)) => {
-                // Cull separated points before merging fresh detections.
-                // This mirrors the target's two BWCACHE rounds: round 1 is
-                // the refresh that culls carried points to empty (observed
-                // before-count 2 -> after-count 0); round 2 is the leaf
-                // fresh-add pass (`284EE0`/`29EF00`, `life=0`) in detection
-                // order, kept by the leaf-tail refresh. Merging into an
-                // unrefreshed cache lets a fresh point hijack a stale slot
-                // (same position, different face), scrambling row order for
-                // the order-dependent sequential-impulse solve.
-                //
-                // No second refresh follows the merge: it is a proven no-op
-                // here. Fresh points were detected this tick, so their
-                // projected distance is within threshold with ~zero drift;
-                // surviving old points were re-projected above at identical
-                // transforms (bodies do not move between the two calls), so
-                // re-running the deterministic recompute changes no value
-                // and culls nothing. (The target tail refresh additionally
-                // ages lifetimes and fires survivor callbacks, which this
-                // manifold does not model; revisit if that ever changes.)
                 let (body0_idx, body1_idx) = {
                     let manifold = &self.persistent_manifolds[cached_idx];
                     (manifold.body0_idx, manifold.body1_idx)
                 };
-                // Skip the no-op empty refresh (see `refresh_contact_points`);
-                // the merge below behaves identically on an empty cache either way.
+
                 if !self.persistent_manifolds[cached_idx].point_cache.is_empty() {
                     self.persistent_manifolds[cached_idx].refresh_contact_points(
                         &collision_objs[body0_idx],
                         &collision_objs[body1_idx],
                     );
                 }
+
                 self.persistent_manifolds[cached_idx].merge_contact_points(fresh_manifold);
                 cached_idx
             }
@@ -448,14 +429,14 @@ impl CollisionDispatcher {
                     let manifold = &self.persistent_manifolds[cached_idx];
                     (manifold.body0_idx, manifold.body1_idx)
                 };
-                // Skip the no-op empty refresh; an empty manifold stays
-                // empty and the active push below is already guarded.
+
                 if !self.persistent_manifolds[cached_idx].point_cache.is_empty() {
                     self.persistent_manifolds[cached_idx].refresh_contact_points(
                         &collision_objs[body0_idx],
                         &collision_objs[body1_idx],
                     );
                 }
+
                 cached_idx
             }
             (None, Some(_)) => self.insert_persistent_manifold(

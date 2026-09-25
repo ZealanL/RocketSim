@@ -36,7 +36,7 @@ fn fast_compare_trans(a: &Affine3A, b: &Affine3A) -> bool {
 impl CollisionShapes {
     pub fn get_aabb(&self, t: &Affine3A) -> Aabb {
         match self {
-            Self::Sphere(shape) => shape.get_aabb(t),
+            Self::Sphere(shape) => shape.get_aabb(t.translation),
             Self::Compound(shape) => shape.get_aabb(t),
             Self::ConvexHull(shape) => shape.get_aabb(t),
             Self::StaticPlane(shape) => {
@@ -44,16 +44,10 @@ impl CollisionShapes {
                 debug_assert!(fast_compare_trans(t, &shape.aabb_cache_trans));
                 shape.aabb_cache
             }
-            Self::TriangleMesh(shape) => {
-                // Goal components use local vertices plus a body translation.
-                // World AABB equals local AABB shifted by the body origin.
-                // Shapes stay axis-aligned with identity rotation, so add
-                // the translation directly to keep world geometry equal.
-                Aabb::new(
-                    shape.aabb_ident_cache.min + t.translation,
-                    shape.aabb_ident_cache.max + t.translation,
-                )
-            }
+            Self::TriangleMesh(shape) => Aabb::new(
+                shape.aabb_ident_cache.min + t.translation,
+                shape.aabb_ident_cache.max + t.translation,
+            ),
             Self::Triangle(shape) => shape.aabb(),
         }
     }
