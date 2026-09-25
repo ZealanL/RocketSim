@@ -7,7 +7,9 @@ use glam::Vec3A;
 pub const NUM_CARS: u8 = 6;
 pub const NUM_EPISODE_TICKS: usize = 10_000;
 pub const NUM_EPISODE: usize = 100;
+pub const BALL_ONLY_NUM_EPISODE: usize = NUM_EPISODE * 5;
 pub const TOTAL_TICKS: usize = NUM_EPISODE * NUM_EPISODE_TICKS;
+pub const BALL_ONLY_TOTAL_TICKS: usize = BALL_ONLY_NUM_EPISODE * NUM_EPISODE_TICKS;
 pub const VEL_ADD_MAG: f32 = 1000.0;
 pub const UPDATE_CHANCE: f32 = 0.05; // (120 * 0.05) = Avg of 6 per sec
 

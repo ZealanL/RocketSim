@@ -13,9 +13,9 @@ use rocketsim_rs::{
 };
 use rocketsim_test::rlpr::{Recording, recording_has_boost_state, recording_has_handbrake_state};
 use stress_common::{
-    Args, BotBallState, BotCarState, BotControls, GameModeArg, MemWeightModeArg, NUM_EPISODE,
-    NUM_EPISODE_TICKS, UPDATE_CHANCE, VEL_ADD_MAG, calc_bot_controls, print_results, rand_axis_val,
-    rand_chance,
+    Args, BALL_ONLY_NUM_EPISODE, BALL_ONLY_TOTAL_TICKS, BotBallState, BotCarState, BotControls,
+    GameModeArg, MemWeightModeArg, NUM_EPISODE, NUM_EPISODE_TICKS, UPDATE_CHANCE, VEL_ADD_MAG,
+    calc_bot_controls, print_results, rand_axis_val, rand_chance,
 };
 
 #[allow(dead_code)]
@@ -125,6 +125,44 @@ impl rlpr_replay::ReplayBenchmarkBackend for v2::V2Backend {
     }
 }
 
+fn run_ball_only_benchmark(cli: &Args) {
+    let arena_config = ArenaConfig {
+        mem_weight_mode: arena_mem_weight_mode(cli.mem_weight_mode),
+        no_ball_rot: false,
+        ..Default::default()
+    };
+    let mut arenas: Vec<_> = (0..cli.num_arenas)
+        .map(|arena_idx| {
+            let arena = Arena::new(cli.game_mode.into(), arena_config, 120);
+            (arena, Rng::with_seed(arena_idx as u64))
+        })
+        .collect();
+
+    let start = Instant::now();
+    for _ in 0..BALL_ONLY_NUM_EPISODE {
+        for (arena, rng) in &mut arenas {
+            arena.pin_mut().reset_to_random_kickoff(None);
+
+            let mut ball_state = arena.pin_mut().get_ball();
+            ball_state.vel.x += rand_axis_val(rng) * VEL_ADD_MAG;
+            ball_state.vel.y += rand_axis_val(rng) * VEL_ADD_MAG;
+            ball_state.vel.z += rand_axis_val(rng) * VEL_ADD_MAG;
+            arena.pin_mut().set_ball(ball_state);
+        }
+
+        for _ in 0..NUM_EPISODE_TICKS {
+            for (arena, _) in &mut arenas {
+                arena.pin_mut().step(1);
+            }
+        }
+    }
+
+    let elapsed = start.elapsed().as_secs_f32();
+    let tps = BALL_ONLY_TOTAL_TICKS as f32 * cli.num_arenas as f32 / elapsed;
+    println!("Ball-only elapsed: {elapsed:.6}");
+    println!("Ball-only TPS: {tps:.0}");
+}
+
 fn run_rlpr_replay(path: &Path, cli: &Args) -> Result<(), Box<dyn std::error::Error>> {
     if cli.num_cars as usize != rlpr_replay::THREE_V_THREE_CARS {
         return Err("--num-cars must be 6 in RLPR replay mode".into());
@@ -174,6 +212,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if let Some(path) = cli.rlpr_file.as_deref() {
         return run_rlpr_replay(path, &cli);
+    }
+
+    if cli.num_cars == 0 {
+        run_ball_only_benchmark(&cli);
+        return Ok(());
     }
 
     let arena_config = ArenaConfig {

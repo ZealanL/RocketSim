@@ -76,6 +76,16 @@ impl OverlappingPairCache {
     }
 
     #[inline]
+    pub fn finish_direct_dispatch(&mut self) {
+        debug_assert!(self.overlapping_pair_array.is_empty());
+        self.cur_gen = self.cur_gen.wrapping_add(1);
+        if self.cur_gen == 0 {
+            self.seen_gens.fill(0);
+            self.cur_gen = 1;
+        }
+    }
+
+    #[inline]
     pub const fn needs_broadphase_collision(
         proxy0: &BroadphaseProxy,
         proxy1: &BroadphaseProxy,

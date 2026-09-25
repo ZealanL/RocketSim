@@ -1,5 +1,7 @@
 use glam::Vec3A;
 
+/// Full hitbox extents in uu for the 7 presets
+/// (Octane, Dominus, Plank, Breakout, Hybrid, Merc, Psyclops).
 pub const HITBOX_SIZES: [Vec3A; 7] = [
     Vec3A::new(120.507, 86.6994, 38.6591), // OCTANE
     Vec3A::new(130.427, 85.7799, 33.8),    // DOMINUS
@@ -10,6 +12,7 @@ pub const HITBOX_SIZES: [Vec3A; 7] = [
     Vec3A::new(120.507 + 0.134, 86.6994 + 0.134, 38.6591 + 0.134), // PSYCLOPS
 ];
 
+/// Hitbox center offsets in uu (same preset order as [`HITBOX_SIZES`]).
 pub const HITBOX_OFFSETS: [Vec3A; 7] = [
     Vec3A::new(13.8757, 0.0, 20.755),
     Vec3A::new(9.0, 0.0, 15.75),
@@ -58,6 +61,11 @@ pub struct WheelPairConfig {
     pub connection_point_offset: Vec3A,
 }
 
+/// Hitbox + suspension preset for a car body (all lengths in uu).
+///
+/// Use the associated presets (`OCTANE`, `DOMINUS`, ...) or build custom.
+/// `dodge_deadzone` is the min `|yaw|+|pitch|+|roll|` to flip instead of
+/// double-jump (default `0.5`).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CarBodyConfig {
     /// Full size of hitbox (NOT the half-size/extent)

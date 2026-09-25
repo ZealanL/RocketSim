@@ -1,6 +1,11 @@
 use glam::Vec3;
 
-#[rocketsim_derive::fast_hash_struct]
+/// Driver inputs applied on the next [`crate::Arena::step_tick`].
+///
+/// Analog axes are `-1..1` (clamped by [`CarControls::clamp`]); booleans are
+/// edge- or level-triggered per field. `jump` only fires on the rising edge
+/// (hold to charge, release or 24 ticks to end); `boost`/`handbrake` are level.
+/// `steer` doubles as ground yaw; in air use `yaw/pitch/roll` (-1..1).
 #[derive(Debug, Clone, Copy)]
 pub struct CarControls {
     pub throttle: f32,
@@ -64,6 +69,7 @@ impl Default for CarControls {
 }
 
 impl CarControls {
+    /// All-neutral inputs (no throttle/steer, no buttons).
     pub const DEFAULT: Self = Self {
         throttle: 0.0,
         steer: 0.0,
@@ -75,8 +81,13 @@ impl CarControls {
         handbrake: false,
     };
 
+    /// Number of scalar slots in [`CarControls::to_floats`] (`8`).
     pub const NUM_VALS: usize = 8;
 
+    /// Clamps analog axes to `-1..1` (booleans untouched).
+    ///
+    /// [`crate::Arena::set_car_controls`] applies this automatically, but call
+    /// it yourself when blending or networking inputs.
     #[must_use]
     pub const fn clamp(mut self) -> Self {
         self.throttle = self.throttle.clamp(-1.0, 1.0);
@@ -87,11 +98,14 @@ impl CarControls {
         self
     }
 
+    /// `(pitch, yaw, roll)` as a vector (air control).
     #[must_use]
     pub const fn pyr(self) -> Vec3 {
         Vec3::new(self.pitch, self.yaw, self.roll)
     }
 
+    /// Packs to `[throttle, steer, pitch, yaw, roll, jump, boost, handbrake]`
+    /// (booleans as `0./1.`) for ML/networking.
     #[must_use]
     pub const fn to_floats(&self) -> [f32; Self::NUM_VALS] {
         [
@@ -106,6 +120,7 @@ impl CarControls {
         ]
     }
 
+    /// Unpacks [`CarControls::to_floats`]; floats `> boolean_thresh` become `true`.
     #[must_use]
     /// `boolean_thresh`: Floats over this value will trigger boolean controls (jump, boost, handbrake)
     pub const fn from_floats(floats: [f32; Self::NUM_VALS], boolean_tresh: f32) -> Self {

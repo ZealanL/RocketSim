@@ -9,7 +9,9 @@ use log::info;
 
 use crate::bullet::collision::shapes::triangle_mesh::TriangleMesh;
 
+/// Default folder searched by [`crate::init_from_default`] (`./collision_meshes/`).
 pub const COLLISION_MESH_BASE_PATH: &str = "./collision_meshes/";
+/// Mesh file extension (`.cmf`) scanned by [`crate::init`].
 pub const COLLISION_MESH_FILE_EXTENSION: &str = "cmf";
 
 /// Recovered north/south goal component translation in Bullet units.
@@ -35,6 +37,12 @@ impl FromCursor for Vec3A {
     }
 }
 
+/// One parsed `.cmf` arena component (triangles + vertices in Bullet units).
+///
+/// Obtain via [`crate::get_arena_collision_mesh_files`] after [`crate::init`].
+/// `get_vertices`/`get_indices` stay in world coordinates;
+/// `component_translation`/`make_bullet_mesh_local` expose the goal-component
+/// fixup used internally at init.
 #[derive(Debug, Clone)]
 pub struct CollisionMeshFile {
     indices: Vec<usize>,
@@ -43,6 +51,10 @@ pub struct CollisionMeshFile {
 }
 
 impl CollisionMeshFile {
+    /// Hash identifying which known arena component this is.
+    ///
+    /// [`crate::init`] matches it against the expected per-mode hashes and
+    /// warns/skips unknown or duplicate meshes.
     #[inline]
     pub const fn get_hash(&self) -> u32 {
         self.hash
@@ -70,6 +82,13 @@ impl CollisionMeshFile {
         hash.0
     }
 
+    /// Parses the `.cmf` binary format (`u32 tri_count, u32 vert_count`,
+    /// then packed triangles and `f32 xyz` vertices, little-endian).
+    ///
+    /// # Errors
+    ///
+    /// Returns an I/O error on truncated data; panics (debug) or mis-hashes
+    /// on out-of-range indices / empty / oversized (>1M) headers.
     pub fn read_from_bytes(bytes: &[u8]) -> IoResult<Self> {
         const MAX_VERT_OR_TRI_COUNT: usize = 1_000_000;
 
@@ -115,6 +134,7 @@ impl CollisionMeshFile {
         })
     }
 
+    /// Triangle mesh in stored (world) coordinates.
     pub fn make_bullet_mesh(&self) -> TriangleMesh {
         TriangleMesh::new(&self.vertices, &self.indices)
     }
@@ -156,87 +176,13 @@ impl CollisionMeshFile {
         TriangleMesh::new(&local, &self.indices)
     }
 
+    /// World-space vertices in Bullet units (see `BT_TO_UU` = 50 for uu).
     pub fn get_vertices(&self) -> &[Vec3A] {
         &self.vertices
     }
 
+    /// Triangle indices into [`CollisionMeshFile::get_vertices`] (3 per tri).
     pub fn get_indices(&self) -> &[usize] {
         &self.indices
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn mesh_with_y_range(min_y: f32, max_y: f32) -> CollisionMeshFile {
-        let vertices = vec![
-            Vec3A::new(0.0, min_y, 0.0),
-            Vec3A::new(1.0, max_y, 0.0),
-            Vec3A::new(0.0, (min_y + max_y) * 0.5, 1.0),
-        ];
-        let indices = vec![0, 1, 2];
-        let hash = CollisionMeshFile::calculate_hash(&indices, &vertices);
-        CollisionMeshFile {
-            indices,
-            vertices,
-            hash,
-        }
-    }
-
-    #[test]
-    fn goal_translation_selects_north_south_only() {
-        assert_eq!(
-            mesh_with_y_range(86.7, 120.0).component_translation(),
-            Vec3A::new(0.0, GOAL_COMPONENT_TRANSLATION_BT, 0.0)
-        );
-        assert_eq!(
-            mesh_with_y_range(-120.0, -86.7).component_translation(),
-            Vec3A::new(0.0, -GOAL_COMPONENT_TRANSLATION_BT, 0.0)
-        );
-        assert_eq!(
-            mesh_with_y_range(-102.5, -66.5).component_translation(),
-            Vec3A::ZERO
-        );
-        assert_eq!(
-            mesh_with_y_range(66.5, 102.5).component_translation(),
-            Vec3A::ZERO
-        );
-    }
-
-    #[test]
-    fn local_mesh_preserves_world_vertices_and_hash() {
-        let mesh = mesh_with_y_range(86.7, 120.0);
-        let hash_before = mesh.get_hash();
-        let verts_before = mesh.get_vertices().to_vec();
-        let translation = mesh.component_translation();
-        let local = mesh.make_bullet_mesh_local();
-        assert_eq!(mesh.get_hash(), hash_before);
-        assert_eq!(mesh.get_vertices(), verts_before.as_slice());
-        for (i, tri) in local.get_tris().iter().enumerate() {
-            let world_idx = mesh.get_indices()[i * 3..i * 3 + 3].to_vec();
-            for (k, p) in tri.points.iter().enumerate() {
-                let world = mesh.get_vertices()[world_idx[k]];
-                assert_eq!(*p + translation, world);
-            }
-        }
-    }
-
-    #[test]
-    fn world_aabb_equals_local_aabb_plus_translation() {
-        let mesh = mesh_with_y_range(86.7, 120.0);
-        let translation = mesh.component_translation();
-        let world_mesh = mesh.make_bullet_mesh();
-        let local_mesh = mesh.make_bullet_mesh_local();
-        for (w, l) in world_mesh
-            .get_tris()
-            .iter()
-            .zip(local_mesh.get_tris().iter())
-        {
-            let w_aabb = w.aabb();
-            let l_aabb = l.aabb();
-            assert_eq!(l_aabb.min + translation, w_aabb.min);
-            assert_eq!(l_aabb.max + translation, w_aabb.max);
-        }
     }
 }

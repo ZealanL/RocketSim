@@ -1,22 +1,25 @@
 [package]
 name = "rocketsim"
 version.workspace = true
-edition = "2024"
-license-file.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Simulate Rocket League games at maximum efficiency"
+documentation.workspace = true
+readme = "../README.md"
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
 arrayvec = "0.7.6"
 byteorder = "1.5.0"
-derive_hash_fast = "0.2.3"
 fastrand = "2.3.0"
 fern = "0.7.1"
 glam.workspace = true
-include_dir = "0.7.4"
 log = "0.4.29"
-rocketsim_derive = { path = "../rocketsim_derive" }
 rustc-hash.workspace = true
-zerocopy = { version = "0.8.34", features = ["derive"] }
-indexmap = "2.14.0"
 
 [target.'cfg(not(any(target_arch = "x86", target_arch = "x86_64")))'.dependencies]
 # use glam with experimental support for portable SIMD when not running on x86

@@ -1,8 +1,6 @@
 use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not};
 
 use glam::{Affine3A, Mat3A, Quat, Vec3A};
-#[cfg(debug_assertions)]
-use indexmap::IndexMap;
 
 use crate::{
     bullet::{
@@ -163,13 +161,13 @@ pub struct RigidBody {
     pub accum_ang_vel: Vec3A,
 
     pub linear_damping: f32,
+    /// Cached `(1 - linear_damping)^time_step` for the repeated fixed tick.
+    cached_linear_damping: f32,
+    cached_damping_time_step: f32,
+    cached_linear_damping_value: f32,
     pub linear_sleeping_threshold: f32,
     pub angular_sleeping_threshold: f32,
     pub inv_mass_splat: Vec3A,
-
-    /// For debugging physics, this tracks every impulse applied during a tick
-    #[cfg(debug_assertions)]
-    pub dbg_tick_impulse_history: IndexMap<(&'static str, bool), (Vec3A, Vec3A)>,
 }
 
 impl RigidBody {
@@ -225,12 +223,12 @@ impl RigidBody {
             accum_lin_vel: Vec3A::ZERO,
             accum_ang_vel: Vec3A::ZERO,
             linear_damping,
+            cached_linear_damping: 1.0,
+            cached_damping_time_step: 0.0,
+            cached_linear_damping_value: linear_damping,
             linear_sleeping_threshold,
             angular_sleeping_threshold,
             inv_mass_splat: Vec3A::splat(inverse_mass),
-
-            #[cfg(debug_assertions)]
-            dbg_tick_impulse_history: IndexMap::new(),
         }
     }
 
@@ -326,13 +324,7 @@ impl RigidBody {
     /// `accum`: Accumulate this impulse to be applied while
     /// stepping the simulation (instead of immediately)
     #[inline(always)] // Should assure const evaluation
-    pub fn add_impulse(
-        &mut self,
-        _name: Option<&'static str>,
-        impulse: Impulse,
-        massed: bool,
-        accum: bool,
-    ) {
+    pub fn add_impulse(&mut self, impulse: Impulse, massed: bool, accum: bool) {
         let mut lin_impulse = Vec3A::ZERO;
         let mut ang_impulse = Vec3A::ZERO;
 
@@ -360,22 +352,18 @@ impl RigidBody {
             self.lin_vel += lin_impulse;
             self.ang_vel += ang_impulse;
         }
-
-        #[cfg(debug_assertions)]
-        if let Some(name) = _name {
-            let map = &mut self.dbg_tick_impulse_history;
-            if let Some((lin, ang)) = map.get_mut(&(name, accum)) {
-                *lin += lin_impulse;
-                *ang += ang_impulse;
-            } else {
-                map.insert((name, accum), (lin_impulse, ang_impulse));
-            }
-        }
     }
 
     pub fn apply_damping(&mut self, time_step: f32) {
         if self.linear_damping != 0.0 {
-            self.lin_vel *= (1.0 - self.linear_damping).powf(time_step);
+            if self.cached_damping_time_step != time_step
+                || self.cached_linear_damping_value != self.linear_damping
+            {
+                self.cached_linear_damping = (1.0 - self.linear_damping).powf(time_step);
+                self.cached_damping_time_step = time_step;
+                self.cached_linear_damping_value = self.linear_damping;
+            }
+            self.lin_vel *= self.cached_linear_damping;
         }
     }
 
@@ -425,8 +413,6 @@ impl RigidBody {
     pub fn clear_accum_vels(&mut self) {
         self.accum_lin_vel = Vec3A::ZERO;
         self.accum_ang_vel = Vec3A::ZERO;
-        #[cfg(debug_assertions)]
-        self.dbg_tick_impulse_history.clear();
     }
 
     pub fn get_mass(&self) -> f32 {

@@ -10,7 +10,6 @@ use crate::{
             shapes::collision_shape::CollisionShapes,
         },
         dynamics::rigid_body::RigidBody,
-        linear_math::AffineExt,
     },
     shared::Aabb,
 };
@@ -92,23 +91,23 @@ impl CellGrid {
         let min = self.get_cell_indices(proxy.aabb.min.max(self.min_pos));
         let max = self.get_cell_indices(proxy.aabb.max.min(self.max_pos));
 
+        // Goal components carry a body translation
         let tri_mesh_shape = match col_obj.get_collision_shape() {
-            CollisionShapes::TriangleMesh(mesh) => Some(mesh.as_ref()),
+            CollisionShapes::TriangleMesh(mesh) => {
+                Some((mesh.as_ref(), col_obj.get_world_trans().translation))
+            }
             _ => None,
         };
-        // Mesh BVHs hold local triangles. Goal components carry a body
-        // translation, so test world grid cells in mesh-local space.
-        let world_to_local = col_obj.get_world_trans().transpose();
 
         for i in min.x..=max.x {
             for j in min.y..=max.y {
                 for k in min.z..=max.z {
-                    if let Some(mesh_interface) = tri_mesh_shape {
+                    if let Some((mesh_interface, pos)) = tri_mesh_shape {
                         let cell_min = self.get_cell_min_pos(USizeVec3::new(i, j, k));
                         let cell_aabb =
                             Aabb::new(cell_min, cell_min + Vec3A::splat(self.cell_size));
-                        let local_cell = cell_aabb.transform(&world_to_local, 0.0);
 
+                        let local_cell = cell_aabb - pos;
                         if !mesh_interface.check_overlap_with(&local_cell) {
                             continue;
                         }
@@ -165,6 +164,8 @@ impl CellGrid {
 pub struct GridBroadphase {
     cell_grid: CellGrid,
     min_dyn_handle_idx: usize,
+    dynamic_proxy_count: usize,
+    singleton_layout_valid: bool,
     pub handles: Vec<BroadphaseProxy>,
     pair_cache: OverlappingPairCache,
 }
@@ -190,6 +191,8 @@ impl GridBroadphase {
 
         Self {
             min_dyn_handle_idx: 0,
+            dynamic_proxy_count: 0,
+            singleton_layout_valid: true,
             cell_grid: CellGrid {
                 max_pos,
                 min_pos,
@@ -253,10 +256,17 @@ impl GridBroadphase {
         };
 
         if is_static {
+            if self.dynamic_proxy_count != 0 {
+                self.singleton_layout_valid = false;
+            }
             self.min_dyn_handle_idx = new_handle_idx + 1;
             self.cell_grid
                 .update_cells_static(&new_handle, co, new_handle_idx);
         } else {
+            self.dynamic_proxy_count += 1;
+            if self.dynamic_proxy_count > 1 || new_handle_idx != self.min_dyn_handle_idx {
+                self.singleton_layout_valid = false;
+            }
             debug_assert!(
                 aabb.min.distance_squared(aabb.max) <= self.cell_grid.cell_size_sq,
                 "Dynamic objects must fit within a single cell - ({} > {})",
@@ -272,8 +282,82 @@ impl GridBroadphase {
         new_handle_idx
     }
 
+    pub fn dispatch_singleton_pairs<T: ContactAddedCallback>(
+        &mut self,
+        collision_objs: &[RigidBody],
+        dispatcher: &mut CollisionDispatcher,
+        contact_added_callback: &mut T,
+    ) -> bool {
+        if self.dynamic_proxy_count != 1
+            || !self.singleton_layout_valid
+            || self.handles.len() != self.min_dyn_handle_idx + 1
+        {
+            return false;
+        }
+
+        let proxy_idx = self.min_dyn_handle_idx;
+        {
+            let proxy = &self.handles[proxy_idx];
+            let cell = &self.cell_grid.cells[proxy.cell_idx as usize];
+            for &other_proxy_idx in &cell.static_handles {
+                let other_proxy = &self.handles[other_proxy_idx];
+                if proxy.aabb.intersects(&other_proxy.aabb)
+                    && OverlappingPairCache::needs_broadphase_collision(proxy, other_proxy)
+                {
+                    dispatcher.near_callback(
+                        collision_objs,
+                        other_proxy,
+                        proxy,
+                        contact_added_callback,
+                    );
+                }
+            }
+        }
+
+        self.pair_cache.finish_direct_dispatch();
+        true
+    }
+
     pub fn calculate_overlapping_pairs(&mut self) {
         debug_assert!(self.pair_cache.is_empty());
+
+        // The common ball-only layout has exactly one dynamic proxy. Keep
+        // this path free of iterator/filter setup and scan its cell directly.
+        if self.handles.len() == self.min_dyn_handle_idx + 1 {
+            let proxy_idx = self.min_dyn_handle_idx;
+            let proxy = &self.handles[proxy_idx];
+            let cell = &self.cell_grid.cells[proxy.cell_idx as usize];
+            for &other_proxy_idx in &cell.static_handles {
+                let other_proxy = &self.handles[other_proxy_idx];
+                if proxy.aabb.intersects(&other_proxy.aabb) {
+                    self.pair_cache.add_overlapping_pair(
+                        proxy,
+                        proxy_idx,
+                        other_proxy,
+                        other_proxy_idx,
+                    );
+                }
+            }
+
+            for &other_proxy_idx in &cell.dyn_handles {
+                if proxy_idx >= other_proxy_idx {
+                    continue;
+                }
+
+                let other_proxy = &self.handles[other_proxy_idx];
+                if proxy.aabb.intersects(&other_proxy.aabb) {
+                    self.pair_cache.add_overlapping_pair(
+                        proxy,
+                        proxy_idx,
+                        other_proxy,
+                        other_proxy_idx,
+                    );
+                }
+            }
+
+            return;
+        }
+
         for (i, proxy) in self
             .handles
             .iter()
@@ -347,16 +431,43 @@ impl GridBroadphase {
             }
         }
 
-        // Skip proxies seen in earlier cells. This keeps one visit per proxy.
+        // Most wheel packets stay within one grid cell. Avoid entering the
+        // cross-cell de-duplication loop in that common case.
+        if num_cells == 1 {
+            let cell = &self.cell_grid.cells[cell_idxs[0]];
+            for &other_proxy_idx in cell.static_handles.iter().chain(&cell.dyn_handles) {
+                let other_proxy = &self.handles[other_proxy_idx];
+                if ray_aabb.intersects(&other_proxy.aabb) {
+                    ray_callback.process(other_proxy);
+                }
+            }
+
+            return;
+        }
+
+        // Skip proxies seen in earlier cells. The grid keeps unique entries
+        // per cell, so a small bitset handles the usual arena-sized case.
+        const SEEN_WORDS: usize = 4;
+        let mut seen = [0u64; SEEN_WORDS];
+        let use_seen_bitset = self.handles.len() <= SEEN_WORDS * u64::BITS as usize;
         for (i, &cell_idx) in cell_idxs[..num_cells].iter().enumerate() {
             let cell = &self.cell_grid.cells[cell_idx];
             'cells: for &other_proxy_idx in cell.static_handles.iter().chain(&cell.dyn_handles) {
-                for &prev_idx in &cell_idxs[..i] {
-                    let prev = &self.cell_grid.cells[prev_idx];
-                    if prev.static_handles.contains(&other_proxy_idx)
-                        || prev.dyn_handles.contains(&other_proxy_idx)
-                    {
-                        break 'cells;
+                if use_seen_bitset {
+                    let word = other_proxy_idx / u64::BITS as usize;
+                    let bit = 1u64 << (other_proxy_idx % u64::BITS as usize);
+                    if seen[word] & bit != 0 {
+                        continue 'cells;
+                    }
+                    seen[word] |= bit;
+                } else {
+                    for &prev_idx in &cell_idxs[..i] {
+                        let prev = &self.cell_grid.cells[prev_idx];
+                        if prev.static_handles.contains(&other_proxy_idx)
+                            || prev.dyn_handles.contains(&other_proxy_idx)
+                        {
+                            continue 'cells;
+                        }
                     }
                 }
 

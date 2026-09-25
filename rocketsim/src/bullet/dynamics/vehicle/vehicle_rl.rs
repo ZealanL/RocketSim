@@ -130,7 +130,6 @@ impl VehicleRL {
             let full_pushback = wheel.extra_pushback * NUM_WHEELS as f32;
             let victim_offset = info.contact_point - victim.get_world_trans().translation;
             victim.add_impulse(
-                None,
                 Impulse::LinearRelPos(-info.contact_normal * full_pushback, victim_offset),
                 true,
                 false,
@@ -237,7 +236,6 @@ impl VehicleRL {
             let ground = &mut collision_world.bodies_mut()[info.ground_body_idx];
             let ground_offset = info.contact_point - ground.get_world_trans().translation;
             ground.add_impulse(
-                None,
                 Impulse::LinearRelPos(ground_stick, ground_offset),
                 true,
                 false,

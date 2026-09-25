@@ -2,44 +2,82 @@ use glam::Vec3A;
 
 use crate::{GameMode, sim::consts};
 
+/// How demos are awarded on car-car contact (see `Arena` bumper logic).
 #[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq)]
 pub enum DemoMode {
+    /// Supersonic + in-cone bumps demolish (teammates spared by default).
     #[default]
     Normal,
+    /// Any car-car contact demolishes.
     OnContact,
+    /// Bumps only, never demos.
     Disabled,
 }
 
+/// Tunable game physics. Start from [`MutatorConfig::new`] for a game mode,
+/// then override individual fields via [`crate::ArenaConfig::with_mutators`].
+///
+/// Units are Unreal units (uu) and seconds unless noted; masses are Bullet
+/// units. `1.0` scales (`ball_hit_extra_force_scale`, `bump_force_scale`)
+/// mean "default Rocket League behavior".
 #[derive(Clone, Copy, Debug)]
 pub struct MutatorConfig {
+    /// Gravity vector in uu/s² (default `(0, 0, -650)`).
     pub gravity: Vec3A,
+    /// Car mass in Bullet units (default 180).
     pub car_mass: f32,
+    /// Ball mass in Bullet units (30, 50 for Snowday puck).
     pub ball_mass: f32,
+    /// Ball speed clamp in uu/s (default 6000).
     pub ball_max_speed: f32,
+    /// Ball linear damping (default 0.03).
     pub ball_drag: f32,
+    /// Sustained jump acceleration in uu/s².
     pub jump_accel: f32,
+    /// Instant jump velocity kick in uu/s.
     pub jump_immediate_force: f32,
+    /// Boost acceleration on ground in uu/s².
     pub boost_accel_ground: f32,
+    /// Boost acceleration in air in uu/s².
     pub boost_accel_air: f32,
+    /// Boost drained per second (0 in Heatseeker = infinite boost).
     pub boost_used_per_second: f32,
+    /// Seconds a demoed car waits before respawning.
     pub respawn_delay: f32,
+    /// Seconds a bumper ignores further bumps after one connects.
     pub bump_cooldown_time: f32,
+    /// Boost tank capacity (default 100).
     pub car_max_boost_amount: f32,
+    /// Boost granted on spawn/kickoff (100 in Heatseeker/Dropshot).
     pub car_spawn_boost_amount: f32,
+    /// Boost granted by a small pad (default 12).
     pub boost_pad_amount_small: f32,
+    /// Boost granted by a big pad (default 100).
     pub boost_pad_amount_big: f32,
+    /// Seconds until a big pad respawns (default 10).
     pub boost_pad_cooldown_big: f32,
+    /// Seconds until a small pad respawns (default 4).
     pub boost_pad_cooldown_small: f32,
 
+    /// Multiplier on the extra car->ball hit impulse (default 1).
     pub ball_hit_extra_force_scale: f32,
+    /// Multiplier on car->car bump impulses (default 1).
     pub bump_force_scale: f32,
+    /// Ball radius in uu (varies by mode, see `consts::ball::get_radius`).
     pub ball_radius: f32,
+    /// Allow flipping without a flip reset.
     pub unlimited_flips: bool,
+    /// Allow double-jumping without leaving the ground first.
     pub unlimited_double_jumps: bool,
+    /// Passively recharge boost (default on in Dropshot).
     pub recharge_boost_enabled: bool,
+    /// Boost recharged per second when enabled.
     pub recharge_boost_per_second: f32,
+    /// Seconds after boosting before recharge starts.
     pub recharge_boost_delay: f32,
+    /// Demo rule (default [`DemoMode::Normal`]).
     pub demo_mode: DemoMode,
+    /// When `false` (default), teammates can't demo each other.
     pub enable_team_demos: bool,
     /// Only used if the game mode has soccar goals (i.e. soccar, heatseeker, snowday)
     pub goal_base_threshold_y: f32,
@@ -52,6 +90,16 @@ impl Default for MutatorConfig {
 }
 
 impl MutatorConfig {
+    /// Defaults for a game mode (Snowday puck mass, Heatseeker infinite
+    /// boost/spawn boost, Dropshot recharge + ball radius, ...).
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use rocketsim::{ArenaConfig, GameMode, MutatorConfig};
+    /// let mutators = MutatorConfig::new(GameMode::Soccar);
+    /// let config = ArenaConfig::new(GameMode::Soccar).with_mutators(mutators);
+    /// ```
     #[must_use]
     pub const fn new(game_mode: GameMode) -> Self {
         Self {

@@ -322,7 +322,6 @@ impl WheelInfo {
 
         let force = raycast_info.contact_normal * base_force_scale;
         cb.add_impulse(
-            Some("WheelsSuspension"),
             Impulse::LinearRelPos(force, contact_point_offset),
             true,
             false,
@@ -343,7 +342,6 @@ impl WheelInfo {
         let contact_up_dot = chassis_trans.matrix3.z_axis.dot(wheel_contact_offset);
         let wheel_rel_pos = wheel_contact_offset - chassis_trans.matrix3.z_axis * contact_up_dot;
         cb.add_impulse(
-            Some("WheelsFriction"),
             Impulse::LinearRelPos(raycast_info.impulse * time_step, wheel_rel_pos),
             true,
             false,

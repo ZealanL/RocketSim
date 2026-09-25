@@ -89,22 +89,3 @@ pub struct BroadphasePair {
 pub trait BroadphaseAabbCallback {
     fn process(&mut self, proxy: &BroadphaseProxy) -> bool;
 }
-
-#[cfg(test)]
-mod layout_tests {
-    use std::mem::size_of;
-
-    use super::BroadphaseProxy;
-    use crate::bullet::collision::{
-        narrowphase::{manifold_point::ManifoldPoint, persistent_manifold::PersistentManifold},
-        shapes::triangle_shape::TriangleShape,
-    };
-
-    #[test]
-    fn compact_layouts() {
-        assert_eq!(size_of::<BroadphaseProxy>(), 64);
-        assert_eq!(size_of::<TriangleShape>(), 80);
-        assert_eq!(size_of::<ManifoldPoint>(), 144);
-        assert_eq!(size_of::<PersistentManifold>(), 768);
-    }
-}

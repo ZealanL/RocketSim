@@ -32,6 +32,12 @@ use crate::{
     sim::{UserInfoTypes, car::car_info::CarInfo},
 };
 
+/// A car in the arena (physics body + cached state).
+///
+/// Get one via `Arena::cars()[idx]`; the id is stable for the arena's life.
+/// `Car` derefs to [`CarInfo`] (`car.idx/team/config`), while simulation
+/// state lives in `Car::get_state()` ([`CarState`]). Prefer the
+/// `Arena::get_car_*/set_car_*` accessors — they handle body sync for you.
 pub struct Car {
     pub(crate) info: CarInfo,
     pub(crate) bullet_vehicle: VehicleRL,
@@ -176,6 +182,7 @@ impl Car {
         self.set_state(rb, &new_state);
     }
 
+    /// Current simulation state (same as `Arena::get_car_state(idx)`).
     #[must_use]
     pub const fn get_state(&self) -> &CarState {
         &self.state
@@ -190,11 +197,13 @@ impl Car {
         );
     }
 
+    /// Hitbox/suspension preset (same as `info.config`).
     #[must_use]
     pub const fn get_config(&self) -> &CarBodyConfig {
         &self.info.config
     }
 
+    /// Queues inputs for the next tick (same as `Arena::set_car_controls`).
     pub const fn set_controls(&mut self, new_controls: CarControls) {
         self.state.controls = new_controls;
     }
@@ -307,7 +316,6 @@ impl Car {
             }
 
             rb.add_impulse(
-                Some("StickyForce"),
                 Impulse::Linear(
                     upwards_dir
                         * sticky_force_scale
@@ -356,7 +364,6 @@ impl Car {
             let dodge_torque = rel_dodge_torque * flip::TORQUE * TICK_TIME;
 
             rb.add_impulse(
-                None,
                 Impulse::Angular(rb.get_world_trans().matrix3 * dodge_torque),
                 false,
                 true,
@@ -396,7 +403,7 @@ impl Car {
             let rb_torque =
                 (torque - damping) * const { air_control::TORQUE_APPLY_SCALE * TICK_TIME };
 
-            rb.add_impulse(None, Impulse::Angular(rb_torque), false, true);
+            rb.add_impulse(Impulse::Angular(rb_torque), false, true);
         }
 
         let throttle_scale = if self.state.controls.boost || self.state.is_boosting {
@@ -408,7 +415,7 @@ impl Car {
             let throttle_force = forward_dir
                 * throttle_scale
                 * const { car_consts::drive::THROTTLE_AIR_ACCEL * UU_TO_BT * TICK_TIME };
-            rb.add_impulse(None, Impulse::Linear(throttle_force), false, true);
+            rb.add_impulse(Impulse::Linear(throttle_force), false, true);
         }
     }
 
@@ -445,18 +452,13 @@ impl Car {
             if self.state.jump_ticks == 1 {
                 // First tick of jumping: apply initial impulse.
                 let jump_start_force = up_dir * mutator_config.jump_immediate_force * UU_TO_BT;
-                rb.add_impulse(
-                    Some("Jump"),
-                    Impulse::Linear(jump_start_force),
-                    false,
-                    false,
-                );
+                rb.add_impulse(Impulse::Linear(jump_start_force), false, false);
                 // Clamp speed after the impulse, as after a dodge impulse.
                 rb.limit_vels(car_consts::MAX_SPEED * UU_TO_BT, car_consts::MAX_ANG_SPEED);
             }
 
             let jump_force = up_dir * mutator_config.jump_accel * const { UU_TO_BT * TICK_TIME };
-            rb.add_impulse(Some("Jump"), Impulse::Linear(jump_force), false, true);
+            rb.add_impulse(Impulse::Linear(jump_force), false, true);
         }
     }
 
@@ -478,7 +480,7 @@ impl Car {
 
                 let force =
                     -self.state.get_up_dir() * const { car_consts::autoflip::IMPULSE * UU_TO_BT };
-                rb.add_impulse(None, Impulse::Linear(force), false, false);
+                rb.add_impulse(Impulse::Linear(force), false, false);
             }
         }
 
@@ -596,23 +598,13 @@ impl Car {
                         let final_delta_vel = initial_dodge_vel.x * forward_dir_2d
                             + initial_dodge_vel.y * right_dir_2d;
 
-                        rb.add_impulse(
-                            None,
-                            Impulse::Linear(final_delta_vel * UU_TO_BT),
-                            false,
-                            false,
-                        );
+                        rb.add_impulse(Impulse::Linear(final_delta_vel * UU_TO_BT), false, false);
                         rb.limit_vels(car_consts::MAX_SPEED * UU_TO_BT, car_consts::MAX_ANG_SPEED);
                     }
                 } else {
                     let jump_start_force =
                         self.state.get_up_dir() * mutator_config.jump_immediate_force * UU_TO_BT;
-                    rb.add_impulse(
-                        Some("double_jump"),
-                        Impulse::Linear(jump_start_force),
-                        false,
-                        false,
-                    );
+                    rb.add_impulse(Impulse::Linear(jump_start_force), false, false);
                     // Clamp speed after the impulse, as after a dodge impulse.
                     rb.limit_vels(car_consts::MAX_SPEED * UU_TO_BT, car_consts::MAX_ANG_SPEED);
                     self.state.has_double_jumped = true;
@@ -682,7 +674,6 @@ impl Car {
         let torque_forward = torque_dir_forward * forward_torque_factor;
 
         rb.add_impulse(
-            None,
             Impulse::Linear(
                 ground_down_dir * const { car_consts::autoroll::FORCE * UU_TO_BT * TICK_TIME },
             ),
@@ -691,7 +682,6 @@ impl Car {
         );
 
         rb.add_impulse(
-            None,
             Impulse::Angular(
                 (torque_forward + torque_right)
                     * const { car_consts::autoroll::TORQUE * TICK_TIME },
@@ -729,7 +719,6 @@ impl Car {
                 };
 
                 rb.add_impulse(
-                    None,
                     Impulse::Linear(accel * self.state.get_forward_dir() * (UU_TO_BT * TICK_TIME)),
                     false,
                     true,
@@ -746,7 +735,6 @@ impl Car {
             };
 
             rb.add_impulse(
-                None,
                 Impulse::Linear(accel * self.state.get_forward_dir() * (UU_TO_BT * TICK_TIME)),
                 false,
                 true,
@@ -796,10 +784,7 @@ impl Car {
         self.state.controls = self.state.controls.clamp();
 
         let forward_speed_uu = rb.get_forward_speed() * BT_TO_UU;
-
         let jump_pressed = self.state.controls.jump && !self.state.prev_controls.jump;
-
-        // TODO: Refactor and move
         let num_wheels_in_contact = self.state.num_wheels_in_contact();
 
         // The wheel contacts only change in `bullet_vehicle.update` below, so

@@ -50,14 +50,20 @@ impl ReplayPlan {
             run_start: 0,
         });
 
-        for index in 1..recording.ticks.len() {
-            let from = &recording.ticks[index - 1];
-            let to = &recording.ticks[index];
+        for (offset, (reset_slot, window)) in resets
+            .iter_mut()
+            .skip(1)
+            .zip(recording.ticks.windows(2))
+            .enumerate()
+        {
+            let index = offset + 1;
+            let from = &window[0];
+            let to = &window[1];
             let needs_state = !frame_is_contiguous(from, to)
                 || tick_is_frozen(from, to)
                 || any_teleport(from, to);
             if needs_state {
-                resets[index] = Some(ReplayReset {
+                *reset_slot = Some(ReplayReset {
                     state_index: index,
                     run_start: run_start(&recording.ticks, index),
                 });
@@ -151,8 +157,13 @@ pub fn run_replay<B: ReplayBenchmarkBackend>(
 
     let start = Instant::now();
     let mut timed_state_restores = 0;
-    for target_index in 1..recording.ticks.len() {
-        if let Some(reset) = plan.resets[target_index] {
+    for (reset, controls) in plan
+        .resets
+        .iter()
+        .skip(1)
+        .zip(prepared_controls.iter().skip(1))
+    {
+        if let Some(reset) = reset {
             timed_state_restores += backends.len();
             for backend in backends.iter_mut() {
                 backend.restore_replay_state(
@@ -163,7 +174,6 @@ pub fn run_replay<B: ReplayBenchmarkBackend>(
                 );
             }
         } else {
-            let controls = &prepared_controls[target_index];
             for backend in backends.iter_mut() {
                 backend.step_simulation(controls);
             }

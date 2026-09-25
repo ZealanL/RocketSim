@@ -1,4 +1,4 @@
-use glam::{Affine3A, Vec3A, Vec4};
+use glam::{Vec3A, Vec4};
 
 use super::convex_internal_shape::ConvexInternalShape;
 use crate::{
@@ -35,8 +35,7 @@ impl SphereShape {
         self.get_radius()
     }
 
-    pub fn get_aabb(&self, t: &Affine3A) -> Aabb {
-        let center = t.translation;
+    pub fn get_aabb(&self, center: Vec3A) -> Aabb {
         let margin = self.get_margin() + SPHERE_RADIUS_MARGIN;
         let extent = Vec3A::splat(margin);
 

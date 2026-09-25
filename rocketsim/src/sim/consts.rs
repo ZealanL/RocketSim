@@ -1,12 +1,19 @@
+//! Game constants: tick rate, unit scales, per-mode arena/car/ball/goal tuning.
+//!
+//! Lengths/speeds are Unreal units (uu) unless the name says `_BT` (Bullet
+//! meters) or the docs say otherwise. Convert with [`BT_TO_UU`]/[`UU_TO_BT`].
+
 use glam::Vec3A;
 
 use crate::{GameMode, sim::linear_piece_curve::LinearPieceCurve};
 
+/// Friction/restitution pair for a physics interaction.
 pub struct PhysicsCoefs {
     pub friction: f32,
     pub restitution: f32,
 }
 
+/// Static kickoff/respawn marker: `x/y` position (uu) + facing yaw (rad).
 #[derive(Clone, Copy, Debug, Default)]
 pub struct CarSpawnPos {
     pub x: f32,
@@ -15,6 +22,7 @@ pub struct CarSpawnPos {
 }
 
 impl CarSpawnPos {
+    /// Builds a spawn marker (`x/y` in uu, `yaw_ang` in radians, Blue side).
     #[inline]
     #[must_use]
     pub const fn new(x: f32, y: f32, yaw_ang: f32) -> Self {
@@ -39,6 +47,7 @@ pub const TICK_TIME: f32 = 1.0 / TICK_RATE;
 /// The z-velocity added by gravity each second
 pub const GRAVITY_Z: f32 = -650.0;
 
+/// Arena collision, bounds, and goal volumes per game mode.
 pub mod arena {
     use glam::Vec3A;
 
@@ -50,6 +59,7 @@ pub mod arena {
         restitution: 0.3,
     };
 
+    /// Arena outer bounds (uu) including floor height (Dropshot `z=1.5`).
     #[must_use]
     pub const fn get_aabb(game_mode: GameMode) -> Aabb {
         let (max_x, max_y, max_z) = match game_mode {
@@ -72,6 +82,7 @@ pub mod arena {
     }
 }
 
+/// Car mass, driving, jump/flip, boost, demo/bump, and spawn tuning.
 pub mod car {
     use super::PhysicsCoefs;
 
@@ -217,6 +228,8 @@ pub mod car {
         pub const REST_Z: f32 = 17.0;
         pub const RESPAWN_Z: f32 = 36.0;
 
+        /// Kickoff spots per mode (Blue side; Orange is mirrored 180°).
+        /// Extra cars overflow to [`get_respawn_locations`] with a +250 uu Y shift.
         #[must_use]
         pub const fn get_kickoff_spawn_locations(game_mode: GameMode) -> &'static [CarSpawnPos] {
             pub const LOCATIONS_SOCCAR: [CarSpawnPos; 5] = [
@@ -257,6 +270,7 @@ pub mod car {
 
         pub const RESPAWN_TIME: f32 = 3.0;
 
+        /// Demo-respawn spots per mode (Blue side; Orange is mirrored 180°).
         #[must_use]
         pub const fn get_respawn_locations(game_mode: GameMode) -> &'static [CarSpawnPos] {
             const LOCATIONS_SOCCAR: [CarSpawnPos; 4] = [
@@ -287,10 +301,12 @@ pub mod car {
     }
 }
 
+/// Ball/puck radius, mass, drag, bounce, and kickoff-launch tuning.
 pub mod ball {
     use super::PhysicsCoefs;
     use crate::{GameMode, consts::snowday};
 
+    /// Ball radius in uu per mode (Snowday returns the puck radius).
     #[must_use]
     pub const fn get_radius(game_mode: GameMode) -> f32 {
         pub const RADIUS_SOCCAR: f32 = 91.25;
@@ -333,6 +349,7 @@ pub mod ball {
     }
 }
 
+/// Goal dimensions/scoring thresholds (uu) for Soccar and Hoops.
 pub mod goal {
     use glam::Vec3A;
 
@@ -345,6 +362,7 @@ pub mod goal {
 
     pub const HOOPS_GOAL_SCORE_THRESHOLD_Z: f32 = 270.0;
 
+    /// Soccar goal volume for `goal_team` (uu, includes depth behind the line).
     #[must_use]
     pub const fn get_goal_aabb(goal_team: Team) -> Aabb {
         const FRONT_Y: f32 = SOCCAR_GOAL_SCORE_BASE_THRESHOLD_Y;
@@ -360,6 +378,7 @@ pub mod goal {
         )
     }
 
+    /// Center of the goal mouth for `goal_team` (uu).
     #[must_use]
     pub const fn get_goal_face_center(goal_team: Team) -> Vec3A {
         Vec3A::new(
@@ -370,6 +389,7 @@ pub mod goal {
     }
 }
 
+/// Bullet vehicle suspension/wheel solver constants (internal tuning).
 pub mod bullet_vehicle {
     pub const SUSPENSION_FORCE_SCALE_FRONT: f32 = 36.0 - (1.0 / 4.);
     pub const SUSPENSION_FORCE_SCALE_BACK: f32 = 54.0 + (1.0 / 4.) + (1.5 / 100.);
@@ -380,6 +400,7 @@ pub mod bullet_vehicle {
     pub const SUSPENSION_SUBTRACTION: f32 = 0.05;
 }
 
+/// Piecewise driving/bump curves (sampled with `get_output`, clamped at ends).
 pub mod curves {
     use super::LinearPieceCurve;
 
@@ -431,6 +452,7 @@ pub mod curves {
     ]);
 }
 
+/// Heatseeker seek speeds, turn blends, wall-bounce rules, kickoff state.
 pub mod heatseeker {
     use std::f32::consts::PI;
 
@@ -468,6 +490,7 @@ pub mod heatseeker {
     pub const BALL_START_VEL: Vec3A = Vec3A::new(0., -65., 650.);
 }
 
+/// Snowday puck shape, mass, stick force, and bounce coefficients.
 pub mod snowday {
     use super::PhysicsCoefs;
 
@@ -484,6 +507,7 @@ pub mod snowday {
     };
 }
 
+/// Dropshot launch, charge thresholds, damage timing, and tile geometry.
 pub mod dropshot {
     use super::{BT_TO_UU, Vec3A};
 
@@ -521,10 +545,12 @@ pub mod dropshot {
     ];
 }
 
+/// Boost-pad hitbox sizes, cooldowns/amounts, and per-mode layouts (uu).
 pub mod boost_pads {
     use super::{GameMode, Vec3A};
 
     // TODO: Do something about repetitive small/big pairs
+    /// Pad trigger cylinder height (uu).
     pub const CYL_HEIGHT: f32 = 95.0;
     pub const CYL_RAD_BIG: f32 = 208.0;
     pub const CYL_RAD_SMALL: f32 = 144.0;
@@ -536,6 +562,9 @@ pub mod boost_pads {
     pub const BOOST_AMOUNT_BIG: f32 = 100.0;
     pub const BOOST_AMOUNT_SMALL: f32 = 12.0;
 
+    /// Pad positions (uu) for a mode/size class. Soccar layouts cover
+    /// Heatseeker/Snowday/Dropshot fallbacks; Hoops has its own 14+6.
+    /// Order is arena order (do not rely on big/small grouping).
     #[must_use]
     pub const fn get_locations(game_mode: GameMode, is_big: bool) -> &'static [Vec3A] {
         const LOCS_SMALL_SOCCAR: [Vec3A; 28] = [
@@ -621,6 +650,7 @@ pub mod boost_pads {
     }
 }
 
+/// Network quantization scales for position/velocity/angular velocity.
 pub mod quantize {
     pub const POS_SCALE: f32 = 100.0;
     pub const VEL_SCALE: f32 = 100.0;

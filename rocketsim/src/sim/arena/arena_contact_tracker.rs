@@ -23,16 +23,31 @@ pub(crate) struct ContactRecord {
     pub manifold_point: ManifoldPoint,
 }
 
+#[derive(Debug, Copy, Clone)]
+pub(crate) struct BallWorldContactRecord {
+    pub rb_idx: usize,
+    pub contact_point: glam::Vec3A,
+    pub contact_normal: glam::Vec3A,
+}
+
 // Track contacts reported by Bullet callbacks.
 pub(crate) struct ArenaContactTracker {
     collision_records: Vec<ContactRecord>,
+    ball_world_records: Vec<BallWorldContactRecord>,
+    ball_only: bool,
 }
 
 impl ArenaContactTracker {
     pub fn new() -> Self {
         Self {
             collision_records: Vec::with_capacity(4), // Reserve space for common contact counts.
+            ball_world_records: Vec::with_capacity(4),
+            ball_only: false,
         }
+    }
+
+    pub fn set_ball_only(&mut self, ball_only: bool) {
+        self.ball_only = ball_only;
     }
 
     pub const fn num_records(&self) -> usize {
@@ -43,8 +58,17 @@ impl ArenaContactTracker {
         &self.collision_records[idx]
     }
 
+    pub const fn num_ball_world_records(&self) -> usize {
+        self.ball_world_records.len()
+    }
+
+    pub fn get_ball_world_record(&self, idx: usize) -> &BallWorldContactRecord {
+        &self.ball_world_records[idx]
+    }
+
     pub fn clear_records(&mut self) {
         self.collision_records.clear();
+        self.ball_world_records.clear();
     }
 }
 
@@ -88,17 +112,24 @@ impl ContactAddedCallback for ArenaContactTracker {
         }
 
         // Record contact data before edge adjustment changes the manifold.
-        if manifold_point.is_special {
-            // Save the raw normal for special-contact aggregation.
-            manifold_point.raw_normal_world_on_b = manifold_point.normal_world_on_b;
+        if self.ball_only
+            && user_idx_a == UserInfoTypes::Ball
+            && user_idx_b == UserInfoTypes::None
+            && body_b.is_static_obj()
+        {
+            self.ball_world_records.push(BallWorldContactRecord {
+                rb_idx: body_a.world_array_idx,
+                contact_point: manifold_point.pos_world_on_b,
+                contact_normal: manifold_point.normal_world_on_b,
+            });
+        } else {
+            self.collision_records.push(ContactRecord {
+                is_swap: should_swap,
+                rb_idx_a: body_a.world_array_idx,
+                rb_idx_b: body_b.world_array_idx,
+                manifold_point: *manifold_point,
+            });
         }
-
-        self.collision_records.push(ContactRecord {
-            is_swap: should_swap,
-            rb_idx_a: body_a.world_array_idx,
-            rb_idx_b: body_b.world_array_idx,
-            manifold_point: *manifold_point,
-        });
 
         if let Some(idx) = idx {
             adjust_internal_edge_contacts(manifold_point, body_b, idx);

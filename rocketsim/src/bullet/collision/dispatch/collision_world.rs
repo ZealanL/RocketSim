@@ -57,6 +57,35 @@ impl CollisionWorld {
     fn update_aabbs(&mut self) {
         const CBT: Vec3A = Vec3A::splat(CONTACT_BREAKING_THRESHOLD);
 
+        // Ball-only arenas have one dynamic body after the static prefix.
+        if self.num_skippable_statics + 1 == self.collision_objs.len()
+            && !self.collision_objs[self.num_skippable_statics].is_static_obj()
+        {
+            let body_idx = self.num_skippable_statics;
+            let aabb = {
+                let col_obj = &self.collision_objs[body_idx];
+                let mut aabb = col_obj
+                    .get_collision_shape()
+                    .get_aabb(col_obj.get_world_trans());
+                aabb.min -= CBT;
+                aabb.max += CBT;
+
+                let mut aabb2 = col_obj
+                    .get_collision_shape()
+                    .get_aabb(&col_obj.interp_world_trans);
+                aabb2.min -= CBT;
+                aabb2.max += CBT;
+                aabb += aabb2;
+                aabb
+            };
+            self.broadphase_pair_cache.set_aabb(
+                &self.collision_objs[body_idx],
+                self.collision_objs[body_idx].get_broadphase_handle(),
+                aabb,
+            );
+            return;
+        }
+
         let mut prev_is_static = true;
         for (i, col_obj) in self
             .collision_objs
@@ -105,6 +134,14 @@ impl CollisionWorld {
         contact_added_callback: &mut T,
     ) {
         self.update_aabbs();
+
+        if self.broadphase_pair_cache.dispatch_singleton_pairs(
+            &self.collision_objs,
+            &mut self.dispatcher1,
+            contact_added_callback,
+        ) {
+            return;
+        }
 
         self.broadphase_pair_cache.calculate_overlapping_pairs();
         self.dispatcher1.dispatch_all_collision_pairs(

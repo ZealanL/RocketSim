@@ -1,5 +1,8 @@
+//! Small `Vec3A` geometry helpers (normals, projections, segment queries).
+
 use glam::Vec3A;
 
+/// Triangle face normal, or `None` for degenerate (zero-area) triangles.
 #[must_use]
 pub fn try_calc_tri_normal(points: &[Vec3A; 3]) -> Option<Vec3A> {
     (points[1] - points[0])
@@ -65,6 +68,7 @@ pub fn closest_points_between_segments(
     (point_on_ab_closest_to_cd + point_on_cd_closest_to_ab) / 2.0
 }
 
+/// Drops the `z` component (planar 2D math in the `xy` plane).
 #[must_use]
 pub fn to_2d(v: Vec3A) -> Vec3A {
     v.truncate().extend(0.0).to_vec3a()

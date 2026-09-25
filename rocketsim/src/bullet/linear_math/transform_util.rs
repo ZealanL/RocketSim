@@ -24,16 +24,20 @@ pub fn integrate_trans(
         angle = ANGULAR_MOTION_THRESHOLD / time_step;
     }
 
-    let axis = if angle < 0.001 {
-        ang_vel
-            * (0.5 * time_step - time_step * time_step * time_step * 0.020_833_334)
-            * angle
-            * angle
+    let half_angle = angle * time_step * 0.5;
+    let (axis, cos_half_angle) = if angle < 0.001 {
+        (
+            ang_vel
+                * (0.5 * time_step - time_step * time_step * time_step * 0.020_833_334)
+                * angle
+                * angle,
+            half_angle.cos(),
+        )
     } else {
-        ang_vel * ((0.5 * angle * time_step).sin() / angle)
+        (ang_vel * (half_angle.sin() / angle), half_angle.cos())
     };
 
-    let dorn = Quat::from_xyzw(axis.x, axis.y, axis.z, (angle * time_step * 0.5).cos());
+    let dorn = Quat::from_xyzw(axis.x, axis.y, axis.z, cos_half_angle);
     *cur_rot = (dorn * *cur_rot).normalize();
     cur_trans.matrix3 = Mat3A::from_quat(*cur_rot);
 }
