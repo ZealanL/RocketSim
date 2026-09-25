@@ -181,6 +181,10 @@ pub fn generate_internal_edge_info(bvh: &Tree, mesh_interface: &TriangleMesh) ->
     triangle_info_map
 }
 
+// Target clamps t to [1e-05, 0.99999]. Use exact f32 bits.
+const EDGE_T_MIN: f32 = f32::from_bits(0x3727_c5ac);
+const EDGE_T_MAX: f32 = f32::from_bits(0x3f7f_ff58);
+
 fn nearst_point_in_line_segment(point: Vec3A, line0: Vec3A, line1: Vec3A) -> Vec3A {
     let line_delta = line1 - line0;
 
@@ -188,7 +192,7 @@ fn nearst_point_in_line_segment(point: Vec3A, line0: Vec3A, line1: Vec3A) -> Vec
         line0
     } else {
         let delta = (point - line0).dot(line_delta) / line_delta.dot(line_delta);
-        line0 + line_delta * delta.clamp(0.0, 1.0)
+        line0 + line_delta * delta.clamp(EDGE_T_MIN, EDGE_T_MAX)
     }
 }
 
