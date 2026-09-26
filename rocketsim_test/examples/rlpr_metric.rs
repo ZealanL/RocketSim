@@ -150,6 +150,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     println!("Categories overlap. Support counts car-ticks (cars x ticks).");
     println!("Dodge deadzone: {:.2}", args.dodge_deadzone);
+    #[cfg(feature = "v2")]
+    println!("v2 backend always uses Octane (no header body selection).");
 
     v3::init();
     let mut v3_backend = v3::V3Backend::with_dodge_deadzone(args.dodge_deadzone);
@@ -166,6 +168,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for rlpr_file in rlpr_files.iter() {
         let recording = Recording::from_file(rlpr_file)
             .map_err(|err| format!("{}: {err}", rlpr_file.display()))?;
+        v3_backend
+            .set_body_from_info(&recording.info)
+            .map_err(|err| format!("{}: {err}", rlpr_file.display()))?;
+        println!(
+            "{}: v3 body {}",
+            rlpr_file.display(),
+            v3_backend.body_name()
+        );
         let num_cars = recording
             .ticks
             .first()
@@ -198,8 +208,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .into());
         }
 
-        // One backend serves every recording; `reset` rebuilds the arena
-        // when the car count changes between recordings.
+        // One backend serves every recording. The header-selected body plus
+        // `reset` rebuild the arena when the preset or the car count changes
+        // between recordings. The v2 backend has no header selection and
+        // always runs Octane.
         let v3_outcome = common::evaluate(
             &mut v3_backend,
             &recording.ticks,
