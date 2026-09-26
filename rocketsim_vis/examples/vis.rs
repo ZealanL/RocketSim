@@ -1,3 +1,10 @@
+//! Interactive driveable demo: WASD + mouse, Q/E roll, Shift handbrake.
+//!
+//! * `Backspace` resets to kickoff, `2` dribbles the ball, `4` launches it.
+//! * Visualizer controls: `C` cycles cameras, `Space` toggles ball-cam.
+//!
+//! Run with: `cargo run -p rocketsim_vis --example vis`
+
 use device_query::{DeviceQuery, DeviceState, Keycode};
 use glam::Vec3A;
 use rocketsim::{

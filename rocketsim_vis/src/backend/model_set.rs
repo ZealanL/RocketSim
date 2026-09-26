@@ -5,6 +5,11 @@ use rustc_hash::FxHashMap;
 
 use crate::backend::Model;
 
+/// All models packed into one GPU vertex buffer, addressed by name.
+///
+/// Names are the keys passed to [`ModelSet::new`], e.g. `"ball"`, `"arena"`,
+/// `"car_octane"`. [`VisRenderState`](crate::backend::VisRenderState) refers
+/// to models by these names.
 #[derive(Debug, Clone)]
 pub struct ModelSet {
     /// Maps each model name to the start offset and length in the buffers
@@ -14,6 +19,7 @@ pub struct ModelSet {
 }
 
 impl ModelSet {
+    /// Packs `models` into one buffer, remembering each name's vertex range.
     pub fn new(models: &[(&str, Model)]) -> Self {
         let mut index_map = FxHashMap::default();
         let mut concat_model = Model::empty();
@@ -72,10 +78,12 @@ impl ModelSet {
         ]
     }
 
+    /// Vertex range `(start, end)` for `model_name`. Panics on unknown names.
     pub fn get_model_draw_range(&self, model_name: &str) -> (usize, usize) {
         self.index_map[model_name]
     }
 
+    /// Total packed vertex count.
     pub fn num_verts(&self) -> usize {
         self.concat_model.num_verts()
     }

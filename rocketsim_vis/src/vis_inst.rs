@@ -14,6 +14,16 @@ use crate::{
     vis_asset_loader,
 };
 
+/// Built-in [`rocketsim::Vis`] implementation: renders the arena, cars, ball,
+/// boost pads, trails, and HUD overlay.
+///
+/// You normally don't construct this directly — use
+/// [`ArenaVisExt::set_vis_enabled`](crate::ArenaVisExt) instead.
+/// Each `update` rebuilds a [`VisRenderState`](crate::backend::VisRenderState)
+/// and shares it with the renderer thread.
+///
+/// Window controls handled here: `C` cycles birds-eye / car cameras,
+/// `Space` toggles ball-cam while following a car.
 pub struct VisInst {
     game_mode: GameMode,
     shared_state: SharedVisRenderState,
@@ -28,6 +38,11 @@ pub struct VisInst {
 }
 
 impl VisInst {
+    /// Creates the renderer window (on a background thread) and loads the
+    /// built-in models/textures for `game_mode`.
+    ///
+    /// Prefer [`ArenaVisExt::set_vis_enabled`](crate::ArenaVisExt) so the
+    /// instance is owned by the arena and updated automatically each tick.
     pub fn new(game_mode: GameMode) -> Self {
         let arena_meshes = rocketsim::get_arena_collision_mesh_files(game_mode);
 

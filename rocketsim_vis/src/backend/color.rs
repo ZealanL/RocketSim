@@ -1,8 +1,15 @@
+/// Linear RGBA color with components in 0-1.
+///
+/// Used for lines, 2D shapes, and trail effects.
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Color {
+    /// Red channel (0-1).
     pub r: f32,
+    /// Green channel (0-1).
     pub g: f32,
+    /// Blue channel (0-1).
     pub b: f32,
+    /// Alpha channel (0-1, 0 = transparent).
     pub a: f32,
 }
 
@@ -22,18 +29,22 @@ impl Color {
 
     /////////////////////
 
+    /// Creates a color from 0-1 RGBA components.
     pub const fn new(r: f32, g: f32, b: f32, a: f32) -> Self {
         Self { r, g, b, a }
     }
 
+    /// Creates an opaque color from 0-1 RGB components.
     pub const fn new_rgb(r: f32, g: f32, b: f32) -> Self {
         Self::new(r, g, b, 1.0)
     }
 
+    /// Returns `[r, g, b, a]`.
     pub const fn to_array(self) -> [f32; 4] {
         [self.r, self.g, self.b, self.a]
     }
 
+    /// Returns `true` if all components are in 0-1.
     pub const fn is_valid(self) -> bool {
         let vals = self.to_array();
         let mut i = 0;
@@ -48,10 +59,12 @@ impl Color {
         true
     }
 
+    /// Copies the color with a new alpha value.
     pub const fn with_alpha(&self, alpha: f32) -> Self {
         Self::new(self.r, self.g, self.b, alpha)
     }
 
+    /// Linearly interpolates to `other` by `t` (0-1).
     pub const fn lerp(self, other: Self, t: f32) -> Self {
         let it = 1.0 - t;
         Self::new(
