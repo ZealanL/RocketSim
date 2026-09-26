@@ -261,6 +261,8 @@ pub fn tick_is_kickoff_stasis(from: &TickRecord, to: &TickRecord) -> bool {
 
 /// Target tick indices with a kickoff-stasis incoming transition.
 /// One entry per detected transition.
+/// The aggregate-only CLI does not report per-file spans; unit tests cover this.
+#[allow(dead_code)]
 pub fn kickoff_stasis_targets(ticks: &[TickRecord]) -> Vec<usize> {
     let mut out = Vec::new();
     for i in 1..ticks.len() {
@@ -624,6 +626,16 @@ impl CategoryStats {
     pub fn rate(&self) -> f64 {
         pass_rate(self.passed, self.support)
     }
+
+    /// Fold another aggregate into this one. Support, passes, error mass,
+    /// and max merge exactly; `first_fail_tick` is left untouched because
+    /// tick indices are per-recording and meaningless once combined.
+    pub fn merge(&mut self, other: &CategoryStats) {
+        self.support += other.support;
+        self.passed += other.passed;
+        self.sum_norm += other.sum_norm;
+        self.max_norm = self.max_norm.max(other.max_norm);
+    }
 }
 
 /// Per-category report. Contact categories overlap.
@@ -671,6 +683,19 @@ impl EvalReport {
             if labels.contains(category) {
                 self.for_category_mut(category).add(tick_index, norm_error);
             }
+        }
+    }
+
+    /// Fold another recording's report into this one for a cross-recording
+    /// aggregate. Rates and means stay exact (support-weighted); max takes
+    /// the worst. `first_fail_tick` is cleared: tick indices are
+    /// per-recording, so a combined first-fail tick would be meaningless
+    /// and prints as `-`.
+    pub fn merge(&mut self, other: &EvalReport) {
+        for category in ContactCategory::ALL {
+            let stats = self.for_category_mut(category);
+            stats.merge(other.for_category(category));
+            stats.first_fail_tick = None;
         }
     }
 }
