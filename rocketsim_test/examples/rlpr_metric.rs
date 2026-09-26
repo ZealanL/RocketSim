@@ -19,13 +19,18 @@ mod v3;
 /// Segmented RocketSim replay metric against RLPR recordings.
 /// Scores each car against its own trajectory. All cars share the sim.
 /// Accepts several recordings in one run (e.g. the bundled Wisp 3v3 plus
-/// Daizen 2v2 and PartyCannon 3v3 captures) and prints a single aggregate
-/// table with all car-ticks added up.
+/// Daizen 2v2 and PartyCannon 3v3 captures) and prints one aggregate
+/// table with all car-ticks added up. Use `--per-recording` to also print
+/// a table for each file.
 #[derive(Parser)]
 struct Args {
     /// RLPR recording files. Uses every bundled capture present in
     /// `rocketsim_test/recordings` by default.
     rlpr_files: Vec<PathBuf>,
+
+    /// Print one table per recording in addition to the aggregate table.
+    #[arg(long)]
+    per_recording: bool,
 
     /// Ticks per segment.
     #[arg(long, default_value_t = 120)]
@@ -92,6 +97,14 @@ fn metric_value(support: usize, value: f64) -> String {
     } else {
         format!("{value:.6}")
     }
+}
+
+fn print_table_header() {
+    println!(
+        "{:<7} {:<15} {:>9} {:>9} {:>9} {:>12} {:>12} {:>12}",
+        "Backend", "Category", "Support", "Passed", "Pass %", "Mean norm", "Max norm", "First fail"
+    );
+    println!("{}", "-".repeat(102));
 }
 
 fn print_report(backend: &str, report: &common::EvalReport) {
@@ -227,33 +240,47 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         skipped_transitions += v3_outcome.skipped_transitions;
 
         #[cfg(feature = "v2")]
-        {
-            let v2_outcome = common::evaluate(
-                &mut v2_backend,
-                &recording.ticks,
-                &segments,
-                config.warmup_ticks,
-                args.reset_each_tick,
-                args.reset_warmup,
-                args.use_sim_events,
-                rocketsim_test::rlpr::recording_has_boost_state(recording.version),
-                rocketsim_test::rlpr::recording_has_handbrake_state(recording.version),
+        let v2_outcome = common::evaluate(
+            &mut v2_backend,
+            &recording.ticks,
+            &segments,
+            config.warmup_ticks,
+            args.reset_each_tick,
+            args.reset_warmup,
+            args.use_sim_events,
+            rocketsim_test::rlpr::recording_has_boost_state(recording.version),
+            rocketsim_test::rlpr::recording_has_handbrake_state(recording.version),
+        );
+        #[cfg(feature = "v2")]
+        combined_v2.merge(&v2_outcome.report);
+
+        if args.per_recording {
+            println!("\nRecording: {}", rlpr_file.display());
+            println!(
+                "Kickoff stasis ({}): {} transitions stepped but unscored.",
+                common::KICKOFF_STASIS_RULE,
+                v3_outcome.skipped_transitions,
             );
-            combined_v2.merge(&v2_outcome.report);
+            print_table_header();
+            print_report("v3", &v3_outcome.report);
+            #[cfg(feature = "v2")]
+            {
+                println!();
+                print_report("v2", &v2_outcome.report);
+            }
         }
     }
 
     println!();
+    if args.per_recording {
+        println!("Combined recordings:");
+    }
     println!(
         "Kickoff stasis ({}): {} transitions stepped but unscored.",
         common::KICKOFF_STASIS_RULE,
         skipped_transitions,
     );
-    println!(
-        "{:<7} {:<15} {:>9} {:>9} {:>9} {:>12} {:>12} {:>12}",
-        "Backend", "Category", "Support", "Passed", "Pass %", "Mean norm", "Max norm", "First fail"
-    );
-    println!("{}", "-".repeat(102));
+    print_table_header();
     print_report("v3", &combined_v3);
     #[cfg(feature = "v2")]
     {
@@ -262,4 +289,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn per_recording_is_opt_in() {
+        let defaults = Args::try_parse_from(["rlpr_metric"]).unwrap();
+        assert!(!defaults.per_recording);
+
+        let selected =
+            Args::try_parse_from(["rlpr_metric", "--per-recording", "wisp.rlpr", "daizen.rlpr"])
+                .unwrap();
+        assert!(selected.per_recording);
+        assert_eq!(selected.rlpr_files.len(), 2);
+    }
 }
