@@ -10,7 +10,7 @@ egui-miniquad = "0.16.0"
 glam.workspace = true
 miniquad = "0.4.8"
 png = "0.18.0"
-rocketsim = { path = "../rocketsim" }
+rocketsim = { path = "../rocketsim", version = "0.1.0" }
 rustc-hash.workspace = true
 
 [dev-dependencies]
