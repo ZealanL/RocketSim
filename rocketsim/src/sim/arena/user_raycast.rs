@@ -25,3 +25,14 @@ pub struct RaycastHitInfo {
     /// What kind of object was hit.
     pub user_info: UserInfoType,
 }
+
+impl Default for RaycastHitInfo {
+    fn default() -> Self {
+        RaycastHitInfo {
+            hit_point: Vec3A::ZERO,
+            hit_normal: Vec3A::Z,
+            hit_fraction: 0.0,
+            user_info: UserInfoType::None,
+        }
+    }
+}
