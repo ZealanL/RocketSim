@@ -33,10 +33,10 @@ use crate::{
     },
     consts::{self, BT_TO_UU, TICK_RATE, TICK_TIME, UU_TO_BT},
     make_tile_shapes,
-    shared::quantize,
+    shared::{Aabb, quantize},
     sim::{
         ArenaEvent, Ball, BallState, BoostPad, CarHitBallEvent, CarHitCarEvent, CarHitWorldEvent,
-        DemoMode, UserInfoType, arena::ArenaEventList,
+        CarLandedEvent, DemoMode, UserInfoType, arena::ArenaEventList,
     },
 };
 
@@ -587,13 +587,20 @@ impl Arena {
         // Keep resting balls active so same-tick contacts can affect them.
 
         if !self.ball_only {
-            for car in &mut self.cars {
-                car.pre_tick_update(
+            for car_idx in 0..self.cars.len() {
+                let was_on_ground = self.cars[car_idx].state.is_on_ground;
+                self.cars[car_idx].pre_tick_update(
                     &mut self.bullet_world,
                     &mut self.rng,
                     self.config.game_mode,
                     &self.config.mutators,
                 );
+                if !was_on_ground && self.cars[car_idx].state.is_on_ground {
+                    self.events.push(ArenaEvent::CarLanded(CarLandedEvent {
+                        car_idx,
+                        wheels: self.cars[car_idx].state.wheels_with_contact,
+                    }));
+                }
             }
         }
 

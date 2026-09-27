@@ -2,7 +2,7 @@ use std::ops::{Deref, DerefMut};
 
 use glam::{Mat3A, Vec3A};
 
-use crate::{CarControls, PhysState, consts};
+use crate::{CarControls, PhysState, RaycastHitInfo, consts};
 
 /// Full mutable car simulation state.
 ///
@@ -19,10 +19,9 @@ pub struct CarState {
     pub prev_controls: CarControls,
     /// True if 3 or more wheels have contact
     pub is_on_ground: bool,
-    /// Whether each of the 4 wheels have contact
-    /// First two are front
-    /// If your car has 3 wheels, the 4th bool will always be false
-    pub wheels_with_contact: [bool; 4],
+    /// Per-wheel contact details (`None` = that wheel is airborne).
+    /// First two are front. If your car has 3 wheels, the 4th is always `None`.
+    pub wheels_with_contact: [Option<RaycastHitInfo>; 4],
     /// Whether we jumped to get into the air
     ///
     /// Can be false while airborne, if we left the ground with a flip reset
@@ -104,7 +103,7 @@ impl CarState {
         controls: CarControls::DEFAULT,
         prev_controls: CarControls::DEFAULT,
         is_on_ground: true,
-        wheels_with_contact: [false; 4],
+        wheels_with_contact: [None; 4],
         has_jumped: false,
         has_double_jumped: false,
         has_flipped: false,
@@ -159,8 +158,8 @@ impl CarState {
     #[must_use]
     pub fn num_wheels_in_contact(&self) -> usize {
         let mut result = 0;
-        for b in self.wheels_with_contact {
-            if b {
+        for w in self.wheels_with_contact {
+            if w.is_some() {
                 result += 1;
             }
         }
