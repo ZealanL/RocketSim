@@ -1,21 +1,32 @@
 //! V3 replay backend for RLPR recordings.
 //!
-//! Uses one Octane car per recorded car in Soccar (Blue first, then Orange).
+//! Uses one car per recorded car in Soccar (Blue first, then Orange),
+//! with the body preset from the recording header.
 //! Reset restores every car and ball state from the start tick.
 //! Step applies each recorded car's controls for one tick.
 
+use glam::Vec3A;
 use rocketsim::{
     Arena, ArenaConfig, ArenaEvent, ArenaMemWeightMode, CarBodyConfig, CarControls, CarState,
-    GameMode, PhysState, Team,
+    GameMode, HITBOX_OFFSETS, HITBOX_SIZES, PhysState, Team, consts::BT_TO_UU,
 };
-use rocketsim_test::rlpr::{cpp_records::ControlsRecord, tick_record::TickRecord};
+use rocketsim_test::rlpr::{
+    cpp_records::{ControlsRecord, RecordingInfo},
+    tick_record::TickRecord,
+};
 
 use super::common::{BodySnapshot, ReplayBackend, SimContactEvents, Snapshot};
 
-/// Sim holder: one Octane per recorded car in Soccar.
+/// Sim holder: one car per recorded car in Soccar.
+///
+/// The body preset comes from [`V3Backend::set_body_from_info`]; it stays
+/// Octane until the caller selects a header.
 pub struct V3Backend {
     arena: Arena,
     car_ids: Vec<usize>,
+    body: CarBodyConfig,
+    body_name: &'static str,
+    arena_body: Option<CarBodyConfig>,
     dodge_deadzone: f32,
     mem_weight_mode: ArenaMemWeightMode,
 }
@@ -49,6 +60,9 @@ impl V3Backend {
                 ArenaConfig::new(GameMode::Soccar).with_mem_weight_mode(mem_weight_mode),
             ),
             car_ids: Vec::new(),
+            body: CarBodyConfig::OCTANE,
+            body_name: "Octane",
+            arena_body: None,
             dodge_deadzone,
             mem_weight_mode,
         }
@@ -60,11 +74,31 @@ impl V3Backend {
         )
     }
 
-    /// Octane config with this backend's dodge deadzone.
+    /// Header-selected body config with this backend's dodge deadzone.
     fn car_config(&self) -> CarBodyConfig {
-        let mut config = CarBodyConfig::OCTANE;
+        let mut config = self.body;
         config.dodge_deadzone = self.dodge_deadzone;
         config
+    }
+
+    /// Select the sim body from one recording header.
+    ///
+    /// Call once per recording before `reset`. The next `reset`/`set_state`
+    /// rebuilds the arena when the preset differs, even when the car count
+    /// is unchanged. Unknown headers return an error and leave the previous
+    /// preset in place: the metric must fail rather than score a guessed
+    /// body. The header samples the first recorded car only, so a
+    /// mixed-body roster is undetectable here.
+    pub fn set_body_from_info(&mut self, info: &RecordingInfo) -> Result<&'static str, String> {
+        let (preset, name) = body_from_info(info)?;
+        self.body = preset;
+        self.body_name = name;
+        Ok(name)
+    }
+
+    /// Preset chosen by the last [`V3Backend::set_body_from_info`] call.
+    pub fn body_name(&self) -> &'static str {
+        self.body_name
     }
 
     /// Team per slot: Blue first, then alternating.
@@ -92,14 +126,19 @@ impl V3Backend {
         }
     }
 
-    /// Rebuild the arena when the car count changes.
+    /// Rebuild the arena when the car count or the header-selected body changes.
+    ///
+    /// The body check matters when consecutive recordings hold the same car
+    /// count with different presets: the ids would still line up, but the
+    /// hitbox and wheels would stay wrong without a rebuild.
     fn ensure_cars(&mut self, num_cars: usize) {
-        if self.car_ids.len() != num_cars {
+        let config = self.car_config();
+        if self.car_ids.len() != num_cars || self.arena_body != Some(config) {
             self.arena = self.new_arena();
-            let config = self.car_config();
             self.car_ids = (0..num_cars)
                 .map(|slot| self.arena.add_car(Self::team_for_slot(slot), config))
                 .collect();
+            self.arena_body = Some(config);
         }
     }
 
@@ -128,6 +167,54 @@ impl V3Backend {
         }
         let _ = self.arena.step_tick();
     }
+}
+
+/// Body presets in [`HITBOX_SIZES`]/[`HITBOX_OFFSETS`] order.
+const BODY_PRESETS: [CarBodyConfig; 7] = [
+    CarBodyConfig::OCTANE,
+    CarBodyConfig::DOMINUS,
+    CarBodyConfig::PLANK,
+    CarBodyConfig::BREAKOUT,
+    CarBodyConfig::HYBRID,
+    CarBodyConfig::MERC,
+    CarBodyConfig::PSYCLOPS,
+];
+
+/// Preset names in [`BODY_PRESETS`] order.
+const BODY_PRESET_NAMES: [&str; 7] = [
+    "Octane", "Dominus", "Plank", "Breakout", "Hybrid", "Merc", "Psyclops",
+];
+
+/// Largest header-vs-preset mismatch that still counts as a match, in uu.
+///
+/// The header stores f32 bounds in BT; scaling by [`BT_TO_UU`] leaves about
+/// 4e-4 uu of rounding on the recorded captures. The closest presets
+/// (Octane and Psyclops sizes) differ by 0.134 uu, so 0.01 separates every
+/// known preset with wide margin on both sides.
+const BODY_MATCH_TOL_UU: f32 = 0.01;
+
+/// Match recording header hitbox bounds to one known body preset.
+///
+/// Scales the `RecordingInfo` min/max from BT to uu, then compares full size
+/// and center offset against every known preset. Unknown bounds are an
+/// error: the metric must fail rather than score a guessed body. The header
+/// samples the first recorded car only, so a mixed-body roster or a custom
+/// body is undetectable here and must not be guessed.
+pub fn body_from_info(info: &RecordingInfo) -> Result<(CarBodyConfig, &'static str), String> {
+    let min: Vec3A = info.hitbox_rel_min_bt.into();
+    let max: Vec3A = info.hitbox_rel_max_bt.into();
+    let size_uu = (max - min) * BT_TO_UU;
+    let offset_uu = (max + min) * 0.5 * BT_TO_UU;
+    for (index, name) in BODY_PRESET_NAMES.iter().enumerate() {
+        let size_err = (size_uu - HITBOX_SIZES[index]).abs().max_element();
+        let offset_err = (offset_uu - HITBOX_OFFSETS[index]).abs().max_element();
+        if size_err <= BODY_MATCH_TOL_UU && offset_err <= BODY_MATCH_TOL_UU {
+            return Ok((BODY_PRESETS[index], name));
+        }
+    }
+    Err(format!(
+        "unknown car body (size {size_uu:?} uu, offset {offset_uu:?} uu): no preset matches within {BODY_MATCH_TOL_UU} uu"
+    ))
 }
 
 impl Default for V3Backend {
@@ -259,5 +346,113 @@ impl ReplayBackend for V3Backend {
                 up: ball.phys.get_up_dir(),
             },
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rocketsim_test::rlpr::cpp_records::VecRecord;
+
+    fn info_for(min: [f32; 3], max: [f32; 3]) -> RecordingInfo {
+        RecordingInfo {
+            num_cars: 4,
+            hitbox_rel_min_bt: VecRecord::new(min[0], min[1], min[2]),
+            hitbox_rel_max_bt: VecRecord::new(max[0], max[1], max[2]),
+        }
+    }
+
+    /// Exact Daizen header bounds (decompressed bytes 17-40).
+    fn daizen_info() -> RecordingInfo {
+        info_for(
+            [-1.133026, -0.871704, -0.077060],
+            [1.493369, 0.871704, 0.560828],
+        )
+    }
+
+    /// Shared Wisp/PartyCannon header bounds (decompressed bytes 17-40).
+    fn octane_info() -> RecordingInfo {
+        info_for(
+            [-0.927561, -0.866994, 0.028509],
+            [1.482587, 0.866994, 0.801690],
+        )
+    }
+
+    #[test]
+    fn daizen_header_maps_to_plank() {
+        let (config, name) =
+            body_from_info(&daizen_info()).expect("Daizen header is a known preset");
+        assert_eq!(name, "Plank");
+        assert_eq!(config.hitbox_size, CarBodyConfig::PLANK.hitbox_size);
+        assert_eq!(
+            config.hitbox_pos_offset,
+            CarBodyConfig::PLANK.hitbox_pos_offset
+        );
+    }
+
+    #[test]
+    fn octane_header_stays_octane() {
+        let (config, name) = body_from_info(&octane_info()).expect("Wisp header is a known preset");
+        assert_eq!(name, "Octane");
+        assert_eq!(config.hitbox_size, CarBodyConfig::OCTANE.hitbox_size);
+        assert_eq!(
+            config.hitbox_pos_offset,
+            CarBodyConfig::OCTANE.hitbox_pos_offset
+        );
+    }
+
+    #[test]
+    fn closest_presets_stay_distinct() {
+        // Psyclops is Octane + 0.134 uu on every size axis: with a 0.01 uu
+        // tolerance it must match Psyclops, never Octane.
+        let half = HITBOX_SIZES[6] * 0.5;
+        let min = (HITBOX_OFFSETS[6] - half) / BT_TO_UU;
+        let max = (HITBOX_OFFSETS[6] + half) / BT_TO_UU;
+        let info = info_for(min.to_array(), max.to_array());
+        let (_, name) = body_from_info(&info).expect("exact preset bounds match");
+        assert_eq!(name, "Psyclops");
+    }
+
+    #[test]
+    fn unknown_header_is_an_error() {
+        let info = info_for([-1.0, -1.0, -1.0], [1.0, 1.0, 1.0]);
+        assert!(body_from_info(&info).is_err());
+    }
+
+    #[test]
+    fn same_count_body_switch_rebuilds_arena() {
+        init();
+        let mut backend = V3Backend::new();
+        backend.set_body_from_info(&octane_info()).unwrap();
+        backend.ensure_cars(4);
+        // Same body, same count: no rebuild, so a planted state survives.
+        let sentinel = Vec3A::new(1234.0, 567.0, 89.0);
+        let mut planted = *backend.arena.get_car_state(backend.car_ids[0]);
+        planted.phys.pos = sentinel;
+        backend.arena.set_car_state(backend.car_ids[0], planted);
+        backend.ensure_cars(4);
+        assert_eq!(
+            backend.arena.get_car_state(backend.car_ids[0]).phys.pos,
+            sentinel
+        );
+        // Same count, new body: rebuild, so the planted state is gone.
+        assert_eq!(backend.set_body_from_info(&daizen_info()).unwrap(), "Plank");
+        assert_eq!(backend.body_name(), "Plank");
+        backend.ensure_cars(4);
+        assert_eq!(backend.car_ids.len(), 4);
+        assert_ne!(
+            backend.arena.get_car_state(backend.car_ids[0]).phys.pos,
+            sentinel
+        );
+    }
+
+    #[test]
+    fn unknown_header_keeps_previous_body() {
+        init();
+        let mut backend = V3Backend::new();
+        backend.set_body_from_info(&daizen_info()).unwrap();
+        let bad = info_for([-1.0, -1.0, -1.0], [1.0, 1.0, 1.0]);
+        assert!(backend.set_body_from_info(&bad).is_err());
+        assert_eq!(backend.body_name(), "Plank");
     }
 }

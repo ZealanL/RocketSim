@@ -1,3 +1,10 @@
+//! Low-level render primitives (miniquad + egui).
+//!
+//! Most users only need [`Color`], [`Elem2D`], and [`VisRenderState`]
+//! (the per-tick snapshot [`crate::VisInst`] builds).
+//! The rest is renderer plumbing used to implement a custom
+//! [`rocketsim::Vis`].
+
 mod color;
 mod elem_2d;
 mod model;

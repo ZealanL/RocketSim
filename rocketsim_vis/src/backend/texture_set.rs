@@ -5,12 +5,17 @@ use rustc_hash::FxHashMap;
 
 use crate::backend::Texture;
 
+/// All textures uploaded to the GPU, addressed by name.
+///
+/// Names are the keys passed to [`TextureSet::new`], e.g. `"ball"`,
+/// `"car_blue"`, `"boost_pad"`.
 #[derive(Debug, Clone)]
 pub struct TextureSet {
     map: FxHashMap<String, (Texture, usize)>,
 }
 
 impl TextureSet {
+    /// Indexes `textures` by name in insertion order.
     pub fn new(textures: &[(&str, Texture)]) -> Self {
         let mut map = FxHashMap::default();
         for (name_str, texture) in textures {
@@ -44,10 +49,12 @@ impl TextureSet {
         results
     }
 
+    /// Number of textures in the set.
     pub fn num_textures(&self) -> usize {
         self.map.len()
     }
 
+    /// GPU slot for `name`. Panics on unknown names.
     pub fn get_texture_idx(&self, name: &str) -> usize {
         self.map[name].1
     }

@@ -16,12 +16,21 @@ mod v2;
 #[path = "rlpr_metric/v3.rs"]
 mod v3;
 
-/// Segmented RocketSim replay metric against one RLPR recording.
+/// Segmented RocketSim replay metric against RLPR recordings.
 /// Scores each car against its own trajectory. All cars share the sim.
+/// Accepts several recordings in one run (e.g. the bundled Wisp 3v3 plus
+/// Daizen 2v2 and PartyCannon 3v3 captures) and prints one aggregate
+/// table with all car-ticks added up. Use `--per-recording` to also print
+/// a table for each file.
 #[derive(Parser)]
 struct Args {
-    /// RLPR recording file. Uses the bundled Wisp 3v3 capture by default.
-    rlpr_file: Option<PathBuf>,
+    /// RLPR recording files. Uses every bundled capture present in
+    /// `rocketsim_test/recordings` by default.
+    rlpr_files: Vec<PathBuf>,
+
+    /// Print one table per recording in addition to the aggregate table.
+    #[arg(long)]
+    per_recording: bool,
 
     /// Ticks per segment.
     #[arg(long, default_value_t = 120)]
@@ -51,12 +60,51 @@ struct Args {
     dodge_deadzone: f32,
 }
 
+/// Bundled captures evaluated when no file is passed on the CLI, in order.
+/// Missing files are skipped with a warning so the metric keeps working
+/// before every capture has been recorded.
+const DEFAULT_RECORDINGS: [&str; 3] = [
+    "wisp_3v3_300s.rlpr.zst",
+    "daizen_2v2_300s.rlpr.zst",
+    "partycannon_3v3_300s.rlpr.zst",
+];
+
+/// Resolve the recordings to evaluate: explicit CLI files as-is, or every
+/// bundled capture that exists on disk.
+fn resolve_recordings(cli_files: &[PathBuf]) -> Result<Vec<PathBuf>, Box<dyn std::error::Error>> {
+    if !cli_files.is_empty() {
+        return Ok(cli_files.to_vec());
+    }
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("recordings");
+    let mut files = Vec::new();
+    for name in DEFAULT_RECORDINGS {
+        let path = dir.join(name);
+        if path.is_file() {
+            files.push(path);
+        } else {
+            println!("Skipping missing bundled capture: {}", path.display());
+        }
+    }
+    if files.is_empty() {
+        return Err("no RLPR recordings found; pass files explicitly or capture the bundled ones".into());
+    }
+    Ok(files)
+}
+
 fn metric_value(support: usize, value: f64) -> String {
     if support == 0 {
         "-".to_string()
     } else {
         format!("{value:.6}")
     }
+}
+
+fn print_table_header() {
+    println!(
+        "{:<7} {:<15} {:>9} {:>9} {:>9} {:>12} {:>12} {:>12}",
+        "Backend", "Category", "Support", "Passed", "Pass %", "Mean norm", "Max norm", "First fail"
+    );
+    println!("{}", "-".repeat(102));
 }
 
 fn print_report(backend: &str, report: &common::EvalReport) {
@@ -78,34 +126,6 @@ fn print_report(backend: &str, report: &common::EvalReport) {
     }
 }
 
-fn stasis_span_list(targets: &[usize]) -> String {
-    if targets.is_empty() {
-        return "-".to_string();
-    }
-    let mut spans = Vec::new();
-    let mut start = targets[0];
-    let mut prev = targets[0];
-    for &t in &targets[1..] {
-        if t == prev + 1 {
-            prev = t;
-        } else {
-            spans.push(if start == prev {
-                start.to_string()
-            } else {
-                format!("{start}-{prev}")
-            });
-            start = t;
-            prev = t;
-        }
-    }
-    spans.push(if start == prev {
-        start.to_string()
-    } else {
-        format!("{start}-{prev}")
-    });
-    spans.join(", ")
-}
-
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
     if args.segment_ticks <= 1 {
@@ -118,95 +138,108 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err("--warmup-ticks must be less than --segment-ticks".into());
     }
 
-    let rlpr_file = args.rlpr_file.unwrap_or_else(|| {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("recordings")
-            .join("wisp_3v3_300s.rlpr.zst")
-    });
-    let recording = Recording::from_file(&rlpr_file)?;
-    let num_cars = recording
-        .ticks
-        .first()
-        .map(common::tick_car_count)
-        .unwrap_or(0);
-    if num_cars == 0 || num_cars > common::MAX_SCORED_CARS {
-        return Err("recording must hold 1-8 cars in every tick".into());
-    }
-    if !recording
-        .ticks
-        .iter()
-        .all(|tick| common::tick_car_count(tick) == num_cars)
-    {
-        return Err("recording car count must be constant".into());
-    }
-    if recording.ticks.len() <= args.warmup_ticks {
-        return Err("recording has too few ticks for the warmup length".into());
+    let rlpr_files = resolve_recordings(&args.rlpr_files)?;
+    println!(
+        "Recordings: {} file{}",
+        rlpr_files.len(),
+        if rlpr_files.len() == 1 { "" } else { "s" },
+    );
+    for rlpr_file in &rlpr_files {
+        println!("File: {}", rlpr_file.display());
     }
 
     let config = common::SegmentConfig {
         segment_ticks: args.segment_ticks,
         warmup_ticks: args.warmup_ticks,
     };
-    let segments = common::split_segments(&recording.ticks, config);
-    if segments.is_empty() {
-        return Err("split_segments returned no segments for this recording and config".into());
-    }
-
-    println!(
-        "Recording: {} (RLPR v{}, {} car{})",
-        recording.name,
-        recording.version,
-        num_cars,
-        if num_cars == 1 { "" } else { "s" },
-    );
-    println!("File: {}", rlpr_file.display());
-    println!("Ticks: {}", recording.ticks.len());
     if args.reset_each_tick {
         println!("Mode: one-tick replay with a state reset before each tick");
     } else {
         println!(
-            "Segments: {} x {} ticks ({} warmup ticks)",
-            segments.len(),
+            "Segments: {} ticks ({} warmup ticks)",
             config.segment_ticks,
             config.warmup_ticks,
         );
     }
     println!("Categories overlap. Support counts car-ticks (cars x ticks).");
-    if num_cars > 1 {
-        println!("All cars share the sim; car-car contacts are real sim events.");
-    }
     println!("Dodge deadzone: {:.2}", args.dodge_deadzone);
-    println!(
-        "Kickoff stasis spans ({}): {}",
-        common::KICKOFF_STASIS_RULE,
-        stasis_span_list(&common::kickoff_stasis_targets(&recording.ticks)),
-    );
-    println!();
-    println!(
-        "{:<7} {:<15} {:>9} {:>9} {:>9} {:>12} {:>12} {:>12}",
-        "Backend", "Category", "Support", "Passed", "Pass %", "Mean norm", "Max norm", "First fail"
-    );
-    println!("{}", "-".repeat(102));
+    #[cfg(feature = "v2")]
+    println!("v2 backend always uses Octane (no header body selection).");
 
     v3::init();
     let mut v3_backend = v3::V3Backend::with_dodge_deadzone(args.dodge_deadzone);
-    let v3_outcome = common::evaluate(
-        &mut v3_backend,
-        &recording.ticks,
-        &segments,
-        config.warmup_ticks,
-        args.reset_each_tick,
-        args.reset_warmup,
-        args.use_sim_events,
-        rocketsim_test::rlpr::recording_has_boost_state(recording.version),
-        rocketsim_test::rlpr::recording_has_handbrake_state(recording.version),
-    );
-    print_report("v3", &v3_outcome.report);
-
     #[cfg(feature = "v2")]
-    {
+    let mut v2_backend = {
         v2::init();
-        let mut v2_backend = v2::V2Backend::with_dodge_deadzone(args.dodge_deadzone);
+        v2::V2Backend::with_dodge_deadzone(args.dodge_deadzone)
+    };
+    let mut combined_v3 = common::EvalReport::default();
+    #[cfg(feature = "v2")]
+    let mut combined_v2 = common::EvalReport::default();
+    let mut skipped_transitions = 0usize;
+
+    for rlpr_file in rlpr_files.iter() {
+        let recording = Recording::from_file(rlpr_file)
+            .map_err(|err| format!("{}: {err}", rlpr_file.display()))?;
+        v3_backend
+            .set_body_from_info(&recording.info)
+            .map_err(|err| format!("{}: {err}", rlpr_file.display()))?;
+        println!(
+            "{}: v3 body {}",
+            rlpr_file.display(),
+            v3_backend.body_name()
+        );
+        let num_cars = recording
+            .ticks
+            .first()
+            .map(common::tick_car_count)
+            .unwrap_or(0);
+        if num_cars == 0 || num_cars > common::MAX_SCORED_CARS {
+            return Err(format!("{}: recording must hold 1-8 cars in every tick", rlpr_file.display()).into());
+        }
+        if !recording
+            .ticks
+            .iter()
+            .all(|tick| common::tick_car_count(tick) == num_cars)
+        {
+            return Err(format!("{}: recording car count must be constant", rlpr_file.display()).into());
+        }
+        if recording.ticks.len() <= args.warmup_ticks {
+            return Err(format!(
+                "{}: recording has too few ticks for the warmup length",
+                rlpr_file.display()
+            )
+            .into());
+        }
+
+        let segments = common::split_segments(&recording.ticks, config);
+        if segments.is_empty() {
+            return Err(format!(
+                "{}: split_segments returned no segments for this recording and config",
+                rlpr_file.display()
+            )
+            .into());
+        }
+
+        // One backend serves every recording. The header-selected body plus
+        // `reset` rebuild the arena when the preset or the car count changes
+        // between recordings. The v2 backend has no header selection and
+        // always runs Octane.
+        let v3_outcome = common::evaluate(
+            &mut v3_backend,
+            &recording.ticks,
+            &segments,
+            config.warmup_ticks,
+            args.reset_each_tick,
+            args.reset_warmup,
+            args.use_sim_events,
+            rocketsim_test::rlpr::recording_has_boost_state(recording.version),
+            rocketsim_test::rlpr::recording_has_handbrake_state(recording.version),
+        );
+        combined_v3.merge(&v3_outcome.report);
+        skipped_transitions += v3_outcome.skipped_transitions;
+
+        #[cfg(feature = "v2")]
         let v2_outcome = common::evaluate(
             &mut v2_backend,
             &recording.ticks,
@@ -218,9 +251,59 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             rocketsim_test::rlpr::recording_has_boost_state(recording.version),
             rocketsim_test::rlpr::recording_has_handbrake_state(recording.version),
         );
+        #[cfg(feature = "v2")]
+        combined_v2.merge(&v2_outcome.report);
+
+        if args.per_recording {
+            println!("\nRecording: {}", rlpr_file.display());
+            println!(
+                "Kickoff stasis ({}): {} transitions stepped but unscored.",
+                common::KICKOFF_STASIS_RULE,
+                v3_outcome.skipped_transitions,
+            );
+            print_table_header();
+            print_report("v3", &v3_outcome.report);
+            #[cfg(feature = "v2")]
+            {
+                println!();
+                print_report("v2", &v2_outcome.report);
+            }
+        }
+    }
+
+    println!();
+    if args.per_recording {
+        println!("Combined recordings:");
+    }
+    println!(
+        "Kickoff stasis ({}): {} transitions stepped but unscored.",
+        common::KICKOFF_STASIS_RULE,
+        skipped_transitions,
+    );
+    print_table_header();
+    print_report("v3", &combined_v3);
+    #[cfg(feature = "v2")]
+    {
         println!();
-        print_report("v2", &v2_outcome.report);
+        print_report("v2", &combined_v2);
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn per_recording_is_opt_in() {
+        let defaults = Args::try_parse_from(["rlpr_metric"]).unwrap();
+        assert!(!defaults.per_recording);
+
+        let selected =
+            Args::try_parse_from(["rlpr_metric", "--per-recording", "wisp.rlpr", "daizen.rlpr"])
+                .unwrap();
+        assert!(selected.per_recording);
+        assert_eq!(selected.rlpr_files.len(), 2);
+    }
 }

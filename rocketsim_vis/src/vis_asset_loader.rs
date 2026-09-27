@@ -1,3 +1,9 @@
+//! Built-in models and textures bundled with the crate.
+//!
+//! [`load_models`] combines the arena collision meshes with the bundled
+//! `.obj` cars/ball/pads; [`load_textures`] decodes the bundled `.png`s.
+//! Models by ZealanL, see `src/models/MODEL_LICENSE_README.md`.
+
 use std::f32::consts::PI;
 
 use glam::{EulerRot, Mat3, Vec3};
@@ -5,6 +11,10 @@ use rocketsim::{CollisionMeshFile, GameMode, consts};
 
 use crate::backend::{Model, ModelSet, Texture, TextureSet};
 
+/// Loads car/ball/pad models plus the arena mesh for `game_mode`.
+///
+/// Known names: `"ball"`, `"car_octane"`, `"car_dominus"`, `"car_breakout"`,
+/// `"car_merc"`, `"pad_big_on/off"`, `"pad_small_on/off"`, `"arena"`.
 pub fn load_models(game_mode: GameMode, arena_meshes: &[CollisionMeshFile]) -> ModelSet {
     // Make arena model, combining the meshes and the AABB planes
     let arena_model = {
@@ -76,6 +86,8 @@ pub fn load_models(game_mode: GameMode, arena_meshes: &[CollisionMeshFile]) -> M
     ModelSet::new(&model_pairs)
 }
 
+/// Loads bundled textures: `"ball"`, `"car_blue"`, `"car_orange"`,
+/// `"white"`, `"gray"`, `"boost_pad"`, `"boost_glow"`.
 pub fn load_textures() -> TextureSet {
     let texture_pairs = [
         (

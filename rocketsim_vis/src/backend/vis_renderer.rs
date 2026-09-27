@@ -20,6 +20,7 @@ use crate::backend::{
     SharedWindowEvents, TextureSet, WindowEvent, WindowEventQueue,
 };
 
+/// Shader uniforms shared by every pipeline: model/view/projection + screen size.
 #[repr(C)]
 pub struct Uniforms {
     pub u_model: Mat4,
@@ -122,6 +123,11 @@ impl LineBuffers {
     }
 }
 
+/// Miniquad renderer: draws [`VisRenderState`](crate::backend::VisRenderState)
+/// (models, lines, egui overlay) on a dedicated window thread.
+///
+/// Created via [`spawn_new`](Self::spawn_new); the sim thread never touches
+/// this directly, it only writes the shared render state.
 pub struct VisRenderer {
     models: ModelSet,
     textures: TextureSet,
@@ -598,6 +604,11 @@ impl EventHandler for VisRenderer {
 //////////////////
 
 impl VisRenderer {
+    /// Spawns a 1280x720 window with 8x MSAA on a new thread.
+    ///
+    /// Returns the thread handle and the event queue the window pushes
+    /// [`WindowEvent`](crate::backend::WindowEvent)s into.
+    /// Requires exactly one line shader and at least one model shader.
     pub fn spawn_new(
         window_title: &str,
         model_set: ModelSet,

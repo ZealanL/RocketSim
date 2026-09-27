@@ -2,12 +2,16 @@ use miniquad::{Backend, RenderingBackend, ShaderId, ShaderMeta, ShaderSource};
 
 use crate::backend::Uniforms;
 
+/// Which pipeline a shader belongs to: textured models or line strips.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum ShaderSrcType {
+    /// Textured triangle meshes (uses `u_texture`).
     Model,
+    /// Screen-space line strips (no texture).
     Line,
 }
 
+/// GLSL source pair plus its pipeline type. Compiled by [`VisRenderer`](crate::backend::VisRenderer).
 #[derive(Debug, Clone)]
 pub struct ShaderSrc {
     src_type: ShaderSrcType,
@@ -16,6 +20,7 @@ pub struct ShaderSrc {
 }
 
 impl ShaderSrc {
+    /// Stores GLSL vertex/fragment source for `src_type`.
     pub fn new(src_type: ShaderSrcType, vertex_src: &str, fragment_src: &str) -> Self {
         Self {
             src_type,

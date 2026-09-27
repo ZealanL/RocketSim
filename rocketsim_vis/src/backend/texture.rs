@@ -1,5 +1,6 @@
 use std::io::Cursor;
 
+/// Decoded RGBA8 image uploaded to the GPU by [`TextureSet`](crate::backend::TextureSet).
 #[derive(Debug, Clone)]
 pub struct Texture {
     pub(crate) width: u32,
@@ -8,6 +9,8 @@ pub struct Texture {
 }
 
 impl Texture {
+    /// Decodes PNG bytes (e.g. `include_bytes!("textures/ball.png")`).
+    /// Panics on invalid PNG data.
     pub fn load_png(png_bytes: &[u8]) -> Self {
         let decoder = png::Decoder::new(Cursor::new(png_bytes));
         let mut reader = decoder.read_info().expect("Failed to decode PNG info");

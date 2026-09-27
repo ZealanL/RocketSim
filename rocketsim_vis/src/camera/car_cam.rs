@@ -3,12 +3,19 @@ use rocketsim::{ArenaState, CarState, shared::rsmath};
 
 use crate::camera::CameraConfig;
 
+/// Follow view for a single car.
+///
+/// `face_ball` is ball-cam: the camera stays behind the car and looks at the
+/// ball. When `false`, the camera follows the car's heading/velocity instead.
 pub struct CarCam {
+    /// Index into [`ArenaState::cars`](rocketsim::ArenaState::cars).
     pub car_idx: usize,
+    /// Whether to look at the ball (`true`) or follow car heading (`false`).
     pub face_ball: bool,
 }
 
 impl CarCam {
+    /// Follows `car_idx` with ball-cam on.
     pub fn new(car_idx: usize) -> Self {
         Self {
             car_idx,
@@ -39,6 +46,11 @@ impl CarCam {
         prev_dir.lerp(new_dir, lerp_speed).normalize_or_zero()
     }
 
+    /// Computes follow position/direction for this car.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `car_idx` is out of bounds for `arena_state`.
     pub fn update_car_cam_pos_dir(
         &self,
         arena_state: &ArenaState,

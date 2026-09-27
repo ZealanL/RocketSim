@@ -1,13 +1,20 @@
 use glam::{Affine3A, Mat3, UVec3, Vec2, Vec3, Vec3A};
 use rocketsim::{CollisionMeshFile, consts::BT_TO_UU, shared::rsmath};
 
+/// Triangle-soup mesh with per-vertex UVs.
+///
+/// Vertices are in Unreal units (uu). Built from bundled `.obj` data or arena
+/// collision meshes, then packed into a [`ModelSet`](crate::backend::ModelSet).
 #[derive(Debug, Clone)]
 pub struct Model {
+    /// Triangle vertices (every 3 form one triangle).
     pub verts: Vec<Vec3>,
+    /// One UV per vertex.
     pub vert_uvs: Vec<Vec2>,
 }
 
 impl Model {
+    /// Empty mesh with no vertices.
     pub const fn empty() -> Self {
         Self {
             verts: Vec::new(),
@@ -120,10 +127,12 @@ impl Model {
         }
     }
 
+    /// Number of triangle vertices (multiple of 3).
     pub fn num_verts(&self) -> usize {
         self.verts.len()
     }
 
+    /// Concatenates meshes into one draw buffer. Panics if empty.
     pub fn concat(models: &[Self]) -> Self {
         assert!(!models.is_empty());
         let mut result = models[0].clone();
@@ -152,6 +161,7 @@ impl Model {
     }
 
     /// NOTE: Order of application is the opposite of the argument order
+    /// (rotation applies first, then translation).
     pub fn transform(&self, translation: Vec3, rotation: Mat3) -> Self {
         let mut result = self.clone();
         let affine = Affine3A::from_mat3_translation(rotation, translation);
