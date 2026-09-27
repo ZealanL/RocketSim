@@ -351,8 +351,9 @@ impl ReplayBackend for V3Backend {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use rocketsim_test::rlpr::cpp_records::VecRecord;
+
+    use super::*;
 
     fn info_for(min: [f32; 3], max: [f32; 3]) -> RecordingInfo {
         RecordingInfo {

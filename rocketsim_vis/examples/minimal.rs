@@ -5,7 +5,9 @@
 //!
 //! Run with: `cargo run -p rocketsim_vis --example minimal`
 
-use rocketsim::{Arena, ArenaConfig, CarBodyConfig, CarControls, GameMode, Team, init_from_default};
+use rocketsim::{
+    Arena, ArenaConfig, CarBodyConfig, CarControls, GameMode, Team, init_from_default,
+};
 use rocketsim_vis::ArenaVisExt;
 
 fn main() {
