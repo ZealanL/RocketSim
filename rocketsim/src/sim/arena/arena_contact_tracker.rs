@@ -11,7 +11,7 @@ use crate::{
         dynamics::rigid_body::RigidBody,
     },
     consts,
-    sim::UserInfoTypes,
+    sim::UserInfoType,
 };
 
 // Store one contact event.
@@ -83,10 +83,10 @@ impl ContactAddedCallback for ArenaContactTracker {
         debug_assert!(body_a.has_contact_response() || body_b.has_contact_response());
 
         let should_swap =
-            if body_a.user_idx != UserInfoTypes::None && body_b.user_idx != UserInfoTypes::None {
+            if body_a.user_idx != UserInfoType::None && body_b.user_idx != UserInfoType::None {
                 body_a.user_idx > body_b.user_idx
             } else {
-                body_b.user_idx != UserInfoTypes::None
+                body_b.user_idx != UserInfoType::None
             };
 
         if should_swap {
@@ -96,16 +96,16 @@ impl ContactAddedCallback for ArenaContactTracker {
         let user_idx_a = body_a.user_idx;
         let user_idx_b = body_b.user_idx;
 
-        if user_idx_a == UserInfoTypes::Car {
+        if user_idx_a == UserInfoType::Car {
             let hit_coefs = match user_idx_b {
-                UserInfoTypes::Ball => consts::car::HIT_BALL_COEFS,
-                UserInfoTypes::Car => consts::car::HIT_CAR_COEFS,
+                UserInfoType::Ball => consts::car::HIT_BALL_COEFS,
+                UserInfoType::Car => consts::car::HIT_CAR_COEFS,
                 _ => consts::car::HIT_WORLD_COEFS,
             };
             manifold_point.combined_friction = hit_coefs.friction;
             manifold_point.combined_restitution = hit_coefs.restitution;
-        } else if user_idx_a == UserInfoTypes::Ball
-            && user_idx_b == UserInfoTypes::None
+        } else if user_idx_a == UserInfoType::Ball
+            && user_idx_b == UserInfoType::None
             && body_b.is_static_obj()
         {
             manifold_point.is_special = true;
@@ -113,8 +113,8 @@ impl ContactAddedCallback for ArenaContactTracker {
 
         // Record contact data before edge adjustment changes the manifold.
         if self.ball_only
-            && user_idx_a == UserInfoTypes::Ball
-            && user_idx_b == UserInfoTypes::None
+            && user_idx_a == UserInfoType::Ball
+            && user_idx_b == UserInfoType::None
             && body_b.is_static_obj()
         {
             self.ball_world_records.push(BallWorldContactRecord {

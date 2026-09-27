@@ -9,7 +9,7 @@ use crate::{
         rigid_body::{Impulse, RigidBody},
     },
     consts::{BT_TO_UU, UU_TO_BT, bullet_vehicle, curves},
-    sim::UserInfoTypes,
+    sim::UserInfoType,
 };
 
 pub struct RaycastInfo {
@@ -144,7 +144,7 @@ impl WheelInfo {
         let suspension_length = (wheel_trace_len_sq - self.wheels_radius).min(max_suspension_len);
 
         self.extra_pushback = 0.0;
-        let is_car_hit = ray_results.rigid_body.user_idx == UserInfoTypes::Car;
+        let is_car_hit = ray_results.rigid_body.user_idx == UserInfoType::Car;
         if is_in_contact_with_world || is_car_hit {
             let ray_pushback_thresh = self.suspension_rest_length_1 + self.wheels_radius
                 - bullet_vehicle::SUSPENSION_SUBTRACTION;

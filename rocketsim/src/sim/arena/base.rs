@@ -29,7 +29,7 @@ use crate::{
     shared::quantize,
     sim::{
         ArenaEvent, Ball, BallState, BoostPad, CarHitBallEvent, CarHitCarEvent, CarHitWorldEvent,
-        DemoMode, UserInfoTypes, arena::ArenaEventList,
+        DemoMode, UserInfoType, arena::ArenaEventList,
     },
 };
 
@@ -322,7 +322,7 @@ impl Arena {
                     );
 
                     let rb = &mut bullet_world.bodies_mut()[rb_idx];
-                    rb.user_idx = UserInfoTypes::DropshotTile;
+                    rb.user_idx = UserInfoType::DropshotTile;
                     rb.user_pointer = i;
                 }
             }
@@ -626,15 +626,15 @@ impl Arena {
                 let user_pointer_b = rb_b.user_pointer;
 
                 match user_idx_a {
-                    UserInfoTypes::Car => match user_idx_b {
-                        UserInfoTypes::Ball => {
+                    UserInfoType::Car => match user_idx_b {
+                        UserInfoType::Ball => {
                             self.on_car_ball_collision(
                                 user_pointer_a,
                                 &contact.manifold_point,
                                 contact.is_swap,
                             );
                         }
-                        UserInfoTypes::Car => {
+                        UserInfoType::Car => {
                             self.on_car_car_collision(
                                 user_pointer_a,
                                 user_pointer_b,
@@ -643,11 +643,11 @@ impl Arena {
                         }
                         _ => self.on_car_world_collision(user_pointer_a, &contact.manifold_point),
                     },
-                    UserInfoTypes::Ball => match user_idx_b {
-                        UserInfoTypes::DropshotTile => {
+                    UserInfoType::Ball => match user_idx_b {
+                        UserInfoType::DropshotTile => {
                             self.on_ball_tile_collision(user_pointer_b);
                         }
-                        UserInfoTypes::None => {
+                        UserInfoType::None => {
                             self.on_ball_world_collision(&contact.manifold_point, contact.rb_idx_a);
                         }
                         _ => {}
@@ -889,7 +889,7 @@ impl Arena {
     fn update_tile_states(&mut self) {
         let tile_states = self.tile_states.as_ref().unwrap().states;
         for rb in self.bullet_world.bodies_mut() {
-            if rb.user_idx != UserInfoTypes::DropshotTile {
+            if rb.user_idx != UserInfoType::DropshotTile {
                 continue;
             }
             let team_idx = rb.user_pointer / consts::dropshot::NUM_TILES_PER_TEAM;

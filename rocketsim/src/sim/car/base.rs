@@ -29,7 +29,7 @@ use crate::{
         car::{self as car_consts, drive as drive_consts},
         curves,
     },
-    sim::{UserInfoTypes, car::car_info::CarInfo},
+    sim::{UserInfoType, car::car_info::CarInfo},
 };
 
 /// A car in the arena (physics body + cached state).
@@ -84,7 +84,7 @@ impl Car {
         rb_info.local_inertia = local_inertia;
 
         let mut body = RigidBody::new(rb_info);
-        body.user_idx = UserInfoTypes::Car;
+        body.user_idx = UserInfoType::Car;
         body.collision_flags |= CollisionFlags::CustomMaterialCallback;
 
         let rigid_body_idx = bullet_world.add_rigid_body(
@@ -209,7 +209,7 @@ impl Car {
     }
 
     pub(crate) fn set_state(&mut self, rb: &mut RigidBody, state: &CarState) {
-        debug_assert_eq!(rb.user_idx, UserInfoTypes::Car);
+        debug_assert_eq!(rb.user_idx, UserInfoType::Car);
         debug_assert_eq!(rb.world_array_idx, self.rigid_body_idx);
 
         rb.set_world_trans(Affine3A {
