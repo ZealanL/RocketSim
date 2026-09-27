@@ -155,13 +155,29 @@ impl CollisionDispatcher {
     }
 
     // Miss leaves None; hit writes Some.
-    fn process_collision<'a, T: ContactAddedCallback>(
+    pub fn process_collision<'a, T: ContactAddedCallback>(
         col_obj_a: &'a RigidBody,
         col_obj_b: &'a RigidBody,
         contact_added_callback: &'a mut T,
         out: &mut Option<PersistentManifold>,
     ) {
         debug_assert!(out.is_none());
+
+        if let Some(mesh_collision) = Self::mesh_collision(col_obj_a, col_obj_b) {
+            let (convex_obj, concave_obj) = mesh_collision.bodies();
+            let mut manifold = PersistentManifold::new(convex_obj, concave_obj);
+
+            if Self::process_mesh_collision_into(
+                mesh_collision,
+                &mut manifold,
+                &mut *contact_added_callback,
+            ) {
+                *out = Some(manifold);
+            }
+
+            return;
+        }
+
         match col_obj_a.get_collision_shape() {
             CollisionShapes::StaticPlane(plane) => match col_obj_b.get_collision_shape() {
                 CollisionShapes::Sphere(_) | CollisionShapes::ConvexHull(_) => {
