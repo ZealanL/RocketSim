@@ -22,7 +22,7 @@ use crate::{
     consts::{BT_TO_UU, TICK_TIME, UU_TO_BT, dropshot, heatseeker, snowday},
     get_neighbor_indices_1, get_neighbor_indices_2, get_tile_pos,
     shared::Angle,
-    sim::{UserInfoTypes, consts},
+    sim::{UserInfoType, consts},
 };
 
 pub(crate) struct Ball {
@@ -32,7 +32,7 @@ pub(crate) struct Ball {
 }
 
 impl Ball {
-    fn make_ball_collision_shape(
+    pub(crate) fn make_ball_collision_shape(
         game_mode: GameMode,
         mutator_config: &MutatorConfig,
     ) -> (CollisionShapes, Vec3A) {
@@ -90,7 +90,7 @@ impl Ball {
         info.restitution = coefs.restitution;
 
         let mut body = RigidBody::new(info);
-        body.user_idx = UserInfoTypes::Ball;
+        body.user_idx = UserInfoType::Ball;
         // Keep the ball active so resting contacts remain responsive.
         body.collision_flags |= CollisionFlags::CustomMaterialCallback;
         if no_rot && matches!(body.get_collision_shape(), CollisionShapes::Sphere(_)) {
@@ -114,7 +114,7 @@ impl Ball {
 
     pub fn set_state(&mut self, rb: &mut RigidBody, state: BallState) {
         debug_assert_eq!(rb.world_array_idx, self.rigid_body_idx);
-        debug_assert_eq!(rb.user_idx, UserInfoTypes::Ball);
+        debug_assert_eq!(rb.user_idx, UserInfoType::Ball);
 
         rb.set_world_trans(Affine3A {
             matrix3: state.phys.rot_mat,

@@ -16,7 +16,7 @@ use crate::{
         },
         dynamics::rigid_body::Impulse,
     },
-    sim::UserInfoTypes,
+    sim::UserInfoType,
 };
 
 pub struct DiscreteDynamicsWorld {
@@ -198,7 +198,7 @@ impl DiscreteDynamicsWorld {
         let ball_only = self.ball_only
             && self.dynamic_body_idcs.len() == 1
             && self.collision_world.collision_objs[self.dynamic_body_idcs[0]].user_idx
-                == UserInfoTypes::Ball;
+                == UserInfoType::Ball;
         self.solver.skip_separated_special_rows = ball_only;
         self.solve_constraints(time_step);
         self.integrate_trans(time_step);

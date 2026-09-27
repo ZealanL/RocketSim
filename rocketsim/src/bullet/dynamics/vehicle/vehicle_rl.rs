@@ -14,7 +14,7 @@ use crate::{
         },
         linear_math::QuatExt,
     },
-    sim::UserInfoTypes,
+    sim::UserInfoType,
 };
 
 pub struct VehicleRL {
@@ -123,7 +123,7 @@ impl VehicleRL {
             }
 
             let victim = &mut collision_world.bodies_mut()[info.ground_body_idx];
-            if victim.user_idx != UserInfoTypes::Car {
+            if victim.user_idx != UserInfoType::Car {
                 continue;
             }
 

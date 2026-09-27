@@ -3,7 +3,9 @@
 use std::ops::{Index, IndexMut};
 
 use glam::{Mat3A, Vec3A};
-use rocketsim::{CarControls, CarState, PhysState, consts::TICK_RATE};
+use rocketsim::{
+    CarControls, CarState, PhysState, RaycastHitInfo, UserInfoType, consts::TICK_RATE,
+};
 
 const RL_BOOST_TO_ROCKETSIM_SCALE: f32 = 100.0;
 #[repr(C)]
@@ -248,7 +250,17 @@ impl From<CarRecord> for CarState {
             boost: phys_record.boost_amount * RL_BOOST_TO_ROCKETSIM_SCALE,
             controls: phys_record.prev_controls.into(),
             is_on_ground: phys_record.is_on_ground,
-            wheels_with_contact: phys_record.wheels.map(|wheel| wheel.has_contact),
+            // Recordings only store contact as a bool, so seed a placeholder
+            // (assumed static ground); the sim recomputes full details —
+            // point, normal, fraction, hit object — on the next tick.
+            wheels_with_contact: phys_record.wheels.map(|wheel| {
+                wheel.has_contact.then_some(RaycastHitInfo {
+                    hit_point: Vec3A::ZERO,
+                    hit_normal: Vec3A::Z,
+                    hit_fraction: 0.0,
+                    user_info: UserInfoType::None,
+                })
+            }),
             is_jumping: phys_record.is_jumping,
             is_flipping: phys_record.is_flipping,
             flip_rel_torque: phys_record.flip_rel_torque.into(),

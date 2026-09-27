@@ -10,14 +10,21 @@ use crate::{
     ArenaEvent::{BallHitWorld, CarPickupBoost},
     ArenaMemWeightMode, ArenaState, BallHitWorldEvent, BoostPadConfig, BoostPadGrid, BoostPadState,
     Car, CarBodyConfig, CarControls, CarInfo, CarPickupBoostEvent, CarState, GameMode,
-    MutatorConfig, PhysState, RaycastHitInfo, RaycastQuery, RaycastResult, Team, TileDamageState,
-    TileStates,
+    MutatorConfig, PhysState, RaycastHitInfo, RaycastQuery, Team, TileDamageState, TileStates,
     bullet::{
         collision::{
             broadphase::{CollisionFilterGroups, GridBroadphase},
-            dispatch::quad_ray_callbacks::{ClosestQuadRayResultCallback, QuadRayResultCallback},
-            narrowphase::manifold_point::ManifoldPoint,
-            shapes::{collision_shape::CollisionShapes, static_plane_shape::StaticPlaneShape},
+            dispatch::{
+                collision_dispatcher::CollisionDispatcher, collision_world::CollisionWorld,
+                quad_ray_callbacks::ClosestQuadRayResultCallback,
+            },
+            narrowphase::{
+                manifold_point::ManifoldPoint, persistent_manifold::ContactAddedCallback,
+            },
+            shapes::{
+                box_shape::BoxShape, collision_shape::CollisionShapes,
+                compound_shape::CompoundShape, static_plane_shape::StaticPlaneShape,
+            },
         },
         dynamics::{
             discrete_dynamics_world::DiscreteDynamicsWorld,
@@ -26,10 +33,10 @@ use crate::{
     },
     consts::{self, BT_TO_UU, TICK_RATE, TICK_TIME, UU_TO_BT},
     make_tile_shapes,
-    shared::quantize,
+    shared::{Aabb, quantize},
     sim::{
         ArenaEvent, Ball, BallState, BoostPad, CarHitBallEvent, CarHitCarEvent, CarHitWorldEvent,
-        DemoMode, UserInfoTypes, arena::ArenaEventList,
+        CarLandedEvent, DemoMode, UserInfoType, arena::ArenaEventList,
     },
 };
 
@@ -322,7 +329,7 @@ impl Arena {
                     );
 
                     let rb = &mut bullet_world.bodies_mut()[rb_idx];
-                    rb.user_idx = UserInfoTypes::DropshotTile;
+                    rb.user_idx = UserInfoType::DropshotTile;
                     rb.user_pointer = i;
                 }
             }
@@ -580,13 +587,20 @@ impl Arena {
         // Keep resting balls active so same-tick contacts can affect them.
 
         if !self.ball_only {
-            for car in &mut self.cars {
-                car.pre_tick_update(
+            for car_idx in 0..self.cars.len() {
+                let was_on_ground = self.cars[car_idx].state.is_on_ground;
+                self.cars[car_idx].pre_tick_update(
                     &mut self.bullet_world,
                     &mut self.rng,
                     self.config.game_mode,
                     &self.config.mutators,
                 );
+                if !was_on_ground && self.cars[car_idx].state.is_on_ground {
+                    self.events.push(ArenaEvent::CarLanded(CarLandedEvent {
+                        car_idx,
+                        wheels: self.cars[car_idx].state.wheels_with_contact,
+                    }));
+                }
             }
         }
 
@@ -626,15 +640,15 @@ impl Arena {
                 let user_pointer_b = rb_b.user_pointer;
 
                 match user_idx_a {
-                    UserInfoTypes::Car => match user_idx_b {
-                        UserInfoTypes::Ball => {
+                    UserInfoType::Car => match user_idx_b {
+                        UserInfoType::Ball => {
                             self.on_car_ball_collision(
                                 user_pointer_a,
                                 &contact.manifold_point,
                                 contact.is_swap,
                             );
                         }
-                        UserInfoTypes::Car => {
+                        UserInfoType::Car => {
                             self.on_car_car_collision(
                                 user_pointer_a,
                                 user_pointer_b,
@@ -643,11 +657,11 @@ impl Arena {
                         }
                         _ => self.on_car_world_collision(user_pointer_a, &contact.manifold_point),
                     },
-                    UserInfoTypes::Ball => match user_idx_b {
-                        UserInfoTypes::DropshotTile => {
+                    UserInfoType::Ball => match user_idx_b {
+                        UserInfoType::DropshotTile => {
                             self.on_ball_tile_collision(user_pointer_b);
                         }
-                        UserInfoTypes::None => {
+                        UserInfoType::None => {
                             self.on_ball_world_collision(&contact.manifold_point, contact.rb_idx_a);
                         }
                         _ => {}
@@ -889,7 +903,7 @@ impl Arena {
     fn update_tile_states(&mut self) {
         let tile_states = self.tile_states.as_ref().unwrap().states;
         for rb in self.bullet_world.bodies_mut() {
-            if rb.user_idx != UserInfoTypes::DropshotTile {
+            if rb.user_idx != UserInfoType::DropshotTile {
                 continue;
             }
             let team_idx = rb.user_pointer / consts::dropshot::NUM_TILES_PER_TEAM;
@@ -953,73 +967,219 @@ impl Arena {
         self.events.events()
     }
 
-    /// Casts rays against arena + cars + ball, 4 at a time via SIMD.
+    /// Casts `N` rays against the arena (`None` on a miss).
     ///
-    /// Batch multiples of 4 for best throughput. Each ray must be shorter
-    /// than the broadphase cell size (`ArenaConfig::max_aabb_len`, 370 uu by
-    /// default) — longer rays panic in debug. Set
-    /// [`RaycastQuery::hit_dynamic`] per query (currently informational —
-    /// static + dynamic are both tested).
+    /// Fixed-size in and out (no allocation): pass `[RaycastQuery; N]`, get
+    /// back the hit (if any) for each query in the same order. Rays run 4 at
+    /// a time via SIMD, so multiples of 4 are fastest
+    /// (e.g. `let [hit] = arena.cast_rays([query]);`).
     ///
-    /// # Units caveat
+    /// Short rays use the broadphase grid; rays longer than one grid cell
+    /// (`ArenaConfig::max_aabb_len`, scaled by the memory-weight mode) fall
+    /// back to testing every body, so any length works. Coordinates are in
+    /// uu, like the rest of the API.
     ///
-    /// Queries are currently passed to the Bullet world **unconverted**, so
-    /// they must be in Bullet units (`uu * UU_TO_BT`, i.e. divide by 50) and
-    /// hits come back in Bullet units too (multiply by `BT_TO_UU`). This
-    /// disagrees with the rest of the API (Unreal units) and is almost
-    /// certainly a bug — TODO: convert inside `cast_rays`. Until then:
+    /// A query with `include_dynamics: false` ignores cars and the ball
+    /// (a dynamic body hiding a wall reports a miss — split the batch if the
+    /// static hit behind it matters).
     ///
     /// ```no_run
     /// # use rocketsim::{Arena, GameMode, RaycastQuery, init_from_default};
-    /// # use rocketsim::consts::{BT_TO_UU, UU_TO_BT};
     /// # init_from_default(true).unwrap();
     /// # let arena = Arena::new(GameMode::Soccar);
-    /// # let from_uu = arena.get_ball_state().pos;
-    /// # let to_uu = from_uu - glam::Vec3A::new(0., 0., 300.);
-    /// let results = arena.cast_rays(&[RaycastQuery {
-    ///     from: from_uu * UU_TO_BT,
-    ///     to: to_uu * UU_TO_BT,
-    ///     hit_dynamic: false,
+    /// # let from = arena.get_ball_state().pos;
+    /// # let to = from - glam::Vec3A::new(0., 0., 300.);
+    /// let [hit] = arena.cast_rays([RaycastQuery {
+    ///     from,
+    ///     to,
+    ///     include_dynamics: false,
     /// }]);
-    /// if let Some(hit) = results[0].hit_info {
-    ///     let point_uu = hit.hit_point * BT_TO_UU;
-    ///     assert!(point_uu.z >= 0.0);
+    /// if let Some(hit) = hit {
+    ///     assert!(hit.hit_point.z >= 0.0);
     /// }
     /// ```
     #[must_use]
-    pub fn cast_rays(&self, ray_queries: &[RaycastQuery]) -> Vec<RaycastResult> {
-        let mut results = Vec::with_capacity(ray_queries.len());
-        for query_batch in ray_queries.chunks(4) {
+    pub fn cast_rays<const N: usize>(
+        &self,
+        ray_queries: [RaycastQuery; N],
+    ) -> [Option<RaycastHitInfo>; N] {
+        // Grid cell size mirrors `new_with_config` (there in uu, here in BT).
+        let cell_size_uu = match self.config.mem_weight_mode {
+            ArenaMemWeightMode::Light => (self.config.max_pos - self.config.min_pos).max_element(),
+            ArenaMemWeightMode::Balanced => self.config.max_aabb_len * 3.0,
+            ArenaMemWeightMode::Heavy => self.config.max_aabb_len,
+        };
+        let cell_size_sq = (cell_size_uu * UU_TO_BT) * (cell_size_uu * UU_TO_BT);
+
+        let mut results = [None; N];
+        for (chunk_idx, query_batch) in ray_queries.chunks(4).enumerate() {
             let (mut froms, mut tos) = ([Vec3A::ZERO; 4], [Vec3A::ZERO; 4]);
             for (i, query) in query_batch.iter().enumerate() {
-                froms[i] = query.from;
-                tos[i] = query.to;
+                froms[i] = query.from * UU_TO_BT;
+                tos[i] = query.to * UU_TO_BT;
             }
 
+            let static_only = query_batch.iter().all(|q| !q.include_dynamics);
             let mut callback = ClosestQuadRayResultCallback::new(&froms, &tos, None);
-            self.bullet_world.ray_test(&froms, &tos, &mut callback);
+            if static_only {
+                callback.base.collision_filter_mask = CollisionFilterGroups::Static as u8;
+            }
+
+            let is_long =
+                (0..query_batch.len()).any(|i| froms[i].distance_squared(tos[i]) >= cell_size_sq);
+            if is_long {
+                // Global fallback: no grid limit, test every body directly.
+                for body in self.bullet_world.bodies() {
+                    if static_only && !body.is_static_obj() {
+                        continue;
+                    }
+                    CollisionWorld::quad_ray_test(
+                        &froms,
+                        &tos,
+                        body,
+                        body.world_array_idx,
+                        &mut callback,
+                    );
+                }
+            } else {
+                self.bullet_world.ray_test(&froms, &tos, &mut callback);
+            }
 
             for i in 0..query_batch.len() {
-                let hit_info = if callback.has_hit(i) {
-                    Some(RaycastHitInfo {
-                        hit_point: callback.hit_point_world[i],
+                let hit_obj_idx = callback.base.collision_obj_idx[i];
+                let hit_info = match hit_obj_idx {
+                    Some(obj_idx)
+                        if !query_batch[i].include_dynamics
+                            && !self.bullet_world.bodies()[obj_idx].is_static_obj() =>
+                    {
+                        None
+                    }
+                    Some(obj_idx) => Some(RaycastHitInfo {
+                        hit_point: callback.hit_point_world[i] * BT_TO_UU,
                         hit_normal: callback.hit_normal_world[i],
                         hit_fraction: callback.base.closest_hit_fraction[i],
-                    })
-                } else {
-                    None
+                        user_info: self.bullet_world.bodies()[obj_idx].user_idx,
+                    }),
+                    _ => None,
                 };
 
-                results.push(RaycastResult { hit_info })
+                results[chunk_idx * 4 + i] = hit_info;
             }
         }
 
         results
     }
 
+    /// Overlap test: would an object here collide with anything?
+    ///
+    /// Pass `Some(body_config)` to test a car hitbox, `None` to test the ball
+    /// (built from the arena's game mode and mutators, so Snowday pucks
+    /// work). Set `include_dynamics` to also test against cars and the ball;
+    /// otherwise only static arena geometry (walls, floor, ceiling) is tested.
+    /// Useful for spawn-point checks and teleport validation without stepping
+    /// the sim.
+    ///
+    /// Cars are tested by hitbox only — wheels and suspension are ignored, so
+    /// a car at normal rest height (~17 uu) does *not* touch the floor. A
+    /// `false` result means "no contact at this transform", not "the path
+    /// here is clear" — use [`Arena::cast_rays`] for swept queries.
+    ///
+    /// ```no_run
+    /// # use rocketsim::{Arena, CarBodyConfig, GameMode, init_from_default};
+    /// # init_from_default(true).unwrap();
+    /// # let arena = Arena::new(GameMode::Soccar);
+    /// # let mut phys = arena.get_ball_state().phys;
+    /// # phys.pos.z = 3000.0;
+    /// // Mid-air ball: no overlap.
+    /// assert!(!arena.test_collision(phys, None, false));
+    /// // Same spot with a car hitbox (Octane is ~39 uu tall): still clear.
+    /// assert!(!arena.test_collision(phys, Some(CarBodyConfig::OCTANE), false));
+    /// ```
+    #[must_use]
+    pub fn test_collision(
+        &self,
+        phys: PhysState,
+        car_config: Option<CarBodyConfig>,
+        include_dynamics: bool,
+    ) -> bool {
+        let game_mode = self.config.game_mode;
+        let pos_bt = phys.pos * UU_TO_BT;
+        let world_trans = Affine3A {
+            matrix3: phys.rot_mat,
+            translation: pos_bt,
+        };
+
+        let (query_shape, query_aabb) = if let Some(config) = car_config {
+            let box_shape = BoxShape::new(config.hitbox_size * UU_TO_BT * 0.5);
+            let hitbox_offset = Affine3A {
+                matrix3: Mat3A::IDENTITY,
+                translation: config.hitbox_pos_offset * UU_TO_BT,
+            };
+            let compound_shape = CompoundShape::new(box_shape, hitbox_offset);
+            let aabb = compound_shape.get_aabb(&world_trans);
+            (CollisionShapes::Compound(compound_shape), aabb)
+        } else {
+            let (shape, _) = Ball::make_ball_collision_shape(game_mode, &self.config.mutators);
+            let aabb = shape.get_aabb(&world_trans);
+            (shape, aabb)
+        };
+
+        // Query AABB is in Bullet units, so convert the arena bounds too.
+        // Statics-only: anything outside the arena can't hit. With dynamics,
+        // a car or the ball could be out of bounds, so test them anyway.
+        if !include_dynamics {
+            let arena_aabb = Aabb::new(
+                self.config.min_pos * UU_TO_BT,
+                self.config.max_pos * UU_TO_BT,
+            );
+            if !arena_aabb.intersects(&query_aabb) {
+                return false;
+            }
+        }
+
+        let mut rb_info = RigidBodyConstructionInfo::new(0.0, query_shape);
+        rb_info.start_world_trans = world_trans;
+        let mut query_body = RigidBody::new(rb_info);
+        query_body.world_array_idx = usize::MAX;
+        let mut callback = NopContactAddedCallback;
+
+        for body in self.bullet_world.bodies() {
+            if !include_dynamics && !body.is_static_obj() {
+                continue;
+            }
+
+            let body_aabb = body.get_collision_shape().get_aabb(body.get_world_trans());
+            if !query_aabb.intersects(&body_aabb) {
+                continue;
+            }
+
+            let mut out = None;
+            CollisionDispatcher::process_collision(&query_body, body, &mut callback, &mut out);
+            if out.is_some() {
+                return true;
+            }
+        }
+
+        false
+    }
+
     /// Returns `true` when a [`Vis`] hook is registered.
     pub fn is_vis_enabled(&self) -> bool {
         self.vis.is_some()
+    }
+}
+
+/// A no-op contact callback used when only checking for collision existence.
+struct NopContactAddedCallback;
+
+impl ContactAddedCallback for NopContactAddedCallback {
+    fn callback(
+        &mut self,
+        _contact_point: &mut ManifoldPoint,
+        _body_a: &RigidBody,
+        _body_b: &RigidBody,
+        _idx: Option<usize>,
+    ) {
     }
 }
 

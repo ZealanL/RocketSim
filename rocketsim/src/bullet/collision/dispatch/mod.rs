@@ -1,5 +1,5 @@
 mod box_box_detector;
-pub(super) mod collision_dispatcher;
+pub mod collision_dispatcher;
 mod collision_obj_wrapper;
 pub mod collision_world;
 mod compound_collision_alg;

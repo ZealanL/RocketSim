@@ -10,7 +10,7 @@ use crate::{
         },
         linear_math::{integrate_trans, integrate_trans_no_rot},
     },
-    sim::UserInfoTypes,
+    sim::UserInfoType,
 };
 
 pub struct RigidBodyConstructionInfo {
@@ -148,7 +148,7 @@ pub struct RigidBody {
     pub friction: f32,
     pub restitution: f32,
     pub user_pointer: usize,
-    pub user_idx: UserInfoTypes,
+    pub user_idx: UserInfoType,
 
     pub inv_inertia_tensor_world: Mat3A,
     pub lin_vel: Vec3A,
@@ -213,7 +213,7 @@ impl RigidBody {
             friction: info.friction,
             restitution: info.restitution,
             user_pointer: 0,
-            user_idx: UserInfoTypes::default(),
+            user_idx: UserInfoType::default(),
             inv_inertia_tensor_world,
             lin_vel: Vec3A::ZERO,
             ang_vel: Vec3A::ZERO,

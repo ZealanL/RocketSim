@@ -1,5 +1,7 @@
 use glam::Vec3A;
 
+use crate::RaycastHitInfo;
+
 /// Ball touched a static surface this tick (wall, floor, ceiling, goal mesh).
 ///
 /// `contact_point` is in uu, `contact_normal` points off the surface.
@@ -50,6 +52,16 @@ pub struct CarPickupBoostEvent {
     pub boost_pad_idx: usize,
 }
 
+/// A car's `is_on_ground` flipped `false` → `true` this tick.
+///
+/// `wheels` is a copy of [`crate::CarState::wheels_with_contact`] at landing
+/// (at least 3 entries are `Some`; the rest are airborne wheels).
+#[derive(Debug, Copy, Clone)]
+pub struct CarLandedEvent {
+    pub car_idx: usize,
+    pub wheels: [Option<RaycastHitInfo>; 4],
+}
+
 /// One tick's contact/pickup notifications.
 ///
 /// Returned by [`crate::Arena::step_tick`] and
@@ -61,6 +73,7 @@ pub enum ArenaEvent {
     CarHitCar(CarHitCarEvent),
     CarHitWorld(CarHitWorldEvent),
     CarPickupBoost(CarPickupBoostEvent),
+    CarLanded(CarLandedEvent),
 }
 
 //////////////////////////////////////

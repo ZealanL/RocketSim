@@ -86,7 +86,9 @@ fn resolve_recordings(cli_files: &[PathBuf]) -> Result<Vec<PathBuf>, Box<dyn std
         }
     }
     if files.is_empty() {
-        return Err("no RLPR recordings found; pass files explicitly or capture the bundled ones".into());
+        return Err(
+            "no RLPR recordings found; pass files explicitly or capture the bundled ones".into(),
+        );
     }
     Ok(files)
 }
@@ -157,8 +159,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         println!(
             "Segments: {} ticks ({} warmup ticks)",
-            config.segment_ticks,
-            config.warmup_ticks,
+            config.segment_ticks, config.warmup_ticks,
         );
     }
     println!("Categories overlap. Support counts car-ticks (cars x ticks).");
@@ -195,14 +196,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .map(common::tick_car_count)
             .unwrap_or(0);
         if num_cars == 0 || num_cars > common::MAX_SCORED_CARS {
-            return Err(format!("{}: recording must hold 1-8 cars in every tick", rlpr_file.display()).into());
+            return Err(format!(
+                "{}: recording must hold 1-8 cars in every tick",
+                rlpr_file.display()
+            )
+            .into());
         }
         if !recording
             .ticks
             .iter()
             .all(|tick| common::tick_car_count(tick) == num_cars)
         {
-            return Err(format!("{}: recording car count must be constant", rlpr_file.display()).into());
+            return Err(format!(
+                "{}: recording car count must be constant",
+                rlpr_file.display()
+            )
+            .into());
         }
         if recording.ticks.len() <= args.warmup_ticks {
             return Err(format!(

@@ -22,5 +22,4 @@ pub use game_mode::*;
 pub use mutator_config::*;
 pub use phys_state::*;
 pub use team::*;
-#[allow(clippy::redundant_pub_crate)]
-pub(crate) use user_info_types::*;
+pub use user_info_types::*;

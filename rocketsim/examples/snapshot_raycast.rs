@@ -6,11 +6,7 @@
 //! ```
 
 use glam::Vec3A;
-use rocketsim::{
-    Arena, CarBodyConfig, GameMode, RaycastQuery, Team,
-    consts::{BT_TO_UU, UU_TO_BT},
-    init_from_default,
-};
+use rocketsim::{Arena, CarBodyConfig, GameMode, RaycastQuery, Team, init_from_default};
 
 fn main() {
     init_from_default(true).unwrap();
@@ -50,29 +46,45 @@ fn main() {
     );
 
     // 4. Raycasts are SIMD-batched in 4s — send multiples of 4 when possible.
-    // NOTE: `cast_rays` currently forwards coordinates to the Bullet world
-    // unconverted, so convert uu -> BT here (and BT -> uu on hits).
-    // Each ray must also fit in one broadphase cell (370 uu default).
-    let ball_uu = arena.get_ball_state().pos + Vec3A::new(500.0, 0.0, 0.0);
+    // Coordinates are in Unreal units, like the rest of the API.
+    let ball_pos = arena.get_ball_state().pos + Vec3A::new(500.0, 0.0, 0.0);
     let down = RaycastQuery {
-        from: ball_uu * UU_TO_BT,
-        to: (ball_uu - Vec3A::new(0.0, 0.0, 300.0)) * UU_TO_BT,
-        hit_dynamic: false,
+        from: ball_pos,
+        to: ball_pos - Vec3A::new(0.0, 0.0, 300.0),
+        include_dynamics: false,
     };
     let queries = [down; 4];
-    let results = arena.cast_rays(&queries);
+    let results = arena.cast_rays(queries);
     for (i, result) in results.iter().enumerate() {
-        match &result.hit_info {
+        match result {
             Some(hit) => println!(
-                "ray {i}: hit at {} (t={:.3})",
-                hit.hit_point * BT_TO_UU,
-                hit.hit_fraction
+                "ray {i}: hit at {} (t={:.3}, {:?})",
+                hit.hit_point, hit.hit_fraction, hit.user_info
             ),
             None => println!("ray {i}: miss"),
         }
     }
 
-    // 5. Restore: teleport back to the snapshot's ball state.
+    // 5. Overlap tests: would something fit here without stepping the sim?
+    // (cars use the hitbox only — a car at rest height clears the floor).
+    let mut high_ball = arena.get_ball_state().phys;
+    high_ball.pos = Vec3A::new(0.0, 0.0, 3000.0);
+    println!(
+        "ball at 3000uu collides: {}",
+        arena.test_collision(high_ball, None, false)
+    );
+    println!(
+        "car at 3000uu collides: {}",
+        arena.test_collision(high_ball, Some(CarBodyConfig::OCTANE), false)
+    );
+    let mut in_wall = arena.get_ball_state().phys;
+    in_wall.pos = Vec3A::new(4096.0, 0.0, 100.0);
+    println!(
+        "ball inside side wall collides: {}",
+        arena.test_collision(in_wall, None, false)
+    );
+
+    // 6. Restore: teleport back to the snapshot's ball state.
     arena.set_ball_state(snapshot.ball);
     println!("restored to: {}", arena.get_ball_state().pos);
 }
