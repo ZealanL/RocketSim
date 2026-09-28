@@ -15,7 +15,6 @@ categories.workspace = true
 egui = "0.31.0"
 egui-miniquad = "0.16.0"
 glam.workspace = true
-gilrs = "0.11"
 miniquad = "0.4.8"
 png = "0.18.0"
 rocketsim = { path = "../rocketsim", version = "0.2.0" }
@@ -23,6 +22,7 @@ rustc-hash.workspace = true
 
 [dev-dependencies]
 device_query = "4.0.1"
+gilrs = "0.11"
 
 [lints.clippy]
 all = "warn"
