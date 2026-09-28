@@ -57,7 +57,7 @@ pub struct CameraConfig {
 impl Default for CameraConfig {
     fn default() -> Self {
         Self {
-            fov_degrees: 65.0,
+            fov_degrees: 95.0,
             birds_eye_pos: Vec3A::new(-3000.0, 0.0, 1500.0),
             car_cam: CarCameraConfig::default(),
         }
