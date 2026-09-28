@@ -950,6 +950,12 @@ impl Car {
             if !leaving_ground {
                 self.state.has_jumped = false;
             }
+        } else if self.state.has_jumped
+            && !self.state.is_jumping
+            && self.state.is_on_ground
+            && self.state.jump_ticks > car_consts::jump::SETTLED_REARM_TICKS
+        {
+            self.state.has_jumped = false;
         }
 
         self.state.bump_cooldown_timer = (self.state.bump_cooldown_timer - TICK_TIME).max(0.0);

@@ -165,6 +165,12 @@ pub mod car {
         pub const MIN_TICKS: u32 = 3;
         /// Maximum hold duration: 24 ticks (0.2 s @ 120 Hz)
         pub const MAX_TICKS: u32 = 24;
+        /// Grounded re-arm delay: 15 ticks (0.125 s @ 120 Hz)
+        ///
+        /// A jump that ends without liftoff re-arms once `jump_time`
+        /// passes this delay. The end tick counts as 1, so the reset
+        /// fires at tick 16.
+        pub const SETTLED_REARM_TICKS: u32 = 15;
         /// Can be at most 1.25 seconds after the jump is finished
         pub const DOUBLEJUMP_MAX_DELAY: f32 = 1.25;
     }
