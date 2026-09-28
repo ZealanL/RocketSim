@@ -32,6 +32,25 @@ use crate::{
     sim::{RaycastHitInfo, UserInfoType, car::car_info::CarInfo},
 };
 
+/// Asymmetric 8-bit input quantization: negatives scale by 128, positives by 127.
+fn quantize_air_input(x: f32) -> f32 {
+    let clamped = x.clamp(-1.0, 1.0);
+    let y = if clamped < 0.0 {
+        (clamped * 128.0).max(-128.0)
+    } else {
+        (clamped * 127.0).min(127.0)
+    };
+    let w = ((y + 128.0) + (y + 128.0)) + 0.5;
+    let eax = w.round_ties_even() as i32;
+    let byte = ((eax >> 1) & 0xFF) as u8;
+    let s = (byte as f32) - 128.0;
+    if byte < 0x80 {
+        s * (1.0 / 128.0)
+    } else {
+        s / 127.0
+    }
+}
+
 /// A car in the arena (physics body + cached state).
 ///
 /// Get one via `Arena::cars()[idx]`; the id is stable for the arena's life.
@@ -258,6 +277,9 @@ impl Car {
                         engine_throttle = 0.0;
                     }
                 }
+            } else if self.state.controls.boost && self.state.boost > 0.0 {
+                engine_throttle = 1.0;
+                real_brake = 0.0;
             } else {
                 engine_throttle = 0.0;
                 real_brake = if abs_forward_speed_uu < drive_consts::STOPPING_FORWARD_VEL {
@@ -356,6 +378,7 @@ impl Car {
             if rel_dodge_torque.y != 0.0
                 && self.state.controls.pitch != 0.0
                 && rel_dodge_torque.y.signum() == self.state.controls.pitch.signum()
+                && prev_flip_time >= flip::PITCH_CANCEL_GATE_MIN_TIME
             {
                 pitch_scale = 1.0 - self.state.controls.pitch.abs().min(1.0);
             }
@@ -372,30 +395,29 @@ impl Car {
 
         let do_air_control = allow_air && !self.state.is_auto_flipping;
         if do_air_control {
+            let pitch_input = quantize_air_input(self.state.controls.pitch);
+            let yaw_input = quantize_air_input(self.state.controls.yaw);
+            let roll_input = quantize_air_input(self.state.controls.roll);
             let mut pitch_torque_scale = 1.0;
-            let torque = if self.state.controls.pitch != 0.0
-                || self.state.controls.yaw != 0.0
-                || self.state.controls.roll != 0.0
-            {
+            let torque = if pitch_input != 0.0 || yaw_input != 0.0 || roll_input != 0.0 {
                 if prev_is_flipping
                     || self.state.has_flipped && prev_flip_time < flip::PITCHLOCK_EXTRA_TIME
                 {
                     pitch_torque_scale = 0.0;
                 }
 
-                self.state.controls.pitch * dir_pitch * pitch_torque_scale * air_control::TORQUE.x
-                    + self.state.controls.yaw * dir_yaw * air_control::TORQUE.y
-                    + self.state.controls.roll * dir_roll * air_control::TORQUE.z
+                pitch_input * dir_pitch * pitch_torque_scale * air_control::TORQUE.x
+                    + yaw_input * dir_yaw * air_control::TORQUE.y
+                    + roll_input * dir_roll * air_control::TORQUE.z
             } else {
                 Vec3A::ZERO
             };
 
             let damp_pitch = dir_pitch.dot(rb.ang_vel)
                 * air_control::DAMPING.x
-                * (1.0 - (self.state.controls.pitch * pitch_torque_scale).abs());
-            let damp_yaw = dir_yaw.dot(rb.ang_vel)
-                * air_control::DAMPING.y
-                * (1.0 - self.state.controls.yaw.abs());
+                * (1.0 - (pitch_input * pitch_torque_scale).abs());
+            let damp_yaw =
+                dir_yaw.dot(rb.ang_vel) * air_control::DAMPING.y * (1.0 - yaw_input.abs());
             let damp_roll = dir_roll.dot(rb.ang_vel) * air_control::DAMPING.z;
 
             let damping = dir_yaw * damp_yaw + dir_pitch * damp_pitch + dir_roll * damp_roll;
@@ -928,6 +950,12 @@ impl Car {
             if !leaving_ground {
                 self.state.has_jumped = false;
             }
+        } else if self.state.has_jumped
+            && !self.state.is_jumping
+            && self.state.is_on_ground
+            && self.state.jump_ticks > car_consts::jump::SETTLED_REARM_TICKS
+        {
+            self.state.has_jumped = false;
         }
 
         self.state.bump_cooldown_timer = (self.state.bump_cooldown_timer - TICK_TIME).max(0.0);
