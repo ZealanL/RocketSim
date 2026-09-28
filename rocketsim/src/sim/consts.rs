@@ -177,6 +177,7 @@ pub mod car {
         pub const Z_DAMP_END: f32 = 0.21;
         pub const TORQUE_TIME: f32 = 0.65;
         pub const TORQUE_MIN_TIME: f32 = 0.41;
+        pub const PITCH_CANCEL_GATE_MIN_TIME: f32 = 0.041;
         pub const PITCHLOCK_TIME: f32 = 1.0;
         pub const PITCHLOCK_EXTRA_TIME: f32 = 0.3;
         pub const INITIAL_VEL_SCALE: f32 = 500.0;
