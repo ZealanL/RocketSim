@@ -277,6 +277,9 @@ impl Car {
                         engine_throttle = 0.0;
                     }
                 }
+            } else if self.state.controls.boost && self.state.boost > 0.0 {
+                engine_throttle = 1.0;
+                real_brake = 0.0;
             } else {
                 engine_throttle = 0.0;
                 real_brake = if abs_forward_speed_uu < drive_consts::STOPPING_FORWARD_VEL {
