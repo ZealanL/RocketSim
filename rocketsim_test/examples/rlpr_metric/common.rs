@@ -718,8 +718,8 @@ impl EvalReport {
     /// Fold another recording's report into this one for a cross-recording
     /// aggregate. Rates and means stay exact (support-weighted); max takes
     /// the worst. `first_fail_tick` is cleared: tick indices are
-    /// per-recording, so a combined first-fail tick would be meaningless
-    /// and prints as `-`.
+    /// per-recording, so a combined first-fail tick would be meaningless and
+    /// the combined table drops the column entirely.
     pub fn merge(&mut self, other: &EvalReport) {
         for category in ContactCategory::ALL {
             let stats = self.for_category_mut(category);

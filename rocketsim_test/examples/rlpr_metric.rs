@@ -91,30 +91,64 @@ fn metric_value(support: usize, value: f64) -> String {
     }
 }
 
-fn print_table_header() {
-    println!(
-        "{:<7} {:<15} {:>9} {:>9} {:>9} {:>12} {:>12} {:>12}",
-        "Backend", "Category", "Support", "Passed", "Pass %", "Mean norm", "Max norm", "First fail"
-    );
-    println!("{}", "-".repeat(102));
+/// Table rule widths, matching the header formats in [`print_table_header`].
+const WIDE_RULE: usize = 92;
+/// Narrow rule: the 12-wide "First fail" column plus its separating space.
+const NARROW_RULE: usize = WIDE_RULE - 13;
+
+/// Print the table header. `first_fail` adds the "First fail" column, which
+/// only means something for a single recording: tick indices are
+/// per-recording, so a combined report has none to show.
+fn print_table_header(first_fail: bool) {
+    if first_fail {
+        println!(
+            "{:<7} {:<15} {:>9} {:>9} {:>9} {:>12} {:>12} {:>12}",
+            "Backend",
+            "Category",
+            "Support",
+            "Passed",
+            "Pass %",
+            "Mean norm",
+            "Max norm",
+            "First fail"
+        );
+        println!("{}", "-".repeat(WIDE_RULE));
+    } else {
+        println!(
+            "{:<7} {:<15} {:>9} {:>9} {:>9} {:>12} {:>12}",
+            "Backend", "Category", "Support", "Passed", "Pass %", "Mean norm", "Max norm"
+        );
+        println!("{}", "-".repeat(NARROW_RULE));
+    }
 }
 
-fn print_report(backend: &str, report: &common::EvalReport) {
+/// Print one row per category. `first_fail` matches [`print_table_header`]:
+/// pass when it is set, drop the column when it is not.
+fn print_report(backend: &str, report: &common::EvalReport, first_fail: bool) {
     for category in common::ContactCategory::ALL {
         let stats = report.for_category(category);
-        let first_fail = stats
-            .first_fail_tick
-            .map(|tick| tick.to_string())
-            .unwrap_or_else(|| "-".to_string());
         let pass_pct = metric_value(stats.support, stats.rate());
         let mean_norm = metric_value(stats.support, stats.mean_norm());
         let max_norm = metric_value(stats.support, f64::from(stats.max_norm));
-        println!(
-            "{backend:<7} {:<15} {:>9} {:>9} {pass_pct:>9} {mean_norm:>12} {max_norm:>12} {first_fail:>12}",
-            category.as_str(),
-            stats.support,
-            stats.passed,
-        );
+        if first_fail {
+            let first_fail_tick = stats
+                .first_fail_tick
+                .map(|tick| tick.to_string())
+                .unwrap_or_else(|| "-".to_string());
+            println!(
+                "{backend:<7} {:<15} {:>9} {:>9} {pass_pct:>9} {mean_norm:>12} {max_norm:>12} {first_fail_tick:>12}",
+                category.as_str(),
+                stats.support,
+                stats.passed,
+            );
+        } else {
+            println!(
+                "{backend:<7} {:<15} {:>9} {:>9} {pass_pct:>9} {mean_norm:>12} {max_norm:>12}",
+                category.as_str(),
+                stats.support,
+                stats.passed,
+            );
+        }
     }
 }
 
@@ -262,12 +296,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 common::KICKOFF_STASIS_RULE,
                 v3_outcome.skipped_transitions,
             );
-            print_table_header();
-            print_report("v3", &v3_outcome.report);
+            print_table_header(true);
+            print_report("v3", &v3_outcome.report, true);
             #[cfg(feature = "v2")]
             {
                 println!();
-                print_report("v2", &v2_outcome.report);
+                print_report("v2", &v2_outcome.report, true);
             }
         }
     }
@@ -281,12 +315,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         common::KICKOFF_STASIS_RULE,
         skipped_transitions,
     );
-    print_table_header();
-    print_report("v3", &combined_v3);
+    print_table_header(false);
+    print_report("v3", &combined_v3, false);
     #[cfg(feature = "v2")]
     {
         println!();
-        print_report("v2", &combined_v2);
+        print_report("v2", &combined_v2, false);
     }
 
     Ok(())
