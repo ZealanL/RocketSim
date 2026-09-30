@@ -59,16 +59,16 @@ cargo run --features v2 --example rlpr_metric
 Run the comparable stress benchmarks with these commands:
 
 ```sh
-cargo run --example stress_v3
-cargo run --features v2 --example stress_v2
+cargo run --release --example stress_v3
+cargo run --release --features v2 --example stress_v2
 ```
 
 For a ball-only workload (no cars), pass `-n 0`. Ball-only runs use five times
 as many episodes as the normal stress workload:
 
 ```sh
-cargo run --example stress_v3 -- --num-cars 0
-cargo run --features v2 --example stress_v2 -- --num-cars 0
+cargo run --release --example stress_v3 -- --num-cars 0
+cargo run --release --features v2 --example stress_v2 -- --num-cars 0
 ```
 
 Replay mode takes precedence: `--rlpr-file` always runs replay validation.
@@ -76,9 +76,9 @@ Replay mode takes precedence: `--rlpr-file` always runs replay validation.
 Replay the bundled 3v3 recording for a deterministic throughput comparison:
 
 ```sh
-cargo run --release -p rocketsim_test --example stress_v3 -- \\
+cargo run --release --example stress_v3 -- \\
   --rlpr-file rocketsim_test/recordings/wisp_3v3_300s.rlpr.zst
-cargo run --release -p rocketsim_test --features v2 --example stress_v2 -- \\
+cargo run --release --features v2 --example stress_v2 -- \\
   --rlpr-file rocketsim_test/recordings/wisp_3v3_300s.rlpr.zst
 ```
 

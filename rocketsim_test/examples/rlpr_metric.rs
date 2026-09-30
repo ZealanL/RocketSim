@@ -1,6 +1,6 @@
 //! Segmented replay metric for RLPR recordings.
 //!
-//! Reset at each segment start, run open-loop, score ticks after warmup.
+//! Reset at each segment start, run open-loop, score every tick after.
 //! Print one table row per backend and contact category.
 
 use std::path::PathBuf;
@@ -36,19 +36,9 @@ struct Args {
     #[arg(long, default_value_t = 120)]
     segment_ticks: usize,
 
-    /// Warmup ticks per segment that advance the sim without scoring.
-    #[arg(long, default_value_t = 2)]
-    warmup_ticks: usize,
-
     /// Reset to the prior RL state before each scored tick.
     #[arg(long)]
     reset_each_tick: bool,
-
-    /// Refresh prior-state wheel rays at each segment start. This settles the
-    /// sticky-wheel gate without advancing dynamics.
-    /// Applies only with `--reset-each-tick`, at the first tick of each segment.
-    #[arg(long)]
-    reset_warmup: bool,
 
     /// Label ticks from recorded RL flags by default; also include contacts the sim observed.
     #[arg(long)]
@@ -136,9 +126,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if !(0.0..=1.0).contains(&args.dodge_deadzone) {
         return Err("--dodge-deadzone must be within 0.0..=1.0".into());
     }
-    if args.warmup_ticks >= args.segment_ticks {
-        return Err("--warmup-ticks must be less than --segment-ticks".into());
-    }
 
     let rlpr_files = resolve_recordings(&args.rlpr_files)?;
     println!(
@@ -152,15 +139,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let config = common::SegmentConfig {
         segment_ticks: args.segment_ticks,
-        warmup_ticks: args.warmup_ticks,
     };
     if args.reset_each_tick {
         println!("Mode: one-tick replay with a state reset before each tick");
     } else {
-        println!(
-            "Segments: {} ticks ({} warmup ticks)",
-            config.segment_ticks, config.warmup_ticks,
-        );
+        println!("Segments: {} ticks", config.segment_ticks,);
     }
     println!("Categories overlap. Support counts car-ticks (cars x ticks).");
     println!("Dodge deadzone: {:.2}", args.dodge_deadzone);
@@ -226,9 +209,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             )
             .into());
         }
-        if recording.ticks.len() <= args.warmup_ticks {
+        if recording.ticks.len() <= 1 {
             return Err(format!(
-                "{}: recording has too few ticks for the warmup length",
+                "{}: recording has too few ticks to score a transition",
                 rlpr_file.display()
             )
             .into());
@@ -251,9 +234,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &mut v3_backend,
             &recording.ticks,
             &segments,
-            config.warmup_ticks,
             args.reset_each_tick,
-            args.reset_warmup,
             args.use_sim_events,
             rocketsim_test::rlpr::recording_has_boost_state(recording.version),
             rocketsim_test::rlpr::recording_has_handbrake_state(recording.version),
@@ -266,9 +247,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &mut v2_backend,
             &recording.ticks,
             &segments,
-            config.warmup_ticks,
             args.reset_each_tick,
-            args.reset_warmup,
             args.use_sim_events,
             rocketsim_test::rlpr::recording_has_boost_state(recording.version),
             rocketsim_test::rlpr::recording_has_handbrake_state(recording.version),

@@ -6,8 +6,9 @@
 //! so car-car contacts are genuine engine observations.
 //!
 //! Each segment holds `segment_ticks` ticks.
-//! The first `warmup_ticks` ticks only advance the sim.
-//! The rest are scored. Reset happens only at segment starts.
+//! Hidden state is settled instantly at each reset with wheel raycasts
+//! (no dynamics advance), so every tick after the reset is scored.
+//! Reset happens only at segment starts.
 
 use glam::Vec3A;
 use rocketsim_test::rlpr::{cpp_records::ControlsRecord, tick_record::TickRecord};
@@ -164,18 +165,12 @@ pub fn snapshot_from_tick(tick: &TickRecord, car_idx: usize) -> Option<Snapshot>
 #[derive(Clone, Copy, Debug)]
 pub struct SegmentConfig {
     pub segment_ticks: usize,
-    pub warmup_ticks: usize,
 }
 
 impl SegmentConfig {
-    /// At least one scored tick per segment.
+    /// Segment length must be non-zero (zero would never advance chunking).
     pub fn is_valid(&self) -> bool {
-        self.segment_ticks > 0 && self.warmup_ticks < self.segment_ticks
-    }
-
-    /// Scored ticks in a segment of `len` ticks.
-    pub fn scored_len(&self, len: usize) -> usize {
-        len.saturating_sub(self.warmup_ticks)
+        self.segment_ticks > 0
     }
 }
 
@@ -442,14 +437,13 @@ pub fn reconstruct_handbrake(
     Some(value)
 }
 
-/// Chunk one clean run. Drop chunks with no scored ticks.
+/// Chunk one clean run. Every tick after the reset is scored, so every
+/// non-empty chunk is kept.
 fn push_chunks(segments: &mut Vec<Segment>, start: usize, end: usize, config: SegmentConfig) {
     let mut offset = start;
     while offset < end {
         let len = (config.segment_ticks).min(end - offset);
-        if config.scored_len(len) > 0 {
-            segments.push(Segment { start: offset, len });
-        }
+        segments.push(Segment { start: offset, len });
         offset += len;
     }
 }
@@ -737,8 +731,9 @@ impl EvalReport {
 
 /// Refresh hidden wheel state after a reset without advancing dynamics.
 ///
-/// A full warmup tick also advances ball and manifold state. Use the wheel
-/// raycast-only path so the scored body remains exactly at the recorded state.
+/// Settles the sticky-wheel gate with wheel raycasts at the recorded pose,
+/// replacing the old multi-tick warmup: scored bodies stay exactly at the
+/// recorded state, so scoring can start on the next tick.
 pub fn settle_reset_state<B: ReplayBackend>(backend: &mut B, state: &TickRecord) {
     backend.set_state(state);
     backend.refresh_sticky_gates();
@@ -817,7 +812,7 @@ pub fn restore_recorded_handbrake<B: ReplayBackend>(
 }
 
 /// Report plus kickoff-stasis skip counts from one [`evaluate`] run.
-/// Skipped counts hold scored transitions removed after warmup.
+/// Skipped counts hold scored transitions removed as kickoff stasis.
 /// The sim still steps through them.
 #[derive(Clone, Debug, Default)]
 pub struct EvalOutcome {
@@ -829,7 +824,7 @@ pub struct EvalOutcome {
 /// Run each segment open-loop and aggregate every car-tick into one report.
 /// Every arena car steps with its own recorded controls, so car-car
 /// contacts are real sim observations. Resets at each segment start,
-/// steps with target `prev_controls`, skips `warmup_ticks` ticks.
+/// steps with target `prev_controls`; every tick after the reset is scored.
 /// Support counts car-ticks: each scored tick contributes one sample per car.
 /// With `use_sim_events`, sim-observed contacts also label ticks;
 /// otherwise labels come from RL flags alone.
@@ -845,9 +840,7 @@ pub fn evaluate<B: ReplayBackend>(
     backend: &mut B,
     ticks: &[TickRecord],
     segments: &[Segment],
-    warmup_ticks: usize,
     reset_each_tick: bool,
-    reset_warmup: bool,
     use_sim_events: bool,
     has_boost_state: bool,
     has_handbrake_state: bool,
@@ -876,7 +869,10 @@ pub fn evaluate<B: ReplayBackend>(
             let target = &ticks[target_index];
             if reset_each_tick {
                 let state_index = target_index - 1;
-                if offset == 1 && reset_warmup {
+                // Settle the sticky-wheel gate at each segment start with
+                // wheel raycasts at the reset pose (no dynamics advance), so
+                // post-teleport transitions start from valid hidden state.
+                if offset == 1 {
                     settle_reset_state(backend, &ticks[state_index]);
                 } else {
                     backend.set_state(&ticks[state_index]);
@@ -896,9 +892,6 @@ pub fn evaluate<B: ReplayBackend>(
                 continue;
             }
             let sim_events = backend.step(&controls);
-            if !reset_each_tick && offset < warmup_ticks {
-                continue;
-            }
             if target_index > 0 && tick_is_kickoff_stasis(&ticks[target_index - 1], target) {
                 outcome.skipped_transitions += 1;
                 outcome.skipped_car_ticks += controls.len();
@@ -1034,17 +1027,14 @@ mod tests {
         )
     }
 
-    fn config(segment_ticks: usize, warmup_ticks: usize) -> SegmentConfig {
-        SegmentConfig {
-            segment_ticks,
-            warmup_ticks,
-        }
+    fn config(segment_ticks: usize) -> SegmentConfig {
+        SegmentConfig { segment_ticks }
     }
 
     #[test]
     fn splits_clean_run_into_non_overlapping_chunks() {
         let ticks: Vec<_> = (0..10).map(|i| quiet_tick(i, i as f32 * 10.0)).collect();
-        let segments = split_segments(&ticks, config(4, 1));
+        let segments = split_segments(&ticks, config(4));
         assert_eq!(
             segments,
             vec![
@@ -1056,17 +1046,23 @@ mod tests {
     }
 
     #[test]
-    fn drops_chunks_with_no_scored_ticks() {
+    fn keeps_short_tail_chunks() {
+        // Every tick after the reset is scored, so even a short tail chunk
+        // is kept (warmup used to drop chunks with no scored ticks).
         let ticks: Vec<_> = (0..5).map(|i| quiet_tick(i, i as f32 * 10.0)).collect();
-        let segments = split_segments(&ticks, config(4, 3));
-        assert_eq!(segments, vec![Segment { start: 0, len: 4 }]);
+        let segments = split_segments(&ticks, config(4));
+        assert_eq!(
+            segments,
+            vec![Segment { start: 0, len: 4 }, Segment { start: 4, len: 1 }]
+        );
     }
 
     #[test]
     fn rejects_invalid_config() {
         let ticks: Vec<_> = (0..4).map(|i| quiet_tick(i, i as f32)).collect();
-        assert!(split_segments(&ticks, config(4, 4)).is_empty());
-        assert!(split_segments(&ticks, config(0, 0)).is_empty());
+        assert!(split_segments(&ticks, config(0)).is_empty());
+        assert!(!split_segments(&ticks, config(4)).is_empty());
+        assert!(!split_segments(&ticks, config(1)).is_empty());
     }
 
     #[test]
@@ -1080,7 +1076,7 @@ mod tests {
         });
         ticks.push(quiet_tick(12, 60.0));
         ticks.push(quiet_tick(13, 70.0));
-        let segments = split_segments(&ticks, config(4, 1));
+        let segments = split_segments(&ticks, config(4));
         for window in segments.windows(2) {
             assert!(window[0].end() <= window[1].start);
         }
@@ -1105,7 +1101,7 @@ mod tests {
         frozen.ball_record.physics_frame = 3;
         ticks.push(frozen);
         ticks.push(quiet_tick(4, 40.0));
-        let segments = split_segments(&ticks, config(8, 1));
+        let segments = split_segments(&ticks, config(8));
         for segment in &segments {
             let range = segment.start..segment.end();
             assert!(!(range.contains(&2) && range.contains(&3)));
@@ -1473,7 +1469,7 @@ mod tests {
         // Tick 2 snaps 5000 UU away with contiguous frames: a reset, not play.
         ticks[2].car_records[0].phys.pos = vec(5000.0, 0.0, 100.0);
         ticks[3].car_records[0].phys.pos = vec(5010.0, 0.0, 100.0);
-        let segments = split_segments(&ticks, config(8, 1));
+        let segments = split_segments(&ticks, config(8));
         for segment in &segments {
             let range = segment.start..segment.end();
             assert!(!(range.contains(&1) && range.contains(&2)));
@@ -1485,7 +1481,7 @@ mod tests {
         let mut ticks: Vec<_> = (0..4).map(|i| quiet_tick(i, i as f32 * 10.0)).collect();
         ticks[2].ball_record.pos = vec(0.0, 5000.0, 100.0);
         ticks[3].ball_record.pos = vec(0.0, 5010.0, 100.0);
-        let segments = split_segments(&ticks, config(8, 1));
+        let segments = split_segments(&ticks, config(8));
         for segment in &segments {
             let range = segment.start..segment.end();
             assert!(!(range.contains(&1) && range.contains(&2)));
@@ -1496,7 +1492,7 @@ mod tests {
     fn fast_legal_motion_keeps_run() {
         // 400 UU per tick is fast but legal: no teleport split.
         let ticks: Vec<_> = (0..4).map(|i| quiet_tick(i, i as f32 * 400.0)).collect();
-        let segments = split_segments(&ticks, config(8, 1));
+        let segments = split_segments(&ticks, config(8));
         assert_eq!(segments, vec![Segment { start: 0, len: 4 }]);
     }
 
@@ -1541,9 +1537,20 @@ mod tests {
         let mut second = ticks[2].car_records[0].clone();
         second.is_touching_ball = true;
         ticks[2].car_records.push(second);
-        let segments = split_segments(&ticks, config(4, 1));
-        // No segment spans the count change at index 2.
-        assert!(!segments.iter().any(|s| (s.start..s.end()).contains(&2)));
+        let segments = split_segments(&ticks, config(4));
+        // No segment spans the count change at index 2: runs break there,
+        // so every segment lies on one side and the change tick heads
+        // its own run.
+        for s in &segments {
+            let counts: Vec<usize> = (s.start..s.end())
+                .map(|i| tick_car_count(&ticks[i]))
+                .collect();
+            assert!(
+                counts.windows(2).all(|w| w[0] == w[1]),
+                "segment {s:?} spans count change"
+            );
+        }
+        assert!(segments.iter().any(|s| s.start == 2));
         // Labels are per car.
         let tick2 = &ticks[2];
         assert!(!classify_tick(tick2, 0, SimContactEvents::default()).car_ball);
@@ -1552,18 +1559,7 @@ mod tests {
         assert!(snapshot_from_tick(&ticks[2], 2).is_none());
         // Car 0 still evaluates over the clean run.
         let mut backend = MirrorBackend::new(&ticks);
-        let report = evaluate(
-            &mut backend,
-            &ticks,
-            &segments,
-            1,
-            false,
-            false,
-            true,
-            false,
-            false,
-        )
-        .report;
+        let report = evaluate(&mut backend, &ticks, &segments, false, true, false, false).report;
         assert!(report.total.support > 0);
     }
 
@@ -1576,18 +1572,7 @@ mod tests {
         }
         let mut backend = MirrorBackend::new(&ticks);
         let segments = vec![Segment { start: 0, len: 4 }];
-        let report = evaluate(
-            &mut backend,
-            &ticks,
-            &segments,
-            1,
-            false,
-            false,
-            true,
-            false,
-            false,
-        )
-        .report;
+        let report = evaluate(&mut backend, &ticks, &segments, false, true, false, false).report;
         assert_eq!(report.total.support, 6);
         assert_eq!(report.total.passed, 6);
         assert_eq!(report.no_contact.support, 6);
@@ -1600,18 +1585,7 @@ mod tests {
         ticks[4].car_records[0].wheels[0].has_contact = true;
         let mut backend = MirrorBackend::new(&ticks);
         let segments = vec![Segment { start: 0, len: 6 }];
-        let report = evaluate(
-            &mut backend,
-            &ticks,
-            &segments,
-            1,
-            false,
-            false,
-            true,
-            false,
-            false,
-        )
-        .report;
+        let report = evaluate(&mut backend, &ticks, &segments, false, true, false, false).report;
         assert_eq!(report.total.support, 5);
         assert_eq!(report.total.passed, 5);
         assert_eq!(report.car_ball.support, 1);
@@ -1619,18 +1593,7 @@ mod tests {
         assert_eq!(report.no_contact.support, 4);
 
         let mut backend = MirrorBackend::new(&ticks);
-        let report = evaluate(
-            &mut backend,
-            &ticks,
-            &segments,
-            3,
-            true,
-            false,
-            true,
-            false,
-            false,
-        )
-        .report;
+        let report = evaluate(&mut backend, &ticks, &segments, true, true, false, false).report;
         assert_eq!(report.total.support, 5);
         assert_eq!(report.total.passed, 5);
     }
@@ -1785,7 +1748,7 @@ mod tests {
         assert!(tick_is_kickoff_stasis(&from, &to));
         let ticks = vec![lead, from, to, after];
         assert_eq!(
-            split_segments(&ticks, config(8, 1)),
+            split_segments(&ticks, config(8)),
             vec![Segment { start: 0, len: 4 }]
         );
         assert_eq!(run_start(&ticks, 2), 0);
@@ -1827,17 +1790,7 @@ mod tests {
         assert!(!tick_is_kickoff_stasis(&ticks[2], &ticks[3]));
         let segments = vec![Segment { start: 0, len: 4 }];
         let mut backend = MirrorBackend::new(&ticks);
-        let outcome = evaluate(
-            &mut backend,
-            &ticks,
-            &segments,
-            1,
-            true,
-            false,
-            true,
-            false,
-            false,
-        );
+        let outcome = evaluate(&mut backend, &ticks, &segments, true, true, false, false);
         assert_eq!(outcome.skipped_transitions, 1);
         assert_eq!(outcome.skipped_car_ticks, 2);
         assert_eq!(outcome.report.total.support, 4);
@@ -1917,17 +1870,7 @@ mod tests {
         let ticks: Vec<_> = (0..6).map(|i| quiet_tick(i, i as f32 * 10.0)).collect();
         let segments = vec![Segment { start: 0, len: 3 }, Segment { start: 3, len: 3 }];
         let mut backend = StickyGateProbe::new(&ticks);
-        evaluate(
-            &mut backend,
-            &ticks,
-            &segments,
-            1,
-            false,
-            false,
-            true,
-            true,
-            true,
-        );
+        evaluate(&mut backend, &ticks, &segments, false, true, true, true);
         assert_eq!(backend.refreshes, segments.len());
         let reset_pos = backend.events.iter().position(|e| e == "reset").unwrap();
         let refresh_pos = backend.events.iter().position(|e| e == "refresh").unwrap();
@@ -1943,43 +1886,11 @@ mod tests {
         assert!(boost_pos < refresh_pos);
         assert!(refresh_pos < step_pos);
         let mut backend = StickyGateProbe::new(&ticks);
-        evaluate(
-            &mut backend,
-            &ticks,
-            &segments,
-            1,
-            false,
-            false,
-            true,
-            true,
-            false,
-        );
+        evaluate(&mut backend, &ticks, &segments, false, true, true, false);
         assert_eq!(backend.refreshes, segments.len());
+        // Reset-each-tick mode settles the gate at each segment start too.
         let mut backend = StickyGateProbe::new(&ticks);
-        evaluate(
-            &mut backend,
-            &ticks,
-            &segments,
-            1,
-            true,
-            false,
-            true,
-            true,
-            true,
-        );
-        assert_eq!(backend.refreshes, 0);
-        let mut backend = StickyGateProbe::new(&ticks);
-        evaluate(
-            &mut backend,
-            &ticks,
-            &segments,
-            1,
-            true,
-            true,
-            true,
-            true,
-            true,
-        );
+        evaluate(&mut backend, &ticks, &segments, true, true, true, true);
         assert_eq!(backend.refreshes, segments.len());
     }
 }
