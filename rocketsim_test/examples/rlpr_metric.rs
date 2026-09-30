@@ -164,6 +164,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     println!("Categories overlap. Support counts car-ticks (cars x ticks).");
     println!("Dodge deadzone: {:.2}", args.dodge_deadzone);
+    let tol = common::Tolerances::for_mode(args.reset_each_tick);
+    println!(
+        "Tolerances: pos {:.1} uu, vel {:.1} uu/s, ang vel {:.2} rad/s, axis {:.2}{}",
+        tol.pos_uu,
+        tol.vel_uu_s,
+        tol.ang_vel_rad_s,
+        tol.axis,
+        if args.reset_each_tick {
+            " (velocity tightened for one-tick replay)"
+        } else {
+            ""
+        },
+    );
     #[cfg(feature = "v2")]
     println!("v2 backend always uses Octane (no header body selection).");
 

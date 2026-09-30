@@ -20,11 +20,49 @@ use rocketsim_test::rlpr::{cpp_records::ControlsRecord, tick_record::TickRecord}
 pub const CAR_TELEPORT_DIST: f32 = 500.0;
 pub const BALL_TELEPORT_DIST: f32 = 500.0;
 
-// Strict per-component tolerances. See [`normalized_error`].
-pub const POS_TOL_UU: f32 = 10.0;
-pub const VEL_TOL_UU_S: f32 = 3.0;
-pub const ANG_VEL_TOL_RAD_S: f32 = 1.0;
-pub const AXIS_TOL: f32 = 1.0;
+/// Per-component tolerances for one scoring mode. See [`normalized_error`].
+///
+/// Position, angular velocity, and axis budgets are shared. Velocity is the
+/// only mode-dependent term: it dominates every observed failure, and the
+/// two modes sit at very different accuracy levels. Open-loop segments
+/// diverge over 120 ticks, so tightening there would only measure chaos
+/// rather than engine fidelity. A one-tick replay reproduces a tick far
+/// inside the segment budget, so velocity is tightened there to keep the
+/// gate sensitive enough to catch a regression.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Tolerances {
+    pub pos_uu: f32,
+    pub vel_uu_s: f32,
+    pub ang_vel_rad_s: f32,
+    pub axis: f32,
+}
+
+impl Tolerances {
+    /// Budgets for open-loop segment scoring.
+    pub const SEGMENT: Self = Self {
+        pos_uu: 10.0,
+        vel_uu_s: 3.0,
+        ang_vel_rad_s: 1.0,
+        axis: 1.0,
+    };
+
+    /// Budgets for one-tick replay scoring. Velocity is 3x stricter.
+    pub const RESET_EACH_TICK: Self = Self {
+        pos_uu: 10.0,
+        vel_uu_s: 1.0,
+        ang_vel_rad_s: 1.0,
+        axis: 1.0,
+    };
+
+    /// Tolerances for the given replay mode.
+    pub fn for_mode(reset_each_tick: bool) -> Self {
+        if reset_each_tick {
+            Self::RESET_EACH_TICK
+        } else {
+            Self::SEGMENT
+        }
+    }
+}
 
 /// Plain body state. Axes are unit vectors. Uses [`Vec3A`].
 #[derive(Clone, Copy, Debug)]
@@ -548,32 +586,29 @@ impl ComponentErrors {
 
 /// Per-term errors for one sim vs truth pair.
 ///
-/// Each term is already divided by its tolerance:
-/// car/ball pos by 10 UU, car/ball vel by 3 UU/s,
-/// car/ball ang vel by 1 rad/s, axes by 1.
-pub fn component_errors(sim: &Snapshot, truth: &Snapshot) -> ComponentErrors {
+/// Each term is already divided by its tolerance from `tol`.
+pub fn component_errors(sim: &Snapshot, truth: &Snapshot, tol: &Tolerances) -> ComponentErrors {
     ComponentErrors {
-        car_pos: (sim.car.pos - truth.car.pos).length() / POS_TOL_UU,
-        ball_pos: (sim.ball.pos - truth.ball.pos).length() / POS_TOL_UU,
-        car_vel: (sim.car.vel - truth.car.vel).length() / VEL_TOL_UU_S,
-        ball_vel: (sim.ball.vel - truth.ball.vel).length() / VEL_TOL_UU_S,
-        car_ang: (sim.car.ang_vel - truth.car.ang_vel).length() / ANG_VEL_TOL_RAD_S,
-        ball_ang: (sim.ball.ang_vel - truth.ball.ang_vel).length() / ANG_VEL_TOL_RAD_S,
-        car_fwd: (sim.car.forward - truth.car.forward).length() / AXIS_TOL,
-        car_up: (sim.car.up - truth.car.up).length() / AXIS_TOL,
-        ball_fwd: (sim.ball.forward - truth.ball.forward).length() / AXIS_TOL,
-        ball_up: (sim.ball.up - truth.ball.up).length() / AXIS_TOL,
+        car_pos: (sim.car.pos - truth.car.pos).length() / tol.pos_uu,
+        ball_pos: (sim.ball.pos - truth.ball.pos).length() / tol.pos_uu,
+        car_vel: (sim.car.vel - truth.car.vel).length() / tol.vel_uu_s,
+        ball_vel: (sim.ball.vel - truth.ball.vel).length() / tol.vel_uu_s,
+        car_ang: (sim.car.ang_vel - truth.car.ang_vel).length() / tol.ang_vel_rad_s,
+        ball_ang: (sim.ball.ang_vel - truth.ball.ang_vel).length() / tol.ang_vel_rad_s,
+        car_fwd: (sim.car.forward - truth.car.forward).length() / tol.axis,
+        car_up: (sim.car.up - truth.car.up).length() / tol.axis,
+        ball_fwd: (sim.ball.forward - truth.ball.forward).length() / tol.axis,
+        ball_up: (sim.ball.up - truth.ball.up).length() / tol.axis,
     }
 }
 
 /// Normalized physics error over car and ball.
 ///
-/// Each component is divided by its tolerance, then combined as a norm:
-/// car/ball position by 10 UU, car/ball velocity by 3 UU/s,
-/// car/ball angular velocity by 1 rad/s, car/ball forward/up drift by 1.
-/// Passes when norm < 1.
-pub fn normalized_error(sim: &Snapshot, truth: &Snapshot) -> f32 {
-    component_errors(sim, truth).norm()
+/// Each component is divided by its tolerance from `tol`, then combined as
+/// a norm. Passes when norm < 1. Tolerances are mode-dependent; see
+/// [`Tolerances`].
+pub fn normalized_error(sim: &Snapshot, truth: &Snapshot, tol: &Tolerances) -> f32 {
+    component_errors(sim, truth, tol).norm()
 }
 
 /// Strict pass rule.
@@ -819,6 +854,7 @@ pub fn evaluate<B: ReplayBackend>(
 ) -> EvalOutcome {
     let mut outcome = EvalOutcome::default();
     let report = &mut outcome.report;
+    let tol = Tolerances::for_mode(reset_each_tick);
     for segment in segments {
         if segment.end() > ticks.len() {
             continue;
@@ -877,7 +913,7 @@ pub fn evaluate<B: ReplayBackend>(
                 } else {
                     SimContactEvents::default()
                 };
-                let norm = normalized_error(&backend.snapshot(car_idx), &truth);
+                let norm = normalized_error(&backend.snapshot(car_idx), &truth, &tol);
                 report.add(classify_tick(target, car_idx, sim), target_index, norm);
             }
         }
@@ -1122,17 +1158,49 @@ mod tests {
     fn norm_error_matches_strict_thresholds() {
         let tick = quiet_tick(0, 0.0);
         let truth = snapshot_from_tick(&tick, 0).unwrap();
-        assert_eq!(normalized_error(&truth, &truth), 0.0);
+        let tol = Tolerances::SEGMENT;
+        assert_eq!(normalized_error(&truth, &truth, &tol), 0.0);
         assert!(passes(0.0));
         let mut moved = truth;
-        moved.car.pos.x += POS_TOL_UU;
-        assert!((normalized_error(&moved, &truth) - 1.0).abs() < 1e-5);
-        assert!(!passes(normalized_error(&moved, &truth)));
-        moved.car.pos.x -= POS_TOL_UU / 2.0;
-        assert!(passes(normalized_error(&moved, &truth)));
+        moved.car.pos.x += tol.pos_uu;
+        assert!((normalized_error(&moved, &truth, &tol) - 1.0).abs() < 1e-5);
+        assert!(!passes(normalized_error(&moved, &truth, &tol)));
+        moved.car.pos.x -= tol.pos_uu / 2.0;
+        assert!(passes(normalized_error(&moved, &truth, &tol)));
         let mut ball_moved = truth;
         ball_moved.ball.forward = Vec3A::new(0.0, 1.0, 0.0);
-        assert!(!passes(normalized_error(&ball_moved, &truth)));
+        assert!(!passes(normalized_error(&ball_moved, &truth, &tol)));
+    }
+
+    #[test]
+    fn reset_each_tick_tightens_velocity_only() {
+        let seg = Tolerances::for_mode(false);
+        let reset = Tolerances::for_mode(true);
+        assert_eq!(seg.pos_uu, reset.pos_uu);
+        assert_eq!(seg.ang_vel_rad_s, reset.ang_vel_rad_s);
+        assert_eq!(seg.axis, reset.axis);
+        assert!(reset.vel_uu_s < seg.vel_uu_s);
+    }
+
+    #[test]
+    fn reset_each_tick_velocity_error_fails_earlier() {
+        let tick = quiet_tick(0, 0.0);
+        let truth = snapshot_from_tick(&tick, 0).unwrap();
+        let mut moved = truth;
+        // Between the two velocity budgets: passes on segments, fails on
+        // one-tick replay.
+        moved.car.vel.y =
+            (Tolerances::SEGMENT.vel_uu_s + Tolerances::RESET_EACH_TICK.vel_uu_s) / 2.0;
+        assert!(passes(normalized_error(
+            &moved,
+            &truth,
+            &Tolerances::SEGMENT
+        )));
+        assert!(!passes(normalized_error(
+            &moved,
+            &truth,
+            &Tolerances::RESET_EACH_TICK
+        )));
     }
 
     #[test]

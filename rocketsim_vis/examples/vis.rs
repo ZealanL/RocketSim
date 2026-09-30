@@ -6,12 +6,12 @@
 //! Run with: `cargo run -p rocketsim_vis --example vis`
 
 use device_query::{DeviceQuery, DeviceState, Keycode};
+use gilrs::{Axis, Button, Gilrs};
 use glam::Vec3A;
 use rocketsim::{
     Arena, ArenaConfig, CarBodyConfig, CarControls, GameMode, Team, init_from_default,
 };
 use rocketsim_vis::ArenaVisExt;
-use gilrs::{Gilrs, Button, Axis};
 
 fn determine_keyboard_controls(device: &DeviceState, controls: CarControls) -> CarControls {
     let keys = device.get_keys();
