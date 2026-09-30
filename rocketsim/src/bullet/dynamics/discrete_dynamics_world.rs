@@ -185,6 +185,20 @@ impl DiscreteDynamicsWorld {
         self.for_each_dynamic_body(RigidBody::clear_accum_vels);
     }
 
+    #[inline]
+    pub fn clear_persistent_manifolds(&mut self) {
+        self.collision_world
+            .dispatcher1
+            .clear_persistent_manifolds();
+    }
+
+    /// Count cached contact manifolds for reuse diagnostics.
+    #[inline]
+    #[must_use]
+    pub fn num_persistent_manifolds(&self) -> usize {
+        self.collision_world.dispatcher1.persistent_manifolds.len()
+    }
+
     fn internal_single_step_simulation<T: ContactAddedCallback>(
         &mut self,
         time_step: f32,

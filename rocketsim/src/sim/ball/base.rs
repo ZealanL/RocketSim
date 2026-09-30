@@ -124,6 +124,7 @@ impl Ball {
 
         rb.set_lin_vel(state.phys.vel * UU_TO_BT);
         rb.set_ang_vel(state.phys.ang_vel);
+        rb.clear_accum_vels();
         rb.update_inertia_tensor();
 
         if state.phys.vel != Vec3A::ZERO || state.phys.ang_vel != Vec3A::ZERO {

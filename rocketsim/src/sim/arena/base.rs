@@ -739,6 +739,10 @@ impl Arena {
     ///
     /// Use to place kickoffs, restore snapshots, or inject test states.
     /// For Heatseeker also set `hs_info`; for Dropshot `ds_info`.
+    /// Persistent manifolds auto-cull stale points on the next tick via the
+    /// contact breaking threshold; call `clear_persistent_manifolds` first
+    /// only if you need bit-identical fresh-arena matching for large
+    /// planning jumps.
     pub fn set_ball_state(&mut self, ball_state: BallState) {
         self.ball.set_state(
             &mut self.bullet_world.bodies_mut()[self.ball.rigid_body_idx],
@@ -746,9 +750,25 @@ impl Arena {
         );
     }
 
+    /// Explicitly drop cached collision contacts.
+    ///
+    /// Opt-in for planning code reusing one arena across far-apart poses that
+    /// needs fresh-arena matching. Normal per-tick replay corrections should
+    /// NOT call this; auto-culling preserves continuity there.
+    pub fn clear_persistent_manifolds(&mut self) {
+        self.bullet_world.clear_persistent_manifolds();
+    }
+
     /// Current ball state (updated after every [`Arena::step_tick`]).
     pub const fn get_ball_state(&self) -> &BallState {
         &self.ball.state
+    }
+
+    /// Count cached contact manifolds for reuse diagnostics.
+    #[inline]
+    #[must_use]
+    pub fn num_persistent_manifolds(&self) -> usize {
+        self.bullet_world.num_persistent_manifolds()
     }
 
     /// All cars in add order; index `i` is the id from [`Arena::add_car`].
@@ -795,8 +815,14 @@ impl Arena {
 
     /// Teleports a car (position/velocity/boost/...). Clears cached impulses.
     ///
-    /// If you restore mid-drive snapshots every tick (replay/RLBot), follow
-    /// with [`Arena::refresh_car_sticky_gate`].
+    /// Hidden wheel contacts and the sticky gate carry over, matching live
+    /// replay following. If you restore mid-drive snapshots every tick
+    /// (replay/RLBot), follow with [`Arena::refresh_car_sticky_gate`].
+    ///
+    /// Planning reuse is different: a reused arena must match a fresh one,
+    /// so after teleporting call [`Arena::reset_car_transient_contacts`] and
+    /// [`Arena::clear_persistent_manifolds`] (see `is_large_teleport` to tell
+    /// far planning jumps from small per-tick corrections).
     pub fn set_car_state(&mut self, car_idx: usize, state: CarState) {
         let car = &mut self.cars[car_idx];
 
@@ -804,6 +830,17 @@ impl Arena {
             &mut self.bullet_world.bodies_mut()[car.rigid_body_idx],
             &state,
         );
+    }
+
+    /// Reset a car's transient wheel contacts for planning reuse. Keeps config.
+    ///
+    /// Drops cached raycasts/impulses and the sticky gate so the next tick
+    /// behaves like a fresh arena. Pair with
+    /// [`Arena::clear_persistent_manifolds`] after teleporting to a far pose.
+    /// Replay following must NOT call this; it would break contact continuity.
+    pub fn reset_car_transient_contacts(&mut self, car_idx: usize) {
+        self.cars[car_idx].bullet_vehicle.reset_transient_contacts();
+        self.cars[car_idx].sticky_gate_prev = false;
     }
 
     /// Sets the inputs applied on the next [`Arena::step_tick`].

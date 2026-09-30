@@ -73,6 +73,17 @@ impl Default for CollisionDispatcher {
 }
 
 impl CollisionDispatcher {
+    /// Clear cached contacts after a teleport.
+    ///
+    /// Reused prediction arenas teleport to varied poses. Drop stale
+    /// contacts. Match a fresh arena.
+    pub fn clear_persistent_manifolds(&mut self) {
+        self.persistent_manifolds.clear();
+        self.active_manifolds.clear();
+        self.manifold_table.clear();
+        self.manifold_stride = 0;
+    }
+
     /// Push a first-seen pair's manifold and record its index.
     fn insert_persistent_manifold(&mut self, key: u64, manifold: PersistentManifold) -> usize {
         debug_assert_eq!(manifold.pair_key, key);

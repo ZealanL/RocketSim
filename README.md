@@ -47,28 +47,28 @@ Balanced reduces marginal memory while retaining most of Heavy's performance. Li
 Run the v3 metric:
 
 ```sh
-cargo run --release -p rocketsim_test --example rlpr_metric
+cargo run --example rlpr_metric
 ```
 
 Enable `v2` to compare v3 with the original C++ RocketSim bindings:
 
 ```sh
-cargo run --release -p rocketsim_test --features v2 --example rlpr_metric
+cargo run --features v2 --example rlpr_metric
 ```
 
 Run the comparable stress benchmarks with these commands:
 
 ```sh
-cargo run --release -p rocketsim_test --example stress_v3
-cargo run --release -p rocketsim_test --features v2 --example stress_v2
+cargo run --example stress_v3
+cargo run --features v2 --example stress_v2
 ```
 
 For a ball-only workload (no cars), pass `-n 0`. Ball-only runs use five times
 as many episodes as the normal stress workload:
 
 ```sh
-cargo run --release -p rocketsim_test --example stress_v3 -- --num-cars 0
-cargo run --release -p rocketsim_test --features v2 --example stress_v2 -- --num-cars 0
+cargo run --example stress_v3 -- --num-cars 0
+cargo run --features v2 --example stress_v2 -- --num-cars 0
 ```
 
 Replay mode takes precedence: `--rlpr-file` always runs replay validation.

@@ -32,6 +32,24 @@ impl VehicleRL {
         }
     }
 
+    /// Reset transient wheel contacts for planning reuse. Keeps config.
+    pub(crate) fn reset_transient_contacts(&mut self) {
+        for wheel in &mut self.wheels {
+            wheel.raycast_info = None;
+            wheel.hard_point = Vec3A::ZERO;
+            wheel.axle_dir = Vec3A::ZERO;
+            wheel.engine_force = 0.0;
+            wheel.brake = 0.0;
+            wheel.steer_angle = 0.0;
+            wheel.vel_at_contact_point = Vec3A::ZERO;
+            wheel.lat_friction = 1.0;
+            wheel.long_friction = 1.0;
+            wheel.extra_pushback = 0.0;
+            // Keep chassis_connection_point_cs, suspension_rest_length_1,
+            // wheels_radius, suspension_force_scale, real_ray_length.
+        }
+    }
+
     pub fn get_upwards_dir_from_wheel_contacts(&self, cb: &RigidBody) -> Vec3A {
         let mut sum_contact_dir = Vec3A::ZERO;
         for wheel in &self.wheels {

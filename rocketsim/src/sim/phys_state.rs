@@ -10,7 +10,7 @@ use glam::{Mat3A, Vec3A};
 ///
 /// There is deliberately no `Default`: use [`crate::BallState::DEFAULT`] or
 /// [`crate::CarState::DEFAULT`] so the spawn height is correct.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PhysState {
     pub pos: Vec3A,
     pub rot_mat: Mat3A,

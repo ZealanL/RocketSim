@@ -239,6 +239,7 @@ impl Car {
 
         rb.lin_vel = state.phys.vel * UU_TO_BT;
         rb.ang_vel = state.phys.ang_vel;
+        rb.clear_accum_vels();
         rb.update_inertia_tensor();
 
         self.vel_impulse_cache = Vec3A::ZERO;
