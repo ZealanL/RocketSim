@@ -262,7 +262,15 @@ impl Car {
         self.state.handbrake_val = (self.state.handbrake_val + handbrake_delta).clamp(0.0, 1.0);
 
         let mut real_brake = 0.0;
-        let real_throttle = self.state.controls.throttle;
+        let raw_throttle = self.state.controls.throttle;
+
+        let all_wheels_contact = self.state.num_wheels_in_contact() == NUM_WHEELS;
+        let real_throttle =
+            if self.state.controls.boost && self.state.boost > 0.0 && all_wheels_contact {
+                1.0
+            } else {
+                raw_throttle
+            };
 
         let abs_forward_speed_uu = forward_speed_uu.abs();
         let mut engine_throttle = real_throttle;
@@ -277,9 +285,6 @@ impl Car {
                         engine_throttle = 0.0;
                     }
                 }
-            } else if self.state.controls.boost && self.state.boost > 0.0 {
-                engine_throttle = 1.0;
-                real_brake = 0.0;
             } else {
                 engine_throttle = 0.0;
                 real_brake = if abs_forward_speed_uu < drive_consts::STOPPING_FORWARD_VEL {
@@ -330,7 +335,8 @@ impl Car {
                 }
             };
 
-            let full_stick = real_throttle != 0.0
+            // Sticky keeps raw throttle
+            let full_stick = raw_throttle != 0.0
                 || abs_forward_speed_uu > car_consts::drive::STOPPING_FORWARD_VEL;
             let mut sticky_force_scale = f32::from(!self.config.three_wheels) * 0.5;
             if full_stick {
