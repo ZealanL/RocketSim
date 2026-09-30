@@ -199,6 +199,10 @@ impl Car {
         };
 
         self.set_state(rb, &new_state);
+
+        // Fresh spawn must not inherit pre-demo/drive wheel contacts
+        self.bullet_vehicle.reset_transient_contacts();
+        self.sticky_gate_prev = false;
     }
 
     /// Current simulation state (same as `Arena::get_car_state(idx)`).

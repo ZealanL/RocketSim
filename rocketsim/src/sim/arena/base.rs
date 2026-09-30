@@ -470,6 +470,10 @@ impl Arena {
                     let car = &mut self.cars[car_idx];
                     let rb = &mut self.bullet_world.bodies_mut()[car.rigid_body_idx];
                     car.set_state(rb, &spawn_state);
+
+                    // Drop driving contacts so the next tick matches a fresh arena
+                    car.bullet_vehicle.reset_transient_contacts();
+                    car.sticky_gate_prev = false;
                 }
             }
         }
