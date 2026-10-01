@@ -22,11 +22,14 @@ use rocketsim_rs::{
     },
 };
 use rocketsim_test::rlpr::{
-    cpp_records::{CarRecord, ControlsRecord, Mat3Record, VecRecord},
+    cpp_records::{CarRecord, ControlsRecord, Mat3Record, RecordingInfo, VecRecord},
     tick_record::TickRecord,
 };
 
-use super::common::{BodySnapshot, ReplayBackend, SimContactEvents, Snapshot};
+use super::common::{
+    BODY_PRESET_NAMES, BodySnapshot, HitboxBounds, NUM_BODY_PRESETS, ReplayBackend,
+    SimContactEvents, Snapshot, body_preset_from_info,
+};
 
 // Bump events observed during the last stepped tick: (bumper, victim).
 // Collected by v2_bump_callback into a thread-local because cxx
@@ -47,10 +50,20 @@ fn v2_bump_callback(
     V2_BUMP_EVENTS.with(|events| events.borrow_mut().push((bumper, victim)));
 }
 
-/// v2 sim holder with one Octane per recorded car (Blue first, then Orange).
+/// v2 sim holder with one recorded-body car per recorded car
+/// (Blue first, then Orange).
+///
+/// The body presets come from [`V2Backend::set_bodies`] or
+/// [`V2Backend::set_body_from_info`]; they stay Octane until the caller
+/// selects a roster. Presets are per car slot, so a mixed roster replays
+/// with each car on its own body.
 pub struct V2Backend {
     arena: rocketsim_rs::cxx::UniquePtr<Arena>,
     car_ids: Vec<u32>,
+    /// Body preset index per car slot, in [`BODY_PRESET_NAMES`] order.
+    bodies: Vec<usize>,
+    /// Presets the current arena was built with, to detect roster changes.
+    arena_body: Option<Vec<usize>>,
     dodge_deadzone: f32,
     mem_weight_mode: ArenaMemWeightMode,
     capture_events: bool,
@@ -90,11 +103,19 @@ impl V2Backend {
         mem_weight_mode: ArenaMemWeightMode,
         capture_events: bool,
     ) -> Self {
-        let (arena, car_ids) = fresh_arena(1, dodge_deadzone, mem_weight_mode, capture_events);
+        let (arena, car_ids) = fresh_arena(
+            1,
+            &[OCTANE_PRESET],
+            dodge_deadzone,
+            mem_weight_mode,
+            capture_events,
+        );
         let last_ball_hit = vec![0; car_ids.len()];
         Self {
             arena,
             car_ids,
+            bodies: vec![OCTANE_PRESET],
+            arena_body: None,
             dodge_deadzone,
             mem_weight_mode,
             capture_events,
@@ -102,17 +123,56 @@ impl V2Backend {
         }
     }
 
-    /// Rebuild the arena when the car count changes.
+    /// Select one body preset for every car slot from a recording header.
+    ///
+    /// Call once per recording before `reset`, or use [`Self::set_bodies`] for
+    /// a mixed roster. The next `reset`/`set_state` rebuilds the arena when
+    /// the roster differs, even when the car count is unchanged. Unknown
+    /// headers return an error and leave the previous roster in place: the
+    /// metric must fail rather than score a guessed body. The header samples
+    /// the first recorded car only, so it cannot see a mixed roster.
+    #[allow(dead_code)]
+    pub fn set_body_from_info(&mut self, info: &RecordingInfo) -> Result<&'static str, String> {
+        let index = body_preset_from_info(info, &v2_preset_bounds())?;
+        self.bodies = vec![index; info.num_cars as usize];
+        Ok(BODY_PRESET_NAMES[index])
+    }
+
+    /// Select a body preset per car slot, in recording order.
+    ///
+    /// This is the mixed-roster path: RLPR headers carry one hitbox for the
+    /// whole file, so a replay with more than one car body has to come from
+    /// per-car detection. A short roster pads with Octane.
+    pub fn set_bodies(&mut self, bodies: &[usize]) {
+        self.bodies = bodies.to_vec();
+    }
+
+    /// Preset index for one car slot. Missing slots fall back to Octane so a
+    /// short or empty roster still builds a playable arena.
+    fn preset_for_slot(&self, slot: usize) -> usize {
+        self.bodies.get(slot).copied().unwrap_or(OCTANE_PRESET)
+    }
+
+    /// Rebuild the arena when the car count or the body roster changes.
+    ///
+    /// The roster check matters when consecutive recordings hold the same car
+    /// count with different bodies: the ids would still line up, but the
+    /// hitbox and wheels would stay wrong without a rebuild.
     fn ensure_cars(&mut self, num_cars: usize) {
-        if self.car_ids.len() != num_cars {
+        let roster: Vec<usize> = (0..num_cars)
+            .map(|slot| self.preset_for_slot(slot))
+            .collect();
+        if self.car_ids.len() != num_cars || self.arena_body.as_ref() != Some(&roster) {
             let (arena, car_ids) = fresh_arena(
                 num_cars,
+                &roster,
                 self.dodge_deadzone,
                 self.mem_weight_mode,
                 self.capture_events,
             );
             self.arena = arena;
             self.car_ids = car_ids;
+            self.arena_body = Some(roster);
             self.last_ball_hit = vec![0; num_cars];
         }
     }
@@ -236,9 +296,46 @@ impl ReplayBackend for V2Backend {
     }
 }
 
-/// Make a Soccar arena at 120 Hz with one Octane per recorded car.
+/// Preset index for Octane, the default body of a fresh v2 backend.
+const OCTANE_PRESET: usize = 0;
+
+/// v2 body presets in [`BODY_PRESET_NAMES`] order.
+///
+/// The v2 crate returns each preset as a `&'static CarConfig`, so the table
+/// is built at runtime from the crate's own getters rather than duplicated
+/// as constants here.
+fn v2_preset(index: usize) -> &'static CarConfig {
+    match index {
+        0 => CarConfig::octane(),
+        1 => CarConfig::dominus(),
+        2 => CarConfig::plank(),
+        3 => CarConfig::breakout(),
+        4 => CarConfig::hybrid(),
+        5 => CarConfig::merc(),
+        6 => CarConfig::psyclops(),
+        _ => panic!("v2 body preset index out of range: {index}"),
+    }
+}
+
+/// Hitbox bounds per v2 preset, in uu, in [`BODY_PRESET_NAMES`] order.
+#[allow(dead_code)]
+fn v2_preset_bounds() -> [HitboxBounds; NUM_BODY_PRESETS] {
+    std::array::from_fn(|index| {
+        let config = v2_preset(index);
+        HitboxBounds {
+            size: vec_to_glam(config.hitbox_size),
+            offset: vec_to_glam(config.hitbox_pos_offset),
+        }
+    })
+}
+
+/// Make a Soccar arena at 120 Hz with one body per recorded car.
+///
+/// `roster` holds one preset index per car slot; a short roster pads with
+/// Octane.
 fn fresh_arena(
     num_cars: usize,
+    roster: &[usize],
     dodge_deadzone: f32,
     mem_weight_mode: ArenaMemWeightMode,
     capture_events: bool,
@@ -259,7 +356,7 @@ fn fresh_arena(
             } else {
                 Team::Orange
             };
-            let mut car_config = *CarConfig::octane();
+            let mut car_config = *v2_preset(roster.get(slot).copied().unwrap_or(OCTANE_PRESET));
             car_config.dodge_deadzone = dodge_deadzone;
             arena.pin_mut().add_car(team, &car_config)
         })
@@ -354,4 +451,191 @@ fn record_vec(vec: VecRecord) -> Vec3 {
 /// Map one v2 vector to glam.
 fn vec_to_glam(vec: Vec3) -> Vec3A {
     Vec3A::new(vec.x, vec.y, vec.z)
+}
+
+#[cfg(test)]
+mod tests {
+    use rocketsim::{HITBOX_SIZES, consts::BT_TO_UU};
+    use rocketsim_test::rlpr::cpp_records::VecRecord;
+
+    use super::*;
+
+    fn info_for(min: [f32; 3], max: [f32; 3]) -> RecordingInfo {
+        RecordingInfo {
+            num_cars: 2,
+            hitbox_rel_min_bt: VecRecord::new(min[0], min[1], min[2]),
+            hitbox_rel_max_bt: VecRecord::new(max[0], max[1], max[2]),
+        }
+    }
+
+    /// Exact Daizen header bounds (decompressed bytes 17-40).
+    fn daizen_info() -> RecordingInfo {
+        info_for(
+            [-1.133026, -0.871704, -0.077060],
+            [1.493369, 0.871704, 0.560828],
+        )
+    }
+
+    /// Shared Wisp/PartyCannon header bounds (decompressed bytes 17-40).
+    fn octane_info() -> RecordingInfo {
+        info_for(
+            [-0.927561, -0.866994, 0.028509],
+            [1.482587, 0.866994, 0.801690],
+        )
+    }
+
+    /// Header bounds for one v2 preset, in BT.
+    fn bounds_to_bt(config: &CarConfig) -> ([f32; 3], [f32; 3]) {
+        let size = vec_to_glam(config.hitbox_size);
+        let offset = vec_to_glam(config.hitbox_pos_offset);
+        let min = (offset - size * 0.5) / BT_TO_UU;
+        let max = (offset + size * 0.5) / BT_TO_UU;
+        (min.to_array(), max.to_array())
+    }
+
+    #[test]
+    fn daizen_header_maps_to_plank() {
+        init();
+        let mut backend = V2Backend::new();
+        assert_eq!(backend.set_body_from_info(&daizen_info()).unwrap(), "Plank");
+        // The test header declares two cars, so the roster fills both slots.
+        assert_eq!(backend.bodies, vec![2, 2]);
+    }
+
+    #[test]
+    fn octane_header_stays_octane() {
+        init();
+        let mut backend = V2Backend::new();
+        assert_eq!(
+            backend.set_body_from_info(&octane_info()).unwrap(),
+            "Octane"
+        );
+        assert_eq!(backend.bodies, vec![0, 0]);
+    }
+
+    #[test]
+    fn every_preset_matches_its_own_bounds() {
+        init();
+        // The v2 preset table must be self-consistent: each preset's own
+        // hitbox bounds round-trip through the header matcher back to it.
+        for index in 0..NUM_BODY_PRESETS {
+            let (min, max) = bounds_to_bt(v2_preset(index));
+            let info = info_for(min, max);
+            assert_eq!(
+                body_preset_from_info(&info, &v2_preset_bounds()).unwrap(),
+                index,
+                "{} must match its own bounds",
+                BODY_PRESET_NAMES[index]
+            );
+        }
+    }
+
+    #[test]
+    fn closest_presets_stay_distinct() {
+        init();
+        // Psyclops is Octane + 0.134 uu on every size axis: with a 0.01 uu
+        // tolerance it must match Psyclops, never Octane.
+        let (min, max) = bounds_to_bt(CarConfig::psyclops());
+        let info = info_for(min, max);
+        assert_eq!(
+            body_preset_from_info(&info, &v2_preset_bounds()).unwrap(),
+            6
+        );
+    }
+
+    #[test]
+    fn unknown_header_is_an_error() {
+        let info = info_for([-1.0, -1.0, -1.0], [1.0, 1.0, 1.0]);
+        assert!(body_preset_from_info(&info, &v2_preset_bounds()).is_err());
+    }
+
+    #[test]
+    fn unknown_header_keeps_previous_body() {
+        init();
+        let mut backend = V2Backend::new();
+        backend.set_body_from_info(&daizen_info()).unwrap();
+        assert_eq!(backend.bodies, vec![2, 2]);
+        let bad = info_for([-1.0, -1.0, -1.0], [1.0, 1.0, 1.0]);
+        assert!(backend.set_body_from_info(&bad).is_err());
+        assert_eq!(backend.bodies, vec![2, 2]);
+    }
+
+    #[test]
+    fn same_count_body_switch_rebuilds_arena() {
+        init();
+        let mut backend = V2Backend::new();
+        backend.set_body_from_info(&octane_info()).unwrap();
+        backend.ensure_cars(2);
+        // The v2 arena hands out the same ids on every rebuild, so a planted
+        // state is what proves whether the arena was replaced.
+        let sentinel = Vec3::new(1234.0, 567.0, 89.0);
+        let first_id = backend.car_ids[0];
+        let mut planted = backend.arena.pin_mut().get_car(first_id);
+        planted.pos = sentinel;
+        backend
+            .arena
+            .pin_mut()
+            .set_car(first_id, planted)
+            .expect("car id is valid");
+        // Same body, same count: no rebuild, so the planted state survives.
+        backend.ensure_cars(2);
+        assert_eq!(backend.arena.pin_mut().get_car(first_id).pos, sentinel);
+        // Same count, new body: rebuild, so the planted state is gone.
+        assert_eq!(backend.set_body_from_info(&daizen_info()).unwrap(), "Plank");
+        backend.ensure_cars(2);
+        assert_eq!(backend.car_ids.len(), 2);
+        assert_ne!(backend.arena.pin_mut().get_car(first_id).pos, sentinel);
+        assert_eq!(backend.arena_body, Some(vec![2, 2]));
+    }
+
+    #[test]
+    fn unknown_header_keeps_previous_roster() {
+        init();
+        let mut backend = V2Backend::new();
+        backend.set_bodies(&[2, 0]);
+        let bad = info_for([-1.0, -1.0, -1.0], [1.0, 1.0, 1.0]);
+        assert!(backend.set_body_from_info(&bad).is_err());
+        assert_eq!(backend.bodies, vec![2, 0]);
+    }
+
+    #[test]
+    fn mixed_roster_builds_per_car_bodies() {
+        init();
+        let mut backend = V2Backend::new();
+        // Plank against Octane, as in the bundled london_vs_nexto capture.
+        backend.set_bodies(&[2, 0]);
+        backend.ensure_cars(2);
+        assert_eq!(backend.arena_body, Some(vec![2, 0]));
+        assert_eq!(
+            vec_to_glam(v2_preset(2).hitbox_size),
+            HITBOX_SIZES[2],
+            "car 0 must be Plank"
+        );
+        assert_eq!(
+            vec_to_glam(v2_preset(0).hitbox_size),
+            HITBOX_SIZES[0],
+            "car 1 must be Octane"
+        );
+    }
+
+    #[test]
+    fn short_roster_pads_with_octane() {
+        init();
+        let mut backend = V2Backend::new();
+        backend.set_bodies(&[2]);
+        backend.ensure_cars(3);
+        assert_eq!(backend.arena_body, Some(vec![2, 0, 0]));
+    }
+
+    #[test]
+    fn roster_change_rebuilds_without_count_change() {
+        init();
+        let mut backend = V2Backend::new();
+        backend.set_bodies(&[0, 0]);
+        backend.ensure_cars(2);
+        let before = backend.arena_body.clone();
+        backend.set_bodies(&[2, 0]);
+        backend.ensure_cars(2);
+        assert_ne!(backend.arena_body, before);
+    }
 }

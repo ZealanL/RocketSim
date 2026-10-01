@@ -5,28 +5,33 @@
 //! Reset restores every car and ball state from the start tick.
 //! Step applies each recorded car's controls for one tick.
 
-use glam::Vec3A;
 use rocketsim::{
     Arena, ArenaConfig, ArenaEvent, ArenaMemWeightMode, CarBodyConfig, CarControls, CarState,
-    GameMode, HITBOX_OFFSETS, HITBOX_SIZES, PhysState, Team, consts::BT_TO_UU,
+    GameMode, HITBOX_OFFSETS, HITBOX_SIZES, PhysState, Team,
 };
 use rocketsim_test::rlpr::{
     cpp_records::{ControlsRecord, RecordingInfo},
     tick_record::TickRecord,
 };
 
-use super::common::{BodySnapshot, ReplayBackend, SimContactEvents, Snapshot};
+use super::common::{
+    BODY_PRESET_NAMES, BodySnapshot, HitboxBounds, NUM_BODY_PRESETS, ReplayBackend,
+    SimContactEvents, Snapshot, body_preset_from_info,
+};
 
 /// Sim holder: one car per recorded car in Soccar.
 ///
-/// The body preset comes from [`V3Backend::set_body_from_info`]; it stays
-/// Octane until the caller selects a header.
+/// The body presets come from [`V3Backend::set_bodies`] or
+/// [`V3Backend::set_body_from_info`]; they stay Octane until the caller
+/// selects a roster. Presets are per car slot, so a mixed roster replays
+/// with each car on its own body.
 pub struct V3Backend {
     arena: Arena,
     car_ids: Vec<usize>,
-    body: CarBodyConfig,
-    body_name: &'static str,
-    arena_body: Option<CarBodyConfig>,
+    /// Body preset index per car slot, in [`BODY_PRESET_NAMES`] order.
+    bodies: Vec<usize>,
+    /// Presets the current arena was built with, to detect roster changes.
+    arena_body: Option<Vec<CarBodyConfig>>,
     dodge_deadzone: f32,
     mem_weight_mode: ArenaMemWeightMode,
 }
@@ -60,8 +65,7 @@ impl V3Backend {
                 ArenaConfig::new(GameMode::Soccar).with_mem_weight_mode(mem_weight_mode),
             ),
             car_ids: Vec::new(),
-            body: CarBodyConfig::OCTANE,
-            body_name: "Octane",
+            bodies: Vec::new(),
             arena_body: None,
             dodge_deadzone,
             mem_weight_mode,
@@ -74,31 +78,41 @@ impl V3Backend {
         )
     }
 
-    /// Header-selected body config with this backend's dodge deadzone.
-    fn car_config(&self) -> CarBodyConfig {
-        let mut config = self.body;
+    /// Body config for one car slot, with this backend's dodge deadzone.
+    fn car_config(&self, slot: usize) -> CarBodyConfig {
+        let mut config = BODY_PRESETS[self.preset_for_slot(slot)];
         config.dodge_deadzone = self.dodge_deadzone;
         config
     }
 
-    /// Select the sim body from one recording header.
-    ///
-    /// Call once per recording before `reset`. The next `reset`/`set_state`
-    /// rebuilds the arena when the preset differs, even when the car count
-    /// is unchanged. Unknown headers return an error and leave the previous
-    /// preset in place: the metric must fail rather than score a guessed
-    /// body. The header samples the first recorded car only, so a
-    /// mixed-body roster is undetectable here.
-    pub fn set_body_from_info(&mut self, info: &RecordingInfo) -> Result<&'static str, String> {
-        let (preset, name) = body_from_info(info)?;
-        self.body = preset;
-        self.body_name = name;
-        Ok(name)
+    /// Preset index for one car slot. Missing slots fall back to Octane so a
+    /// short or empty roster still builds a playable arena.
+    fn preset_for_slot(&self, slot: usize) -> usize {
+        self.bodies.get(slot).copied().unwrap_or(OCTANE_PRESET)
     }
 
-    /// Preset chosen by the last [`V3Backend::set_body_from_info`] call.
-    pub fn body_name(&self) -> &'static str {
-        self.body_name
+    /// Select one body preset for every car slot from a recording header.
+    ///
+    /// Call once per recording before `reset`, or use [`Self::set_bodies`] for
+    /// a mixed roster. The next `reset`/`set_state` rebuilds the arena when
+    /// the roster differs, even when the car count is unchanged. Unknown
+    /// headers return an error and leave the previous roster in place: the
+    /// metric must fail rather than score a guessed body. The header samples
+    /// the first recorded car only, so it cannot see a mixed roster.
+    #[allow(dead_code)]
+    pub fn set_body_from_info(&mut self, info: &RecordingInfo) -> Result<&'static str, String> {
+        let index = body_preset_index(info)?;
+        self.bodies = vec![index; info.num_cars as usize];
+        Ok(BODY_PRESET_NAMES[index])
+    }
+
+    /// Select a body preset per car slot, in recording order.
+    ///
+    /// This is the mixed-roster path: RLPR headers carry one hitbox for the
+    /// whole file, so a replay with more than one car body has to come from
+    /// per-car detection. A short roster pads with Octane.
+    pub fn set_bodies(&mut self, bodies: &[usize]) {
+        self.bodies = bodies.to_vec();
     }
 
     /// Team per slot: Blue first, then alternating.
@@ -126,19 +140,21 @@ impl V3Backend {
         }
     }
 
-    /// Rebuild the arena when the car count or the header-selected body changes.
+    /// Rebuild the arena when the car count or the body roster changes.
     ///
-    /// The body check matters when consecutive recordings hold the same car
-    /// count with different presets: the ids would still line up, but the
+    /// The roster check matters when consecutive recordings hold the same car
+    /// count with different bodies: the ids would still line up, but the
     /// hitbox and wheels would stay wrong without a rebuild.
     fn ensure_cars(&mut self, num_cars: usize) {
-        let config = self.car_config();
-        if self.car_ids.len() != num_cars || self.arena_body != Some(config) {
+        let configs: Vec<CarBodyConfig> = (0..num_cars).map(|slot| self.car_config(slot)).collect();
+        if self.car_ids.len() != num_cars || self.arena_body.as_ref() != Some(&configs) {
             self.arena = self.new_arena();
-            self.car_ids = (0..num_cars)
-                .map(|slot| self.arena.add_car(Self::team_for_slot(slot), config))
+            self.car_ids = configs
+                .iter()
+                .enumerate()
+                .map(|(slot, &config)| self.arena.add_car(Self::team_for_slot(slot), config))
                 .collect();
-            self.arena_body = Some(config);
+            self.arena_body = Some(configs);
         }
     }
 
@@ -180,41 +196,70 @@ const BODY_PRESETS: [CarBodyConfig; 7] = [
     CarBodyConfig::PSYCLOPS,
 ];
 
-/// Preset names in [`BODY_PRESETS`] order.
-const BODY_PRESET_NAMES: [&str; 7] = [
-    "Octane", "Dominus", "Plank", "Breakout", "Hybrid", "Merc", "Psyclops",
-];
+/// Preset index for Octane, the default body of a fresh backend.
+pub const OCTANE_PRESET: usize = 0;
 
-/// Largest header-vs-preset mismatch that still counts as a match, in uu.
-///
-/// The header stores f32 bounds in BT; scaling by [`BT_TO_UU`] leaves about
-/// 4e-4 uu of rounding on the recorded captures. The closest presets
-/// (Octane and Psyclops sizes) differ by 0.134 uu, so 0.01 separates every
-/// known preset with wide margin on both sides.
-const BODY_MATCH_TOL_UU: f32 = 0.01;
+/// v3 preset bounds in [`common::BODY_PRESET_NAMES`] order.
+const BODY_BOUNDS: [HitboxBounds; NUM_BODY_PRESETS] = [
+    HitboxBounds {
+        size: HITBOX_SIZES[0],
+        offset: HITBOX_OFFSETS[0],
+    },
+    HitboxBounds {
+        size: HITBOX_SIZES[1],
+        offset: HITBOX_OFFSETS[1],
+    },
+    HitboxBounds {
+        size: HITBOX_SIZES[2],
+        offset: HITBOX_OFFSETS[2],
+    },
+    HitboxBounds {
+        size: HITBOX_SIZES[3],
+        offset: HITBOX_OFFSETS[3],
+    },
+    HitboxBounds {
+        size: HITBOX_SIZES[4],
+        offset: HITBOX_OFFSETS[4],
+    },
+    HitboxBounds {
+        size: HITBOX_SIZES[5],
+        offset: HITBOX_OFFSETS[5],
+    },
+    HitboxBounds {
+        size: HITBOX_SIZES[6],
+        offset: HITBOX_OFFSETS[6],
+    },
+];
 
 /// Match recording header hitbox bounds to one known body preset.
 ///
-/// Scales the `RecordingInfo` min/max from BT to uu, then compares full size
-/// and center offset against every known preset. Unknown bounds are an
-/// error: the metric must fail rather than score a guessed body. The header
-/// samples the first recorded car only, so a mixed-body roster or a custom
-/// body is undetectable here and must not be guessed.
-pub fn body_from_info(info: &RecordingInfo) -> Result<(CarBodyConfig, &'static str), String> {
-    let min: Vec3A = info.hitbox_rel_min_bt.into();
-    let max: Vec3A = info.hitbox_rel_max_bt.into();
-    let size_uu = (max - min) * BT_TO_UU;
-    let offset_uu = (max + min) * 0.5 * BT_TO_UU;
-    for (index, name) in BODY_PRESET_NAMES.iter().enumerate() {
-        let size_err = (size_uu - HITBOX_SIZES[index]).abs().max_element();
-        let offset_err = (offset_uu - HITBOX_OFFSETS[index]).abs().max_element();
-        if size_err <= BODY_MATCH_TOL_UU && offset_err <= BODY_MATCH_TOL_UU {
-            return Ok((BODY_PRESETS[index], name));
+/// Unknown bounds are an error: the metric must fail rather than score a
+/// guessed body. See [`common::body_preset_from_info`].
+pub fn body_preset_index(info: &RecordingInfo) -> Result<usize, String> {
+    body_preset_from_info(info, &BODY_BOUNDS)
+}
+
+/// Ticks a body needs to come to rest on flat ground.
+const SETTLE_TICKS: u32 = 600;
+
+/// Settled chassis height of every preset, in uu, in [`BODY_PRESET_NAMES`] order.
+///
+/// Drops one car per preset on flat ground and reads the height it settles
+/// at. The engine is the reference here on purpose: this is suspension
+/// tuning, not a geometric constant, so hardcoding the numbers would rot
+/// whenever the suspension is retuned. It is measured, not derived.
+///
+/// Call [`init`] first. Used by [`common::bodies_from_ticks`] to fingerprint
+/// each recorded car.
+pub fn preset_settled_heights() -> [f32; NUM_BODY_PRESETS] {
+    std::array::from_fn(|index| {
+        let mut arena = Arena::new_with_config(ArenaConfig::new(GameMode::Soccar));
+        let car_id = arena.add_car(Team::Blue, BODY_PRESETS[index]);
+        for _ in 0..SETTLE_TICKS {
+            arena.step_tick();
         }
-    }
-    Err(format!(
-        "unknown car body (size {size_uu:?} uu, offset {offset_uu:?} uu): no preset matches within {BODY_MATCH_TOL_UU} uu"
-    ))
+        arena.get_car_state(car_id).phys.pos.z
+    })
 }
 
 impl Default for V3Backend {
@@ -351,9 +396,11 @@ impl ReplayBackend for V3Backend {
 
 #[cfg(test)]
 mod tests {
+    use glam::Vec3A;
+    use rocketsim::consts::BT_TO_UU;
     use rocketsim_test::rlpr::cpp_records::VecRecord;
 
-    use super::*;
+    use super::{super::common::SETTLED_HEIGHT_TOL_UU, *};
 
     fn info_for(min: [f32; 3], max: [f32; 3]) -> RecordingInfo {
         RecordingInfo {
@@ -381,23 +428,28 @@ mod tests {
 
     #[test]
     fn daizen_header_maps_to_plank() {
-        let (config, name) =
-            body_from_info(&daizen_info()).expect("Daizen header is a known preset");
-        assert_eq!(name, "Plank");
-        assert_eq!(config.hitbox_size, CarBodyConfig::PLANK.hitbox_size);
+        let index = body_preset_index(&daizen_info()).expect("Daizen header is a known preset");
+        assert_eq!(BODY_PRESET_NAMES[index], "Plank");
         assert_eq!(
-            config.hitbox_pos_offset,
+            BODY_PRESETS[index].hitbox_size,
+            CarBodyConfig::PLANK.hitbox_size
+        );
+        assert_eq!(
+            BODY_PRESETS[index].hitbox_pos_offset,
             CarBodyConfig::PLANK.hitbox_pos_offset
         );
     }
 
     #[test]
     fn octane_header_stays_octane() {
-        let (config, name) = body_from_info(&octane_info()).expect("Wisp header is a known preset");
-        assert_eq!(name, "Octane");
-        assert_eq!(config.hitbox_size, CarBodyConfig::OCTANE.hitbox_size);
+        let index = body_preset_index(&octane_info()).expect("Wisp header is a known preset");
+        assert_eq!(BODY_PRESET_NAMES[index], "Octane");
         assert_eq!(
-            config.hitbox_pos_offset,
+            BODY_PRESETS[index].hitbox_size,
+            CarBodyConfig::OCTANE.hitbox_size
+        );
+        assert_eq!(
+            BODY_PRESETS[index].hitbox_pos_offset,
             CarBodyConfig::OCTANE.hitbox_pos_offset
         );
     }
@@ -410,14 +462,14 @@ mod tests {
         let min = (HITBOX_OFFSETS[6] - half) / BT_TO_UU;
         let max = (HITBOX_OFFSETS[6] + half) / BT_TO_UU;
         let info = info_for(min.to_array(), max.to_array());
-        let (_, name) = body_from_info(&info).expect("exact preset bounds match");
-        assert_eq!(name, "Psyclops");
+        let index = body_preset_index(&info).expect("exact preset bounds match");
+        assert_eq!(BODY_PRESET_NAMES[index], "Psyclops");
     }
 
     #[test]
     fn unknown_header_is_an_error() {
         let info = info_for([-1.0, -1.0, -1.0], [1.0, 1.0, 1.0]);
-        assert!(body_from_info(&info).is_err());
+        assert!(body_preset_index(&info).is_err());
     }
 
     #[test]
@@ -438,7 +490,6 @@ mod tests {
         );
         // Same count, new body: rebuild, so the planted state is gone.
         assert_eq!(backend.set_body_from_info(&daizen_info()).unwrap(), "Plank");
-        assert_eq!(backend.body_name(), "Plank");
         backend.ensure_cars(4);
         assert_eq!(backend.car_ids.len(), 4);
         assert_ne!(
@@ -448,12 +499,82 @@ mod tests {
     }
 
     #[test]
-    fn unknown_header_keeps_previous_body() {
+    fn unknown_header_keeps_previous_roster() {
         init();
         let mut backend = V3Backend::new();
-        backend.set_body_from_info(&daizen_info()).unwrap();
+        backend.set_bodies(&[2, 0]);
         let bad = info_for([-1.0, -1.0, -1.0], [1.0, 1.0, 1.0]);
         assert!(backend.set_body_from_info(&bad).is_err());
-        assert_eq!(backend.body_name(), "Plank");
+        assert_eq!(backend.bodies, vec![2, 0]);
+    }
+
+    #[test]
+    fn mixed_roster_builds_per_car_bodies() {
+        init();
+        let mut backend = V3Backend::new();
+        // Plank against Octane, as in the bundled london_vs_nexto capture.
+        backend.set_bodies(&[2, 0]);
+        backend.ensure_cars(2);
+        assert_eq!(backend.arena_body.as_ref().unwrap().len(), 2);
+        assert_eq!(
+            backend.arena_body.as_ref().unwrap()[0].hitbox_size,
+            CarBodyConfig::PLANK.hitbox_size
+        );
+        assert_eq!(
+            backend.arena_body.as_ref().unwrap()[1].hitbox_size,
+            CarBodyConfig::OCTANE.hitbox_size
+        );
+    }
+
+    #[test]
+    fn short_roster_pads_with_octane() {
+        init();
+        let mut backend = V3Backend::new();
+        backend.set_bodies(&[2]);
+        backend.ensure_cars(3);
+        let configs = backend.arena_body.as_ref().unwrap();
+        assert_eq!(configs[0].hitbox_size, CarBodyConfig::PLANK.hitbox_size);
+        assert_eq!(configs[1].hitbox_size, CarBodyConfig::OCTANE.hitbox_size);
+        assert_eq!(configs[2].hitbox_size, CarBodyConfig::OCTANE.hitbox_size);
+    }
+
+    #[test]
+    fn roster_change_rebuilds_without_count_change() {
+        init();
+        let mut backend = V3Backend::new();
+        backend.set_bodies(&[0, 0]);
+        backend.ensure_cars(2);
+        let before = backend.arena_body.clone();
+        backend.set_bodies(&[2, 0]);
+        backend.ensure_cars(2);
+        assert_ne!(backend.arena_body, before);
+    }
+
+    #[test]
+    fn preset_settled_heights_separate_the_wheels() {
+        init();
+        let heights = preset_settled_heights();
+        for (index, height) in heights.iter().enumerate() {
+            assert!(
+                height.is_finite() && *height > 0.0,
+                "{} settled at {height}",
+                BODY_PRESET_NAMES[index]
+            );
+        }
+        // Octane and Hybrid share their wheels and are the one genuine tie.
+        assert!((heights[0] - heights[4]).abs() < SETTLED_HEIGHT_TOL_UU);
+        // Every other preset must be separable by the match tolerance.
+        for a in 0..NUM_BODY_PRESETS {
+            for b in (a + 1)..NUM_BODY_PRESETS {
+                let gap = (heights[a] - heights[b]).abs();
+                let tied = (a == 0 && b == 4) || (a == 4 && b == 0);
+                assert!(
+                    tied || gap > SETTLED_HEIGHT_TOL_UU,
+                    "{} and {} are only {gap} uu apart",
+                    BODY_PRESET_NAMES[a],
+                    BODY_PRESET_NAMES[b]
+                );
+            }
+        }
     }
 }

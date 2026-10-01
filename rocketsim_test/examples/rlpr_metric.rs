@@ -194,10 +194,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ""
         },
     );
-    #[cfg(feature = "v2")]
-    println!("v2 backend always uses Octane (no header body selection).");
-
     v3::init();
+    let settled_heights = v3::preset_settled_heights();
     let mut v3_backend = v3::V3Backend::with_dodge_deadzone(args.dodge_deadzone);
     #[cfg(feature = "v2")]
     let mut v2_backend = {
@@ -212,14 +210,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for rlpr_file in rlpr_files.iter() {
         let recording = Recording::from_file(rlpr_file)
             .map_err(|err| format!("{}: {err}", rlpr_file.display()))?;
-        v3_backend
-            .set_body_from_info(&recording.info)
-            .map_err(|err| format!("{}: {err}", rlpr_file.display()))?;
-        println!(
-            "{}: v3 body {}",
-            rlpr_file.display(),
-            v3_backend.body_name()
-        );
         let num_cars = recording
             .ticks
             .first()
@@ -232,6 +222,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             )
             .into());
         }
+
+        // The header carries one hitbox for the whole file, so it only ever
+        // describes car 0 and cannot see a mixed roster. Detect every car's
+        // body: the header settles car 0, and each car's settled resting
+        // height fingerprints the rest.
+        let header_body = v3::body_preset_index(&recording.info)
+            .map_err(|err| format!("{}: {err}", rlpr_file.display()))?;
+        let bodies = common::bodies_from_ticks(&recording.ticks, header_body, &settled_heights)
+            .map_err(|err| format!("{}: {err}", rlpr_file.display()))?;
+        v3_backend.set_bodies(&bodies);
+        #[cfg(feature = "v2")]
+        v2_backend.set_bodies(&bodies);
+        println!(
+            "{}: bodies {:?}",
+            rlpr_file.display(),
+            bodies
+                .iter()
+                .map(|&index| common::BODY_PRESET_NAMES[index])
+                .collect::<Vec<_>>()
+        );
         if !recording
             .ticks
             .iter()
@@ -260,10 +270,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .into());
         }
 
-        // One backend serves every recording. The header-selected body plus
-        // `reset` rebuild the arena when the preset or the car count changes
-        // between recordings. The v2 backend has no header selection and
-        // always runs Octane.
+        // One backend serves every recording. The detected body roster plus
+        // `reset` rebuild the arena when the bodies or the car count change
+        // between recordings.
         let v3_outcome = common::evaluate(
             &mut v3_backend,
             &recording.ticks,
