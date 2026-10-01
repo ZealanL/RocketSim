@@ -76,8 +76,21 @@ fn decode_failed(path: &Path, err: std::io::Error) -> std::io::Error {
 }
 
 /// Decode one zstd frame with a 1 GiB output bound.
+///
+/// The streaming decoder rejects windows over 128 MiB by default
+/// (`ZSTD_WINDOWLOG_LIMIT_DEFAULT`). Captures compressed with `--long`
+/// and `--ultra` exceed that, so allow the library maximum (31 on 64-bit,
+/// 30 on 32-bit).
 fn decode_bounded(raw: &[u8], path: &Path) -> std::io::Result<Vec<u8>> {
     let mut decoder = zstd::Decoder::new(raw).map_err(|err| decode_failed(path, err))?;
+    let max_log = if cfg!(target_pointer_width = "64") {
+        31
+    } else {
+        30
+    };
+    decoder
+        .window_log_max(max_log)
+        .map_err(|err| decode_failed(path, err))?;
     let mut out = Vec::new();
     decoder
         .by_ref()
