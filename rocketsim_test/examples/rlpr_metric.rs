@@ -96,6 +96,16 @@ const WIDE_RULE: usize = 92;
 /// Narrow rule: the 12-wide "First fail" column plus its separating space.
 const NARROW_RULE: usize = WIDE_RULE - 13;
 
+/// Print skipped-transition counts. Kickoff stasis is stepped but unscored;
+/// see [`common::KICKOFF_STASIS_RULE`].
+fn print_skip_counts(kickoff_stasis: usize) {
+    println!(
+        "Kickoff stasis ({}): {} transitions stepped but unscored.",
+        common::KICKOFF_STASIS_RULE,
+        kickoff_stasis,
+    );
+}
+
 /// Print the table header. `first_fail` adds the "First fail" column, which
 /// only means something for a single recording: tick indices are
 /// per-recording, so a combined report has none to show.
@@ -210,11 +220,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for rlpr_file in rlpr_files.iter() {
         let recording = Recording::from_file(rlpr_file)
             .map_err(|err| format!("{}: {err}", rlpr_file.display()))?;
-        let num_cars = recording
-            .ticks
-            .first()
-            .map(common::tick_car_count)
-            .unwrap_or(0);
+        // Collapse recorder-duplicated rows first: some files repeat a tick
+        // verbatim, which shatters runs and voids neighboring transitions
+        // for contact-timing checks. Everything below scores physics steps,
+        // so it runs on the deduplicated ticks.
+        let ticks = common::collapse_duplicate_ticks(&recording.ticks);
+        let num_cars = ticks.first().map(common::tick_car_count).unwrap_or(0);
         if num_cars == 0 || num_cars > common::MAX_SCORED_CARS {
             return Err(format!(
                 "{}: recording must hold 1-8 cars in every tick",
@@ -229,7 +240,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // height fingerprints the rest.
         let header_body = v3::body_preset_index(&recording.info)
             .map_err(|err| format!("{}: {err}", rlpr_file.display()))?;
-        let bodies = common::bodies_from_ticks(&recording.ticks, header_body, &settled_heights)
+        let bodies = common::bodies_from_ticks(&ticks, header_body, &settled_heights)
             .map_err(|err| format!("{}: {err}", rlpr_file.display()))?;
         v3_backend.set_bodies(&bodies);
         #[cfg(feature = "v2")]
@@ -242,8 +253,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .map(|&index| common::BODY_PRESET_NAMES[index])
                 .collect::<Vec<_>>()
         );
-        if !recording
-            .ticks
+        if !ticks
             .iter()
             .all(|tick| common::tick_car_count(tick) == num_cars)
         {
@@ -253,7 +263,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             )
             .into());
         }
-        if recording.ticks.len() <= 1 {
+        if ticks.len() <= 1 {
             return Err(format!(
                 "{}: recording has too few ticks to score a transition",
                 rlpr_file.display()
@@ -261,7 +271,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .into());
         }
 
-        let segments = common::split_segments(&recording.ticks, config);
+        let segments = common::split_segments(&ticks, config);
         if segments.is_empty() {
             return Err(format!(
                 "{}: split_segments returned no segments for this recording and config",
@@ -275,12 +285,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // between recordings.
         let v3_outcome = common::evaluate(
             &mut v3_backend,
-            &recording.ticks,
+            &ticks,
             &segments,
             args.reset_each_tick,
             args.use_sim_events,
             rocketsim_test::rlpr::recording_has_boost_state(recording.version),
             rocketsim_test::rlpr::recording_has_handbrake_state(recording.version),
+            rocketsim_test::rlpr::recording_has_touch_frames(recording.version),
         );
         combined_v3.merge(&v3_outcome.report);
         skipped_transitions += v3_outcome.skipped_transitions;
@@ -288,23 +299,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         #[cfg(feature = "v2")]
         let v2_outcome = common::evaluate(
             &mut v2_backend,
-            &recording.ticks,
+            &ticks,
             &segments,
             args.reset_each_tick,
             args.use_sim_events,
             rocketsim_test::rlpr::recording_has_boost_state(recording.version),
             rocketsim_test::rlpr::recording_has_handbrake_state(recording.version),
+            rocketsim_test::rlpr::recording_has_touch_frames(recording.version),
         );
         #[cfg(feature = "v2")]
         combined_v2.merge(&v2_outcome.report);
 
         if args.per_recording {
             println!("\nRecording: {}", rlpr_file.display());
-            println!(
-                "Kickoff stasis ({}): {} transitions stepped but unscored.",
-                common::KICKOFF_STASIS_RULE,
-                v3_outcome.skipped_transitions,
-            );
+            print_skip_counts(v3_outcome.skipped_transitions);
             print_table_header(true);
             print_report("v3", &v3_outcome.report, true);
             #[cfg(feature = "v2")]
@@ -319,11 +327,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if args.per_recording {
         println!("Combined recordings:");
     }
-    println!(
-        "Kickoff stasis ({}): {} transitions stepped but unscored.",
-        common::KICKOFF_STASIS_RULE,
-        skipped_transitions,
-    );
+    print_skip_counts(skipped_transitions);
     print_table_header(false);
     print_report("v3", &combined_v3, false);
     #[cfg(feature = "v2")]

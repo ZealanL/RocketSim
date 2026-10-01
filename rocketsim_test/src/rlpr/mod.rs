@@ -15,12 +15,14 @@ use crate::rlpr::tick_record::TickRecord;
 
 const RLPR_MAGIC_BYTES: [u8; 4] = [82, 76, 80, 82];
 const RLPR_MIN_VERSION: u32 = 2;
-const RLPR_MAX_VERSION: u32 = 8;
+const RLPR_MAX_VERSION: u32 = 9;
 const RLPR_MAX_CARS: usize = 8;
 /// First version carrying recorded boost latch state.
 const RLPR_BOOST_STATE_VERSION: u32 = 7;
 /// First version carrying recorded handbrake integrator state.
 const RLPR_HANDBRAKE_STATE_VERSION: u32 = 8;
+/// First version carrying the raw last ball touch frame.
+const RLPR_TOUCH_FRAME_VERSION: u32 = 9;
 const CAR_RECORD_PREFIX_SIZE: usize = std::mem::offset_of!(CarRecord, wheels);
 const WHEEL_CONTACT_OFFSET: usize = std::mem::offset_of!(WheelRecord, has_contact);
 /// Legacy v2 file size. Stays explicit: `CarRecord` is now 588 bytes.
@@ -39,6 +41,13 @@ const CAR_BOOST_TIME_OFFSET: usize = 592;
 const CAR_RECORD_V8_SIZE: usize = 600;
 /// File offset of the v8 `handbrake_val` float.
 const CAR_HANDBRAKE_OFFSET: usize = 596;
+/// V9 file size: 600 legacy bytes plus raw last ball touch frame.
+const CAR_RECORD_V9_SIZE: usize = 604;
+/// File offset of the v9 `last_ball_touch_frame` u32.
+const CAR_TOUCH_FRAME_OFFSET: usize = 600;
+/// Absent-field sentinel: no real physics frame reaches this value.
+/// Used for `last_ball_touch_frame` on files older than v9.
+pub const TOUCH_FRAME_UNKNOWN: u32 = u32::MAX;
 
 /// True when the recording version carries recorded boost latch state.
 ///
@@ -54,6 +63,15 @@ pub fn recording_has_boost_state(version: u32) -> bool {
 /// reconstruction fallback instead of forcing that default.
 pub fn recording_has_handbrake_state(version: u32) -> bool {
     version >= RLPR_HANDBRAKE_STATE_VERSION
+}
+
+/// True when the recording version carries the raw last ball touch frame.
+///
+/// Older versions leave `last_ball_touch_frame` at [`TOUCH_FRAME_UNKNOWN`]
+/// and must keep the legacy exclusion behavior instead of inferring touch
+/// recency from it.
+pub fn recording_has_touch_frames(version: u32) -> bool {
+    version >= RLPR_TOUCH_FRAME_VERSION
 }
 
 #[allow(dead_code)]
@@ -291,6 +309,7 @@ fn read_car_record(bytes: &[u8], version: u32) -> std::io::Result<CarRecord> {
         6 => CAR_RECORD_V6_SIZE,
         7 => CAR_RECORD_V7_SIZE,
         8 => CAR_RECORD_V8_SIZE,
+        9 => CAR_RECORD_V9_SIZE,
         _ => unreachable!(),
     };
     if bytes.len() != expected_size {
@@ -304,7 +323,7 @@ fn read_car_record(bytes: &[u8], version: u32) -> std::io::Result<CarRecord> {
     }
 
     if version == 2 {
-        // Legacy bytes hold 584 bytes. The struct now holds 596.
+        // Legacy bytes hold 584 bytes. The struct now holds more.
         // Validate wheel bools first, then copy and leave new fields at defaults.
         validate_legacy_wheel_contacts(bytes)?;
         let mut record = std::mem::MaybeUninit::<CarRecord>::zeroed();
@@ -314,7 +333,9 @@ fn read_car_record(bytes: &[u8], version: u32) -> std::io::Result<CarRecord> {
                 record.as_mut_ptr().cast::<u8>(),
                 CAR_RECORD_V2_SIZE,
             );
-            Ok(record.assume_init())
+            let mut record = record.assume_init();
+            record.last_ball_touch_frame = TOUCH_FRAME_UNKNOWN;
+            Ok(record)
         }
     } else if version == 6 {
         let touch = bytes[CAR_TOUCH_OFFSET];
@@ -338,6 +359,7 @@ fn read_car_record(bytes: &[u8], version: u32) -> std::io::Result<CarRecord> {
             record.is_boosting = false;
             record.boosting_time = 0.0;
             record.handbrake_val = 0.0;
+            record.last_ball_touch_frame = TOUCH_FRAME_UNKNOWN;
             Ok(record)
         }
     } else if version == 7 {
@@ -378,6 +400,7 @@ fn read_car_record(bytes: &[u8], version: u32) -> std::io::Result<CarRecord> {
             record.is_boosting = boost_bit == 1;
             record.boosting_time = boosting_time;
             record.handbrake_val = 0.0;
+            record.last_ball_touch_frame = TOUCH_FRAME_UNKNOWN;
             Ok(record)
         }
     } else if version == 8 {
@@ -427,6 +450,63 @@ fn read_car_record(bytes: &[u8], version: u32) -> std::io::Result<CarRecord> {
             record.is_boosting = boost_bit == 1;
             record.boosting_time = boosting_time;
             record.handbrake_val = handbrake_val;
+            record.last_ball_touch_frame = TOUCH_FRAME_UNKNOWN;
+            Ok(record)
+        }
+    } else if version == 9 {
+        let touch = bytes[CAR_TOUCH_OFFSET];
+        if touch > 1 {
+            return Err(std::io::Error::new(
+                ErrorKind::InvalidData,
+                format!("RLPR car touch byte must be 0 or 1, got {touch}"),
+            ));
+        }
+        let boost_bit = bytes[CAR_BOOST_BIT_OFFSET];
+        if boost_bit > 1 {
+            return Err(std::io::Error::new(
+                ErrorKind::InvalidData,
+                format!("RLPR boost bit byte must be 0 or 1, got {boost_bit}"),
+            ));
+        }
+        let mut boost_bytes = [0u8; 4];
+        boost_bytes.copy_from_slice(&bytes[CAR_BOOST_TIME_OFFSET..CAR_BOOST_TIME_OFFSET + 4]);
+        let boosting_time = f32::from_le_bytes(boost_bytes);
+        if !boosting_time.is_finite() {
+            return Err(std::io::Error::new(
+                ErrorKind::InvalidData,
+                format!("RLPR boosting_time must be finite, got {boosting_time}"),
+            ));
+        }
+        let mut brake_bytes = [0u8; 4];
+        brake_bytes.copy_from_slice(&bytes[CAR_HANDBRAKE_OFFSET..CAR_HANDBRAKE_OFFSET + 4]);
+        let handbrake_val = f32::from_le_bytes(brake_bytes);
+        if !handbrake_val.is_finite() {
+            return Err(std::io::Error::new(
+                ErrorKind::InvalidData,
+                format!("RLPR handbrake_val must be finite, got {handbrake_val}"),
+            ));
+        }
+        // Raw engine frame number: every bit pattern is a valid reading
+        // (including the never-touched encoding), so no validation.
+        let mut touch_frame_bytes = [0u8; 4];
+        touch_frame_bytes
+            .copy_from_slice(&bytes[CAR_TOUCH_FRAME_OFFSET..CAR_TOUCH_FRAME_OFFSET + 4]);
+        let last_ball_touch_frame = u32::from_le_bytes(touch_frame_bytes);
+        // Copy the 584 legacy bytes. Ignore all padding bytes.
+        validate_legacy_wheel_contacts(bytes)?;
+        let mut record = std::mem::MaybeUninit::<CarRecord>::zeroed();
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                bytes.as_ptr(),
+                record.as_mut_ptr().cast::<u8>(),
+                CAR_RECORD_V2_SIZE,
+            );
+            let mut record = record.assume_init();
+            record.is_touching_car = touch == 1;
+            record.is_boosting = boost_bit == 1;
+            record.boosting_time = boosting_time;
+            record.handbrake_val = handbrake_val;
+            record.last_ball_touch_frame = last_ball_touch_frame;
             Ok(record)
         }
     } else {
@@ -455,7 +535,65 @@ fn read_car_record(bytes: &[u8], version: u32) -> std::io::Result<CarRecord> {
                 }
                 wheel.has_contact = contact == 1;
             }
+            record.last_ball_touch_frame = TOUCH_FRAME_UNKNOWN;
             Ok(record)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn v9_bytes(touch_frame: u32) -> Vec<u8> {
+        let mut bytes = vec![0u8; CAR_RECORD_V9_SIZE];
+        bytes[CAR_TOUCH_FRAME_OFFSET..CAR_TOUCH_FRAME_OFFSET + 4]
+            .copy_from_slice(&touch_frame.to_le_bytes());
+        bytes
+    }
+
+    #[test]
+    fn v9_parses_touch_frame_verbatim() {
+        let record = read_car_record(&v9_bytes(1234), 9).unwrap();
+        assert_eq!(record.last_ball_touch_frame, 1234);
+        assert!(!record.is_touching_car);
+        assert_eq!(size_of::<CarRecord>(), CAR_RECORD_V9_SIZE);
+    }
+
+    #[test]
+    fn v9_preserves_never_touched_bits() {
+        // Negative int32 from the engine arrives bit-preserving.
+        let record = read_car_record(&v9_bytes(u32::MAX), 9).unwrap();
+        assert_eq!(record.last_ball_touch_frame, u32::MAX);
+    }
+
+    #[test]
+    fn v9_rejects_wrong_size() {
+        assert!(read_car_record(&vec![0u8; CAR_RECORD_V8_SIZE], 9).is_err());
+        assert!(read_car_record(&v9_bytes(0), 8).is_err());
+    }
+
+    #[test]
+    fn legacy_versions_default_touch_unknown() {
+        for (version, size) in [
+            (2, CAR_RECORD_V2_SIZE),
+            (3, 744),
+            (6, CAR_RECORD_V6_SIZE),
+            (7, CAR_RECORD_V7_SIZE),
+            (8, CAR_RECORD_V8_SIZE),
+        ] {
+            let record = read_car_record(&vec![0u8; size], version).unwrap();
+            assert_eq!(
+                record.last_ball_touch_frame, TOUCH_FRAME_UNKNOWN,
+                "v{version} must not invent touch data"
+            );
+        }
+    }
+
+    #[test]
+    fn touch_frame_gate_follows_version() {
+        assert!(!recording_has_touch_frames(2));
+        assert!(!recording_has_touch_frames(8));
+        assert!(recording_has_touch_frames(9));
     }
 }

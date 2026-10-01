@@ -13,6 +13,7 @@
 use glam::Vec3A;
 use rocketsim::consts::BT_TO_UU;
 use rocketsim_test::rlpr::{
+    TOUCH_FRAME_UNKNOWN,
     cpp_records::{ControlsRecord, RecordingInfo},
     tick_record::TickRecord,
 };
@@ -271,6 +272,36 @@ pub trait ReplayBackend {
     /// versions must keep live-latch evolution instead of forcing false/zero.
     fn set_boost_state(&mut self, _car_idx: usize, _armed: bool, _time: f32) {}
 
+    /// Whether this backend can restore extra-hit gating from RL truth.
+    ///
+    /// Only the v3 backend exposes the cooldown. Others keep the sim's own
+    /// gating evolution and replay firing ticks with live gating.
+    fn supports_cooldown_restore(&self) -> bool {
+        false
+    }
+
+    /// Allow or suppress the ball extra impulse on the backend's next step.
+    ///
+    /// `suppress = true` spends RL's recorded extra firing so the replay does
+    /// not apply it a second time; `false` clears stale sim gating so a real
+    /// RL kick is not wrongly suppressed. Default is a no-op (see
+    /// [`ReplayBackend::supports_cooldown_restore`]).
+    fn suppress_next_extra_hit(&mut self, _car_idx: usize, _suppress: bool) {}
+
+    /// Whether this backend can restore bump-cooldown gating from RL truth.
+    ///
+    /// Backends without support keep the sim's own cooldown evolution.
+    fn supports_bump_restore(&self) -> bool {
+        false
+    }
+
+    /// Set one car's bump-cooldown timer, in seconds.
+    ///
+    /// `0.0` means the cooldown is expired (bumps allowed); larger values
+    /// suppress the next bump for that long. Default is a no-op (see
+    /// [`ReplayBackend::supports_bump_restore`]).
+    fn set_bump_cooldown(&mut self, _car_idx: usize, _seconds: f32) {}
+
     /// Refresh hidden prior-tick wheel state without advancing dynamics.
     fn refresh_sticky_gates(&mut self) {}
 
@@ -473,6 +504,318 @@ pub fn kickoff_stasis_targets(ticks: &[TickRecord]) -> Vec<usize> {
         }
     }
     out
+}
+
+/// Ball-kick magnitude that counts as an extra-hit firing, in uu/s.
+///
+/// A Bullet step integrates position from the velocity that exists at the end
+/// of the step, so an untouched recorded tick satisfies
+/// `(p[t]-p[t-1])/dt == v[t]`. The residual between the two is the velocity
+/// change that never moved the position — the kick the touch produced.
+/// [`compute_extra_firings`] uses this to tell a real kick from noise.
+pub const BALL_KICK_TOL_UU_S: f32 = 1.0;
+
+/// Velocity change the recorded ball state applied without moving its
+/// position, in uu/s: `(p[t]-p[t-1])/dt - v[t]`.
+fn kick_residual(prev_pos: Vec3A, cur_pos: Vec3A, cur_vel: Vec3A) -> Vec3A {
+    (cur_pos - prev_pos) / rocketsim::consts::TICK_TIME - cur_vel
+}
+
+/// Collapse consecutive duplicate rows.
+///
+/// Drops a tick when it is exactly identical to its predecessor
+/// ([`tick_is_frozen`]): same positions and velocities for every body. Such
+/// rows carry zero information — no physics happened between them — but they
+/// shatter runs (frame and freeze breaks), void the neighboring transitions
+/// for contact-timing checks, and hand the sim a stale pose to re-fire
+/// from. Real pauses collapse to a single tick, which is all the information
+/// they hold.
+///
+/// This is metric preprocessing, not parsing: [`Recording::from_file`] keeps
+/// the file faithful. Some recorders emit thousands of repeated rows (the
+/// bundled captures have none; one 1v1 file has over seventeen thousand)
+/// while others never do, so the metric normalizes before scoring.
+pub fn collapse_duplicate_ticks(ticks: &[TickRecord]) -> Vec<TickRecord> {
+    let mut out = Vec::with_capacity(ticks.len());
+    for tick in ticks {
+        let duplicate = out.last().is_some_and(|prev| tick_is_frozen(prev, tick));
+        if !duplicate {
+            out.push(tick.clone());
+        }
+    }
+    out
+}
+
+/// Extra-hit firing state for one car on one tick: did RL apply the ball
+/// extra impulse during the step into this tick?
+///
+/// Inferred in the metric from raw touch frames plus ball kick evidence —
+/// never in the capture plugin, which records engine values verbatim.
+/// See [`compute_extra_firings`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ExtraFiring {
+    /// RL fired the extra impulse for this car on this tick: a recent touch
+    /// plus a ball kick coincide with unambiguous attribution.
+    Fire,
+    /// No extra impulse on this tick for this car.
+    NoFire,
+    /// Cannot decide: no touch data (pre-v9), ambiguous attribution, or a
+    /// kick with no recent touch. Restore leaves the sim alone there.
+    Unknown,
+}
+
+/// True when a raw touch frame means "touched within the last step".
+///
+/// Accepts both the plugin's documented timing and same-frame touches, so
+/// a sampling-order change on either side cannot silently shift every touch
+/// out of the window. Zero and [`TOUCH_FRAME_UNKNOWN`] never count: no real
+/// touch happens at kickoff frames 0-1 (cars start too far from the ball),
+/// so 0 can only be the engine's never-touched encoding here. Confirmed on
+/// the v9 re-recordings: `is_touching_ball` matches touch frame == physics
+/// frame - 1 with zero mismatches, and same-frame touches occur as well.
+fn touch_recent(last_touch_frame: u32, phys_frame: u32) -> bool {
+    last_touch_frame != 0
+        && last_touch_frame != TOUCH_FRAME_UNKNOWN
+        && last_touch_frame <= phys_frame
+        && phys_frame - last_touch_frame <= 1
+}
+
+/// Detect RL extra-hit firings, one entry per tick per car.
+///
+/// A firing needs all three at once: a recent touch for exactly one car,
+/// ball kick above [`BALL_KICK_TOL_UU_S`] on the same tick (the kick the
+/// touch produced), and unambiguous attribution. Anything else is
+/// [`ExtraFiring::NoFire`] (clean ball) or [`ExtraFiring::Unknown`]
+/// (ambiguous: kick with zero or several recent touches, or no touch data
+/// at all when `has_touch_state` is false).
+///
+/// Unknown is fail-safe by construction: [`restore_extra_cooldown`] leaves
+/// the sim alone there, so unknown ticks replay with live gating evolution.
+pub fn compute_extra_firings(ticks: &[TickRecord], has_touch_state: bool) -> Vec<Vec<ExtraFiring>> {
+    let mut out = Vec::with_capacity(ticks.len());
+    for (index, tick) in ticks.iter().enumerate() {
+        let count = tick.car_records.len();
+        if index == 0 || !has_touch_state {
+            out.push(vec![ExtraFiring::Unknown; count]);
+            continue;
+        }
+        let prev = &ticks[index - 1];
+        // Run breaks carry no physics: a goal reset looks like a giant kick
+        // next to genuinely recent touches. Only continuous steps can fire.
+        // (Kickoff stasis still computes normally below: its ball is clean,
+        // so it resolves to NoFire, which correctly clears stale gating.)
+        if prev.car_records.len() != count
+            || !frame_is_contiguous(prev, tick)
+            || tick_is_frozen(prev, tick)
+            || any_teleport(prev, tick)
+        {
+            out.push(vec![ExtraFiring::Unknown; count]);
+            continue;
+        }
+        let ball_drift = kick_residual(
+            prev.ball_record.pos.into(),
+            tick.ball_record.pos.into(),
+            tick.ball_record.lin_vel.into(),
+        )
+        .length();
+        if ball_drift <= BALL_KICK_TOL_UU_S {
+            out.push(vec![ExtraFiring::NoFire; count]);
+            continue;
+        }
+        let mut recent = Vec::new();
+        for (slot, car) in tick.car_records.iter().enumerate() {
+            if touch_recent(car.last_ball_touch_frame, car.phys.physics_frame) {
+                recent.push(slot);
+            }
+        }
+        // Exactly one recent touch attributes the kick; zero or several
+        // means the mechanism is unclear, so stay Unknown (restore leaves
+        // the sim alone there, corrupting nothing).
+        if recent.len() == 1 {
+            let mut row = vec![ExtraFiring::NoFire; count];
+            row[recent[0]] = ExtraFiring::Fire;
+            out.push(row);
+        } else {
+            out.push(vec![ExtraFiring::Unknown; count]);
+        }
+    }
+    out
+}
+
+/// Restore extra-hit gating from RL truth after a reset.
+///
+/// For each car: a validated firing at the reset state spends the impulse so
+/// the replay does not apply it a second time; a validated non-firing clears
+/// stale sim gating so a real RL kick is not wrongly suppressed; unknown
+/// leaves the sim's live gate evolution alone, which tracks RL better than
+/// any blind default when fed truth poses each reset. Backends without
+/// cooldown support (see [`ReplayBackend::supports_cooldown_restore`])
+/// ignore this entirely.
+pub fn restore_extra_cooldown<B: ReplayBackend>(
+    backend: &mut B,
+    firings: &[Vec<ExtraFiring>],
+    state_index: usize,
+) {
+    if !backend.supports_cooldown_restore() {
+        return;
+    }
+    let Some(cars) = firings.get(state_index) else {
+        return;
+    };
+    for (car_idx, firing) in cars.iter().enumerate() {
+        match firing {
+            ExtraFiring::Fire => backend.suppress_next_extra_hit(car_idx, true),
+            ExtraFiring::NoFire => backend.suppress_next_extra_hit(car_idx, false),
+            ExtraFiring::Unknown => {}
+        }
+    }
+}
+
+/// RL car-bump event: the attacker bumped the victim on the step into `tick`.
+///
+/// Inferred in the metric from a victim velocity kick plus car contact —
+/// never in the capture plugin, which records engine values verbatim.
+/// See [`compute_bump_events`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BumpEvent {
+    /// Index of the tick the bump landed on (kick visible here).
+    pub tick: usize,
+    /// Slot of the bumped car.
+    pub victim: usize,
+    /// Slot of the bumping car (nearest touching car to the victim).
+    pub attacker: usize,
+}
+
+/// Minimum car-velocity kick that counts as a bump, in uu/s.
+///
+/// Above first/double-jump self-kicks (292 uu/s). Dodge self-kicks are
+/// bigger (flip impulse scale 500) but always coincide with the victim's
+/// flip start, so the flip-start guard excludes them instead of the
+/// threshold. Smaller bumps (slow attacker) fall below this and replay
+/// with live cooldown evolution; their errors are small.
+pub const BUMP_KICK_TOL_UU_S: f32 = 400.0;
+
+/// Bump-cooldown window in ticks. Mirrors the sim's 0.25 s cooldown at
+/// 120 Hz; RL cannot re-bump with the same attacker inside it.
+pub const BUMP_COOLDOWN_TICKS: usize = 30;
+
+/// Detect RL bump events, in tick order.
+///
+/// A bump needs all three at once on the same tick: a victim velocity kick
+/// above [`BUMP_KICK_TOL_UU_S`], car contact on the victim, and a touching
+/// partner to attribute it to (the nearest one). Kicks that coincide with
+/// the victim's own flip start are dodge self-kicks, not bumps. Anything
+/// else replays with live cooldown evolution. Run breaks never carry bumps
+/// (same continuity guards as [`compute_extra_firings`]).
+///
+/// One event per unordered pair per tick: when both partners kick (mutual
+/// contact), only the larger kick is the bump victim. Emitting both
+/// directions would suppress both attackers' cooldowns and mask real sim
+/// bumps.
+pub fn compute_bump_events(ticks: &[TickRecord]) -> Vec<BumpEvent> {
+    let mut out = Vec::new();
+    for (index, tick) in ticks.iter().enumerate() {
+        let count = tick.car_records.len();
+        if index == 0 || count == 0 {
+            continue;
+        }
+        let prev = &ticks[index - 1];
+        if prev.car_records.len() != count
+            || !frame_is_contiguous(prev, tick)
+            || tick_is_frozen(prev, tick)
+            || any_teleport(prev, tick)
+            || tick_is_kickoff_stasis(prev, tick)
+        {
+            continue;
+        }
+        // (victim, attacker, kick) candidates this tick.
+        let mut cands: Vec<(usize, usize, f32)> = Vec::new();
+        for (slot, car) in tick.car_records.iter().enumerate() {
+            if !car.is_touching_car {
+                continue;
+            }
+            let kick = kick_residual(
+                prev.car_records[slot].phys.pos.into(),
+                car.phys.pos.into(),
+                car.phys.lin_vel.into(),
+            )
+            .length();
+            if kick <= BUMP_KICK_TOL_UU_S {
+                continue;
+            }
+            // Own dodge impulse, not a bump: the flip starts on this tick.
+            if car.is_flipping && !prev.car_records[slot].is_flipping {
+                continue;
+            }
+            let victim_pos: Vec3A = car.phys.pos.into();
+            let attacker = (0..count)
+                .filter(|&other| other != slot && tick.car_records[other].is_touching_car)
+                .min_by(|&a, &b| {
+                    let da: Vec3A = tick.car_records[a].phys.pos.into();
+                    let db: Vec3A = tick.car_records[b].phys.pos.into();
+                    (da - victim_pos)
+                        .length_squared()
+                        .partial_cmp(&(db - victim_pos).length_squared())
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                });
+            if let Some(attacker) = attacker {
+                cands.push((slot, attacker, kick));
+            }
+        }
+        // Deduplicate mirrored pairs: keep the larger kick as the victim.
+        cands.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
+        let mut used = vec![false; count];
+        for (victim, attacker, _) in cands {
+            let (lo, hi) = if victim < attacker {
+                (victim, attacker)
+            } else {
+                (attacker, victim)
+            };
+            // Mark both slots used: a car joins at most one bump per tick.
+            if used[lo] || used[hi] {
+                continue;
+            }
+            used[lo] = true;
+            used[hi] = true;
+            out.push(BumpEvent {
+                tick: index,
+                victim,
+                attacker,
+            });
+        }
+    }
+    out
+}
+
+/// Restore bump-cooldown gating from RL truth after a reset.
+///
+/// RL sets the attacker's cooldown when it bumps and the sim must see the
+/// same gate: expired (0.0) on the pre-bump state so the replay bumps too,
+/// then the decaying remainder while inside the cooldown window so the
+/// replay does not re-bump sustained contact. Outside event windows the
+/// sim's live gate evolution is left alone: fed with truth poses each
+/// reset, it tracks RL's gates better than any blind default. Backends
+/// without bump support (see [`ReplayBackend::supports_bump_restore`])
+/// ignore this entirely.
+pub fn restore_bump_cooldown<B: ReplayBackend>(
+    backend: &mut B,
+    events: &[BumpEvent],
+    state_index: usize,
+) {
+    if !backend.supports_bump_restore() {
+        return;
+    }
+    for event in events {
+        if state_index + 1 == event.tick {
+            backend.set_bump_cooldown(event.attacker, 0.0);
+        } else if state_index >= event.tick && state_index < event.tick + BUMP_COOLDOWN_TICKS {
+            let elapsed = (state_index - event.tick) as f32 * rocketsim::consts::TICK_TIME;
+            let remaining = rocketsim::consts::car::bump::COOLDOWN_TIME - elapsed;
+            if remaining > 0.0 {
+                backend.set_bump_cooldown(event.attacker, remaining);
+            }
+        }
+    }
 }
 
 /// Split ticks into non-overlapping segments.
@@ -980,9 +1323,9 @@ pub fn restore_recorded_handbrake<B: ReplayBackend>(
     }
 }
 
-/// Report plus kickoff-stasis skip counts from one [`evaluate`] run.
-/// Skipped counts hold scored transitions removed as kickoff stasis.
-/// The sim still steps through them.
+/// Report plus skip counts from one [`evaluate`] run.
+/// Skipped counts hold transitions removed as kickoff stasis. The sim still
+/// steps through them.
 #[derive(Clone, Debug, Default)]
 pub struct EvalOutcome {
     pub report: EvalReport,
@@ -997,13 +1340,18 @@ pub struct EvalOutcome {
 /// Support counts car-ticks: each scored tick contributes one sample per car.
 /// With `use_sim_events`, sim-observed contacts also label ticks;
 /// otherwise labels come from RL flags alone.
-/// Kickoff-stasis transitions still step the sim but add no support,
-/// pass, or error. Runs, chunks, and seeds are unchanged. Counts land
-/// in [`EvalOutcome`].
+/// Kickoff-stasis transitions still step the sim but add no support, pass, or
+/// error. Every other tick scores, including contact ticks: raw touch frames
+/// identify RL's extra-hit firings and gating is restored from RL truth, so
+/// the sim reproduces the tick instead of double-applying it. Runs, chunks,
+/// and seeds are unchanged. Counts land in [`EvalOutcome`].
 /// `has_boost_state` must be true only when the recording version carries
 /// recorded boost latch state; older versions keep live-latch evolution.
 /// `has_handbrake_state` must be true only when the recording version
 /// carries recorded handbrake state; older versions keep reconstruction.
+/// `has_touch_state` must be true only when the recording version carries
+/// raw last ball touch frames; older versions infer nothing (every firing
+/// reads Unknown) and replay with live gating evolution.
 #[allow(clippy::too_many_arguments)]
 pub fn evaluate<B: ReplayBackend>(
     backend: &mut B,
@@ -1013,10 +1361,13 @@ pub fn evaluate<B: ReplayBackend>(
     use_sim_events: bool,
     has_boost_state: bool,
     has_handbrake_state: bool,
+    has_touch_state: bool,
 ) -> EvalOutcome {
     let mut outcome = EvalOutcome::default();
     let report = &mut outcome.report;
     let tol = Tolerances::for_mode(reset_each_tick);
+    let firings = compute_extra_firings(ticks, has_touch_state);
+    let bumps = compute_bump_events(ticks);
     for segment in segments {
         if segment.end() > ticks.len() {
             continue;
@@ -1029,6 +1380,8 @@ pub fn evaluate<B: ReplayBackend>(
                 restore_handbrake_seed(backend, ticks, segment_run_start, segment.start);
             }
             restore_recorded_boost_state(backend, ticks, segment.start, has_boost_state);
+            restore_extra_cooldown(backend, &firings, segment.start);
+            restore_bump_cooldown(backend, &bumps, segment.start);
             // Seed the prior-tick wheel gate at the recorded pose.
             // Raycast only. Scored bodies stay at the recorded state.
             backend.refresh_sticky_gates();
@@ -1041,6 +1394,10 @@ pub fn evaluate<B: ReplayBackend>(
                 // Settle the sticky-wheel gate at each segment start with
                 // wheel raycasts at the reset pose (no dynamics advance), so
                 // post-teleport transitions start from valid hidden state.
+                // Mid-run resets keep the warmed suspension caches: they
+                // track the foreign trajectory, which sits one step error
+                // away from truth, while a fresh raycast invents a static
+                // pose with zero relative velocity.
                 if offset == 1 {
                     settle_reset_state(backend, &ticks[state_index]);
                 } else {
@@ -1048,6 +1405,8 @@ pub fn evaluate<B: ReplayBackend>(
                 }
                 restore_recorded_boost_state(backend, ticks, state_index, has_boost_state);
                 restore_recorded_handbrake(backend, ticks, state_index, has_handbrake_state);
+                restore_extra_cooldown(backend, &firings, state_index);
+                restore_bump_cooldown(backend, &bumps, state_index);
                 if !has_handbrake_state && offset == 1 {
                     restore_handbrake_seed(backend, ticks, segment_run_start, state_index);
                 }
@@ -1149,6 +1508,7 @@ mod tests {
             _boost_pad: [0; 3],
             boosting_time: 0.0,
             handbrake_val: 0.0,
+            last_ball_touch_frame: rocketsim_test::rlpr::TOUCH_FRAME_UNKNOWN,
         }
     }
 
@@ -1183,12 +1543,15 @@ mod tests {
     }
 
     fn quiet_tick(frame: u32, x: f32) -> TickRecord {
+        // Physically self-consistent: the car advances 10 uu per tick, so its
+        // velocity is 10 uu per tick length (1200 uu/s at 120 Hz); the ball
+        // is stationary.
         make_tick(
             frame,
             (x, 0.0, 100.0),
             (0.0, 0.0, 500.0),
-            (10.0, 0.0, 0.0),
-            (10.0, 0.0, 0.0),
+            (1200.0, 0.0, 0.0),
+            (0.0, 0.0, 0.0),
             false,
             false,
             false,
@@ -1386,6 +1749,10 @@ mod tests {
     struct MirrorBackend {
         snaps: Vec<Vec<Snapshot>>,
         cursor: usize,
+        supports_cooldown: bool,
+        suppress_calls: Vec<(usize, bool)>,
+        supports_bump: bool,
+        bump_calls: Vec<(usize, f32)>,
     }
 
     struct BoostProbe {
@@ -1525,11 +1892,34 @@ mod tests {
                         .collect()
                 })
                 .collect();
-            Self { snaps, cursor: 0 }
+            Self {
+                snaps,
+                cursor: 0,
+                supports_cooldown: false,
+                suppress_calls: Vec::new(),
+                supports_bump: false,
+                bump_calls: Vec::new(),
+            }
         }
     }
 
     impl ReplayBackend for MirrorBackend {
+        fn supports_cooldown_restore(&self) -> bool {
+            self.supports_cooldown
+        }
+
+        fn suppress_next_extra_hit(&mut self, car_idx: usize, suppress: bool) {
+            self.suppress_calls.push((car_idx, suppress));
+        }
+
+        fn supports_bump_restore(&self) -> bool {
+            self.supports_bump
+        }
+
+        fn set_bump_cooldown(&mut self, car_idx: usize, seconds: f32) {
+            self.bump_calls.push((car_idx, seconds));
+        }
+
         fn reset(&mut self, start: &TickRecord) {
             let want = snapshot_from_tick(start, 0).unwrap();
             self.cursor = self.snaps[0]
@@ -1728,7 +2118,17 @@ mod tests {
         assert!(snapshot_from_tick(&ticks[2], 2).is_none());
         // Car 0 still evaluates over the clean run.
         let mut backend = MirrorBackend::new(&ticks);
-        let report = evaluate(&mut backend, &ticks, &segments, false, true, false, false).report;
+        let report = evaluate(
+            &mut backend,
+            &ticks,
+            &segments,
+            false,
+            true,
+            false,
+            false,
+            false,
+        )
+        .report;
         assert!(report.total.support > 0);
     }
 
@@ -1741,7 +2141,17 @@ mod tests {
         }
         let mut backend = MirrorBackend::new(&ticks);
         let segments = vec![Segment { start: 0, len: 4 }];
-        let report = evaluate(&mut backend, &ticks, &segments, false, true, false, false).report;
+        let report = evaluate(
+            &mut backend,
+            &ticks,
+            &segments,
+            false,
+            true,
+            false,
+            false,
+            false,
+        )
+        .report;
         assert_eq!(report.total.support, 6);
         assert_eq!(report.total.passed, 6);
         assert_eq!(report.no_contact.support, 6);
@@ -1754,7 +2164,17 @@ mod tests {
         ticks[4].car_records[0].wheels[0].has_contact = true;
         let mut backend = MirrorBackend::new(&ticks);
         let segments = vec![Segment { start: 0, len: 6 }];
-        let report = evaluate(&mut backend, &ticks, &segments, false, true, false, false).report;
+        let report = evaluate(
+            &mut backend,
+            &ticks,
+            &segments,
+            false,
+            true,
+            false,
+            false,
+            false,
+        )
+        .report;
         assert_eq!(report.total.support, 5);
         assert_eq!(report.total.passed, 5);
         assert_eq!(report.car_ball.support, 1);
@@ -1762,9 +2182,376 @@ mod tests {
         assert_eq!(report.no_contact.support, 4);
 
         let mut backend = MirrorBackend::new(&ticks);
-        let report = evaluate(&mut backend, &ticks, &segments, true, true, false, false).report;
+        let report = evaluate(
+            &mut backend,
+            &ticks,
+            &segments,
+            true,
+            true,
+            false,
+            false,
+            false,
+        )
+        .report;
         assert_eq!(report.total.support, 5);
         assert_eq!(report.total.passed, 5);
+    }
+
+    /// One consistent step: position delta matches velocity over TICK_TIME.
+    fn steady_tick(frame: u32, car_x: f32, car_vx: f32) -> TickRecord {
+        make_tick(
+            frame,
+            (car_x, 0.0, 100.0),
+            (0.0, 0.0, 500.0),
+            (car_vx, 0.0, 0.0),
+            (0.0, 0.0, 0.0),
+            false,
+            false,
+            false,
+            false,
+        )
+    }
+
+    /// One car moving steadily, ball kicked on the target tick, touch frame
+    /// supplied per car. Cars stay drift-clean so only the ball speaks.
+    fn kick_tick(
+        frame: u32,
+        car_x: f32,
+        ball_vel: (f32, f32, f32),
+        touch_frame: u32,
+    ) -> TickRecord {
+        let mut tick = steady_tick(frame, car_x, 1200.0);
+        tick.ball_record.lin_vel = vec(ball_vel.0, ball_vel.1, ball_vel.2);
+        tick.car_records[0].last_ball_touch_frame = touch_frame;
+        tick
+    }
+
+    #[test]
+    fn extra_firing_needs_touch_kick_and_attribution() {
+        // No touch data at all: everything Unknown, even with a kick.
+        let ticks = vec![
+            steady_tick(0, 0.0, 1200.0),
+            kick_tick(1, 10.0, (2000.0, 0.0, 0.0), 1),
+        ];
+        let firings = compute_extra_firings(&ticks, false);
+        assert_eq!(firings[1], vec![ExtraFiring::Unknown]);
+
+        // Clean ball with a recent touch: light touch, no extra.
+        let ticks = vec![
+            steady_tick(0, 0.0, 1200.0),
+            kick_tick(1, 10.0, (0.0, 0.0, 0.0), 1),
+        ];
+        // Ball never moved: position still (0,0,500), velocity zeroed here
+        // keeps the pair drift-clean.
+        let firings = compute_extra_firings(&ticks, true);
+        assert_eq!(firings[1], vec![ExtraFiring::NoFire]);
+
+        // Kick plus exactly one recent touch: validated firing.
+        let ticks = vec![
+            steady_tick(0, 0.0, 1200.0),
+            kick_tick(1, 10.0, (2000.0, 0.0, 0.0), 1),
+        ];
+        let firings = compute_extra_firings(&ticks, true);
+        assert_eq!(firings[1], vec![ExtraFiring::Fire]);
+
+        // Same-frame touch (zero frames back) also counts.
+        let ticks = vec![
+            steady_tick(5, 40.0, 1200.0),
+            kick_tick(6, 50.0, (2000.0, 0.0, 0.0), 6),
+        ];
+        assert_eq!(
+            compute_extra_firings(&ticks, true)[1],
+            vec![ExtraFiring::Fire]
+        );
+
+        // Stale touch (two frames back) with a fresh kick: unattributable.
+        let ticks = vec![
+            steady_tick(5, 0.0, 1200.0),
+            kick_tick(6, 10.0, (2000.0, 0.0, 0.0), 4),
+        ];
+        assert_eq!(
+            compute_extra_firings(&ticks, true)[1],
+            vec![ExtraFiring::Unknown]
+        );
+
+        // Kick across a teleport: run break, not a firing, even with a
+        // recent touch stamped on the arrival.
+        let mut arrival = kick_tick(1, 5000.0, (2000.0, 0.0, 0.0), 1);
+        arrival.ball_record.physics_frame = 1;
+        let ticks = vec![steady_tick(0, 0.0, 1200.0), arrival];
+        assert!(any_teleport(&ticks[0], &ticks[1]));
+        assert_eq!(
+            compute_extra_firings(&ticks, true)[1],
+            vec![ExtraFiring::Unknown]
+        );
+    }
+
+    #[test]
+    fn extra_firing_multi_touch_is_ambiguous() {
+        // Two cars, both recently touched, one ball kick: either could have
+        // hit it, so neither is validated.
+        let mut t0 = steady_tick(0, 0.0, 1200.0);
+        t0.car_records.push(t0.car_records[0].clone());
+        let mut t1 = kick_tick(1, 10.0, (2000.0, 0.0, 0.0), 1);
+        t1.car_records.push(t1.car_records[0].clone());
+        t1.car_records[1].last_ball_touch_frame = 1;
+        let ticks = vec![t0, t1];
+        assert_eq!(
+            compute_extra_firings(&ticks, true)[1],
+            vec![ExtraFiring::Unknown, ExtraFiring::Unknown]
+        );
+        // Only car 1 recent: attributed to car 1.
+        let mut t1 = kick_tick(1, 10.0, (2000.0, 0.0, 0.0), 0);
+        t1.car_records.push(t1.car_records[0].clone());
+        t1.car_records[0].last_ball_touch_frame = 0;
+        t1.car_records[1].last_ball_touch_frame = 1;
+        let mut t0 = steady_tick(0, 0.0, 1200.0);
+        t0.car_records.push(t0.car_records[0].clone());
+        let ticks = vec![t0, t1];
+        assert_eq!(
+            compute_extra_firings(&ticks, true)[1],
+            vec![ExtraFiring::NoFire, ExtraFiring::Fire]
+        );
+    }
+
+    /// Two cars driving steadily; the second tick kicks one car's velocity
+    /// (position keeps advancing 10 uu/tick) with car contact on both.
+    /// Residual for a kicked car is |1200 - vx| uu/s.
+    fn bump_ticks(kick_slot: usize, kick_vx: f32) -> Vec<TickRecord> {
+        let mut t0 = steady_tick(0, 0.0, 1200.0);
+        t0.car_records.push(t0.car_records[0].clone());
+        t0.car_records[1].phys.pos = vec(90.0, 0.0, 100.0);
+        let mut t1 = steady_tick(1, 10.0, 1200.0);
+        t1.car_records.push(t1.car_records[0].clone());
+        t1.car_records[1].phys.pos = vec(100.0, 0.0, 100.0);
+        t1.car_records[kick_slot].phys.lin_vel = vec(kick_vx, 0.0, 0.0);
+        t1.car_records[0].is_touching_car = true;
+        t1.car_records[1].is_touching_car = true;
+        vec![t0, t1]
+    }
+
+    #[test]
+    fn bump_event_needs_kick_contact_and_attribution() {
+        // Victim kick 800 uu/s with contact: one event, nearest partner.
+        let ticks = bump_ticks(0, 2000.0);
+        assert_eq!(
+            compute_bump_events(&ticks),
+            vec![BumpEvent {
+                tick: 1,
+                victim: 0,
+                attacker: 1
+            }]
+        );
+        // Sub-threshold kick (200 uu/s): no event.
+        let ticks = bump_ticks(0, 1000.0);
+        assert!(compute_bump_events(&ticks).is_empty());
+        // Kick without contact: no event.
+        let mut ticks = bump_ticks(0, 2000.0);
+        ticks[1].car_records[0].is_touching_car = false;
+        ticks[1].car_records[1].is_touching_car = false;
+        assert!(compute_bump_events(&ticks).is_empty());
+    }
+
+    #[test]
+    fn bump_mirrored_pair_keeps_larger_kick() {
+        // Both partners kick: only the larger kick is the victim, so the
+        // restore suppresses one attacker, not both.
+        let mut ticks = bump_ticks(0, 2000.0);
+        ticks[1].car_records[1].phys.lin_vel = vec(0.0, 0.0, 0.0);
+        assert_eq!(
+            compute_bump_events(&ticks),
+            vec![BumpEvent {
+                tick: 1,
+                victim: 1,
+                attacker: 0
+            }]
+        );
+    }
+
+    #[test]
+    fn bump_flip_start_is_dodge_not_bump() {
+        // Victim's flip starts on the kick tick: own dodge impulse.
+        let mut ticks = bump_ticks(0, 2000.0);
+        ticks[1].car_records[0].is_flipping = true;
+        assert!(compute_bump_events(&ticks).is_empty());
+        // Flip ongoing since the previous tick: not a flip start, still a bump.
+        ticks[0].car_records[0].is_flipping = true;
+        assert_eq!(compute_bump_events(&ticks).len(), 1);
+    }
+
+    #[test]
+    fn restore_bump_cooldown_sets_pre_and_window() {
+        let events = vec![BumpEvent {
+            tick: 5,
+            victim: 1,
+            attacker: 0,
+        }];
+        let mut backend = MirrorBackend::new(&[steady_tick(0, 0.0, 1200.0)]);
+        backend.supports_bump = true;
+        restore_bump_cooldown(&mut backend, &events, 4);
+        restore_bump_cooldown(&mut backend, &events, 5);
+        restore_bump_cooldown(&mut backend, &events, 34);
+        restore_bump_cooldown(&mut backend, &events, 35);
+        restore_bump_cooldown(&mut backend, &events, 99);
+        assert_eq!(backend.bump_calls.len(), 3);
+        assert_eq!(backend.bump_calls[0].0, 0);
+        assert!((backend.bump_calls[0].1 - 0.0).abs() < 1e-6);
+        assert!((backend.bump_calls[1].1 - 0.25).abs() < 1e-6);
+        assert!(backend.bump_calls[2].1 > 0.0 && backend.bump_calls[2].1 < 0.25);
+
+        // Backends without support stay untouched.
+        let mut backend = MirrorBackend::new(&[steady_tick(0, 0.0, 1200.0)]);
+        restore_bump_cooldown(&mut backend, &events, 5);
+        assert!(backend.bump_calls.is_empty());
+    }
+
+    #[test]
+    fn restore_extra_cooldown_blocks_clears_and_leaves() {
+        let mut backend = MirrorBackend::new(&[steady_tick(0, 0.0, 1200.0)]);
+        backend.supports_cooldown = true;
+        let firings = vec![
+            vec![ExtraFiring::Unknown],
+            vec![ExtraFiring::Fire],
+            vec![ExtraFiring::NoFire],
+        ];
+        restore_extra_cooldown(&mut backend, &firings, 1);
+        restore_extra_cooldown(&mut backend, &firings, 2);
+        restore_extra_cooldown(&mut backend, &firings, 0);
+        restore_extra_cooldown(&mut backend, &firings, 99);
+        assert_eq!(backend.suppress_calls, vec![(0, true), (0, false)]);
+
+        // Backends without support stay untouched (v2 / legacy path).
+        let mut backend = MirrorBackend::new(&[steady_tick(0, 0.0, 1200.0)]);
+        restore_extra_cooldown(&mut backend, &firings, 1);
+        assert!(backend.suppress_calls.is_empty());
+    }
+
+    #[test]
+    fn validated_firing_target_scores_and_counts() {
+        // MirrorBackend replays truth exactly (norm 0): the firing tick
+        // scores and passes.
+        let ticks = vec![
+            steady_tick(0, 0.0, 1200.0),
+            kick_tick(1, 10.0, (2000.0, 0.0, 0.0), 1),
+        ];
+        let segments = vec![Segment { start: 0, len: 2 }];
+        let mut backend = MirrorBackend::new(&ticks);
+        backend.supports_cooldown = true;
+        let outcome = evaluate(
+            &mut backend,
+            &ticks,
+            &segments,
+            true,
+            true,
+            false,
+            false,
+            true,
+        );
+        assert_eq!(outcome.report.total.support, 1);
+        assert_eq!(outcome.report.total.passed, 1);
+        // Reset state tick 0 predates any step into the file: Unknown, so
+        // the restore correctly leaves the fresh backend alone.
+        assert!(backend.suppress_calls.is_empty());
+    }
+
+    #[test]
+    fn unvalidated_drift_scores_with_restore_on() {
+        // Kick with a stale touch: ambiguous, but v9 restore removes the
+        // exclusion entirely — the tick is scored, not skipped. MirrorBackend
+        // replays truth exactly, so it passes.
+        let ticks = vec![
+            steady_tick(5, 0.0, 1200.0),
+            kick_tick(6, 10.0, (2000.0, 0.0, 0.0), 4),
+        ];
+        let segments = vec![Segment { start: 0, len: 2 }];
+        let mut backend = MirrorBackend::new(&ticks);
+        backend.supports_cooldown = true;
+        let outcome = evaluate(
+            &mut backend,
+            &ticks,
+            &segments,
+            true,
+            true,
+            false,
+            false,
+            true,
+        );
+        assert_eq!(outcome.report.total.support, 1);
+        assert_eq!(outcome.report.total.passed, 1);
+    }
+
+    #[test]
+    fn upcoming_validated_firing_scores_both() {
+        // Firing lands one tick after the target. No exclusion anywhere:
+        // both the clean target and the firing tick score.
+        let ticks = vec![
+            steady_tick(0, 0.0, 1200.0),
+            steady_tick(1, 10.0, 1200.0),
+            kick_tick(2, 20.0, (2000.0, 0.0, 0.0), 2),
+        ];
+        let segments = vec![Segment { start: 0, len: 3 }];
+        let mut backend = MirrorBackend::new(&ticks);
+        backend.supports_cooldown = true;
+        let outcome = evaluate(
+            &mut backend,
+            &ticks,
+            &segments,
+            true,
+            true,
+            false,
+            false,
+            true,
+        );
+        assert_eq!(outcome.report.total.support, 2);
+        assert_eq!(outcome.report.total.passed, 2);
+    }
+
+    #[test]
+    fn restore_inactive_still_scores() {
+        // Same validated firing, incapable backend (v2 path): no restore,
+        // but no exclusion either — the tick scores with live gating.
+        let ticks = vec![
+            steady_tick(0, 0.0, 1200.0),
+            kick_tick(1, 10.0, (2000.0, 0.0, 0.0), 1),
+        ];
+        let segments = vec![Segment { start: 0, len: 2 }];
+        let mut backend = MirrorBackend::new(&ticks);
+        let outcome = evaluate(
+            &mut backend,
+            &ticks,
+            &segments,
+            true,
+            true,
+            false,
+            false,
+            true,
+        );
+        assert_eq!(outcome.report.total.support, 1);
+        assert_eq!(outcome.report.total.passed, 1);
+        // Detection still runs (diagnostic) even though this backend
+        // cannot restore gating.
+        assert!(backend.suppress_calls.is_empty());
+    }
+
+    #[test]
+    fn collapse_duplicate_ticks_drops_only_zero_information_rows() {
+        let mut dup = steady_tick(1, 10.0, 1200.0);
+        let ticks = vec![
+            steady_tick(0, 0.0, 1200.0),
+            steady_tick(1, 10.0, 1200.0),
+            dup.clone(),
+            steady_tick(2, 20.0, 1200.0),
+        ];
+        let collapsed = collapse_duplicate_ticks(&ticks);
+        assert_eq!(collapsed.len(), 3);
+        assert_eq!(collapsed[1].car_records[0].phys.pos.x, 10.0);
+        // Same frame but different state is real data, not a duplicate:
+        // collapse keys on state equality, never on frames.
+        dup.ball_record.physics_frame = 0;
+        dup.car_records[0].phys.physics_frame = 0;
+        let ticks = vec![steady_tick(0, 0.0, 1200.0), dup];
+        assert_eq!(collapse_duplicate_ticks(&ticks).len(), 2);
+        let _ = dup;
     }
 
     fn kickoff_pair(
@@ -1950,7 +2737,16 @@ mod tests {
                     true,
                     true,
                 );
-                t.car_records[0].phys.lin_vel = vec(hxy, 0.0, 0.0);
+                // Keep the non-stasis transitions physically self-consistent:
+                // velocity must match the position delta (10 uu and 9.5 uu
+                // per tick). The stasis target keeps near-zero velocity by
+                // construction; that pair is skipped as stasis first.
+                let vel = match f {
+                    100 => 1200.0,
+                    102 => 1140.0,
+                    _ => hxy,
+                };
+                t.car_records[0].phys.lin_vel = vec(vel, 0.0, 0.0);
                 t.car_records.push(t.car_records[0].clone());
                 t
             })
@@ -1959,7 +2755,16 @@ mod tests {
         assert!(!tick_is_kickoff_stasis(&ticks[2], &ticks[3]));
         let segments = vec![Segment { start: 0, len: 4 }];
         let mut backend = MirrorBackend::new(&ticks);
-        let outcome = evaluate(&mut backend, &ticks, &segments, true, true, false, false);
+        let outcome = evaluate(
+            &mut backend,
+            &ticks,
+            &segments,
+            true,
+            true,
+            false,
+            false,
+            false,
+        );
         assert_eq!(outcome.skipped_transitions, 1);
         assert_eq!(outcome.skipped_car_ticks, 2);
         assert_eq!(outcome.report.total.support, 4);
@@ -2039,7 +2844,16 @@ mod tests {
         let ticks: Vec<_> = (0..6).map(|i| quiet_tick(i, i as f32 * 10.0)).collect();
         let segments = vec![Segment { start: 0, len: 3 }, Segment { start: 3, len: 3 }];
         let mut backend = StickyGateProbe::new(&ticks);
-        evaluate(&mut backend, &ticks, &segments, false, true, true, true);
+        evaluate(
+            &mut backend,
+            &ticks,
+            &segments,
+            false,
+            true,
+            true,
+            true,
+            false,
+        );
         assert_eq!(backend.refreshes, segments.len());
         let reset_pos = backend.events.iter().position(|e| e == "reset").unwrap();
         let refresh_pos = backend.events.iter().position(|e| e == "refresh").unwrap();
@@ -2055,11 +2869,29 @@ mod tests {
         assert!(boost_pos < refresh_pos);
         assert!(refresh_pos < step_pos);
         let mut backend = StickyGateProbe::new(&ticks);
-        evaluate(&mut backend, &ticks, &segments, false, true, true, false);
+        evaluate(
+            &mut backend,
+            &ticks,
+            &segments,
+            false,
+            true,
+            true,
+            false,
+            false,
+        );
         assert_eq!(backend.refreshes, segments.len());
         // Reset-each-tick mode settles the gate at each segment start too.
         let mut backend = StickyGateProbe::new(&ticks);
-        evaluate(&mut backend, &ticks, &segments, true, true, true, true);
+        evaluate(
+            &mut backend,
+            &ticks,
+            &segments,
+            true,
+            true,
+            true,
+            true,
+            false,
+        );
         assert_eq!(backend.refreshes, segments.len());
     }
 }

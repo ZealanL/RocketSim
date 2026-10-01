@@ -7,11 +7,12 @@
 //! Call [`V2Backend::init`] one time before [`V2Backend::new`].
 //!
 //! Fields with no RLPR source get neutral values:
-//! tick counters, air timers, boost timers, supersonic flags,
-//! handbrake value, auto flip state, contact state, heatseeker
-//! and dropshot ball info. `ball_hit_info` is cleared on reset.
-//! `has_double_jumped` and `has_flipped` use the same inference
-//! as the v3 comparison path.
+//! tick counters, air timers, boost pad timers, supersonic flags,
+//! contact state, heatseeker and dropshot ball info. `ball_hit_info`
+//! is cleared on reset. `has_double_jumped` and `has_flipped` use the
+//! same record-derived inference as the v3 comparison path. Boost latch,
+//! handbrake, and bump cooldown restore from the recording like v3;
+//! ball extra-hit gating has no v2 engine field and replays live.
 
 use glam::Vec3A;
 use rocketsim_rs::{
@@ -233,6 +234,47 @@ impl ReplayBackend for V2Backend {
             .set_ball(ball_state_for_tick(state_tick));
     }
 
+    fn set_boost_state(&mut self, car_idx: usize, armed: bool, time: f32) {
+        let Some(&car_id) = self.car_ids.get(car_idx) else {
+            panic!("set_boost_state needs car {car_idx}");
+        };
+        let mut state = self.arena.pin_mut().get_car(car_id);
+        state.is_boosting = armed;
+        state.boosting_time = if armed { time } else { 0.0 };
+        self.arena
+            .pin_mut()
+            .set_car(car_id, state)
+            .expect("v2 car id is valid");
+    }
+
+    fn set_handbrake_value(&mut self, car_idx: usize, value: f32) {
+        let Some(&car_id) = self.car_ids.get(car_idx) else {
+            panic!("set_handbrake_value needs car {car_idx}");
+        };
+        let mut state = self.arena.pin_mut().get_car(car_id);
+        state.handbrake_val = value.clamp(0.0, 1.0);
+        self.arena
+            .pin_mut()
+            .set_car(car_id, state)
+            .expect("v2 car id is valid");
+    }
+
+    fn supports_bump_restore(&self) -> bool {
+        true
+    }
+
+    fn set_bump_cooldown(&mut self, car_idx: usize, seconds: f32) {
+        let Some(&car_id) = self.car_ids.get(car_idx) else {
+            panic!("set_bump_cooldown needs car {car_idx}");
+        };
+        let mut state = self.arena.pin_mut().get_car(car_id);
+        state.car_contact.cooldown_timer = seconds.max(0.0);
+        self.arena
+            .pin_mut()
+            .set_car(car_id, state)
+            .expect("v2 car id is valid");
+    }
+
     fn step(&mut self, controls: &[ControlsRecord]) -> Vec<SimContactEvents> {
         for (slot, controls) in controls.iter().enumerate() {
             if let Some(&car_id) = self.car_ids.get(slot) {
@@ -386,6 +428,11 @@ fn apply_car_record(state: &mut CarState, car: &CarRecord) {
     state.ball_hit_info = Default::default();
     state.last_controls = controls;
 
+    // `has_double_jumped` and `has_flipped` use the same record-derived
+    // inference as the v3 comparison path: recorded flags win, but a spent
+    // flag the record does not explain is left alone rather than cleared.
+    // Live gate evolution otherwise carries across resets (see the v3
+    // path): stale foreign-trajectory gates track RL better than defaults.
     if car.has_flip {
         state.has_double_jumped = false;
         state.has_flipped = false;

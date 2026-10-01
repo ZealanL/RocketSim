@@ -242,6 +242,12 @@ pub struct CarRecord {
     pub boosting_time: f32,
     /// RLPR v8 handbrake integrator value. 0.0 for v2-v7.
     pub handbrake_val: f32,
+    /// RLPR v9 raw last ball touch frame (`Vehicle_TA.GetLastBallTouchFrame`
+    /// verbatim, so negative values arrive as large u32s). Lets consumers
+    /// compute exact touch recency instead of trusting the thresholded
+    /// `is_touching_ball` bool. [`TOUCH_FRAME_UNKNOWN`](super::TOUCH_FRAME_UNKNOWN)
+    /// for v2-v8: unknown, not frame 0.
+    pub last_ball_touch_frame: u32,
 }
 impl From<CarRecord> for CarState {
     fn from(phys_record: CarRecord) -> Self {

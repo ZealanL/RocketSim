@@ -285,6 +285,38 @@ impl ReplayBackend for V3Backend {
         self.arena.set_car_state(car_id, state);
     }
 
+    fn supports_cooldown_restore(&self) -> bool {
+        true
+    }
+
+    fn suppress_next_extra_hit(&mut self, car_idx: usize, suppress: bool) {
+        let car_id = self.car_id(car_idx, "suppress_next_extra_hit");
+        let mut state = *self.arena.get_car_state(car_id);
+        if suppress {
+            // Block exactly the next executed step: the upcoming step runs at
+            // the current tick count, and the gate re-opens the step after.
+            // Fresh arenas (count 0) cannot represent "block step 0, allow
+            // step 1" in u64, so they over-suppress by one step; rebuilds are
+            // the only path there and are rare.
+            let current = self.arena.tick_count();
+            state.last_extra_hit_tick = Some(if current == 0 { 0 } else { current - 1 });
+        } else {
+            state.last_extra_hit_tick = None;
+        }
+        self.arena.set_car_state(car_id, state);
+    }
+
+    fn supports_bump_restore(&self) -> bool {
+        true
+    }
+
+    fn set_bump_cooldown(&mut self, car_idx: usize, seconds: f32) {
+        let car_id = self.car_id(car_idx, "set_bump_cooldown");
+        let mut state = *self.arena.get_car_state(car_id);
+        state.bump_cooldown_timer = seconds.max(0.0);
+        self.arena.set_car_state(car_id, state);
+    }
+
     fn reset(&mut self, start: &TickRecord) {
         self.ensure_cars(start.car_records.len());
         self.set_state(start);
@@ -548,6 +580,44 @@ mod tests {
         backend.set_bodies(&[2, 0]);
         backend.ensure_cars(2);
         assert_ne!(backend.arena_body, before);
+    }
+
+    #[test]
+    fn suppress_next_extra_hit_blocks_exactly_one_step() {
+        use super::super::common::ReplayBackend;
+
+        init();
+        let mut backend = V3Backend::new();
+        backend.ensure_cars(1);
+        let car_id = backend.car_ids[0];
+        // Fresh backend: gating open.
+        assert_eq!(
+            backend.arena.get_car_state(car_id).last_extra_hit_tick,
+            None
+        );
+        // Suppress with the arena at count 0: over-suppresses by one step
+        // (documented u64 edge), still blocks the immediate next step.
+        assert_eq!(backend.arena.tick_count(), 0);
+        backend.suppress_next_extra_hit(0, true);
+        assert_eq!(
+            backend.arena.get_car_state(car_id).last_extra_hit_tick,
+            Some(0)
+        );
+        // Clearing re-opens the gate.
+        backend.suppress_next_extra_hit(0, false);
+        assert_eq!(
+            backend.arena.get_car_state(car_id).last_extra_hit_tick,
+            None
+        );
+        // At count C >= 1 the block covers exactly the next step: last is
+        // set to C - 1, so last + 1 < C fails once, then passes.
+        backend.arena.step_tick();
+        assert_eq!(backend.arena.tick_count(), 1);
+        backend.suppress_next_extra_hit(0, true);
+        assert_eq!(
+            backend.arena.get_car_state(car_id).last_extra_hit_tick,
+            Some(0)
+        );
     }
 
     #[test]
