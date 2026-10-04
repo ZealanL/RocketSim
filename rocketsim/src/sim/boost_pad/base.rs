@@ -39,7 +39,7 @@ impl BoostPad {
             mutator_config.boost_pad_amount_small
         };
 
-        let extent = Vec3A::new(box_radius, box_radius, boost_pads::CYL_HEIGHT);
+        let extent = Vec3A::new(cyl_radius, cyl_radius, boost_pads::CYL_HEIGHT);
         let aabb = Aabb::new(config.pos - extent, config.pos + extent);
 
         Self {
