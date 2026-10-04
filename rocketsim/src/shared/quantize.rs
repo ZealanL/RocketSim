@@ -81,3 +81,23 @@ pub fn quantize_axis_inputs(ctrls: Vec3A) -> Vec3A {
         s / LOWER_BOUND,
     )
 }
+
+/// Single-axis form of [`quantize_axis_inputs`].
+#[must_use]
+pub fn quantize_axis_input(x: f32) -> f32 {
+    let clamped = x.clamp(-1.0, 1.0);
+    let y = if clamped < 0.0 {
+        (clamped * 128.0).max(-128.0)
+    } else {
+        (clamped * 127.0).min(127.0)
+    };
+    let w = ((y + 128.0) + (y + 128.0)) + 0.5;
+    let eax = w.round_ties_even() as i32;
+    let byte = ((eax >> 1) & 0xFF) as u8;
+    let s = (byte as f32) - 128.0;
+    if byte < 0x80 {
+        s * (1.0 / 128.0)
+    } else {
+        s / 127.0
+    }
+}

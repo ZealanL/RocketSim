@@ -29,7 +29,7 @@ use crate::{
         car::{self as car_consts, drive as drive_consts},
         curves,
     },
-    shared::quantize::quantize_axis_inputs,
+    shared::quantize::{quantize_axis_input, quantize_axis_inputs},
     sim::{RaycastHitInfo, UserInfoType, car::car_info::CarInfo},
 };
 
@@ -250,13 +250,16 @@ impl Car {
 
         let mut real_brake = 0.0;
         let raw_throttle = self.state.controls.throttle;
+        let [proc_throttle, proc_steer, _] =
+            quantize_axis_inputs(Vec3A::new(raw_throttle, self.state.controls.steer, 0.0))
+                .to_array();
 
         let all_wheels_contact = self.state.num_wheels_in_contact() == NUM_WHEELS;
         let real_throttle =
             if self.state.controls.boost && self.state.boost > 0.0 && all_wheels_contact {
                 1.0
             } else {
-                raw_throttle
+                proc_throttle
             };
 
         let abs_forward_speed_uu = forward_speed_uu.abs();
@@ -305,7 +308,7 @@ impl Car {
                 * self.state.handbrake_val;
         }
 
-        steer_angle *= self.state.controls.steer;
+        steer_angle *= proc_steer;
         self.bullet_vehicle.wheels[0].steer_angle = steer_angle;
         self.bullet_vehicle.wheels[1].steer_angle = steer_angle;
 
@@ -424,7 +427,7 @@ impl Car {
         let throttle_scale = if self.state.controls.boost || self.state.is_boosting {
             1.0
         } else {
-            self.state.controls.throttle
+            quantize_axis_input(self.state.controls.throttle)
         };
         if throttle_scale != 0.0 {
             let throttle_force = forward_dir
@@ -844,7 +847,7 @@ impl Car {
         let real_throttle = if self.state.controls.boost && self.state.boost > 0.0 {
             1.0
         } else {
-            self.state.controls.throttle
+            quantize_axis_input(self.state.controls.throttle)
         };
         self.bullet_vehicle.update(
             collision_world,
