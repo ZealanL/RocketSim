@@ -2,7 +2,7 @@ use glam::{Quat, Vec3A};
 
 use super::{
     NUM_WHEELS,
-    raycaster::VehicleRaycaster,
+    raycaster::{VehicleRaycaster, VehicleRaycasterResult},
     wheel_info::{FrictionCurveInput, WheelInfo},
 };
 use crate::{
@@ -130,29 +130,42 @@ impl VehicleRL {
         self.wheels.len()
     }
 
-    fn apply_hit_car_pushback(&self, collision_world: &mut DiscreteDynamicsWorld) {
-        for wheel in &self.wheels {
-            let Some(info) = wheel.raycast_info.as_ref() else {
-                continue;
-            };
+    /// Apply victim impulses before the next wheel reads the victim velocity.
+    /// Keep chassis suspension and friction deferred.
+    fn apply_single_wheel_dynamic_effects(
+        wheel: &WheelInfo,
+        collision_world: &mut DiscreteDynamicsWorld,
+    ) {
+        let Some(info) = wheel.raycast_info.as_ref() else {
+            return;
+        };
 
-            if wheel.extra_pushback <= 0.0 {
-                continue;
-            }
-
-            let victim = &mut collision_world.bodies_mut()[info.ground_body_idx];
-            if victim.user_idx != UserInfoType::Car {
-                continue;
-            }
-
-            let full_pushback = wheel.extra_pushback * NUM_WHEELS as f32;
-            let victim_offset = info.contact_point - victim.get_world_trans().translation;
-            victim.add_impulse(
-                Impulse::LinearRelPos(-info.contact_normal * full_pushback, victim_offset),
+        if let Some(ground_stick) = info.ground_stick {
+            let ground = &mut collision_world.bodies_mut()[info.ground_body_idx];
+            let ground_offset = info.contact_point - ground.get_world_trans().translation;
+            ground.add_impulse(
+                Impulse::LinearRelPos(ground_stick, ground_offset),
                 true,
                 false,
             );
         }
+
+        if wheel.extra_pushback <= 0.0 {
+            return;
+        }
+
+        let victim = &mut collision_world.bodies_mut()[info.ground_body_idx];
+        if victim.user_idx != UserInfoType::Car {
+            return;
+        }
+
+        let full_pushback = wheel.extra_pushback * NUM_WHEELS as f32;
+        let victim_offset = info.contact_point - victim.get_world_trans().translation;
+        victim.add_impulse(
+            Impulse::LinearRelPos(-info.contact_normal * full_pushback, victim_offset),
+            true,
+            false,
+        );
     }
 
     pub fn update(
@@ -163,10 +176,9 @@ impl VehicleRL {
         real_throttle: f32,
         three_wheels: bool,
     ) {
-        let chassis = &collision_world.bodies()[self.chassis_body_idx];
-        let chassis_trans = *chassis.get_world_trans();
+        let chassis_trans = *collision_world.bodies()[self.chassis_body_idx].get_world_trans();
         let chassis_translation = chassis_trans.translation;
-        let friction_scale = chassis.get_mass() / 3.0;
+        let friction_scale = collision_world.bodies()[self.chassis_body_idx].get_mass() / 3.0;
 
         let mut sources = [Vec3A::ZERO; NUM_WHEELS];
         let mut targets = [Vec3A::ZERO; NUM_WHEELS];
@@ -175,9 +187,25 @@ impl VehicleRL {
             (sources[i], targets[i]) = wheel.prepare_for_raycast(&chassis_trans);
         }
 
-        let ray_results = self
-            .raycaster
-            .cast_rays(collision_world, &sources, &targets, chassis);
+        // Copy hit geometry so later wheel resolves can read updated body velocities.
+        struct OwnedHit {
+            point: Vec3A,
+            normal: Vec3A,
+            body_idx: usize,
+        }
+        let owned_hits: [Option<OwnedHit>; NUM_WHEELS] = {
+            let chassis = &collision_world.bodies()[self.chassis_body_idx];
+            let ray_results =
+                self.raycaster
+                    .cast_rays(collision_world, &sources, &targets, chassis);
+            ray_results.map(|slot| {
+                slot.map(|hit| OwnedHit {
+                    point: hit.hit_point_in_world,
+                    normal: hit.hit_normal_in_world,
+                    body_idx: hit.rigid_body_idx,
+                })
+            })
+        };
 
         // Front wheels normally share one steer angle, so their steered
         // axle is identical. Compute it lazily and reuse it while the
@@ -186,8 +214,16 @@ impl VehicleRL {
         // own axle with the original formula.
         let mut front_axle_cache: Option<(f32, Vec3A)> = None;
         let mut num_wheels_in_contact = 0;
-        for (i, wheel) in self.wheels.iter_mut().enumerate() {
-            if let Some(ray_result) = ray_results[i] {
+        for (i, (owned_opt, wheel)) in owned_hits.iter().zip(self.wheels.iter_mut()).enumerate() {
+            let Some(owned) = owned_opt else {
+                wheel.reset_wheel_suspension();
+                continue;
+            };
+
+            // Release body references before applying this wheel's victim impulses.
+            {
+                let chassis = &collision_world.bodies()[self.chassis_body_idx];
+                let hit_body = &collision_world.bodies()[owned.body_idx];
                 num_wheels_in_contact += 1;
                 let front = i < 2;
                 let steer_angle = wheel.steer_angle;
@@ -209,6 +245,12 @@ impl VehicleRL {
                     chassis_trans.matrix3.y_axis
                 };
 
+                let ray_result = VehicleRaycasterResult {
+                    hit_point_in_world: owned.point,
+                    hit_normal_in_world: owned.normal,
+                    rigid_body_idx: owned.body_idx,
+                    rigid_body: hit_body,
+                };
                 wheel.apply_ray_cast(
                     chassis,
                     &chassis_trans,
@@ -218,21 +260,20 @@ impl VehicleRL {
                     front,
                 );
 
-                let is_dynamic_hit = !ray_result.rigid_body.is_static_obj();
+                let is_dynamic_hit = !hit_body.is_static_obj();
                 wheel.refresh_friction_curves(
                     chassis,
                     FrictionCurveInput {
                         chassis_translation,
-                        contact_normal: ray_result.hit_normal_in_world,
+                        contact_normal: owned.normal,
                         handbrake_val,
                         real_throttle,
                         three_wheels,
                         is_dynamic_hit,
                     },
                 );
-            } else {
-                wheel.reset_wheel_suspension();
             }
+            Self::apply_single_wheel_dynamic_effects(wheel, collision_world);
         }
 
         if num_wheels_in_contact < 3 {
@@ -240,27 +281,6 @@ impl VehicleRL {
                 wheel.engine_force /= 4.0;
             }
         }
-
-        // Apply dynamic-body stick before chassis suspension and friction.
-        for wheel in &self.wheels {
-            let Some(info) = wheel.raycast_info.as_ref() else {
-                continue;
-            };
-
-            let Some(ground_stick) = info.ground_stick else {
-                continue;
-            };
-
-            let ground = &mut collision_world.bodies_mut()[info.ground_body_idx];
-            let ground_offset = info.contact_point - ground.get_world_trans().translation;
-            ground.add_impulse(
-                Impulse::LinearRelPos(ground_stick, ground_offset),
-                true,
-                false,
-            );
-        }
-
-        self.apply_hit_car_pushback(collision_world);
 
         let chassis = &mut collision_world.bodies_mut()[self.chassis_body_idx];
         for wheel in &mut self.wheels {
