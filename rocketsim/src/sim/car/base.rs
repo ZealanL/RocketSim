@@ -29,27 +29,9 @@ use crate::{
         car::{self as car_consts, drive as drive_consts},
         curves,
     },
+    shared::quantize::quantize_axis_inputs,
     sim::{RaycastHitInfo, UserInfoType, car::car_info::CarInfo},
 };
-
-/// Asymmetric 8-bit input quantization: negatives scale by 128, positives by 127.
-fn quantize_air_input(x: f32) -> f32 {
-    let clamped = x.clamp(-1.0, 1.0);
-    let y = if clamped < 0.0 {
-        (clamped * 128.0).max(-128.0)
-    } else {
-        (clamped * 127.0).min(127.0)
-    };
-    let w = ((y + 128.0) + (y + 128.0)) + 0.5;
-    let eax = w.round_ties_even() as i32;
-    let byte = ((eax >> 1) & 0xFF) as u8;
-    let s = (byte as f32) - 128.0;
-    if byte < 0x80 {
-        s * (1.0 / 128.0)
-    } else {
-        s / 127.0
-    }
-}
 
 /// A car in the arena (physics body + cached state).
 ///
@@ -406,9 +388,9 @@ impl Car {
 
         let do_air_control = allow_air && !self.state.is_auto_flipping;
         if do_air_control {
-            let pitch_input = quantize_air_input(self.state.controls.pitch);
-            let yaw_input = quantize_air_input(self.state.controls.yaw);
-            let roll_input = quantize_air_input(self.state.controls.roll);
+            let [pitch_input, yaw_input, roll_input] =
+                quantize_axis_inputs(self.state.controls.pyr()).to_array();
+
             let mut pitch_torque_scale = 1.0;
             let torque = if pitch_input != 0.0 || yaw_input != 0.0 || roll_input != 0.0 {
                 if prev_is_flipping
@@ -579,11 +561,10 @@ impl Car {
                     self.state.is_flipping = true;
 
                     let forward_speed_ratio = forward_speed_uu.abs() / car_consts::MAX_SPEED;
-                    let mut dodge_dir = Vec3A::new(
-                        -self.state.controls.pitch,
-                        self.state.controls.yaw + self.state.controls.roll,
-                        0.0,
-                    );
+
+                    let [pitch_input, yaw_input, roll_input] =
+                        quantize_axis_inputs(self.state.controls.pyr()).to_array();
+                    let mut dodge_dir = Vec3A::new(-pitch_input, yaw_input + roll_input, 0.0);
 
                     if dodge_dir.x.abs() < 0.1 && dodge_dir.y.abs() < 0.1 {
                         dodge_dir = Vec3A::ZERO;

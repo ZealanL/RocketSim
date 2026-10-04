@@ -1,4 +1,4 @@
-use glam::Vec3A;
+use glam::{IVec3, Vec3A};
 
 use crate::{
     bullet::dynamics::rigid_body::RigidBody,
@@ -61,4 +61,23 @@ pub fn quantize(body: &mut RigidBody) {
     body.set_world_pos(new_pos);
     body.set_lin_vel(new_vel);
     body.set_ang_vel(new_ang_vel);
+}
+
+/// Asymmetric 8-bit input quantization: negatives scale by 128, positives by 127.
+pub fn quantize_axis_inputs(ctrls: Vec3A) -> Vec3A {
+    const UPPER_BOUND: Vec3A = Vec3A::splat(128.0);
+    const LOWER_BOUND: Vec3A = Vec3A::splat(127.0);
+
+    let clamped = ctrls.clamp(Vec3A::NEG_ONE, Vec3A::ONE);
+    let scale = Vec3A::select(clamped.cmplt(Vec3A::ZERO), UPPER_BOUND, LOWER_BOUND);
+    let biased = clamped * scale + UPPER_BOUND;
+    let w = biased + biased + Vec3A::splat(0.5);
+    let byte = ((w.round().as_ivec3() >> 1i32) & IVec3::splat(0xFF)).as_vec3a();
+    let s = byte - UPPER_BOUND;
+
+    Vec3A::select(
+        s.cmplt(Vec3A::ZERO),
+        s * (1.0 / UPPER_BOUND),
+        s / LOWER_BOUND,
+    )
 }

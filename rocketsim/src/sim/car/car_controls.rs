@@ -1,4 +1,4 @@
-use glam::Vec3;
+use glam::Vec3A;
 
 /// Driver inputs applied on the next [`crate::Arena::step_tick`].
 ///
@@ -100,8 +100,8 @@ impl CarControls {
 
     /// `(pitch, yaw, roll)` as a vector (air control).
     #[must_use]
-    pub const fn pyr(self) -> Vec3 {
-        Vec3::new(self.pitch, self.yaw, self.roll)
+    pub const fn pyr(self) -> Vec3A {
+        Vec3A::new(self.pitch, self.yaw, self.roll)
     }
 
     /// Packs to `[throttle, steer, pitch, yaw, roll, jump, boost, handbrake]`
@@ -170,8 +170,8 @@ impl CarControls {
     }
 
     #[must_use]
-    pub const fn with_pyr(mut self, pyr: Vec3) -> Self {
-        (self.pitch, self.yaw, self.roll) = (pyr.x, pyr.y, pyr.z);
+    pub const fn with_pyr(mut self, pyr: Vec3A) -> Self {
+        [self.pitch, self.yaw, self.roll] = pyr.to_array();
         self
     }
 
