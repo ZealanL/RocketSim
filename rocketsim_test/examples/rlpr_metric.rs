@@ -53,10 +53,11 @@ struct Args {
 /// Bundled captures evaluated when no file is passed on the CLI, in order.
 /// Missing files are skipped with a warning so the metric keeps working
 /// before every capture has been recorded.
-const DEFAULT_RECORDINGS: [&str; 3] = [
+const DEFAULT_RECORDINGS: [&str; 4] = [
     "wisp_3v3_300s.rlpr.zst",
     "daizen_2v2_300s.rlpr.zst",
     "partycannon_3v3_300s.rlpr.zst",
+    "nexto_1v1_300s.rlpr.zst",
 ];
 
 /// Resolve the recordings to evaluate: explicit CLI files as-is, or every

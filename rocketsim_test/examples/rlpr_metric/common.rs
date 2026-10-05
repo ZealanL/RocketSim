@@ -211,18 +211,18 @@ pub struct Tolerances {
 impl Tolerances {
     /// Budgets for open-loop segment scoring.
     pub const SEGMENT: Self = Self {
-        pos_uu: 10.0,
-        vel_uu_s: 3.0,
-        ang_vel_rad_s: 1.0,
-        axis: 1.0,
+        pos_uu: 5.0,
+        vel_uu_s: 1.0,
+        ang_vel_rad_s: 0.1,
+        axis: 0.1,
     };
 
-    /// Budgets for one-tick replay scoring. Velocity is 3x stricter.
+    /// Budgets for one-tick replay scoring.
     pub const RESET_EACH_TICK: Self = Self {
-        pos_uu: 10.0,
+        pos_uu: 5.0,
         vel_uu_s: 1.0,
-        ang_vel_rad_s: 1.0,
-        axis: 1.0,
+        ang_vel_rad_s: 0.1,
+        axis: 0.1,
     };
 
     /// Tolerances for the given replay mode.
