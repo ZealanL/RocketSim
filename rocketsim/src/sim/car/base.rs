@@ -559,37 +559,35 @@ impl Car {
                 self.state.has_jumped = true;
 
                 if is_flip_input {
+                    const PYR_SCALE: Vec3A = Vec3A::new(-1.0, 1.0, 1.0);
+
                     self.state.flip_time = 0.0;
                     self.state.has_flipped = true;
                     self.state.is_flipping = true;
 
-                    let forward_speed_ratio = forward_speed_uu.abs() / car_consts::MAX_SPEED;
-
-                    let [pitch_input, yaw_input, roll_input] =
-                        quantize_axis_inputs(self.state.controls.pyr()).to_array();
-                    let mut dodge_dir = Vec3A::new(-pitch_input, yaw_input + roll_input, 0.0);
+                    let pyr = self.state.controls.pyr() * PYR_SCALE;
+                    let mut dodge_dir = quantize_axis_inputs(pyr);
+                    dodge_dir.y += dodge_dir.z;
 
                     if dodge_dir.x.abs() < 0.1 && dodge_dir.y.abs() < 0.1 {
                         dodge_dir = Vec3A::ZERO;
                     } else {
-                        dodge_dir = dodge_dir.normalize_or_zero();
+                        dodge_dir = dodge_dir.with_z(0.0).normalize_or_zero();
                     }
 
-                    self.state.flip_rel_torque = Vec3A::new(-dodge_dir.y, dodge_dir.x, 0.0);
+                    let deadzone_dodge_dir = Vec3A::select(
+                        dodge_dir.abs().cmplt(Vec3A::splat(0.1)),
+                        Vec3A::ZERO,
+                        dodge_dir,
+                    );
 
-                    if dodge_dir.x.abs() < 0.1 {
-                        dodge_dir.x = 0.0;
-                    }
+                    if deadzone_dodge_dir.length_squared() > f32::EPSILON * f32::EPSILON {
+                        self.state.flip_rel_torque = Vec3A::new(-dodge_dir.y, dodge_dir.x, 0.0);
 
-                    if dodge_dir.y.abs() < 0.1 {
-                        dodge_dir.y = 0.0;
-                    }
-
-                    if dodge_dir.length_squared() > const { f32::EPSILON * f32::EPSILON } {
                         let should_dodge_backwards = if forward_speed_uu.abs() < 100. {
-                            dodge_dir.x.is_sign_negative()
+                            deadzone_dodge_dir.x.is_sign_negative()
                         } else {
-                            dodge_dir.x.signum() != forward_speed_uu.signum()
+                            deadzone_dodge_dir.x.signum() != forward_speed_uu.signum()
                         };
 
                         let max_speed_scale_x = if should_dodge_backwards {
@@ -598,7 +596,10 @@ impl Car {
                             car_consts::flip::FORWARD_IMPULSE_MAX_SPEED_SCALE
                         };
 
-                        let mut initial_dodge_vel = dodge_dir * car_consts::flip::INITIAL_VEL_SCALE;
+                        let forward_speed_ratio = forward_speed_uu.abs() / car_consts::MAX_SPEED;
+
+                        let mut initial_dodge_vel =
+                            deadzone_dodge_dir * car_consts::flip::INITIAL_VEL_SCALE;
                         initial_dodge_vel.x *=
                             ((max_speed_scale_x - 1.) * forward_speed_ratio) + 1.0;
                         initial_dodge_vel.y *= ((car_consts::flip::SIDE_IMPULSE_MAX_SPEED_SCALE
@@ -639,17 +640,21 @@ impl Car {
             } else {
                 TICK_TIME
             };
+
             if (car_consts::flip::Z_DAMP_START..=car_consts::flip::TORQUE_TIME)
                 .contains(&flip_time_pre)
                 && (rb.lin_vel.z < 0.0 || flip_time_pre < car_consts::flip::Z_DAMP_END)
             {
                 rb.lin_vel.z *= 1.0 - car_consts::flip::Z_DAMP_120;
             }
+
             return !still_flipping;
         }
+
         if self.state.has_flipped {
             self.state.flip_time += TICK_TIME;
         }
+
         false
     }
 
