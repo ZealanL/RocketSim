@@ -451,7 +451,8 @@ impl Car {
         } else {
             quantize_axis_input(self.state.controls.throttle)
         };
-        if throttle_scale != 0.0 {
+
+        if throttle_scale != 0.0 && allow_air {
             let throttle_force = forward_dir
                 * throttle_scale
                 * const { car_consts::drive::THROTTLE_AIR_ACCEL * UU_TO_BT * TICK_TIME };
