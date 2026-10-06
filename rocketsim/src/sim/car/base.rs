@@ -687,6 +687,10 @@ impl Car {
         num_wheels_in_contact: usize,
         cached_upwards_dir: &mut Option<Vec3A>,
     ) {
+        if !self.sticky_gate_prev && self.state.world_contact_normal.is_none() {
+            return;
+        }
+
         let ground_up_dir = if num_wheels_in_contact > 0 {
             // Same contacts as the sticky force above: reuse its cached direction.
             match *cached_upwards_dir {
