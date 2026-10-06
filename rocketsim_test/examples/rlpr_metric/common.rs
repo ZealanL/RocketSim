@@ -953,10 +953,10 @@ pub fn reconstruct_handbrake(
 /// non-empty chunk is kept.
 fn push_chunks(segments: &mut Vec<Segment>, start: usize, end: usize, config: SegmentConfig) {
     let mut offset = start;
-    while offset < end {
+    while end - offset >= 2 {
         let len = (config.segment_ticks).min(end - offset);
         segments.push(Segment { start: offset, len });
-        offset += len;
+        offset += len - 1;
     }
 }
 
