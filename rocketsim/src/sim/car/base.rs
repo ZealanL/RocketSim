@@ -419,6 +419,7 @@ impl Car {
             let mut pitch_torque_scale = 1.0;
             let torque = if pitch_input != 0.0 || yaw_input != 0.0 || roll_input != 0.0 {
                 if prev_is_flipping
+                    || self.state.is_flipping
                     || self.state.has_flipped && prev_flip_time < flip::PITCHLOCK_EXTRA_TIME
                 {
                     pitch_torque_scale = 0.0;
