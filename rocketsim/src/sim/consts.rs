@@ -398,8 +398,6 @@ pub mod goal {
 
 /// Bullet vehicle suspension/wheel solver constants (internal tuning).
 pub mod bullet_vehicle {
-    pub const SUSPENSION_FORCE_SCALE_FRONT: f32 = 36.0 - (1.0 / 4.);
-    pub const SUSPENSION_FORCE_SCALE_BACK: f32 = 54.0 + (1.0 / 4.) + (1.5 / 100.);
     pub const SUSPENSION_STIFFNESS: f32 = 500.0;
     pub const WHEELS_DAMPING_COMPRESSION: f32 = 25.0;
     pub const WHEELS_DAMPING_RELAXATION: f32 = 40.0;

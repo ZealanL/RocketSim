@@ -94,21 +94,21 @@ impl Car {
             CollisionFilterGroups::ALL,
         );
 
+        let strengths = Self::suspension_strengths(
+            bullet_world.bodies()[rigid_body_idx].inv_mass,
+            config.front_wheels.connection_point_offset.x * UU_TO_BT,
+            config.back_wheels.connection_point_offset.x * UU_TO_BT,
+        );
+
         let mut wheels = [WheelInfo::DEFAULT; NUM_WHEELS];
         for (i, wheel) in wheels.iter_mut().enumerate() {
             let front = i < 2;
             let left = i % 2 == 0;
 
-            let (wheel_config, suspension_force_scale) = if front {
-                (
-                    &config.front_wheels,
-                    vehicle_consts::SUSPENSION_FORCE_SCALE_FRONT,
-                )
+            let wheel_config = if front {
+                &config.front_wheels
             } else {
-                (
-                    &config.back_wheels,
-                    vehicle_consts::SUSPENSION_FORCE_SCALE_BACK,
-                )
+                &config.back_wheels
             };
 
             let mut wheel_ray_start_offset = wheel_config.connection_point_offset;
@@ -123,7 +123,7 @@ impl Car {
                 wheel_ray_start_offset * UU_TO_BT,
                 suspension_rest_length * UU_TO_BT,
                 wheel_config.wheel_radius * UU_TO_BT,
-                suspension_force_scale,
+                strengths[i],
             );
         }
 
@@ -137,6 +137,28 @@ impl Car {
                 boost: mutator_config.car_spawn_boost_amount,
                 ..Default::default()
             },
+        }
+    }
+
+    /// Keep the target's `f32` operation order to preserve rounding.
+    /// Only negative axle distances use the equal split.
+    /// Zero and NaN use the normal path.
+    fn suspension_strengths(inv_mass: f32, front_x_bt: f32, rear_x_bt: f32) -> [f32; 4] {
+        let mass = 1.0 / inv_mass;
+        let front_dist = front_x_bt;
+        let rear_dist = -rear_x_bt;
+        if front_dist < 0.0 || rear_dist < 0.0 {
+            let half = mass * 0.5;
+            let quarter = half * 0.5;
+            [quarter, quarter, quarter, quarter]
+        } else {
+            let total = rear_dist + front_dist;
+            let front_frac = front_dist / total;
+            let front_axle = front_frac * mass;
+            let rear_axle = mass - front_axle;
+            let front_wheel = rear_axle * 0.5;
+            let rear_wheel = front_axle * 0.5;
+            [front_wheel, front_wheel, rear_wheel, rear_wheel]
         }
     }
 
