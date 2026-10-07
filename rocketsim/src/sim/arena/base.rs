@@ -588,9 +588,12 @@ impl Arena {
             self.ball.state.phys.ang_vel = ball_rb.ang_vel;
         }
 
-        // Keep resting balls active so same-tick contacts can affect them.
-
         if !self.ball_only {
+            // Apply flip damping before another car's wheels read its velocity.
+            for car in &mut self.cars {
+                car.apply_flip_zdamp_prepass(&mut self.bullet_world);
+            }
+
             for car_idx in 0..self.cars.len() {
                 let was_on_ground = self.cars[car_idx].state.is_on_ground;
                 self.cars[car_idx].pre_tick_update(

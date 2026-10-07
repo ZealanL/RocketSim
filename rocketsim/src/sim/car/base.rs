@@ -665,13 +665,6 @@ impl Car {
                 TICK_TIME
             };
 
-            if (car_consts::flip::Z_DAMP_START..=car_consts::flip::TORQUE_TIME)
-                .contains(&flip_time_pre)
-                && (rb.lin_vel.z < 0.0 || flip_time_pre < car_consts::flip::Z_DAMP_END)
-            {
-                rb.lin_vel.z *= 1.0 - car_consts::flip::Z_DAMP_120;
-            }
-
             return !still_flipping;
         }
 
@@ -802,6 +795,25 @@ impl Car {
         }
 
         self.state.boost = self.state.boost.clamp(0.0, car_consts::boost::MAX);
+    }
+
+    /// Apply ongoing-flip vertical damping before wheel updates.
+    /// Keep flip timers unchanged until the per-car update.
+    pub(crate) fn apply_flip_zdamp_prepass(&mut self, collision_world: &mut DiscreteDynamicsWorld) {
+        if self.state.is_demoed || self.state.is_on_ground || !self.state.is_flipping {
+            return;
+        }
+
+        if !(car_consts::flip::Z_DAMP_START..=car_consts::flip::TORQUE_TIME)
+            .contains(&self.state.flip_time)
+        {
+            return;
+        }
+
+        let rb = &mut collision_world.bodies_mut()[self.rigid_body_idx];
+        if rb.lin_vel.z < 0.0 || self.state.flip_time < car_consts::flip::Z_DAMP_END {
+            rb.lin_vel.z *= 1.0 - car_consts::flip::Z_DAMP_120;
+        }
     }
 
     pub(crate) fn pre_tick_update(
