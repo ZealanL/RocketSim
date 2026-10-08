@@ -1,4 +1,4 @@
-use glam::Affine3A;
+use glam::{Affine3A, Mat3A};
 
 use super::collision_obj_wrapper::RigidBodyWrapper;
 use crate::bullet::{
@@ -25,11 +25,12 @@ pub fn process_collision<T: ContactAddedCallback>(
     let plane_normal = plane_shape.get_plane_normal();
 
     let plane_trans = plane_obj.get_world_trans();
-    let plane_in_convex = convex_obj.world_trans.matrix3.transpose() * plane_trans.matrix3;
+    debug_assert_eq!(plane_trans.matrix3, Mat3A::IDENTITY);
+
+    let plane_in_convex = convex_obj.world_trans.matrix3.transpose();
     let convex_in_plane_trans = Affine3A {
-        matrix3: plane_trans.matrix3.transpose() * convex_obj.world_trans.matrix3,
-        translation: plane_trans.matrix3 * convex_obj.world_trans.translation
-            - plane_trans.translation,
+        matrix3: convex_obj.world_trans.matrix3,
+        translation: convex_obj.world_trans.translation - plane_trans.translation,
     };
 
     let vtx = convex_obj.local_get_supporting_vertex(plane_in_convex * -plane_normal);
@@ -42,10 +43,8 @@ pub fn process_collision<T: ContactAddedCallback>(
     }
 
     let vtx_in_plane_projected = vtx_in_plane - distance * plane_normal;
-    let vtx_in_plane_world = plane_obj
-        .get_world_trans()
-        .transform_point3a(vtx_in_plane_projected);
-    let normal_on_surface_b = plane_obj.get_world_trans().matrix3 * plane_normal;
+    let vtx_in_plane_world = vtx_in_plane_projected + plane_trans.translation;
+    let normal_on_surface_b = plane_normal;
 
     manifold.add_contact_point(
         convex_obj.obj,
