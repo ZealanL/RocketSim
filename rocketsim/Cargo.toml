@@ -26,11 +26,6 @@ serde = { version = "1", features = ["derive"], optional = true }
 default = []
 serde = ["dep:serde", "glam/serde"]
 
-[target.'cfg(not(any(target_arch = "x86", target_arch = "x86_64")))'.dependencies]
-# use glam with experimental support for portable SIMD when not running on x86
-# architectures
-glam = { workspace = true, features = ["core-simd"], optional = true }
-
 [lints.clippy]
 all = "warn"
 # nursery = "warn"
