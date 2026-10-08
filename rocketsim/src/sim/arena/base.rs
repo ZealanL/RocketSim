@@ -99,7 +99,7 @@ impl Clone for Arena {
         Self {
             bullet_world: self.bullet_world.clone(),
             config: self.config.clone(),
-            ball: self.ball.clone(),
+            ball: self.ball,
             cars: self.cars.clone(),
             tick_count: self.tick_count,
             boost_pad_grid: self.boost_pad_grid.clone(),
