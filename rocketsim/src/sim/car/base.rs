@@ -379,14 +379,6 @@ impl Car {
     ) {
         use car_consts::{air_control, flip};
 
-        let forward_dir = self.state.get_forward_dir();
-        let right_dir = self.state.get_right_dir();
-        let up_dir = self.state.get_up_dir();
-
-        let dir_pitch = -right_dir;
-        let dir_yaw = up_dir;
-        let dir_roll = -forward_dir;
-
         let allow_dodge = num_wheels_in_contact < 3;
         let allow_air = num_wheels_in_contact == 0;
 
@@ -414,51 +406,56 @@ impl Car {
 
         let do_air_control = allow_air && !self.state.is_auto_flipping;
         if do_air_control {
-            let [pitch_input, yaw_input, roll_input] =
-                quantize_axis_inputs(self.state.controls.pyr()).to_array();
+            let inputs = quantize_axis_inputs(self.state.controls.pyr());
 
             let mut pitch_torque_scale = 1.0;
-            let torque = if pitch_input != 0.0 || yaw_input != 0.0 || roll_input != 0.0 {
-                if prev_is_flipping
+            if inputs != Vec3A::ZERO
+                && (prev_is_flipping
                     || self.state.is_flipping
-                    || self.state.has_flipped && prev_flip_time < flip::PITCHLOCK_EXTRA_TIME
-                {
-                    pitch_torque_scale = 0.0;
-                }
+                    || self.state.has_flipped && prev_flip_time < flip::PITCHLOCK_EXTRA_TIME)
+            {
+                pitch_torque_scale = 0.0;
+            }
 
-                pitch_input * dir_pitch * pitch_torque_scale * air_control::TORQUE.x
-                    + yaw_input * dir_yaw * air_control::TORQUE.y
-                    + roll_input * dir_roll * air_control::TORQUE.z
+            let dirs = Mat3A::from_cols(
+                -self.state.get_right_dir(),   // pitch
+                self.state.get_up_dir(),       // yaw
+                -self.state.get_forward_dir(), // roll
+            );
+
+            let scaled_inputs = inputs * Vec3A::new(pitch_torque_scale, 1.0, 1.0);
+            let torque = if inputs != Vec3A::ZERO {
+                dirs * (scaled_inputs * air_control::TORQUE)
             } else {
                 Vec3A::ZERO
             };
 
-            let damp_pitch = dir_pitch.dot(rb.ang_vel)
-                * air_control::DAMPING.x
-                * (1.0 - (pitch_input * pitch_torque_scale).abs());
-            let damp_yaw =
-                dir_yaw.dot(rb.ang_vel) * air_control::DAMPING.y * (1.0 - yaw_input.abs());
-            let damp_roll = dir_roll.dot(rb.ang_vel) * air_control::DAMPING.z;
+            let retain = (Vec3A::ONE - scaled_inputs.abs()).with_z(1.0);
+            let damping = dirs
+                * (dirs.mul_transpose_vec3a(self.state.phys.ang_vel)
+                    * air_control::DAMPING
+                    * retain);
 
-            let damping = dir_yaw * damp_yaw + dir_pitch * damp_pitch + dir_roll * damp_roll;
-
-            let rb_torque =
-                (torque - damping) * const { air_control::TORQUE_APPLY_SCALE * TICK_TIME };
+            let rb_torque = (torque - damping) * air_control::TORQUE_APPLY_SCALE * TICK_TIME;
 
             rb.add_impulse(Impulse::Angular(rb_torque), false, true);
         }
 
-        let throttle_scale = if self.state.controls.boost || self.state.is_boosting {
-            1.0
-        } else {
-            quantize_axis_input(self.state.controls.throttle)
-        };
+        if allow_air {
+            let throttle_scale = if self.state.controls.boost || self.state.is_boosting {
+                1.0
+            } else {
+                quantize_axis_input(self.state.controls.throttle)
+            };
 
-        if throttle_scale != 0.0 && allow_air {
-            let throttle_force = forward_dir
-                * throttle_scale
-                * const { car_consts::drive::THROTTLE_AIR_ACCEL * UU_TO_BT * TICK_TIME };
-            rb.add_impulse(Impulse::Linear(throttle_force), false, true);
+            if throttle_scale != 0.0 {
+                let throttle_force = self.state.get_forward_dir()
+                    * throttle_scale
+                    * car_consts::drive::THROTTLE_AIR_ACCEL
+                    * UU_TO_BT
+                    * TICK_TIME;
+                rb.add_impulse(Impulse::Linear(throttle_force), false, true);
+            }
         }
     }
 
