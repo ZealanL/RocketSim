@@ -50,6 +50,7 @@ pub const BACK_WHEELS_OFFSET: [Vec3A; 7] = [
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct WheelPairConfig {
     /// Radius of both wheels
     pub wheel_radius: f32,
@@ -67,6 +68,7 @@ pub struct WheelPairConfig {
 /// `dodge_deadzone` is the min `|yaw|+|pitch|+|roll|` to flip instead of
 /// double-jump (default `0.5`).
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CarBodyConfig {
     /// Full size of hitbox (NOT the half-size/extent)
     pub hitbox_size: Vec3A,

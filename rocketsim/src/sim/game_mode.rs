@@ -10,6 +10,7 @@ use rustc_hash::FxHashMap;
 ///
 /// See [`crate::MutatorConfig::new`] for the per-mode default physics tweaks.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum GameMode {
     #[default]
     Soccar,

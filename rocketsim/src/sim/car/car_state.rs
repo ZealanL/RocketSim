@@ -11,6 +11,7 @@ use crate::{CarControls, PhysState, RaycastHitInfo, consts};
 /// Times are seconds, ticks use [`crate::consts::TICK_TIME`] (`1/120` s).
 /// `DEFAULT` spawns at rest with spawn boost.
 #[derive(Clone, Copy, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CarState {
     pub phys: PhysState,
     /// Controls to simulate the car with

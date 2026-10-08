@@ -6,6 +6,7 @@ use glam::Vec3A;
 /// not the input order — always resolve indices via
 /// `Arena::get_boost_pad_config`.
 #[derive(Clone, Copy, Debug, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BoostPadConfig {
     pub pos: Vec3A,
     pub is_big: bool,

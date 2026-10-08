@@ -4,6 +4,7 @@
 /// [`crate::CarState::wheels_with_contact`] (wheel contact), and used
 /// internally to route collision pairs.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum UserInfoType {
     /// Static arena geometry (walls, floor, ceiling, goal meshes).
     #[default]

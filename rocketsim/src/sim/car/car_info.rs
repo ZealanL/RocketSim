@@ -5,6 +5,7 @@ use crate::{CarBodyConfig, Team};
 /// Returned by `Arena::get_car_info`; the index matches `add_car` order and
 /// [`crate::Car`] derefs to this.
 #[derive(Clone, Copy, Debug, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CarInfo {
     pub idx: usize,
     pub team: Team,

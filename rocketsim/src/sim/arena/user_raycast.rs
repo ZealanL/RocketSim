@@ -6,6 +6,7 @@ use crate::UserInfoType;
 ///
 /// `from` is the ray start, `to` is the ray end (not a direction).
 #[derive(Debug, Copy, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct RaycastQuery {
     pub from: Vec3A,
     pub to: Vec3A,
@@ -15,6 +16,7 @@ pub struct RaycastQuery {
 
 /// Closest hit along a [`RaycastQuery`] segment, in Unreal units.
 #[derive(Debug, Copy, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct RaycastHitInfo {
     /// World position of the hit (uu).
     pub hit_point: Vec3A,

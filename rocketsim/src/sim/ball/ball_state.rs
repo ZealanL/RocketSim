@@ -10,6 +10,7 @@ use crate::{PhysState, consts, consts::heatseeker};
 /// `-1` = Blue goal (`-Y`). `cur_target_speed` (uu/s) grows per hit;
 /// `time_since_hit` (s) gates the speedup.
 #[derive(Clone, Copy, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct HeatseekerInfo {
     /// Which net the ball should seek towards;
     /// When 0, no net
@@ -41,6 +42,7 @@ impl HeatseekerInfo {
 /// `0` = none, `-1` = Blue side, `1` = Orange side). Damage AoE grows with
 /// `charge_level` (1/7/19 tiles). `last_damage_tick` rate-limits damage.
 #[derive(Clone, Copy, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DropshotInfo {
     /// Charge level number, which controls the radius of damage when hitting tiles
     /// 1 = damages r=1 -> 1 tile
@@ -76,6 +78,7 @@ impl DropshotInfo {
 /// `tick_count_since_kickoff` drives the Hoops/Dropshot launch delay.
 /// `DEFAULT` spawns the ball at rest at center (`REST_Z` height).
 #[derive(Clone, Copy, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BallState {
     pub phys: PhysState,
     pub hs_info: HeatseekerInfo,

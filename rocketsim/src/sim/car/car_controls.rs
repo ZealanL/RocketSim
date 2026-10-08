@@ -7,6 +7,7 @@ use glam::Vec3A;
 /// (hold to charge, release or 24 ticks to end); `boost`/`handbrake` are level.
 /// `steer` doubles as ground yaw; in air use `yaw/pitch/roll` (-1..1).
 #[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CarControls {
     pub throttle: f32,
     pub steer: f32,

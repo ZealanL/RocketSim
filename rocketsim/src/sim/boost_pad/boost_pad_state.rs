@@ -4,6 +4,7 @@
 /// `Arena::set_boost_pad_state`. Cooldowns tick in
 /// [`crate::Arena::step_tick`] from `MutatorConfig::boost_pad_cooldown_*`.
 #[derive(Clone, Copy, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BoostPadState {
     /// The last tick when we gave a car boost
     pub cooldown: f32,

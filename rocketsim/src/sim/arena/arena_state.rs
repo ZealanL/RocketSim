@@ -7,6 +7,7 @@ use crate::{BallState, BoostPadConfig, BoostPadState, CarInfo, CarState, GameMod
 /// `set_boost_pad_state` / `set_tile_states`. `tile_states` is `Some` only
 /// in Dropshot.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ArenaState {
     pub(crate) game_mode: GameMode,
     pub tick_count: u64,

@@ -4,6 +4,7 @@
 /// Convert from a world `y` with [`Team::from_team_y`], or from a car index
 /// with `Team::try_from(car_idx % 2)`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Team {
     #[default]
     Blue,

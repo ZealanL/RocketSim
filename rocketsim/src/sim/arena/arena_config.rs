@@ -10,6 +10,7 @@ use crate::{BoostPadConfig, GameMode, MutatorConfig};
 ///
 /// Numbers vary by platform/workload; see the repo `README.md` table.
 #[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ArenaMemWeightMode {
     #[default]
     Heavy,
@@ -22,6 +23,7 @@ pub enum ArenaMemWeightMode {
 /// Start with [`ArenaConfig::new`] (or [`ArenaConfig::DEFAULT` for Soccar)
 /// and chain `with_*` builders. All positions are in Unreal units (uu).
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ArenaConfig {
     /// Game mode (arena meshes, goals, ball behavior).
     pub game_mode: GameMode,

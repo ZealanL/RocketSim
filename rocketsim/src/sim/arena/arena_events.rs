@@ -6,6 +6,7 @@ use crate::RaycastHitInfo;
 ///
 /// `contact_point` is in uu, `contact_normal` points off the surface.
 #[derive(Debug, Copy, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BallHitWorldEvent {
     pub contact_point: Vec3A,
     pub contact_normal: Vec3A,
@@ -17,6 +18,7 @@ pub struct BallHitWorldEvent {
 /// impulse (on top of the physics-solver bounce). Zero when the contact
 /// added no extra impulse (e.g. repeated-contact guard).
 #[derive(Debug, Copy, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CarHitBallEvent {
     pub car_idx: usize,
     pub contact_point: Vec3A,
@@ -28,6 +30,7 @@ pub struct CarHitBallEvent {
 /// `is_demo == true` means the victim was demolished; otherwise a bump
 /// impulse was cached for the victim. See [`crate::MutatorConfig`] demo rules.
 #[derive(Debug, Copy, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CarHitCarEvent {
     pub bumper_car_idx: usize,
     pub victim_car_idx: usize,
@@ -38,6 +41,7 @@ pub struct CarHitCarEvent {
 /// A car touched a static surface; also stored as
 /// `CarState::world_contact_normal` for that tick.
 #[derive(Debug, Copy, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CarHitWorldEvent {
     pub car_idx: usize,
     pub contact_point: Vec3A,
@@ -47,6 +51,7 @@ pub struct CarHitWorldEvent {
 /// A car collected a boost pad (`boost_pad_idx` matches
 /// `Arena::get_boost_pad_config` order).
 #[derive(Debug, Copy, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CarPickupBoostEvent {
     pub car_idx: usize,
     pub boost_pad_idx: usize,
@@ -57,6 +62,7 @@ pub struct CarPickupBoostEvent {
 /// `wheels` is a copy of [`crate::CarState::wheels_with_contact`] at landing
 /// (at least 3 entries are `Some`; the rest are airborne wheels).
 #[derive(Debug, Copy, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CarLandedEvent {
     pub car_idx: usize,
     pub wheels: [Option<RaycastHitInfo>; 4],
@@ -67,6 +73,7 @@ pub struct CarLandedEvent {
 /// Returned by [`crate::Arena::step_tick`] and
 /// [`crate::Arena::get_last_step_events`]; valid only until the next tick.
 #[derive(Debug, Copy, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ArenaEvent {
     BallHitWorld(BallHitWorldEvent),
     CarHitBall(CarHitBallEvent),

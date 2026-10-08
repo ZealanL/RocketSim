@@ -4,6 +4,7 @@ use crate::{GameMode, sim::consts};
 
 /// How demos are awarded on car-car contact (see `Arena` bumper logic).
 #[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum DemoMode {
     /// Supersonic + in-cone bumps demolish (teammates spared by default).
     #[default]
@@ -21,6 +22,7 @@ pub enum DemoMode {
 /// units. `1.0` scales (`ball_hit_extra_force_scale`, `bump_force_scale`)
 /// mean "default Rocket League behavior".
 #[derive(Clone, Copy, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MutatorConfig {
     /// Gravity vector in uu/s² (default `(0, 0, -650)`).
     pub gravity: Vec3A,
