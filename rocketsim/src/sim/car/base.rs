@@ -288,7 +288,7 @@ impl Car {
         let abs_forward_speed_uu = forward_speed_uu.abs();
         let mut engine_throttle = real_throttle;
         if !self.state.controls.handbrake {
-            if real_throttle.abs() >= drive_consts::THROTTLE_DEADZONE {
+            if real_throttle.abs() > drive_consts::THROTTLE_DEADZONE {
                 if abs_forward_speed_uu > drive_consts::STOPPING_FORWARD_VEL
                     && real_throttle.signum() != forward_speed_uu.signum()
                 {

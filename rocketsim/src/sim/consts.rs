@@ -150,8 +150,8 @@ pub mod car {
         pub const COASTING_BRAKE_FACTOR: f32 = 0.15;
         /// If we are braking and moving faster than this, disable throttle
         pub const BRAKING_NO_THROTTLE_SPEED_THRESH: f32 = 0.01;
-        /// Throttle input of less than this is ignored
-        pub const THROTTLE_DEADZONE: f32 = 0.001;
+        /// Processed throttle input with magnitude up to this is ignored
+        pub const THROTTLE_DEADZONE: f32 = 0.01;
         pub const THROTTLE_AIR_ACCEL: f32 = 200.0 / 3.0;
 
         pub const POWERSLIDE_RISE_RATE: f32 = 5.0;
