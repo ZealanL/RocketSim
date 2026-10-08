@@ -12,6 +12,7 @@ use crate::{
     shared::{Aabb, QuadRayInfo},
 };
 
+#[derive(Clone)]
 pub struct ConvexHullShape {
     polyhedral_convex_shape: PolyhedralConvexShape,
     unscaled_points: Box<[Vec3A]>,

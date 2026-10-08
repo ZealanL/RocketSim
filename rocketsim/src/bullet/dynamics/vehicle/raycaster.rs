@@ -22,6 +22,7 @@ pub struct VehicleRaycasterResult<'a> {
 /// hit never hides a farther valid candidate on the same ray.
 pub const WHEEL_RAY_MIN_HIT_DIST_SQ: f32 = 0.116684;
 
+#[derive(Clone, Copy)]
 pub struct VehicleRaycaster {
     added_filter_mask: u8,
 }

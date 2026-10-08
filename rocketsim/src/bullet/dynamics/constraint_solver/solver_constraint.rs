@@ -10,7 +10,7 @@ fn bullet_dot(vec0: Vec3A, vec1: Vec3A) -> f32 {
     result.x + (result.y + result.z)
 }
 
-#[derive(Default)]
+#[derive(Clone, Copy, Default)]
 pub struct SolverConstraint {
     pub rel_pos1_cross_normal: Vec3A,
     pub contact_normal_1: Vec3A,

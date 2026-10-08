@@ -7,6 +7,7 @@ use crate::{
     shared::{Aabb, QuadRayInfo},
 };
 
+#[derive(Clone, Copy)]
 pub struct StaticPlaneShape {
     plane_normal: Vec3A,
     is_single_axis: bool,

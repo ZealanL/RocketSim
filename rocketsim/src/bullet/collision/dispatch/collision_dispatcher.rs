@@ -16,6 +16,7 @@ use crate::bullet::{
     dynamics::rigid_body::RigidBody,
 };
 
+#[derive(Clone)]
 pub struct CollisionDispatcher {
     pub persistent_manifolds: Vec<PersistentManifold>,
     /// Indices into `persistent_manifolds` with contacts this tick.

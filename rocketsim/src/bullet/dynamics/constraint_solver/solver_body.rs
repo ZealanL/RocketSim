@@ -2,6 +2,7 @@ use glam::Vec3A;
 
 use crate::bullet::dynamics::rigid_body::RigidBody;
 
+#[derive(Clone, Copy)]
 pub struct SolverBody {
     // NOTE: No transform copy lives here. Bodies are untouched between solver
     // setup and write-back, so the rare split-impulse push path reloads the

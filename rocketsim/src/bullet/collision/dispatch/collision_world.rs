@@ -16,6 +16,7 @@ use crate::{
     shared::QuadRayInfo,
 };
 
+#[derive(Clone)]
 pub struct CollisionWorld {
     pub collision_objs: Vec<RigidBody>,
     pub dispatcher1: CollisionDispatcher,

@@ -14,6 +14,7 @@ use crate::{
     shared::Aabb,
 };
 
+#[derive(Clone)]
 struct GridCell {
     dyn_handles: Vec<usize>,
     static_handles: Vec<usize>,
@@ -41,6 +42,7 @@ impl GridCell {
     }
 }
 
+#[derive(Clone)]
 struct CellGrid {
     max_pos: Vec3A,
     min_pos: Vec3A,
@@ -161,6 +163,7 @@ impl CellGrid {
     }
 }
 
+#[derive(Clone)]
 pub struct GridBroadphase {
     cell_grid: CellGrid,
     min_dyn_handle_idx: usize,

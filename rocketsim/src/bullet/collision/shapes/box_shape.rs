@@ -3,6 +3,7 @@ use glam::{Affine3A, Vec3A, Vec3Swizzles};
 use super::{collision_margin::CONVEX_DISTANCE_MARGIN, convex_internal_shape::ConvexInternalShape};
 use crate::shared::Aabb;
 
+#[derive(Clone, Copy)]
 pub struct BoxShape {
     internal_shape: ConvexInternalShape,
 }

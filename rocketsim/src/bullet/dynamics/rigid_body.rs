@@ -125,6 +125,7 @@ pub enum Impulse {
     Angular(Vec3A),
 }
 
+#[derive(Clone)]
 pub struct RigidBody {
     world_trans: Affine3A,
     world_quat: Quat,

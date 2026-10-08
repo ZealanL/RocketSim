@@ -17,6 +17,7 @@ use crate::{
     shared::{Aabb, QuadRayInfo},
 };
 
+#[derive(Clone)]
 pub enum CollisionShapes {
     Compound(CompoundShape),
     Sphere(SphereShape),

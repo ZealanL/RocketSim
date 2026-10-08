@@ -13,6 +13,7 @@ use crate::{
     shared::{Aabb, QuadRayInfo, bvh::Tree},
 };
 
+#[derive(Clone)]
 pub struct BvhTriangleMeshShape {
     bvh: Tree,
     mesh_interface: TriangleMesh,

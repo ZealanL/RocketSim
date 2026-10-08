@@ -31,6 +31,7 @@ pub(crate) struct BallWorldContactRecord {
 }
 
 // Track contacts reported by Bullet callbacks.
+#[derive(Clone)]
 pub(crate) struct ArenaContactTracker {
     collision_records: Vec<ContactRecord>,
     ball_world_records: Vec<BallWorldContactRecord>,

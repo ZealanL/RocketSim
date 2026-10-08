@@ -2,7 +2,7 @@ use glam::Vec3A;
 
 use super::{triangle_callback::ProcessTriangle, triangle_shape::TriangleShape};
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct TriangleMesh {
     triangles: Box<[TriangleShape]>,
 }

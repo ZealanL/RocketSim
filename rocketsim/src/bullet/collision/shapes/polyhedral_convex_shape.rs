@@ -34,6 +34,7 @@ fn calc_local_aabb(simd_points: &[[Vec4; 3]], points: &[Vec3A], collision_margin
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct PolyhedralConvexShape {
     convex_internal_shape: ConvexInternalShape,
     local_aabb: Aabb,

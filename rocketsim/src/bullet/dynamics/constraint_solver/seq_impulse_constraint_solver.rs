@@ -75,6 +75,7 @@ fn special_dynamic_side(
     }
 }
 
+#[derive(Clone)]
 pub struct SeqImpulseConstraintSolver {
     tmp_solver_body_pool: Vec<SolverBody>,
     tmp_solver_contact_constraint_pool: Vec<SolverConstraint>,

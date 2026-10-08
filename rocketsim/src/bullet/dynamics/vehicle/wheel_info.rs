@@ -12,6 +12,7 @@ use crate::{
     sim::UserInfoType,
 };
 
+#[derive(Clone, Copy)]
 pub struct RaycastInfo {
     pub contact_normal: Vec3A,
     pub contact_point: Vec3A,
@@ -34,6 +35,7 @@ pub struct FrictionCurveInput {
     pub is_dynamic_hit: bool,
 }
 
+#[derive(Clone, Copy)]
 pub struct WheelInfo {
     pub raycast_info: Option<RaycastInfo>,
     pub hard_point: Vec3A,

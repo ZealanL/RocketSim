@@ -14,6 +14,7 @@ use crate::bullet::{
 /// Proxy `unique_id`s are assigned once at insertion with no removal path,
 /// so IDs stay valid for the cache lifetime. Generation `0` marks empty
 /// cells; live ticks run from `1`.
+#[derive(Clone)]
 pub struct OverlappingPairCache {
     overlapping_pair_array: Vec<BroadphasePair>,
     seen_gens: Vec<u32>,

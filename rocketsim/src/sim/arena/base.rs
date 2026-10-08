@@ -82,6 +82,37 @@ pub struct Arena {
     pub vis: Option<Box<dyn Vis>>,
 }
 
+impl Clone for Arena {
+    /// Clones this arena with the same physics state.
+    ///
+    /// This clones all physics state. The clone steps the same as the original.
+    /// Static collision meshes stay shared. Static meshes never change. Sharing them does not change physics.
+    /// This clones the random generator state. Random kickoffs stay in sync if you make the same calls on both arenas.
+    /// This clones contact history and pending events. The clone reports the same last-step events.
+    ///
+    /// # Limitations
+    ///
+    /// The clone sets `vis` to `None`. `Vis` has no clone operation. Attach your visualizer again after cloning if you need it. `vis` does not change physics.
+    ///
+    /// No other limitation exists. The clone does not diverge unless you change one arena.
+    fn clone(&self) -> Self {
+        Self {
+            bullet_world: self.bullet_world.clone(),
+            config: self.config.clone(),
+            ball: self.ball.clone(),
+            cars: self.cars.clone(),
+            tick_count: self.tick_count,
+            boost_pad_grid: self.boost_pad_grid.clone(),
+            tile_states: self.tile_states,
+            contact_tracker: self.contact_tracker.clone(),
+            events: self.events.clone(),
+            ball_only: self.ball_only,
+            rng: self.rng.clone(),
+            vis: None,
+        }
+    }
+}
+
 impl Arena {
     /// Creates a Soccar-defaults arena for `game_mode` (see [`ArenaConfig::new`]).
     ///

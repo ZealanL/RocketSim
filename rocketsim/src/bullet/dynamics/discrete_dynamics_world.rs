@@ -19,6 +19,7 @@ use crate::{
     sim::UserInfoType,
 };
 
+#[derive(Clone)]
 pub struct DiscreteDynamicsWorld {
     collision_world: CollisionWorld,
     solver: SeqImpulseConstraintSolver,

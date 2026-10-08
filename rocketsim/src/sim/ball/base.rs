@@ -25,6 +25,7 @@ use crate::{
     sim::{UserInfoType, consts},
 };
 
+#[derive(Clone, Copy)]
 pub(crate) struct Ball {
     pub state: BallState,
     pub rigid_body_idx: usize,

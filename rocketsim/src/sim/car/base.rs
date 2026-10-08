@@ -39,6 +39,7 @@ use crate::{
 /// `Car` derefs to [`CarInfo`] (`car.idx/team/config`), while simulation
 /// state lives in `Car::get_state()` ([`CarState`]). Prefer the
 /// `Arena::get_car_*/set_car_*` accessors — they handle body sync for you.
+#[derive(Clone, Copy)]
 pub struct Car {
     pub(crate) info: CarInfo,
     pub(crate) bullet_vehicle: VehicleRL,

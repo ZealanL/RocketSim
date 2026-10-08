@@ -70,6 +70,7 @@ impl BitOr for CollisionFilterGroups {
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct BroadphaseProxy {
     /// The index of the client `RigidBody` in `CollisionWorld`
     pub client_obj_idx: u32,
@@ -81,6 +82,7 @@ pub struct BroadphaseProxy {
     pub indices: [u32; 3],
 }
 
+#[derive(Clone, Copy)]
 pub struct BroadphasePair {
     pub proxy0: usize,
     pub proxy1: usize,

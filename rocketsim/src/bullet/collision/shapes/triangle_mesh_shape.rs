@@ -5,6 +5,7 @@ use super::{
 };
 use crate::shared::Aabb;
 
+#[derive(Clone, Copy)]
 pub struct TriangleMeshShape {
     pub local_aabb: Aabb,
 }

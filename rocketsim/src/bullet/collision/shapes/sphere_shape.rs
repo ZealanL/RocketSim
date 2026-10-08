@@ -10,6 +10,7 @@ use crate::{
 
 pub const SPHERE_RADIUS_MARGIN: f32 = 0.08;
 
+#[derive(Clone, Copy)]
 pub struct SphereShape {
     pub convex_internal_shape: ConvexInternalShape,
 }

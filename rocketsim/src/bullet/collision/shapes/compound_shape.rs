@@ -8,6 +8,7 @@ use crate::{
     shared::{Aabb, QuadRayInfo},
 };
 
+#[derive(Clone, Copy)]
 pub struct CompoundShape {
     pub child_shape: BoxShape,
     pub child_trans: Affine3A,

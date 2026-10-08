@@ -17,6 +17,7 @@ use crate::{
     sim::UserInfoType,
 };
 
+#[derive(Clone, Copy)]
 pub struct VehicleRL {
     raycaster: VehicleRaycaster,
     chassis_body_idx: usize,
