@@ -5,17 +5,21 @@
 //! toggle swing, dynamic FOV. All time advances through caller `dt`,
 //! clamped to `[0, 1/30]` — no wall-clock, no RNG, fully testable.
 
+mod arena_bounds;
 mod auto_cam;
 mod camera_config;
 mod camera_man;
 mod car_cam;
 mod director;
+mod freecam;
 
+pub use arena_bounds::{ArenaBounds, ArenaBoundsCache, FOLLOW_BACKOFF, FREECAM_BACKOFF, SegHit};
 pub use auto_cam::*;
 pub use camera_config::*;
 pub use camera_man::*;
 pub use car_cam::*;
 pub use director::*;
+pub use freecam::*;
 
 /// Largest timestep the cameras integrate (s); larger `dt` is clamped.
 pub(crate) const MAX_DT: f32 = 1.0 / 30.0;

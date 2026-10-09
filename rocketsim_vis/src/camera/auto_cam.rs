@@ -344,9 +344,11 @@ impl AutoCam {
             Self::OFF_MIN_HOLD,
             dt,
         );
-        // R4 retreat: driving away from a distant ball at speed.
+        // R4 retreat: driving away from a distant ball at speed. Gated on
+        // grounded: airborne plays keep ball-cam (RL "focus on aerials" —
+        // retreating through the air is still a play worth watching).
         self.rules[6].hold.step(
-            dot < -0.2 && d > 1500.0 && speed > 500.0,
+            dot < -0.2 && d > 1500.0 && speed > 500.0 && car.is_on_ground,
             dot > 0.0 || d < 1200.0,
             Self::OFF_MIN_HOLD,
             dt,
@@ -439,6 +441,21 @@ mod tests {
         }
         assert!(!auto.ball_cam());
         assert_eq!(auto.off_reason(), Some(AutoCamRule::Retreat));
+    }
+
+    #[test]
+    fn retreat_suppressed_while_airborne() {
+        // Same retreat geometry, but airborne: aerial plays keep ball-cam
+        // (RL "focus on aerials") — no other rule fires here either.
+        let mut arena = arena_with(Vec3A::new(-3000.0, 0.0, 93.0));
+        arena.cars[0].1.vel = Vec3A::new(1000.0, 0.0, 0.0);
+        arena.cars[0].1.is_on_ground = false;
+        let mut auto = AutoCam::new(0);
+        for _ in 0..30 {
+            auto.update(&arena, 1.0 / 30.0);
+        }
+        assert!(auto.ball_cam());
+        assert_eq!(auto.off_reason(), None);
     }
 
     #[test]

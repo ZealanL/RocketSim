@@ -57,6 +57,13 @@ impl DirectorState {
     pub const SHOT_MAX_T_GOAL: f32 = 3.0;
     /// Ball speed below which (near center) the state counts as kickoff.
     pub const KICKOFF_MAX_SPEED: f32 = 400.0;
+    /// Aerial-play score bonus (mirrors RL's "focus on aerials" autocam:
+    /// an airborne car under a high ball is where the play is).
+    pub const AERIAL_BONUS: f32 = 0.25;
+    /// Ball height above which a car counts as contesting an aerial (uu).
+    pub const AERIAL_BALL_Z: f32 = 600.0;
+    /// Car-ball distance under which the aerial bonus applies (uu).
+    pub const AERIAL_MAX_DIST: f32 = 1500.0;
     /// Ball distance from center below which (when slow) counts as kickoff.
     pub const KICKOFF_MAX_DIST: f32 = 1500.0;
 
@@ -106,6 +113,21 @@ impl DirectorState {
         let align = ball_vel.dot(to_goal) / (speed * dist);
         if align > Self::SHOT_MIN_ALIGN && dist / speed < Self::SHOT_MAX_T_GOAL {
             align.clamp(0.0, 1.0)
+        } else {
+            0.0
+        }
+    }
+
+    /// Aerial bonus for `activity`-style scoring: an airborne car within
+    /// range of a high ball. Returns [`AERIAL_BONUS`](Self::AERIAL_BONUS)
+    /// or `0.0`.
+    fn aerial_bonus(arena_state: &ArenaState, idx: usize, dist: f32) -> f32 {
+        let car = &arena_state.cars[idx].1;
+        if !car.is_on_ground
+            && arena_state.ball.pos.z > Self::AERIAL_BALL_Z
+            && dist < Self::AERIAL_MAX_DIST
+        {
+            Self::AERIAL_BONUS
         } else {
             0.0
         }
@@ -187,7 +209,8 @@ impl DirectorState {
             let score = 1.0 * proximity
                 + 2.0 * threat
                 + 0.5 * energy
-                + 0.5 * Self::activity(arena_state, i);
+                + 0.5 * Self::activity(arena_state, i)
+                + Self::aerial_bonus(arena_state, i, d);
             scores.push(Some((score, threat)));
         }
 
@@ -325,5 +348,41 @@ mod tests {
             director.update(&arena, 1.0 / 30.0),
             DirectorTarget::Overview
         );
+    }
+
+    #[test]
+    fn aerial_play_wins_the_cut() {
+        // High ball, one grounded car at 1211uu and one AIRBORNE car at
+        // 583uu: proximity alone (0.72 vs overview+margin 0.808) would hold
+        // Overview, but the aerial bonus (+0.25) cuts to the airborne car.
+        let mut arena = ArenaState::new_empty(GameMode::Soccar);
+        arena.cars.push(car_at(0, Team::Blue, 0.0, -1000.0));
+        arena.cars.push(car_at(1, Team::Orange, 0.0, 300.0));
+        arena.cars[1].1.pos.z = 200.0;
+        arena.cars[1].1.is_on_ground = false;
+        arena.ball.pos = Vec3A::new(0.0, 0.0, 700.0);
+        arena.ball.vel = Vec3A::ZERO;
+
+        let mut director = DirectorState::new();
+        let mut target = DirectorTarget::Overview;
+        for _ in 0..150 {
+            target = director.update(&arena, 1.0 / 30.0);
+        }
+        assert_eq!(target, DirectorTarget::Car(1));
+
+        // Same geometry grounded: no bonus, Overview holds.
+        let mut arena = ArenaState::new_empty(GameMode::Soccar);
+        arena.cars.push(car_at(0, Team::Blue, 0.0, -1000.0));
+        arena.cars.push(car_at(1, Team::Orange, 0.0, 300.0));
+        arena.cars[1].1.pos.z = 200.0;
+        arena.ball.pos = Vec3A::new(0.0, 0.0, 700.0);
+        arena.ball.vel = Vec3A::ZERO;
+
+        let mut director = DirectorState::new();
+        let mut target = DirectorTarget::Overview;
+        for _ in 0..150 {
+            target = director.update(&arena, 1.0 / 30.0);
+        }
+        assert_eq!(target, DirectorTarget::Overview);
     }
 }

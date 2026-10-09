@@ -418,11 +418,15 @@ impl eframe::App for ViewerApp {
                                 (p, d, rig.smooth.cur_fov_h(), format!("director (car {i})"))
                             }
                         };
-                        // Cut blend: on a target change the blend restarts
-                        // from the last output pose.
+                        // Cut blend: a target change restarts the blend from
+                        // the last output pose — except cuts to/from the
+                        // (outside) overview, which snap: blending would
+                        // sweep the camera straight through the wall.
                         if rig.prev_target != Some(target) {
+                            let overview_cut = rig.prev_target == Some(DirectorTarget::Overview)
+                                || target == DirectorTarget::Overview;
                             rig.prev_target = Some(target);
-                            if rig.init {
+                            if rig.init && !overview_cut {
                                 rig.from_pos = rig.out_pos;
                                 rig.from_dir = rig.out_dir;
                             } else {

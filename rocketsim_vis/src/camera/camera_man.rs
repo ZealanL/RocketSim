@@ -54,6 +54,14 @@ impl CameraMan {
         self.cur_dir
     }
 
+    /// Overrides the current pose (arena containment pulls the follow boom
+    /// inside the hull). Smoothing state is untouched, so the boom keeps
+    /// pushing out and the clamp re-applies every frame — no sticking.
+    pub fn override_pose(&mut self, pos: Vec3A, dir: Vec3A) {
+        self.cur_pos = pos;
+        self.cur_dir = dir;
+    }
+
     /// Current horizontal FOV in degrees (dynamic terms in follow views,
     /// plain base FOV in birds-eye).
     pub fn cur_fov_degrees(&self) -> f32 {
@@ -91,6 +99,17 @@ impl CameraMan {
                 }
             }
         }
+        self.smooth.reset();
+        self.demo_frozen_pos = None;
+    }
+
+    /// Follows car `i` directly (spectator number-key select). Out-of-range
+    /// indices are ignored. Resets smoothing like a target change.
+    pub fn follow_car(&mut self, arena_state: &ArenaState, i: usize) {
+        if i >= arena_state.num_cars() {
+            return;
+        }
+        self.view_mode = CameraViewMode::CarCam(CarCam::new(i));
         self.smooth.reset();
         self.demo_frozen_pos = None;
     }
@@ -197,6 +216,14 @@ mod tests {
         let mut man = CameraMan::new(GameMode::Soccar, CameraConfig::default());
         assert!(man.car_cam().is_none());
 
+        // Direct select valid + out-of-range (ignored, keeps current).
+        man.follow_car(&state, 1);
+        assert_eq!(man.car_cam().unwrap().car_idx, 1);
+        man.follow_car(&state, 99);
+        assert_eq!(man.car_cam().unwrap().car_idx, 1);
+
+        // Fresh manager for the cycle flow below.
+        let mut man = CameraMan::new(GameMode::Soccar, CameraConfig::default());
         man.cycle_target(&state);
         assert_eq!(man.car_cam().unwrap().car_idx, 0);
         man.update(&state, 1.0 / 60.0);
@@ -252,5 +279,47 @@ mod tests {
         state.cars[0].1.pos = Vec3A::new(-3000.0, -3000.0, 17.0);
         man.update(&state, 1.0 / 60.0);
         assert!((man.cur_pos() - live).length() > 100.0);
+    }
+
+    #[test]
+    fn containment_shortens_boom_at_wall() {
+        use crate::camera::{ArenaBounds, FOLLOW_BACKOFF};
+        crate::photo::init_meshes();
+        let bounds = ArenaBounds::build(GameMode::Soccar);
+
+        // Car hugging the +X wall, ball deep at -X: the ball-cam boom
+        // points straight through the wall.
+        let mut state = test_state();
+        state.cars[0].1.pos = Vec3A::new(3900.0, 0.0, 17.0);
+        state.ball.pos = Vec3A::new(-4000.0, 0.0, 300.0);
+        let mut man = CameraMan::new(GameMode::Soccar, CameraConfig::default());
+        man.follow_car(&state, 0);
+        man.update(&state, 1.0 / 60.0);
+        // Uncontained boom exits through the X-wall plane (4096).
+        assert!(
+            man.cur_pos().x > 4096.0,
+            "boom should exit without containment: {:?}",
+            man.cur_pos()
+        );
+        // The viewer wiring (focus + contain + re-aim) pulls it back in
+        // and keeps the look glued to the ball.
+        let cam = man.car_cam().unwrap();
+        let focus =
+            state.cars[cam.car_idx].1.pos + Vec3A::new(0.0, 0.0, man.config().car_cam.height);
+        let (p, d) = bounds.contain_follow(
+            focus,
+            state.ball.pos,
+            cam.face_ball,
+            man.cur_pos(),
+            man.cur_dir(),
+        );
+        man.override_pose(p, d);
+        assert!(
+            (man.cur_pos().x - (4096.0 - FOLLOW_BACKOFF)).abs() < 2.0,
+            "boom should stop one backoff inside: {:?}",
+            man.cur_pos()
+        );
+        let want = (state.ball.pos - man.cur_pos()).normalize();
+        assert!((man.cur_dir().dot(want) - 1.0).abs() < 1e-4);
     }
 }
