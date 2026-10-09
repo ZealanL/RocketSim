@@ -1,6 +1,6 @@
 use glam::Vec3A;
 
-/// Full hitbox extents in uu for the 7 presets
+/// Full hitbox sizes in uu for the 7 presets
 /// (Octane, Dominus, Plank, Breakout, Hybrid, Merc, Psyclops).
 pub const HITBOX_SIZES: [Vec3A; 7] = [
     Vec3A::new(120.507, 86.6994, 38.6591), // OCTANE

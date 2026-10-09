@@ -481,7 +481,7 @@ pub mod heatseeker {
     pub const SPEED_BLEND: f32 = 0.3;
     /// Maximum pitch angle of turning
     pub const MAX_TURN_PITCH: f32 = 7000.0 * PI / (1 << 15) as f32;
-    /// Maximum speed the ball can seek at (different from `BALL_MAX_SPEED`)
+    /// Maximum speed the ball can seek at (different from `ball::MAX_SPEED`).
     pub const MAX_SPEED: f32 = 4600.0;
     /// Threshold of wall collision Y backwall distance to change goal targets
     pub const WALL_BOUNCE_CHANGE_Y_THRESH: f32 = 300.0;

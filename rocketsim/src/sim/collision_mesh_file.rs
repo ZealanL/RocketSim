@@ -87,8 +87,9 @@ impl CollisionMeshFile {
     ///
     /// # Errors
     ///
-    /// Returns an I/O error on truncated data; panics (debug) or mis-hashes
-    /// on out-of-range indices / empty / oversized (>1M) headers.
+    /// Returns an I/O error on truncated data.
+    /// Panics on empty or oversized (>1M) counts.
+    /// Panics on out-of-range indices.
     pub fn read_from_bytes(bytes: &[u8]) -> IoResult<Self> {
         const MAX_VERT_OR_TRI_COUNT: usize = 1_000_000;
 

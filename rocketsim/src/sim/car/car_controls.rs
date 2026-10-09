@@ -87,8 +87,8 @@ impl CarControls {
 
     /// Clamps analog axes to `-1..1` (booleans untouched).
     ///
-    /// [`crate::Arena::set_car_controls`] applies this automatically, but call
-    /// it yourself when blending or networking inputs.
+    /// [`crate::Arena::step_tick`] clamps inputs from [`crate::Arena::set_car_controls`].
+    /// Call it yourself when you blend or network inputs.
     #[must_use]
     pub const fn clamp(mut self) -> Self {
         self.throttle = self.throttle.clamp(-1.0, 1.0);
@@ -123,8 +123,8 @@ impl CarControls {
 
     /// Unpacks [`CarControls::to_floats`]; floats `> boolean_thresh` become `true`.
     #[must_use]
-    /// `boolean_thresh`: Floats over this value will trigger boolean controls (jump, boost, handbrake)
-    pub const fn from_floats(floats: [f32; Self::NUM_VALS], boolean_tresh: f32) -> Self {
+    /// `boolean_thresh`: Values above this threshold set `jump`, `boost`, and `handbrake` to `true`.
+    pub const fn from_floats(floats: [f32; Self::NUM_VALS], boolean_thresh: f32) -> Self {
         Self {
             throttle: floats[0],
             steer: floats[1],
@@ -132,9 +132,9 @@ impl CarControls {
             yaw: floats[3],
             roll: floats[4],
 
-            jump: floats[5] > boolean_tresh,
-            boost: floats[6] > boolean_tresh,
-            handbrake: floats[7] > boolean_tresh,
+            jump: floats[5] > boolean_thresh,
+            boost: floats[6] > boolean_thresh,
+            handbrake: floats[7] > boolean_thresh,
         }
     }
 

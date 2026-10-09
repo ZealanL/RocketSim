@@ -1,7 +1,7 @@
 //! Simulate Rocket League games at maximum efficiency.
 //!
 //! RocketSim steps a full game ([`Arena`]) at 120 Hz using Unreal units
-//! (1 uu = 1 cm in-game, see [`consts::TICK_RATE`]).
+//! (50 uu = 1 m, see [`consts::BT_TO_UU`]).
 //!
 //! # Quick start
 //!

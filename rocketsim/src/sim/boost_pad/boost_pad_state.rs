@@ -6,7 +6,7 @@
 #[derive(Clone, Copy, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BoostPadState {
-    /// The last tick when we gave a car boost
+    /// Seconds of cooldown left (`0` = active).
     pub cooldown: f32,
 }
 

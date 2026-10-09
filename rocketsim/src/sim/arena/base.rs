@@ -411,7 +411,7 @@ impl Arena {
     ///
     /// Cars are assigned in team order to shuffled
     /// `consts::car::spawn::get_kickoff_spawn_locations`. Orange spawns are
-    /// mirrored/rotated 180°. Extra cars past the 5 kickoff spots overflow to
+    /// mirrored/rotated 180°. Extra cars past the mode kickoff spots overflow to
     /// respawn locations. `rng_seed` overrides the arena RNG for this call
     /// only; `None` uses the arena RNG (seed via `ArenaConfig::with_rng_seed`
     /// for replays).
@@ -857,10 +857,10 @@ impl Arena {
     /// replay following. If you restore mid-drive snapshots every tick
     /// (replay/RLBot), follow with [`Arena::refresh_car_sticky_gate`].
     ///
-    /// Planning reuse is different: a reused arena must match a fresh one,
-    /// so after teleporting call [`Arena::reset_car_transient_contacts`] and
-    /// [`Arena::clear_persistent_manifolds`] (see `is_large_teleport` to tell
-    /// far planning jumps from small per-tick corrections).
+    /// Planning reuse is different: a reused arena must match a fresh one.
+    /// After teleporting, call [`Arena::reset_car_transient_contacts`] and
+    /// [`Arena::clear_persistent_manifolds`] for far planning jumps.
+    /// Skip these calls for small per-tick corrections.
     pub fn set_car_state(&mut self, car_idx: usize, state: CarState) {
         let car = &mut self.cars[car_idx];
 
@@ -883,7 +883,7 @@ impl Arena {
 
     /// Sets the inputs applied on the next [`Arena::step_tick`].
     ///
-    /// Analog inputs are clamped to `-1..1` (see [`CarControls::clamp`]).
+    /// [`Arena::step_tick`] clamps analog inputs to `-1..1` (see [`CarControls::clamp`]).
     /// `jump` is edge-triggered (only the rising edge jumps/flips).
     pub fn set_car_controls(&mut self, car_idx: usize, controls: CarControls) {
         self.cars[car_idx].state.controls = controls;

@@ -21,7 +21,7 @@ pub struct CarState {
     /// True if 3 or more wheels have contact
     pub is_on_ground: bool,
     /// Per-wheel contact details (`None` = that wheel is airborne).
-    /// First two are front. If your car has 3 wheels, the 4th is always `None`.
+    /// First two are front. The sim uses all 4 slots.
     pub wheels_with_contact: [Option<RaycastHitInfo>; 4],
     /// Whether we jumped to get into the air
     ///
@@ -40,7 +40,8 @@ pub struct CarState {
     /// Counts ticks since the current jump phase began; reset to 0 on jump
     /// activation and to 1 on the tick the jump ends.
     pub jump_ticks: u32,
-    /// When currently flipping, the time since we started flipping, else 0
+    /// Time since the current flip started.
+    /// It keeps counting after the flip ends until landing.
     pub flip_time: f32,
     /// True during a flip (not an auto-flip, and not after a flip)
     pub is_flipping: bool,

@@ -35,7 +35,7 @@ pub struct ArenaConfig {
     pub min_pos: Vec3A,
     /// Broadphase world maximum (uu).
     pub max_pos: Vec3A,
-    /// Target leaf size for the broadphase BVH (uu). Smaller = more memory.
+    /// Target cell size for the broadphase grid (uu). Smaller = more memory.
     pub max_aabb_len: f32,
     /// When `true`, the ball never spins (sphere only; useful for debugging).
     pub no_ball_rot: bool,
@@ -105,7 +105,7 @@ impl ArenaConfig {
         self
     }
 
-    /// Override the broadphase BVH leaf size (uu).
+    /// Override the broadphase grid cell size (uu).
     #[must_use]
     pub fn with_max_aabb_len(mut self, max_aabb_len: f32) -> Self {
         self.max_aabb_len = max_aabb_len;
