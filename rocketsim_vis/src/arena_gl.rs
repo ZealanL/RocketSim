@@ -88,8 +88,8 @@ impl PartGl {
 }
 
 /// Owned GL objects for the arena: open bowl (shell) + field cap + low
-/// backdrop planes, all arena-shaded. The ceiling lid + backdrop ceiling stay
-/// CPU-side — the cutaway hides them; stage 8 adds their draws.
+/// backdrop planes, plus the ceiling lid + high backdrop for enclosed
+/// (interior) views. The cutaway hides the roof; interior cameras need it.
 pub struct ArenaGl {
     prog: glow::Program,
     u_model: glow::UniformLocation,
@@ -99,10 +99,12 @@ pub struct ArenaGl {
     shell: PartGl,
     field: PartGl,
     planes_low: PartGl,
+    lid: PartGl,
+    planes_high: PartGl,
 }
 
 impl ArenaGl {
-    /// Uploads shell + field + low planes; panics with logs on failure.
+    /// Uploads all five parts; panics with logs on failure.
     /// Empty parts (TheVoid) build valid objects.
     pub fn new(gl: &glow::Context, mesh: &ArenaMesh) -> Self {
         let prog = compile_program(gl, "arena", ARENA_VERT_SRC, ARENA_FRAG_SRC);
@@ -142,13 +144,27 @@ impl ArenaGl {
                 &mesh.planes_low.uvs,
                 &mesh.planes_low.indices,
             ),
+            lid: PartGl::new(
+                gl,
+                &mesh.lid.verts,
+                &mesh.lid.normals,
+                &mesh.lid.uvs,
+                &mesh.lid.indices,
+            ),
+            planes_high: PartGl::new(
+                gl,
+                &mesh.planes_high.verts,
+                &mesh.planes_high.normals,
+                &mesh.planes_high.uvs,
+                &mesh.planes_high.indices,
+            ),
         }
     }
 
-    /// Draws shell + field + low planes with (`model`, `view`, `proj`).
-    /// Viewport in GL pixels. Resets ALL shared-context GL state first
-    /// (egui painter state leaks: blend/scissor/cull/mask — every draw owns
-    /// its state, no exceptions).
+    /// Draws the cutaway (shell + field + low planes), plus the roof
+    /// (lid + high backdrop) when `enclosed`. Viewport in GL pixels.
+    /// Resets ALL shared-context GL state first (egui painter state leaks:
+    /// blend/scissor/cull/mask — every draw owns its state, no exceptions).
     pub fn draw(
         &self,
         gl: &glow::Context,
@@ -156,6 +172,7 @@ impl ArenaGl {
         model: &Mat4,
         view: &Mat4,
         proj: &Mat4,
+        enclosed: bool,
     ) {
         unsafe {
             gl.disable(glow::CULL_FACE);
@@ -176,6 +193,12 @@ impl ArenaGl {
                 gl.bind_vertex_array(Some(part.vao));
                 gl.draw_elements(glow::TRIANGLES, part.n_indices, glow::UNSIGNED_INT, 0);
             }
+            if enclosed {
+                for part in [&self.lid, &self.planes_high] {
+                    gl.bind_vertex_array(Some(part.vao));
+                    gl.draw_elements(glow::TRIANGLES, part.n_indices, glow::UNSIGNED_INT, 0);
+                }
+            }
             gl.bind_vertex_array(None);
             gl.use_program(None);
         }
@@ -187,6 +210,8 @@ impl ArenaGl {
             self.shell.destroy(gl);
             self.field.destroy(gl);
             self.planes_low.destroy(gl);
+            self.lid.destroy(gl);
+            self.planes_high.destroy(gl);
             self.white.destroy(gl);
             gl.delete_program(self.prog);
         }

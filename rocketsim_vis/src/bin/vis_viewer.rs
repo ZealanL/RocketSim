@@ -12,12 +12,13 @@ use std::{
 };
 
 use glam::{Mat3, Vec3, Vec3A};
+use glow::HasContext;
 use rocketsim::GameMode;
 use rocketsim_vis::{
     arena_gl::ArenaGl,
     camera::{
-        ArenaBoundsCache, AutoCam, CameraConfig, CameraMan, CarCamSmoothing, DirectorState,
-        DirectorTarget,
+        ArenaBoundsCache, AutoCam, CameraConfig, CameraMan, CameraPreset, CarCamSmoothing,
+        DirectorState, DirectorTarget, FreeCam,
     },
     frustum::frustum_planes,
     fx::CarFx,
@@ -112,6 +113,12 @@ struct ViewerApp {
     scene: Arc<Mutex<Option<SceneGl>>>,
     client: FrameClient,
     last_draw_ms: Arc<Mutex<f64>>,
+    /// GPU stall time in ms (only when `measure_gpu`; serializes pipeline).
+    gpu_ms: Arc<Mutex<f64>>,
+    /// Last update-body CPU time in ms (excludes the fps-limiter sleep).
+    cpu_ms: f64,
+    /// GPU-stall timing on/off (`gpushot` CLI).
+    measure_gpu: bool,
     /// (pads drawn, pads frustum-culled) from the GL callback.
     pads_info: Arc<Mutex<(usize, usize)>>,
     /// (line segments drawn, truncated) from the GL callback.
@@ -219,6 +226,7 @@ impl ViewerApp {
         init_mode: StartMode,
         settings: ViewerSettings,
         menu_open: bool,
+        measure_gpu: bool,
     ) -> Self {
         let (soup, welded, indices) = (mesh.soup_verts, mesh.welded_verts(), mesh.index_count());
         let cam_mode = match init_mode {
@@ -234,6 +242,9 @@ impl ViewerApp {
             menu_open,
             applied_ui_scale: 0.0,
             last_draw_ms: Arc::new(Mutex::new(0.0)),
+            gpu_ms: Arc::new(Mutex::new(0.0)),
+            cpu_ms: 0.0,
+            measure_gpu,
             pads_info: Arc::new(Mutex::new((0, 0))),
             lines_info: Arc::new(Mutex::new((0, 0))),
             ball_ribbon: RibbonEmitter::new(RibbonConfig::ball_trail()),
@@ -292,6 +303,8 @@ impl eframe::App for ViewerApp {
         if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
             self.menu_open = !self.menu_open;
         }
+        // CPU clock starts after the limiter sleep (measures work, not wait).
+        let cpu_t0 = Instant::now();
         let dt = self.last_frame.elapsed().as_secs_f32();
         self.last_frame = Instant::now();
         if dt > 0.0 {
@@ -308,6 +321,7 @@ impl eframe::App for ViewerApp {
             self.pending_segs.clone(),
             self.lines_info.clone(),
         );
+        let (gpu_ms, measure_gpu) = (self.gpu_ms.clone(), self.measure_gpu);
         let (soup, welded, indices, fps) = (
             self.soup_verts,
             self.welded_verts,
@@ -556,6 +570,11 @@ impl eframe::App for ViewerApp {
             }
         };
 
+        // Roof rule: under the lid (z < 2100) the bowl is enclosed
+        // (lid + high backdrop draw); above it the cutaway stays open.
+        // Covers birds (1500) through car-cam, keeps overviews open.
+        let enclosed = cam_pos.z < 2100.0;
+
         self.settings.save_if_due();
 
         // Options window (same-window egui, Escape toggles, `menu` CLI opens).
@@ -609,6 +628,23 @@ impl eframe::App for ViewerApp {
                 if ui.button("Reset camera (RL defaults)").clicked() {
                     settings.reset_camera();
                 }
+                ui.horizontal(|ui| {
+                    ui.label("Presets:");
+                    for (label, preset) in [
+                        ("Default", CameraPreset::Default),
+                        ("Close", CameraPreset::Close),
+                        ("Far", CameraPreset::Far),
+                    ] {
+                        if ui.button(label).clicked() {
+                            let (cc, fov) = (
+                                &mut settings.camera.car_cam,
+                                &mut settings.camera.fov_degrees,
+                            );
+                            preset.apply(cc, fov);
+                            settings.mark_dirty();
+                        }
+                    }
+                });
                 ui.separator();
                 ui.heading("Overlays");
                 let mut touched = false;
@@ -671,7 +707,13 @@ impl eframe::App for ViewerApp {
             ui.monospace(format!("fps: {fps:.0} (cap 60)"));
             let ms = last_draw_ms.lock().map(|g| *g).unwrap_or(-1.0);
             ui.monospace(format!("scene draw: {ms:.3} ms"));
+            ui.monospace(format!("cpu: {:.3} ms", self.cpu_ms));
+            if self.measure_gpu {
+                let gpu = gpu_ms.lock().map(|g| *g).unwrap_or(-1.0);
+                ui.monospace(format!("gpu (stall): {gpu:.3} ms"));
+            }
             ui.monospace(format!("camera: {cam_label}"));
+            ui.monospace(format!("roof: {}", if enclosed { "on" } else { "off" }));
             let (drawn, culled) = pads_info.lock().map(|g| *g).unwrap_or((0, 0));
             ui.monospace(format!("pads: {drawn} drawn, {culled} culled"));
             let (nlines, ltrunc) = lines_info.lock().map(|g| *g).unwrap_or((0, 0));
@@ -710,6 +752,7 @@ impl eframe::App for ViewerApp {
                             &glam::Mat4::IDENTITY,
                             &view_mat,
                             &proj_mat,
+                            enclosed,
                         );
                         scene.prog_main.set_view_proj(gl, &view_mat, &proj_mat);
                         if let Some(frame) = &client_frame {
@@ -774,6 +817,17 @@ impl eframe::App for ViewerApp {
                         if let Ok(mut info) = lines_info.lock() {
                             *info = (scene.lines.drawn(), scene.lines.truncated);
                         }
+                        // GPU-stall timing (profiling only): serializes the
+                        // pipeline, so never enable outside measurements.
+                        if measure_gpu {
+                            let gt0 = Instant::now();
+                            unsafe {
+                                gl.finish();
+                            }
+                            if let Ok(mut g) = gpu_ms.lock() {
+                                *g = gt0.elapsed().as_secs_f64() * 1000.0;
+                            }
+                        }
                         drop(guard);
                         if let Ok(mut g) = last_draw_ms.lock() {
                             *g = t0.elapsed().as_secs_f64() * 1000.0;
@@ -783,6 +837,24 @@ impl eframe::App for ViewerApp {
                 ui.painter().add(cb);
             }
         });
+        self.cpu_ms = cpu_t0.elapsed().as_secs_f64() * 1000.0;
+        if self.frames.is_multiple_of(300) {
+            let gpu = if self.measure_gpu {
+                format!(
+                    " gpu={:.3}ms",
+                    self.gpu_ms.lock().map(|g| *g).unwrap_or(-1.0)
+                )
+            } else {
+                String::new()
+            };
+            eprintln!(
+                "perf: fps={:.0} cpu={:.3}ms draw={:.3}ms{}",
+                self.fps_ema,
+                self.cpu_ms,
+                self.last_draw_ms.lock().map(|g| *g).unwrap_or(-1.0),
+                gpu
+            );
+        }
         ctx.request_repaint_after(Duration::from_millis(16));
     }
 }
@@ -838,6 +910,7 @@ fn main() {
                 init_mode,
                 settings,
                 menu_open,
+                measure_gpu,
             );
             app.warm_bounds();
             Ok(Box::new(app) as _)
