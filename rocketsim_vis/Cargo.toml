@@ -28,5 +28,4 @@ toml = "0.8"
 all = "warn"
 
 [dev-dependencies]
-device_query = "4.0.1"
 gilrs = "0.11"

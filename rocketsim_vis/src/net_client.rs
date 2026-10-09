@@ -11,7 +11,7 @@
 //! takes the next sim; the viewer keeps showing the last frame meanwhile.
 
 use std::{
-    io::Read,
+    io::{Read, Write},
     net::{SocketAddr, TcpListener, TcpStream},
     sync::{
         Arc, Mutex,
@@ -21,7 +21,122 @@ use std::{
     time::Duration,
 };
 
-use crate::proto::{VisFrame, decode_frame};
+use crate::proto::{ControlMsg, VisFrame, decode_frame, encode_control};
+
+/// Viewer→sim control sender, viewer side (stage 5c).
+///
+/// The SIM listens (see `ControlServer` in [`crate::net_vis`]); this dials
+/// the sim's control port lazily with `TCP_NODELAY` and streams [`ControlMsg`]
+/// frames (`[u32 LE len][postcard]`, same framing as [`crate::proto`]).
+/// Intended use (viewer integration — NOT wired yet, see drive.rs docs):
+/// the viewer captures keyboard/mouse via egui input (works focused on
+/// Wayland, unlike global `device_query` reads), bumps a sequence number,
+/// and calls [`ControlSender::send`] once per viewer frame.
+///
+/// Latest-only slot + backoff reconnect mirror [`crate::net_vis::NetVis`]:
+/// [`ControlSender::send`] overwrites with `try_lock` (drops the tick rather
+/// than stalling the viewer when the sender thread momentarily holds the
+/// slot); the background thread pumps newest-first and reconnects. Drop
+/// stops the thread (`stop` + `join`); construction never blocks, fails, or
+/// panics.
+pub struct ControlSender {
+    slot: Arc<Mutex<Option<ControlMsg>>>,
+    stop: Arc<AtomicBool>,
+    worker: Option<JoinHandle<()>>,
+}
+
+impl ControlSender {
+    /// Starts the background dialer for the sim's control port (e.g.
+    /// `"127.0.0.1:39202"`). Never blocks or fails: with no sim listening
+    /// the thread retries with backoff and inputs are dropped, never queued.
+    pub fn connect(addr: &str) -> Self {
+        let slot = Arc::new(Mutex::new(None));
+        let stop = Arc::new(AtomicBool::new(false));
+        let worker = {
+            let (slot, stop, addr) = (slot.clone(), stop.clone(), addr.to_string());
+            std::thread::spawn(move || control_sender_loop(&addr, &slot, &stop))
+        };
+        Self {
+            slot,
+            stop,
+            worker: Some(worker),
+        }
+    }
+
+    /// Queues `msg` for sending (overwrites any unsent older message —
+    /// latest-only, so rapid viewer frames converge instead of queueing).
+    /// Lock-only via `try_lock`; never blocks the viewer, never panics.
+    pub fn send(&self, msg: ControlMsg) {
+        if let Ok(mut slot) = self.slot.try_lock() {
+            *slot = Some(msg);
+        }
+    }
+
+    /// Stops the sender. Called automatically on drop.
+    pub fn shutdown(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
+        if let Some(handle) = self.worker.take() {
+            let _ = handle.join();
+        }
+    }
+}
+
+impl Drop for ControlSender {
+    fn drop(&mut self) {
+        self.shutdown();
+    }
+}
+
+/// Dials with backoff until `stop`; on connect pumps newest-first, then
+/// reconnects (mirrors the [`crate::net_vis`] sender loop).
+fn control_sender_loop(addr: &str, slot: &Mutex<Option<ControlMsg>>, stop: &AtomicBool) {
+    let mut backoff = Duration::from_millis(500);
+    let max_backoff = Duration::from_secs(5);
+    loop {
+        if stop.load(Ordering::Relaxed) {
+            return;
+        }
+        match TcpStream::connect(addr) {
+            Ok(stream) => {
+                backoff = Duration::from_millis(500);
+                let _ = stream.set_nodelay(true);
+                control_sender_pump(stream, slot, stop);
+                // pump returned = connection lost; reconnect with backoff.
+            }
+            Err(_) => {
+                std::thread::sleep(backoff);
+                backoff = (backoff * 2).min(max_backoff);
+                continue;
+            }
+        }
+    }
+}
+
+/// Sends newest-first until the connection breaks or `stop` is set.
+fn control_sender_pump(mut stream: TcpStream, slot: &Mutex<Option<ControlMsg>>, stop: &AtomicBool) {
+    loop {
+        if stop.load(Ordering::Relaxed) {
+            return;
+        }
+        let msg = slot.lock().map(|mut s| s.take()).unwrap_or(None);
+        match msg {
+            Some(msg) => {
+                let bytes = encode_control(&msg);
+                if stream.write_all(&bytes).is_err() {
+                    // Put the message back only if nothing newer arrived;
+                    // never overwrite a newer message with an older one.
+                    if let Ok(mut s) = slot.lock()
+                        && s.is_none()
+                    {
+                        *s = Some(msg);
+                    }
+                    return;
+                }
+            }
+            None => std::thread::sleep(Duration::from_millis(2)),
+        }
+    }
+}
 
 /// Connection state for the overlay.
 #[derive(Clone, Debug)]
@@ -242,5 +357,98 @@ mod tests {
         assert!(client.latest().is_none());
         assert!(matches!(client.status(), ConnStatus::Waiting));
         assert_eq!(client.received(), 0);
+    }
+
+    /// Reads control messages until `want_seq` arrives or `deadline` passes;
+    /// returns the newest seq seen.
+    fn wait_for_seq(mut stream: TcpStream, want_seq: u64, deadline: Instant) -> Option<u64> {
+        use crate::proto::decode_control;
+        stream
+            .set_read_timeout(Some(Duration::from_millis(200)))
+            .unwrap();
+        let mut buf = Vec::new();
+        let mut chunk = [0u8; 4096];
+        let mut last = None;
+        loop {
+            if Instant::now() > deadline {
+                return last;
+            }
+            match stream.read(&mut chunk) {
+                Ok(0) => return last, // sender closed
+                Ok(n) => {
+                    buf.extend_from_slice(&chunk[..n]);
+                    while let Some((msg, consumed)) = decode_control(&buf).expect("valid controls")
+                    {
+                        last = Some(msg.seq);
+                        buf.drain(..consumed);
+                        if last == Some(want_seq) {
+                            return last;
+                        }
+                    }
+                }
+                Err(e)
+                    if e.kind() == std::io::ErrorKind::TimedOut
+                        || e.kind() == std::io::ErrorKind::WouldBlock =>
+                {
+                    continue;
+                }
+                Err(_) => return last,
+            }
+        }
+    }
+
+    #[test]
+    fn control_sender_converges_to_newest() {
+        // Fake sim: listen; the sender dials lazily (10s budget for dial).
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap().to_string();
+        let sender = ControlSender::connect(&addr);
+
+        // Rapid viewer frames: 50 sends back-to-back. Latest-only slot means
+        // the sim side converges to seq 50 (intermediate drops are fine and
+        // expected — the test only requires the NEWEST to arrive).
+        for seq in 1..=50u64 {
+            sender.send(ControlMsg::new(
+                0,
+                rocketsim::CarControls::default().with_throttle(seq as f32 / 50.0),
+                0,
+                seq,
+            ));
+        }
+
+        let (tx, rx) = std::sync::mpsc::channel();
+        let server = std::thread::spawn(move || {
+            listener
+                .set_nonblocking(false)
+                .expect("test listener blocking");
+            let (stream, _) = listener.accept().unwrap();
+            let last = wait_for_seq(stream, 50, Instant::now() + Duration::from_secs(10));
+            let _ = tx.send(last);
+        });
+        let last = rx.recv_timeout(Duration::from_secs(15)).unwrap();
+        assert_eq!(last, Some(50), "must converge to newest control");
+        drop(sender);
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn control_send_without_sim_never_blocks() {
+        // Port 1 never accepts: every send must still be fast (dropped).
+        // 2s budget for 20k sends = <100µs each, same bar as NetVis::update.
+        let sender = ControlSender::connect("127.0.0.1:1");
+        let t = Instant::now();
+        for seq in 1..=20_000u64 {
+            sender.send(ControlMsg::new(
+                0,
+                rocketsim::CarControls::default(),
+                0,
+                seq,
+            ));
+        }
+        assert!(
+            t.elapsed() < Duration::from_secs(2),
+            "control send blocked: {:?}",
+            t.elapsed()
+        );
     }
 }

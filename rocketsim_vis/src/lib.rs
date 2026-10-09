@@ -34,6 +34,7 @@ pub mod mesh;
 pub mod net_client;
 pub mod net_vis;
 pub mod obj;
+pub mod pace;
 pub mod pads;
 pub mod pads_gl;
 pub mod photo;
