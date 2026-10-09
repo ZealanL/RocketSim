@@ -302,6 +302,12 @@ pub trait ReplayBackend {
     /// [`ReplayBackend::supports_bump_restore`]).
     fn set_bump_cooldown(&mut self, _car_idx: usize, _seconds: f32) {}
 
+    /// Restore jump-hold continuity after a state reset.
+    ///
+    /// Only the v3 backend tracks the release latch. Others keep the sim's
+    /// own sustain evolution.
+    fn set_jump_hold_broken(&mut self, _car_idx: usize, _broken: bool) {}
+
     /// Refresh hidden prior-tick wheel state without advancing dynamics.
     fn refresh_sticky_gates(&mut self) {}
 
@@ -1271,6 +1277,76 @@ pub fn restore_handbrake_seed<B: ReplayBackend>(
     }
 }
 
+/// Whether the jump hold was broken before one recorded state.
+///
+/// The new jump-sustain latch needs continuous hold since jump start: a
+/// release ends the sustain after the minimum ticks and re-pressing never
+/// resumes it. RLPR records no release latch, so scan back through the run
+/// to the jump start and report whether the button stayed held on every
+/// jumping step. At a run boundary, assume unbroken (same approximation as
+/// the handbrake seed). Harness only, not physics.
+pub fn jump_hold_broken_at(
+    ticks: &[TickRecord],
+    run_start: usize,
+    state_index: usize,
+    car_idx: usize,
+) -> bool {
+    let Some(state) = ticks.get(state_index) else {
+        return false;
+    };
+    let Some(car) = state.car_records.get(car_idx) else {
+        return false;
+    };
+    if !car.is_jumping {
+        return false;
+    }
+    // Walk back over contiguous jumping ticks to the jump start.
+    let mut start = state_index;
+    while start > run_start
+        && ticks[start - 1]
+            .car_records
+            .get(car_idx)
+            .is_some_and(|prev| prev.is_jumping)
+    {
+        start -= 1;
+    }
+    // `prev_controls[u]` drove step u-1 -> u: every step since the start
+    // step must be held for the hold to be continuous.
+    for u in (start + 1)..=state_index {
+        let held = ticks[u]
+            .car_records
+            .get(car_idx)
+            .is_some_and(|tick_car| tick_car.prev_controls.jump);
+        if !held {
+            return true;
+        }
+    }
+    false
+}
+
+/// Restore reconstructed jump-hold continuity after a reset.
+///
+/// No RLPR version records the release latch. Reconstruct it from control
+/// history for restored mid-jump states, and clear it explicitly for
+/// restored non-jumping states so stale latch values cannot leak across
+/// segment restores. Harness only, not physics.
+pub fn restore_jump_hold_continuity<B: ReplayBackend>(
+    backend: &mut B,
+    ticks: &[TickRecord],
+    run_start: usize,
+    state_index: usize,
+) {
+    let Some(state) = ticks.get(state_index) else {
+        return;
+    };
+    for car_idx in 0..state.car_records.len() {
+        backend.set_jump_hold_broken(
+            car_idx,
+            jump_hold_broken_at(ticks, run_start, state_index, car_idx),
+        );
+    }
+}
+
 /// Restore recorded boost latch state after a reset.
 ///
 /// Apply direct recorded state only when the format carries it.
@@ -1382,6 +1458,7 @@ pub fn evaluate<B: ReplayBackend>(
             restore_recorded_boost_state(backend, ticks, segment.start, has_boost_state);
             restore_extra_cooldown(backend, &firings, segment.start);
             restore_bump_cooldown(backend, &bumps, segment.start);
+            restore_jump_hold_continuity(backend, ticks, segment_run_start, segment.start);
             // Seed the prior-tick wheel gate at the recorded pose.
             // Raycast only. Scored bodies stay at the recorded state.
             backend.refresh_sticky_gates();
@@ -1407,6 +1484,7 @@ pub fn evaluate<B: ReplayBackend>(
                 restore_recorded_handbrake(backend, ticks, state_index, has_handbrake_state);
                 restore_extra_cooldown(backend, &firings, state_index);
                 restore_bump_cooldown(backend, &bumps, state_index);
+                restore_jump_hold_continuity(backend, ticks, segment_run_start, state_index);
                 if !has_handbrake_state && offset == 1 {
                     restore_handbrake_seed(backend, ticks, segment_run_start, state_index);
                 }
@@ -2893,5 +2971,122 @@ mod tests {
             false,
         );
         assert_eq!(backend.refreshes, segments.len());
+    }
+
+    /// Jump history: each entry is `(is_jumping, prev_controls.jump)`.
+    /// `prev_controls[u]` drove step u-1 -> u, matching the recorder phase.
+    fn jump_history(flags: &[(bool, bool)]) -> Vec<TickRecord> {
+        flags
+            .iter()
+            .enumerate()
+            .map(|(i, &(jumping, held))| {
+                let mut tick = quiet_tick(i as u32, i as f32 * 10.0);
+                tick.car_records[0].is_jumping = jumping;
+                tick.car_records[0].prev_controls.jump = held;
+                tick
+            })
+            .collect()
+    }
+
+    #[test]
+    fn jump_hold_activation_tick_reports_unbroken() {
+        // The jump start tick itself has no prior step to release on.
+        let ticks = jump_history(&[(true, true)]);
+        assert!(!jump_hold_broken_at(&ticks, 0, 0, 0));
+    }
+
+    #[test]
+    fn jump_hold_release_repress_reports_broken() {
+        // Press, release on the step into tick 1, re-press.
+        let ticks = jump_history(&[(true, true), (true, false), (true, true), (true, true)]);
+        assert!(jump_hold_broken_at(&ticks, 0, 3, 0));
+    }
+
+    #[test]
+    fn jump_hold_continuous_reports_unbroken() {
+        let ticks = jump_history(&[(true, true), (true, true), (true, true), (true, true)]);
+        assert!(!jump_hold_broken_at(&ticks, 0, 3, 0));
+    }
+
+    #[test]
+    fn jump_hold_inactive_reports_unbroken() {
+        let ticks = jump_history(&[(true, true), (false, false)]);
+        assert!(!jump_hold_broken_at(&ticks, 0, 1, 0));
+    }
+
+    #[test]
+    fn jump_hold_run_boundary_truncation_assumes_unbroken() {
+        // Release on the step into tick 1 sits before the run start: the
+        // scan cannot see it and assumes unbroken (documented limitation).
+        let ticks = jump_history(&[
+            (true, true),
+            (true, false),
+            (true, true),
+            (true, true),
+            (true, true),
+            (true, true),
+        ]);
+        assert!(jump_hold_broken_at(&ticks, 0, 5, 0));
+        assert!(!jump_hold_broken_at(&ticks, 3, 5, 0));
+    }
+
+    #[test]
+    fn jump_hold_no_cross_car_bleed() {
+        let mut ticks = jump_history(&[(true, true), (true, false), (true, true)]);
+        for tick in ticks.iter_mut() {
+            let mut peer = tick.car_records[0];
+            peer.prev_controls.jump = true;
+            tick.car_records.push(peer);
+        }
+        assert!(jump_hold_broken_at(&ticks, 0, 2, 0));
+        assert!(!jump_hold_broken_at(&ticks, 0, 2, 1));
+    }
+
+    /// Captures `set_jump_hold_broken` writes (never fires otherwise).
+    struct LatchProbe {
+        calls: Vec<(usize, bool)>,
+    }
+
+    impl ReplayBackend for LatchProbe {
+        fn reset(&mut self, _start: &TickRecord) {}
+        fn set_state(&mut self, _state: &TickRecord) {}
+        fn set_jump_hold_broken(&mut self, car_idx: usize, broken: bool) {
+            self.calls.push((car_idx, broken));
+        }
+        fn step(&mut self, _controls: &[ControlsRecord]) -> Vec<SimContactEvents> {
+            Vec::new()
+        }
+        fn snapshot(&mut self, _car_idx: usize) -> Snapshot {
+            Snapshot {
+                car: BodySnapshot {
+                    pos: Vec3A::ZERO,
+                    vel: Vec3A::ZERO,
+                    ang_vel: Vec3A::ZERO,
+                    forward: Vec3A::X,
+                    up: Vec3A::Z,
+                },
+                ball: BodySnapshot {
+                    pos: Vec3A::ZERO,
+                    vel: Vec3A::ZERO,
+                    ang_vel: Vec3A::ZERO,
+                    forward: Vec3A::X,
+                    up: Vec3A::Z,
+                },
+            }
+        }
+    }
+
+    #[test]
+    fn restore_jump_hold_writes_every_car_explicitly() {
+        let mut ticks = jump_history(&[(true, true), (true, false), (true, true)]);
+        // Second car never jumps: restore must clear it explicitly so stale
+        // latch values cannot leak across segment restores.
+        for tick in ticks.iter_mut() {
+            tick.car_records.push(tick.car_records[0]);
+            tick.car_records[1].is_jumping = false;
+        }
+        let mut backend = LatchProbe { calls: Vec::new() };
+        restore_jump_hold_continuity(&mut backend, &ticks, 0, 2);
+        assert_eq!(backend.calls, vec![(0, true), (1, false)]);
     }
 }

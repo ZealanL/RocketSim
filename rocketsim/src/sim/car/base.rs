@@ -474,13 +474,22 @@ impl Car {
             self.state.is_jumping = true;
             self.state.has_jumped = true;
             self.state.jump_ticks = 0;
+            self.state.jump_hold_broken = false;
         }
 
         self.state.jump_ticks += 1;
 
         if self.state.is_jumping {
+            // Sustain needs continuous hold. Released hold ends sustain
+            // after the minimum ticks. A re-press never resumes it.
+            if !self.state.controls.jump {
+                self.state.jump_hold_broken = true;
+            }
+
             self.state.is_jumping = self.state.jump_ticks <= jump::MIN_TICKS
-                || (self.state.controls.jump && self.state.jump_ticks <= jump::MAX_TICKS);
+                || (!self.state.jump_hold_broken
+                    && self.state.controls.jump
+                    && self.state.jump_ticks <= jump::MAX_TICKS);
             if !self.state.is_jumping {
                 // Jump ended this tick: counter restarts
                 self.state.jump_ticks = 1;

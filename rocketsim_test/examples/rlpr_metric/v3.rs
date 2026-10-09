@@ -166,6 +166,14 @@ impl V3Backend {
         self.arena.set_car_state(car_id, state);
     }
 
+    /// Restore jump-hold continuity before a replayed tick.
+    pub fn set_jump_hold_broken(&mut self, car_idx: usize, broken: bool) {
+        let car_id = self.car_id(car_idx, "set_jump_hold_broken");
+        let mut state = *self.arena.get_car_state(car_id);
+        state.jump_hold_broken = broken;
+        self.arena.set_car_state(car_id, state);
+    }
+
     /// Refresh prior-tick wheel gates without advancing dynamics.
     pub fn refresh_sticky_gates(&mut self) {
         for &car_id in &self.car_ids {
@@ -271,6 +279,10 @@ impl Default for V3Backend {
 impl ReplayBackend for V3Backend {
     fn set_handbrake_value(&mut self, car_idx: usize, value: f32) {
         V3Backend::set_handbrake_value(self, car_idx, value);
+    }
+
+    fn set_jump_hold_broken(&mut self, car_idx: usize, broken: bool) {
+        V3Backend::set_jump_hold_broken(self, car_idx, broken);
     }
 
     fn refresh_sticky_gates(&mut self) {

@@ -47,6 +47,9 @@ pub struct CarState {
     pub is_flipping: bool,
     /// True during a jump
     pub is_jumping: bool,
+    /// Hold released mid-sustain. Sustain needs continuous hold.
+    /// Cleared on jump activation.
+    pub jump_hold_broken: bool,
     /// Total time spent in the air
     pub air_time: f32,
     /// Time spent in the air once `!is_jumping`
@@ -114,6 +117,7 @@ impl CarState {
         flip_time: 0.0,
         is_flipping: false,
         is_jumping: false,
+        jump_hold_broken: false,
         air_time: 0.0,
         air_time_since_jump: 0.0,
         boost: consts::car::boost::SPAWN_AMOUNT,
