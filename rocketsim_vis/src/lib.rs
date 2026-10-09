@@ -23,6 +23,7 @@
 //! ```
 
 pub mod arena_gl;
+pub mod camera;
 pub mod frustum;
 pub mod gl_util;
 pub mod lines;

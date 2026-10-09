@@ -16,6 +16,7 @@ use glam::{Mat3, Vec3, Vec3A};
 use rocketsim::GameMode;
 use rocketsim_vis::{
     arena_gl::ArenaGl,
+    camera::{AutoCam, CameraConfig, CameraMan, CarCamSmoothing, DirectorState, DirectorTarget},
     frustum::frustum_planes,
     lines::{RibbonConfig, RibbonEmitter, Segment, ground_line},
     lines_gl::LinesGl,
@@ -118,6 +119,16 @@ struct ViewerApp {
     last_tick: Option<u64>,
     /// Line segments for the GL callback (built on the UI thread).
     pending_segs: Arc<Mutex<Vec<Segment>>>,
+    /// Camera manager (created on the first frame; old birds-eye default).
+    cam_man: Option<CameraMan>,
+    /// CLI initial mode (`birds` default, `followN`, `director`, `autoN`).
+    init_mode: StartMode,
+    /// Active camera mode (set from CLI once, then keys).
+    cam_mode: CamMode,
+    /// Director rig (target selection + smoothing + cut blend).
+    director: DirectorRig,
+    /// Auto-cam state for the followed car (`A` toggles).
+    auto_cam: Option<AutoCam>,
     last_frame: Instant,
     fps_ema: f32,
     soup_verts: usize,
@@ -125,12 +136,78 @@ struct ViewerApp {
     n_indices: usize,
 }
 
+/// Viewer camera mode (keys: `C` man-cycle, `Space` ball-cam, `D` director,
+/// `A` auto-cam on the follow target).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CamMode {
+    /// Classic manager: birds-eye + follow cars.
+    Man,
+    /// Broadcast director (overview / car cuts).
+    Director,
+}
+
+/// CLI initial camera (`birds` default, `followN`, `director`, `autoN`).
+#[derive(Debug, Clone)]
+enum StartMode {
+    Birds,
+    Follow(usize),
+    Director,
+    Auto(usize),
+}
+
+impl StartMode {
+    fn parse(s: &str) -> Self {
+        if let Some(n) = s.strip_prefix("follow").and_then(|n| n.parse().ok()) {
+            Self::Follow(n)
+        } else if s == "director" {
+            Self::Director
+        } else if let Some(n) = s.strip_prefix("auto").and_then(|n| n.parse().ok()) {
+            Self::Auto(n)
+        } else {
+            Self::Birds
+        }
+    }
+}
+
+/// Director rig: selection + follow smoothing + cut-blend pose mixing.
+struct DirectorRig {
+    director: DirectorState,
+    smooth: CarCamSmoothing,
+    prev_target: Option<DirectorTarget>,
+    /// Pose snapshot at the last cut (blend start).
+    from_pos: Vec3A,
+    from_dir: Vec3A,
+    /// Last output pose (becomes the next blend start).
+    out_pos: Vec3A,
+    out_dir: Vec3A,
+    init: bool,
+}
+
+impl DirectorRig {
+    fn new() -> Self {
+        Self {
+            director: DirectorState::new(),
+            smooth: CarCamSmoothing::new(),
+            prev_target: None,
+            from_pos: Vec3A::ZERO,
+            from_dir: Vec3A::X,
+            out_pos: Vec3A::ZERO,
+            out_dir: Vec3A::X,
+            init: false,
+        }
+    }
+}
+
 /// 60fps frame budget.
 const FRAME_BUDGET: Duration = Duration::from_millis(16);
 
 impl ViewerApp {
-    fn new(mesh: Arc<ArenaMesh>, client: FrameClient) -> Self {
+    fn new(mesh: Arc<ArenaMesh>, client: FrameClient, init_mode: StartMode) -> Self {
         let (soup, welded, indices) = (mesh.soup_verts, mesh.welded_verts(), mesh.index_count());
+        let cam_mode = match init_mode {
+            StartMode::Director => CamMode::Director,
+            _ => CamMode::Man,
+        };
         Self {
             frames: 0,
             mesh,
@@ -143,6 +220,11 @@ impl ViewerApp {
             boost_ribbons: Vec::new(),
             last_tick: None,
             pending_segs: Arc::new(Mutex::new(Vec::new())),
+            cam_man: None,
+            init_mode,
+            cam_mode,
+            director: DirectorRig::new(),
+            auto_cam: None,
             last_frame: Instant::now(),
             fps_ema: 60.0,
             soup_verts: soup,
@@ -219,8 +301,161 @@ impl eframe::App for ViewerApp {
             *self.pending_segs.lock().expect("viewer segs poisoned") = segs;
         }
 
+        // Camera: beauty pose until the first frame, then the active mode.
+        // Keys: `C` man-cycle, `Space` ball-cam, `D` director, `A` auto-cam.
+        let (cam_pos, cam_dir, cam_fov, cam_label) = match &client_frame {
+            Some(frame) => {
+                let state = &frame.state;
+                if self.cam_man.is_none() {
+                    let mut man = CameraMan::new(state.game_mode(), CameraConfig::default());
+                    match self.init_mode {
+                        StartMode::Follow(n) | StartMode::Auto(n) => {
+                            for _ in 0..=n {
+                                man.cycle_target(state);
+                            }
+                        }
+                        _ => {}
+                    }
+                    // Auto CLI arms only if the cycle actually landed on n.
+                    // Auto CLI arms only if the cycle actually landed on n.
+                    if let StartMode::Auto(n) = self.init_mode
+                        && man.car_cam().is_some_and(|c| c.car_idx == n)
+                    {
+                        self.auto_cam = Some(AutoCam::new(n));
+                    }
+                    self.cam_man = Some(man);
+                }
+                if ctx.input(|i| i.key_pressed(egui::Key::D)) {
+                    self.cam_mode = CamMode::Director;
+                    self.auto_cam = None;
+                }
+                if ctx.input(|i| i.key_pressed(egui::Key::C)) {
+                    self.cam_mode = CamMode::Man;
+                    self.auto_cam = None;
+                    if let Some(man) = self.cam_man.as_mut() {
+                        man.cycle_target(state);
+                    }
+                }
+                match self.cam_mode {
+                    CamMode::Man => {
+                        if ctx.input(|i| i.key_pressed(egui::Key::Space))
+                            && let Some(man) = self.cam_man.as_mut()
+                        {
+                            man.try_toggle_ball_cam();
+                        }
+                        if ctx.input(|i| i.key_pressed(egui::Key::A)) {
+                            let idx = self
+                                .cam_man
+                                .as_ref()
+                                .and_then(|m| m.car_cam())
+                                .map(|c| c.car_idx);
+                            match (idx, &self.auto_cam) {
+                                (Some(i), None) => {
+                                    self.auto_cam = Some(AutoCam::new(i));
+                                }
+                                _ => {
+                                    self.auto_cam = None;
+                                }
+                            }
+                        }
+                        // Auto-cam drives ball-cam when armed on this car.
+                        if let Some(auto) = self.auto_cam.as_mut() {
+                            let idx = auto.car_idx();
+                            let on = auto.update(state, dt);
+                            if let Some(man) = self.cam_man.as_mut() {
+                                let following = man.car_cam().is_some_and(|c| c.car_idx == idx);
+                                if following {
+                                    man.set_follow_face_ball(idx, on);
+                                } else {
+                                    self.auto_cam = None;
+                                }
+                            }
+                        }
+                        let man = self.cam_man.as_mut().expect("viewer camera built");
+                        man.update(state, dt);
+                        let label = match (man.car_cam(), &self.auto_cam) {
+                            (None, _) => "birds-eye".to_string(),
+                            (Some(cam), None) => format!(
+                                "car {} ({})",
+                                cam.car_idx,
+                                if cam.face_ball { "ball-cam" } else { "car-cam" }
+                            ),
+                            (Some(cam), Some(auto)) => format!(
+                                "car {} (auto: {})",
+                                cam.car_idx,
+                                auto.off_reason().map(|r| r.as_str()).unwrap_or("ball-cam")
+                            ),
+                        };
+                        (man.cur_pos(), man.cur_dir(), man.cur_fov_degrees(), label)
+                    }
+                    CamMode::Director => {
+                        let rig = &mut self.director;
+                        let target = rig.director.update(state, dt);
+                        // Forced ball-cam follow for Car targets; overview pose otherwise.
+                        let (pos, dir, fov, label) = match target {
+                            DirectorTarget::Overview => {
+                                let (eye, tgt, fov) = view::arena_pose();
+                                rig.smooth.reset();
+                                (
+                                    Vec3A::from(eye),
+                                    (Vec3A::from(tgt) - Vec3A::from(eye)).normalize_or_zero(),
+                                    fov,
+                                    "director (overview)".to_string(),
+                                )
+                            }
+                            DirectorTarget::Car(i) => {
+                                let mut p = Vec3A::ZERO;
+                                let mut d = Vec3A::X;
+                                rig.smooth.update(
+                                    i,
+                                    true,
+                                    state,
+                                    &CameraConfig::default(),
+                                    &mut p,
+                                    &mut d,
+                                    dt,
+                                );
+                                (p, d, rig.smooth.cur_fov_h(), format!("director (car {i})"))
+                            }
+                        };
+                        // Cut blend: on a target change the blend restarts
+                        // from the last output pose.
+                        if rig.prev_target != Some(target) {
+                            rig.prev_target = Some(target);
+                            if rig.init {
+                                rig.from_pos = rig.out_pos;
+                                rig.from_dir = rig.out_dir;
+                            } else {
+                                rig.from_pos = pos;
+                                rig.from_dir = dir;
+                                rig.init = true;
+                            }
+                        }
+                        let b = rig.director.blend();
+                        let pos = rig.from_pos.lerp(pos, b);
+                        let mut dir = rig.from_dir.lerp(dir, b).normalize_or_zero();
+                        if dir.length_squared() < 1e-8 {
+                            dir = rig.from_dir;
+                        }
+                        rig.out_pos = pos;
+                        rig.out_dir = dir;
+                        (pos, dir, fov, label)
+                    }
+                }
+            }
+            None => {
+                let (eye, target, fov) = view::arena_pose();
+                (
+                    Vec3A::from(eye),
+                    (Vec3A::from(target) - Vec3A::from(eye)).normalize_or_zero(),
+                    fov,
+                    "beauty (waiting for sim)".to_string(),
+                )
+            }
+        };
+
         egui::Window::new("rocketsim vis_viewer").show(ctx, |ui| {
-            ui.label("stage 7 — lines and trails (fixed pose)");
+            ui.label("stage 8 — cameras (C cycle, Space ball-cam)");
             ui.monospace(format!("soccar soup={soup} welded={welded} idx={indices}"));
             match &status {
                 ConnStatus::Waiting => ui.monospace("sim: waiting".to_string()),
@@ -233,6 +468,7 @@ impl eframe::App for ViewerApp {
             ui.monospace(format!("fps: {fps:.0} (cap 60)"));
             let ms = last_draw_ms.lock().map(|g| *g).unwrap_or(-1.0);
             ui.monospace(format!("scene draw: {ms:.3} ms"));
+            ui.monospace(format!("camera: {cam_label}"));
             let (drawn, culled) = pads_info.lock().map(|g| *g).unwrap_or((0, 0));
             ui.monospace(format!("pads: {drawn} drawn, {culled} culled"));
             let (nlines, ltrunc) = lines_info.lock().map(|g| *g).unwrap_or((0, 0));
@@ -256,7 +492,12 @@ impl eframe::App for ViewerApp {
                         let y_px = (info.screen_size_px[1] as f32 - info.viewport.max.y * ppp)
                             .round() as i32;
                         let aspect = w_px as f32 / h_px as f32;
-                        let (view_mat, proj_mat) = view::arena_pose_view_proj(aspect);
+                        let (view_mat, proj_mat) = view::view_proj(
+                            glam::Vec3::from(cam_pos),
+                            glam::Vec3::from(cam_pos + cam_dir),
+                            cam_fov,
+                            aspect,
+                        );
                         let t0 = Instant::now();
                         let mut guard = scene.lock().expect("viewer scene poisoned");
                         let scene = guard.get_or_insert_with(|| SceneGl::new(gl, &mesh));
@@ -314,10 +555,9 @@ impl eframe::App for ViewerApp {
                         let segs = std::mem::take(
                             &mut *pending_segs.lock().expect("viewer segs poisoned"),
                         );
-                        // Eye for expansion = fixed-pose camera position
-                        // (view inverse translation); proj11 + height
-                        // drive min-width.
-                        let eye = Vec3A::from(view::arena_pose().0);
+                        // Eye for expansion: camera pos; proj11 + height set
+                        // the min width.
+                        let eye = cam_pos;
                         scene.lines.upload(
                             gl,
                             &segs,
@@ -345,10 +585,14 @@ impl eframe::App for ViewerApp {
 
 fn main() {
     init_meshes();
-    let port: u16 = std::env::args()
-        .nth(1)
+    let args: Vec<String> = std::env::args().collect();
+    let port: u16 = args
+        .get(1)
         .and_then(|a| a.parse().ok())
         .unwrap_or(DEFAULT_PORT);
+    // Initial camera: `birds` (default), `followN`, `director`, `autoN`.
+    // Runtime keys: `C` man-cycle, `Space` ball-cam, `D` director, `A` auto.
+    let init_mode = StartMode::parse(args.get(2).map(|s| s.as_str()).unwrap_or(""));
     let addr = format!("127.0.0.1:{port}");
     eprintln!("vis_viewer: listening on {addr} (sim should dial this addr)");
 
@@ -373,7 +617,7 @@ fn main() {
     if let Err(e) = eframe::run_native(
         "rocketsim vis_viewer",
         options,
-        Box::new(move |_cc| Ok(Box::new(ViewerApp::new(mesh.clone(), client)) as _)),
+        Box::new(move |_cc| Ok(Box::new(ViewerApp::new(mesh.clone(), client, init_mode)) as _)),
     ) {
         eprintln!("vis_viewer: eframe::run_native failed: {e:?}");
         std::process::exit(1);

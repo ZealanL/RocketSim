@@ -22,6 +22,7 @@ postcard = { version = "1", features = ["alloc"] }
 rocketsim = { path = "../rocketsim", version = "0.3.0", features = ["serde"] }
 rustc-hash.workspace = true
 serde = { version = "1", features = ["derive"] }
+toml = "0.8"
 
 [lints.clippy]
 all = "warn"
