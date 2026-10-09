@@ -1,5 +1,5 @@
 [workspace]
-package.version = "0.2.8"
+package.version = "0.2.9"
 package.edition = "2024"
 package.rust-version = "1.95"
 package.documentation = "https://docs.rs/rocketsim"
