@@ -22,9 +22,11 @@
 //! arena.set_vis_enabled(false);
 //! ```
 
+pub mod gl_util;
 pub mod net_vis;
 pub mod photo;
 pub mod proto;
+pub mod triangle;
 
 pub use net_vis::{NetVis, ensure_viewer_running};
 use rocketsim::Arena;

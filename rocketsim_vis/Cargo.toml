@@ -14,6 +14,7 @@ categories.workspace = true
 [dependencies]
 eframe = { version = "0.31", default-features = false, features = ["glow", "wayland", "x11", "default_fonts"] }
 egui = "0.31"
+egui_glow = "0.31"
 glow = "0.16"
 postcard = { version = "1", features = ["alloc"] }
 rocketsim = { path = "../rocketsim", version = "0.3.0", features = ["serde"] }
