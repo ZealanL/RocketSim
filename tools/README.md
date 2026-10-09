@@ -33,8 +33,8 @@ Same seed + same ticks = same output; screenshot timing may vary, sim must not.
 
 | stage | scene | cpu ms | wall fps | notes |
 |-------|-------|--------|----------|-------|
-| 0 | harness probe (xterm) | n/a | n/a | pipeline proof |
-| 1 | empty window + overlay | | | |
+| 0 | harness probe (xterm) | n/a | n/a | pipeline proof (xclock shot) |
+| 1 | empty window + overlay | ~0 (idle, repaint-on-demand; 4 frames/5s) | n/a (no loop) | ref `rocketsim_vis/tests/reference/stage1_empty.png` |
 | 3 | first triangle | | | |
 | 4 | arena mesh | | | |
 | 5 | ball + cars | | | |
