@@ -37,6 +37,7 @@ pub mod pads;
 pub mod pads_gl;
 pub mod photo;
 pub mod proto;
+pub mod settings;
 pub mod textures;
 pub mod triangle;
 pub mod view;

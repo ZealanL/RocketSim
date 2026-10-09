@@ -1,10 +1,9 @@
 //! Detached viewer binary (v2 rebuild, stage 5b: old-look live scene).
 //!
-//! Fixed-pose beauty shot: team-grid arena + textured ball/cars streamed
-//! from the sim over TCP (latest frame, no interpolation — matches the old
-//! in-process look). 60fps cap via explicit 16ms limiter.
-//!
-//! Usage: `vis_viewer [PORT]` (default 39201).
+//! Usage: `vis_viewer [PORT] [CAM] [flags...]` (defaults: 39201, birds).
+//! CAM is `birds`|`followN`|`director`|`autoN`|`free`; flags: `gpushot`
+//! (GPU-stall timing for profiling). The options menu starts open;
+//! Escape (or pad Start) toggles it.
 
 use std::{
     collections::HashMap,
@@ -16,7 +15,10 @@ use glam::{Mat3, Vec3, Vec3A};
 use rocketsim::GameMode;
 use rocketsim_vis::{
     arena_gl::ArenaGl,
-    camera::{AutoCam, CameraConfig, CameraMan, CarCamSmoothing, DirectorState, DirectorTarget},
+    camera::{
+        ArenaBoundsCache, AutoCam, CameraConfig, CameraMan, CarCamSmoothing, DirectorState,
+        DirectorTarget,
+    },
     frustum::frustum_planes,
     lines::{RibbonConfig, RibbonEmitter, Segment, ground_line},
     lines_gl::LinesGl,
@@ -31,6 +33,7 @@ use rocketsim_vis::{
     pads_gl::PadsGl,
     photo::init_meshes,
     proto::DEFAULT_PORT,
+    settings::ViewerSettings,
     textures::{PngImage, TextureGl},
     view,
 };
@@ -121,14 +124,22 @@ struct ViewerApp {
     pending_segs: Arc<Mutex<Vec<Segment>>>,
     /// Camera manager (created on the first frame; old birds-eye default).
     cam_man: Option<CameraMan>,
-    /// CLI initial mode (`birds` default, `followN`, `director`, `autoN`).
+    /// CLI start mode (`birds` default).
     init_mode: StartMode,
-    /// Active camera mode (set from CLI once, then keys).
+    /// Active camera mode (CLI once, then keys/buttons).
     cam_mode: CamMode,
-    /// Director rig (target selection + smoothing + cut blend).
+    /// Director rig (selection + smoothing + cut blend).
     director: DirectorRig,
-    /// Auto-cam state for the followed car (`A` toggles).
+    /// Arena containment hulls, one per game mode (lazy; Soccar warmed).
+    bounds: ArenaBoundsCache,
+    /// Auto-cam state for the followed car (`0` key arms it).
     auto_cam: Option<AutoCam>,
+    /// Persistent settings (TOML, debounced save).
+    settings: ViewerSettings,
+    /// Options window open (starts open; Escape toggles).
+    menu_open: bool,
+    /// UI scale already applied (re-apply on change).
+    applied_ui_scale: f32,
     last_frame: Instant,
     fps_ema: f32,
     soup_verts: usize,
@@ -198,11 +209,14 @@ impl DirectorRig {
     }
 }
 
-/// 60fps frame budget.
-const FRAME_BUDGET: Duration = Duration::from_millis(16);
-
 impl ViewerApp {
-    fn new(mesh: Arc<ArenaMesh>, client: FrameClient, init_mode: StartMode) -> Self {
+    fn new(
+        mesh: Arc<ArenaMesh>,
+        client: FrameClient,
+        init_mode: StartMode,
+        settings: ViewerSettings,
+        menu_open: bool,
+    ) -> Self {
         let (soup, welded, indices) = (mesh.soup_verts, mesh.welded_verts(), mesh.index_count());
         let cam_mode = match init_mode {
             StartMode::Director => CamMode::Director,
@@ -213,6 +227,9 @@ impl ViewerApp {
             mesh,
             scene: Arc::new(Mutex::new(None)),
             client,
+            settings,
+            menu_open,
+            applied_ui_scale: 0.0,
             last_draw_ms: Arc::new(Mutex::new(0.0)),
             pads_info: Arc::new(Mutex::new((0, 0))),
             lines_info: Arc::new(Mutex::new((0, 0))),
@@ -224,6 +241,7 @@ impl ViewerApp {
             init_mode,
             cam_mode,
             director: DirectorRig::new(),
+            bounds: ArenaBoundsCache::new(),
             auto_cam: None,
             last_frame: Instant::now(),
             fps_ema: 60.0,
@@ -232,14 +250,43 @@ impl ViewerApp {
             n_indices: indices,
         }
     }
+
+    /// Builds the Soccar containment hull up front (other modes build
+    /// lazily on first sight). Logs tri count + build time.
+    fn warm_bounds(&mut self) {
+        let t0 = Instant::now();
+        let n = self
+            .bounds
+            .get(GameMode::Soccar)
+            .map(|b| b.tri_count())
+            .unwrap_or(0);
+        eprintln!(
+            "vis_viewer: soccar bounds={n} tris ({:.0} ms)",
+            t0.elapsed().as_secs_f32() * 1000.0
+        );
+    }
 }
 
 impl eframe::App for ViewerApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Frame limiter from settings (0 = uncapped).
+        let budget = if self.settings.fps_limit_hz == 0 {
+            Duration::from_secs(0)
+        } else {
+            Duration::from_secs_f32(1.0 / self.settings.fps_limit_hz as f32)
+        };
         let now = Instant::now();
         let since_last = now.duration_since(self.last_frame);
-        if since_last < FRAME_BUDGET {
-            std::thread::sleep(FRAME_BUDGET - since_last);
+        if since_last < budget {
+            std::thread::sleep(budget - since_last);
+        }
+        // UI scale applies live.
+        if (self.settings.ui_scale - self.applied_ui_scale).abs() > 1e-6 {
+            ctx.set_pixels_per_point(self.settings.ui_scale);
+            self.applied_ui_scale = self.settings.ui_scale;
+        }
+        if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            self.menu_open = !self.menu_open;
         }
         let dt = self.last_frame.elapsed().as_secs_f32();
         self.last_frame = Instant::now();
@@ -265,6 +312,7 @@ impl eframe::App for ViewerApp {
         );
         let (status, received) = (self.client.status(), self.client.received());
         let tick = client_frame.as_ref().map(|f| f.state.tick_count);
+        let show_pads = self.settings.show_pads;
 
         // Advance trails in SIM time: replay ticks missed since the last
         // viewer frame (clamped — a reset jump must not spiral emitters).
@@ -280,11 +328,17 @@ impl eframe::App for ViewerApp {
                 self.ball_ribbon
                     .update(true, ball_pos, Vec3A::ZERO, frame.dt);
             }
-            let mut segs = self.ball_ribbon.segments(ball_pos);
+            let mut segs = if self.settings.show_trail {
+                self.ball_ribbon.segments(ball_pos)
+            } else {
+                Vec::new()
+            };
             let floor_z = rocketsim::consts::arena::get_aabb(frame.state.game_mode())
                 .min
                 .z;
-            segs.push(ground_line(ball_pos, floor_z));
+            if self.settings.show_ground_line {
+                segs.push(ground_line(ball_pos, floor_z));
+            }
             for (i, (_, car)) in frame.state.cars.iter().enumerate() {
                 while self.boost_ribbons.len() <= i {
                     self.boost_ribbons
@@ -296,7 +350,9 @@ impl eframe::App for ViewerApp {
                 for _ in 0..steps {
                     self.boost_ribbons[i].update(car.is_boosting, emit_pos, emit_vel, frame.dt);
                 }
-                segs.extend(self.boost_ribbons[i].segments(emit_pos));
+                if self.settings.show_boost {
+                    segs.extend(self.boost_ribbons[i].segments(emit_pos));
+                }
             }
             *self.pending_segs.lock().expect("viewer segs poisoned") = segs;
         }
@@ -306,6 +362,8 @@ impl eframe::App for ViewerApp {
         let (cam_pos, cam_dir, cam_fov, cam_label) = match &client_frame {
             Some(frame) => {
                 let state = &frame.state;
+                // Containment hull for this mode (lazy; TheVoid = None).
+                let bounds = self.bounds.get(state.game_mode());
                 if self.cam_man.is_none() {
                     let mut man = CameraMan::new(state.game_mode(), CameraConfig::default());
                     match self.init_mode {
@@ -372,7 +430,26 @@ impl eframe::App for ViewerApp {
                             }
                         }
                         let man = self.cam_man.as_mut().expect("viewer camera built");
+                        man.set_config(self.settings.camera);
                         man.update(state, dt);
+                        // Arena containment: shorten the boom against the
+                        // hull (focus stays; ball-cam re-aims at the ball
+                        // from the pulled-in pose, car-cam keeps its look).
+                        if let (Some(hull), Some(cam)) = (bounds.as_ref(), man.car_cam())
+                            && let Some((_, car)) = state.cars.get(cam.car_idx)
+                            && !car.is_demoed
+                        {
+                            let focus =
+                                car.pos + Vec3A::new(0.0, 0.0, self.settings.camera.car_cam.height);
+                            let (p, d) = hull.contain_follow(
+                                focus,
+                                state.ball.pos,
+                                cam.face_ball,
+                                man.cur_pos(),
+                                man.cur_dir(),
+                            );
+                            man.override_pose(p, d);
+                        }
                         let label = match (man.car_cam(), &self.auto_cam) {
                             (None, _) => "birds-eye".to_string(),
                             (Some(cam), None) => format!(
@@ -410,11 +487,20 @@ impl eframe::App for ViewerApp {
                                     i,
                                     true,
                                     state,
-                                    &CameraConfig::default(),
+                                    &self.settings.camera,
                                     &mut p,
                                     &mut d,
                                     dt,
                                 );
+                                // Same boom shortening as the follow view
+                                // (director cars always run ball-cam).
+                                if let (Some(hull), Some((_, car))) =
+                                    (bounds.as_ref(), state.cars.get(i))
+                                {
+                                    let focus = car.pos
+                                        + Vec3A::new(0.0, 0.0, self.settings.camera.car_cam.height);
+                                    (p, d) = hull.contain_follow(focus, state.ball.pos, true, p, d);
+                                }
                                 (p, d, rig.smooth.cur_fov_h(), format!("director (car {i})"))
                             }
                         };
@@ -458,8 +544,109 @@ impl eframe::App for ViewerApp {
             }
         };
 
+        self.settings.save_if_due();
+
+        // Options window (same-window egui, Escape toggles, `menu` CLI opens).
+        if self.menu_open {
+            let settings = &mut self.settings;
+            egui::Window::new("settings")
+                .scroll([false, true])
+                .show(ctx, |ui| {
+                ui.heading("Camera");
+                ui.horizontal(|ui| {
+                    if ui.button("Birds-eye").clicked() {
+                        self.cam_mode = CamMode::Man;
+                        self.auto_cam = None;
+                    }
+                    if ui.button("Director").clicked() {
+                        self.cam_mode = CamMode::Director;
+                        self.auto_cam = None;
+                    }
+                });
+                ui.label(format!(
+                    "mode: {cam_label} (keys: C cycle, Space ball-cam, D director, A auto)"
+                ));
+                let cc = &mut settings.camera.car_cam;
+                if ui
+                    .add(
+                        egui::Slider::new(&mut settings.camera.fov_degrees, 60.0..=130.0)
+                            .text("FOV (h°)"),
+                    )
+                    .changed()
+                    || ui
+                        .add(egui::Slider::new(&mut cc.distance, 100.0..=600.0).text("distance"))
+                        .changed()
+                    || ui
+                        .add(egui::Slider::new(&mut cc.height, 0.0..=300.0).text("height"))
+                        .changed()
+                    || ui
+                        .add(egui::Slider::new(&mut cc.angle_deg, -30.0..=30.0).text("angle°"))
+                        .changed()
+                    || ui
+                        .add(egui::Slider::new(&mut cc.stiffness, 0.0..=1.0).text("stiffness"))
+                        .changed()
+                    || ui
+                        .add(
+                            egui::Slider::new(&mut cc.transition_speed, 1.0..=2.0)
+                                .text("transition"),
+                        )
+                        .changed()
+                {
+                    settings.mark_dirty();
+                }
+                if ui.button("Reset camera (RL defaults)").clicked() {
+                    settings.reset_camera();
+                }
+                ui.separator();
+                ui.heading("Overlays");
+                let mut touched = false;
+                touched |= ui
+                    .checkbox(&mut settings.show_trail, "Ball trail")
+                    .changed();
+                touched |= ui
+                    .checkbox(&mut settings.show_boost, "Boost flames")
+                    .changed();
+                touched |= ui
+                    .checkbox(&mut settings.show_ground_line, "Ground line")
+                    .changed();
+                touched |= ui.checkbox(&mut settings.show_pads, "Boost pads").changed();
+                if touched {
+                    settings.mark_dirty();
+                }
+                ui.separator();
+                ui.heading("Display");
+                if ui
+                    .add(
+                        egui::Slider::new(&mut settings.fps_limit_hz, 0..=240)
+                            .text("FPS cap (0=off)"),
+                    )
+                    .changed()
+                    || ui
+                        .add(egui::Slider::new(&mut settings.ui_scale, 0.5..=2.0).text("UI scale"))
+                        .changed()
+                {
+                    settings.mark_dirty();
+                }
+                ui.horizontal(|ui| {
+                    if ui.checkbox(&mut settings.vsync, "VSync").changed() {
+                        settings.mark_dirty();
+                    }
+                    if ui
+                        .add(egui::Slider::new(&mut settings.msaa, 0..=8).text("MSAA"))
+                        .changed()
+                    {
+                        settings.mark_dirty();
+                    }
+                });
+                ui.label("(VSync/MSAA apply on relaunch)");
+                if ui.button("Reset everything").clicked() {
+                    settings.reset_all();
+                }
+            });
+        }
+
         egui::Window::new("rocketsim vis_viewer").show(ctx, |ui| {
-            ui.label("stage 8 — cameras (C cycle, Space ball-cam)");
+            ui.label("stage 9 — settings (Escape toggles)");
             ui.monospace(format!("soccar soup={soup} welded={welded} idx={indices}"));
             match &status {
                 ConnStatus::Waiting => ui.monospace("sim: waiting".to_string()),
@@ -541,14 +728,15 @@ impl eframe::App for ViewerApp {
                             }
                         }
                         scene.prog_main.unbind(gl);
-                        // Pads: frustum-filtered instances, 4 instanced draws.
+                        // Pads: frustum-filtered instances, 4 instanced draws
+                        // (skipped when hidden in settings).
                         let planes = frustum_planes(proj_mat * view_mat);
                         let empty: [Vec<glam::Mat4>; 4] = Default::default();
                         let (instances, culled) = match &client_frame {
-                            Some(frame) => {
+                            Some(frame) if show_pads => {
                                 build_instances(&frame.state.boost_pads, &planes, &scene.pad_radii)
                             }
-                            None => (empty, 0),
+                            _ => (empty, 0),
                         };
                         scene.pads.upload(gl, &instances);
                         scene.pads.draw(gl, &view_mat, &proj_mat);
@@ -594,9 +782,17 @@ fn main() {
         .get(1)
         .and_then(|a| a.parse().ok())
         .unwrap_or(DEFAULT_PORT);
-    // Initial camera: `birds` (default), `followN`, `director`, `autoN`.
-    // Runtime keys: `C` man-cycle, `Space` ball-cam, `D` director, `A` auto.
+    // Start camera: `birds` default; `followN`, `director`, `autoN`,
+    // `free`. Runtime: `1-8` follow, `9` director, `0` autocam,
+    // `F` free camera, `C` cycle, `Space` ball-cam.
+    // Driving (WASD + mouse, Backspace/F2/F4) needs this window focused.
+    // The options menu starts open (cursor free); Escape toggles it.
     let init_mode = StartMode::parse(args.get(2).map(|s| s.as_str()).unwrap_or(""));
+    let menu_open = true;
+    let measure_gpu = args.iter().any(|a| a == "gpushot");
+    // Load settings (creates the file on first run).
+    let settings = ViewerSettings::load();
+    settings.save();
     let addr = format!("127.0.0.1:{port}");
     eprintln!("vis_viewer: listening on {addr} (sim should dial this addr)");
 
@@ -616,12 +812,24 @@ fn main() {
         // which silently turns every depth call into a no-op and reduces all
         // draws to last-wins painter's order. The 3D view needs real depth.
         depth_buffer: 24,
+        vsync: settings.vsync,
+        multisampling: settings.msaa,
         ..Default::default()
     };
     if let Err(e) = eframe::run_native(
         "rocketsim vis_viewer",
         options,
-        Box::new(move |_cc| Ok(Box::new(ViewerApp::new(mesh.clone(), client, init_mode)) as _)),
+        Box::new(move |_cc| {
+            let mut app = ViewerApp::new(
+                mesh.clone(),
+                client,
+                init_mode,
+                settings,
+                menu_open,
+            );
+            app.warm_bounds();
+            Ok(Box::new(app) as _)
+        }),
     ) {
         eprintln!("vis_viewer: eframe::run_native failed: {e:?}");
         std::process::exit(1);

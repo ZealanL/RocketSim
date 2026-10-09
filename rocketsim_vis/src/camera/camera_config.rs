@@ -5,6 +5,10 @@
 //! is **horizontal** FOV (RL convention, converted at projection time).
 //! `stiffness` drives speed zoom-out and car-cam yaw lag (ball-cam yaw is
 //! always rigid); `transition_speed` drives the toggle swing time.
+//!
+//! Every field has a serde default rooted in the same `d_*` constants as the
+//! [`Default`] impls, so sparse/old TOML files parse with RL values intact
+//! (never 0.0 surprises).
 
 use glam::Vec3A;
 use serde::{Deserialize, Serialize};
@@ -27,28 +31,55 @@ pub const D_BIRDS_EYE: Vec3A = Vec3A::new(-3000.0, 0.0, 1500.0);
 /// Tuning for the follow-car camera.
 #[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CarCameraConfig {
-    /// Boom length behind the car in uu (before speed zoom). Default: 270.
+    /// Boom length behind the car in uu (before speed zoom).
+    #[serde(default = "d_distance")]
     pub distance: f32,
-    /// Focus height above the car in uu. Default: 100.
+    /// Focus height above the car in uu.
+    #[serde(default = "d_height")]
     pub height: f32,
-    /// Car-cam look pitch in degrees (negative = down). Default: -3.0.
+    /// Car-cam look pitch in degrees (negative = down).
     ///
     /// Ball-cam looks exactly at the ball; this only shapes car-cam.
+    #[serde(default = "d_angle")]
     pub angle_deg: f32,
-    /// Zoom-out + yaw-lag stiffness (0-1). Higher = tighter. Default: 0.45.
+    /// Zoom-out + yaw-lag stiffness (0-1). Higher = tighter.
+    #[serde(default = "d_stiffness")]
     pub stiffness: f32,
-    /// Ball-cam toggle swing rate (1-2). Higher = snappier. Default: 1.2.
+    /// Ball-cam toggle swing rate (1-2). Higher = snappier.
+    #[serde(default = "d_transition")]
     pub transition_speed: f32,
+}
+
+fn d_distance() -> f32 {
+    D_DISTANCE
+}
+fn d_height() -> f32 {
+    D_HEIGHT
+}
+fn d_angle() -> f32 {
+    D_ANGLE_DEG
+}
+fn d_stiffness() -> f32 {
+    D_STIFFNESS
+}
+fn d_transition() -> f32 {
+    D_TRANSITION
+}
+fn d_fov() -> f32 {
+    D_FOV
+}
+fn d_birds_eye() -> Vec3A {
+    D_BIRDS_EYE
 }
 
 impl Default for CarCameraConfig {
     fn default() -> Self {
         Self {
-            distance: 270.0,
-            height: 100.0,
-            angle_deg: -3.0,
-            stiffness: 0.45,
-            transition_speed: 1.2,
+            distance: D_DISTANCE,
+            height: D_HEIGHT,
+            angle_deg: D_ANGLE_DEG,
+            stiffness: D_STIFFNESS,
+            transition_speed: D_TRANSITION,
         }
     }
 }
@@ -56,19 +87,22 @@ impl Default for CarCameraConfig {
 /// Top-level camera settings.
 #[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CameraConfig {
-    /// Horizontal field of view in degrees. Default: 110.
+    /// Horizontal field of view in degrees.
+    #[serde(default = "d_fov")]
     pub fov_degrees: f32,
-    /// Fixed birds-eye camera position in uu. Default: (-3000, 0, 1500).
+    /// Fixed birds-eye camera position in uu.
+    #[serde(default = "d_birds_eye")]
     pub birds_eye_pos: Vec3A,
     /// Follow-car tuning.
+    #[serde(default)]
     pub car_cam: CarCameraConfig,
 }
 
 impl Default for CameraConfig {
     fn default() -> Self {
         Self {
-            fov_degrees: 110.0,
-            birds_eye_pos: Vec3A::new(-3000.0, 0.0, 1500.0),
+            fov_degrees: D_FOV,
+            birds_eye_pos: D_BIRDS_EYE,
             car_cam: CarCameraConfig::default(),
         }
     }
@@ -256,6 +290,15 @@ mod tests {
         assert_eq!(cfg.car_cam.angle_deg, -3.0);
         assert_eq!(cfg.car_cam.stiffness, 0.45);
         assert_eq!(cfg.car_cam.transition_speed, 1.2);
+    }
+
+    #[test]
+    fn sparse_toml_keeps_rl_values() {
+        // Only one key present: everything else must be RL defaults, not 0.
+        let cfg: CameraConfig = toml::from_str("fov_degrees = 100.0").unwrap();
+        assert_eq!(cfg.fov_degrees, 100.0);
+        assert_eq!(cfg.car_cam.distance, D_DISTANCE);
+        assert_eq!(cfg.birds_eye_pos, D_BIRDS_EYE);
     }
 
     #[test]
