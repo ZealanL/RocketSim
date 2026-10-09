@@ -15,7 +15,9 @@ categories.workspace = true
 eframe = { version = "0.31", default-features = false, features = ["glow", "wayland", "x11", "default_fonts"] }
 egui = "0.31"
 glow = "0.16"
-rocketsim = { path = "../rocketsim", version = "0.3.0" }
+postcard = { version = "1", features = ["alloc"] }
+rocketsim = { path = "../rocketsim", version = "0.3.0", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
 
 [lints.clippy]
 all = "warn"

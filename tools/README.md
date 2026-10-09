@@ -35,6 +35,7 @@ Same seed + same ticks = same output; screenshot timing may vary, sim must not.
 |-------|-------|--------|----------|-------|
 | 0 | harness probe (xterm) | n/a | n/a | pipeline proof (xclock shot) |
 | 1 | empty window + overlay | ~0 (idle, repaint-on-demand; 4 frames/5s) | n/a (no loop) | ref `rocketsim_vis/tests/reference/stage1_empty.png` |
+| 2 | wire protocol (headless) | update ~1µs mean (gate <100µs); encode ~50µs @6car (gate <200µs) | n/a | payloads: 0car 676B / 1car 942B / 2car 1208B / 6car 2272B |
 | 3 | first triangle | | | |
 | 4 | arena mesh | | | |
 | 5 | ball + cars | | | |
