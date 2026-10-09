@@ -48,5 +48,6 @@ Same seed + same ticks = same output; screenshot timing may vary, sim must not.
 | 10 | effects | scene draw ~2ms CPU (llvmpipe); 60fps wall | 60 | ref `rocketsim_vis/tests/reference/stage10_fx.png`; dust/ring/flash/landing shot, glow unit-pinned; v1 airborne clause proven dead, fixed to acquisition+cooldown |
 | HW | real-GPU numbers (:0, 1280x720) | cpu ~0.08ms, submit ~0.01ms, gpu-work ~1.0ms (stall), present/egui ~0.5ms; ~1500fps uncapped, 167fps vsync-locked | — | vsync=false proven live; no code action justified (26x headroom @60fps/1440p) |
 | HW2 | A/B attribution (follow0, uncapped) | lines 0.30→0.02ms via tight quads; MSAA4 = 0.20ms (28%); pads ~0.3ms | — | tight-quad optimization landed (10x line-cost cut, vis-diff clean); MSAA is now the top lever (user knob: try 0/2) |
+| HW3 | draw-call batching | 17→10 draws/frame (instanced cars, merged arena, empty skips); ~20 fewer driver calls, single-digit µs real-HW est. | — | pixel-identical (0.000% vs old binary); llvmpipe can't resolve the delta |
 
 Budget: <1ms CPU submit/frame, 60fps cap. Numbers recorded per stage here.

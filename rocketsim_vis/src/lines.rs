@@ -186,6 +186,20 @@ pub fn expand_segment(
     out
 }
 
+/// Fast `frac.powf(exp)` for the exponents the ribbon configs use:
+/// 1.0 is the identity (exact for finite inputs), 0.5 is `sqrt` (within
+/// 1 ulp of `powf`; ribbon outputs feed the overlay lines only, never the
+/// static scene). Anything else falls back to `powf`.
+fn pow_shape(frac: f32, exp: f32) -> f32 {
+    if exp == 1.0 {
+        frac
+    } else if exp == 0.5 {
+        frac.sqrt()
+    } else {
+        frac.powf(exp)
+    }
+}
+
 #[derive(Debug, Copy, Clone)]
 struct RibbonPoint {
     pos: Vec3A,
@@ -325,7 +339,7 @@ impl RibbonEmitter {
     /// Line segments from the head (`emit_pos`) through all live points.
     /// Oldest point fades toward the head; disconnected heads emit nothing.
     pub fn segments(&self, emit_pos: Vec3A) -> Vec<Segment> {
-        let mut segs = Vec::new();
+        let mut segs = Vec::with_capacity(self.points.len());
         if self.points.is_empty() {
             return segs;
         }
@@ -342,13 +356,13 @@ impl RibbonEmitter {
             };
             let cur_color = self.config.end_color.lerp(
                 self.config.start_color,
-                frac.powf(self.config.color_exponent),
+                pow_shape(frac, self.config.color_exponent),
             );
             let cur_width = if point.connected && !is_oldest {
                 f32::lerp(
                     self.config.end_width,
                     self.config.start_width,
-                    frac.powf(self.config.width_exponent),
+                    pow_shape(frac, self.config.width_exponent),
                 )
             } else {
                 0.0
@@ -376,7 +390,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn color_lerp() {
+    fn pow_shape_matches() {
+        // 1.0 is the identity (exact), 0.5 is sqrt, anything else is powf.
+        for frac in [0.0, 0.25, 0.5, 0.75, 1.0] {
+            assert_eq!(pow_shape(frac, 1.0), frac);
+            assert_eq!(pow_shape(frac, 0.5), frac.sqrt());
+            assert_eq!(pow_shape(frac, 0.7), frac.powf(0.7));
+        }
+    }
+
+    #[test]
+    fn small_value_contracts() {
         let c = Color::new(0.0, 0.0, 0.0, 0.0).lerp(Color::new(1.0, 1.0, 1.0, 1.0), 0.5);
         assert_eq!(c, Color::new(0.5, 0.5, 0.5, 0.5));
         assert_eq!(Color::WHITE.with_alpha(0.15).a, 0.15);

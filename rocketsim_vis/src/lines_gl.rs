@@ -129,6 +129,12 @@ impl LinesGl {
             .saturating_sub(kept);
         self.truncated = over;
         self.n_drawn = (kept * 6) as i32;
+        if buf.is_empty() {
+            // Nothing staged (all invisible or no segments): the draw skips
+            // on `n_drawn == 0`, so stale buffer contents are harmless and
+            // the upload costs no GL calls (common with toggles off).
+            return;
+        }
         unsafe {
             gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.vbo));
             gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, bytes_of(&buf), glow::DYNAMIC_DRAW);

@@ -6,12 +6,12 @@
 //! sample the flat-white texture so the procedural colors pass through
 //! untinted. Uniforms are cached at init; the sampler is bound to unit 0 once.
 
-use glam::Mat4;
+use glam::{Mat4, Vec2, Vec3};
 use glow::HasContext;
 
 use crate::{
     gl_util::{bytes_of, compile_program, uniform_location},
-    mesh::ArenaMesh,
+    mesh::{ArenaMesh, ArenaPart},
     textures::{PngImage, TextureGl},
 };
 
@@ -87,24 +87,45 @@ impl PartGl {
     }
 }
 
-/// Owned GL objects for the arena: open bowl (shell) + field cap + low
-/// backdrop planes, plus the ceiling lid + high backdrop for enclosed
-/// (interior) views. The cutaway hides the roof; interior cameras need it.
+/// Merges two always-together static parts into one index pool, so one draw
+/// covers both (fewer draws + VAO binds per frame). Triangle order is kept:
+/// all of `a`, then all of `b` with indices rebased past `a`'s verts. With
+/// LEQUAL depth and blending off, the merged draw therefore resolves exactly
+/// like two sequential draws — pixels are unchanged.
+fn merge_two(a: &ArenaPart, b: &ArenaPart) -> (Vec<Vec3>, Vec<Vec3>, Vec<Vec2>, Vec<u32>) {
+    let mut verts = Vec::with_capacity(a.verts.len() + b.verts.len());
+    verts.extend_from_slice(&a.verts);
+    verts.extend_from_slice(&b.verts);
+    let mut normals = Vec::with_capacity(a.normals.len() + b.normals.len());
+    normals.extend_from_slice(&a.normals);
+    normals.extend_from_slice(&b.normals);
+    let mut uvs = Vec::with_capacity(a.uvs.len() + b.uvs.len());
+    uvs.extend_from_slice(&a.uvs);
+    uvs.extend_from_slice(&b.uvs);
+    let mut indices = Vec::with_capacity(a.indices.len() + b.indices.len());
+    indices.extend_from_slice(&a.indices);
+    let base = a.verts.len() as u32;
+    indices.extend(b.indices.iter().map(|i| i + base));
+    (verts, normals, uvs, indices)
+}
+
+/// Owned GL objects for the arena: the cutaway bowl (shell + field cap +
+/// low backdrop, always drawn) plus the roof (ceiling lid + high backdrop,
+/// enclosed/interior views only). The cutaway hides the roof; interior
+/// cameras need it. Shell + field + low planes merged at init: 1 draw
+/// covers the cutaway (was 3), roof adds 1 more when enclosed (was 2).
 pub struct ArenaGl {
     prog: glow::Program,
     u_model: glow::UniformLocation,
     u_view: glow::UniformLocation,
     u_proj: glow::UniformLocation,
     white: TextureGl,
-    shell: PartGl,
-    field: PartGl,
-    planes_low: PartGl,
-    lid: PartGl,
-    planes_high: PartGl,
+    cut: PartGl,
+    roof: PartGl,
 }
 
 impl ArenaGl {
-    /// Uploads all five parts; panics with logs on failure.
+    /// Uploads both merged parts; panics with logs on failure.
     /// Empty parts (TheVoid) build valid objects.
     pub fn new(gl: &glow::Context, mesh: &ArenaMesh) -> Self {
         let prog = compile_program(gl, "arena", ARENA_VERT_SRC, ARENA_FRAG_SRC);
@@ -117,52 +138,32 @@ impl ArenaGl {
             gl.use_program(None);
         }
         let white = TextureGl::new(gl, &PngImage::decode(WHITE_PNG));
+        // Cutaway triple (drawn in mesh order: shell, field, low planes);
+        // roof pair (lid, then high backdrop).
+        let (v, n, u, i) = merge_two(&mesh.shell, &mesh.field);
+        let cut12 = ArenaPart {
+            verts: v,
+            normals: n,
+            uvs: u,
+            indices: i,
+        };
+        let (v, n, u, i) = merge_two(&cut12, &mesh.planes_low);
+        let cut = PartGl::new(gl, &v, &n, &u, &i);
+        let (v, n, u, i) = merge_two(&mesh.lid, &mesh.planes_high);
+        let roof = PartGl::new(gl, &v, &n, &u, &i);
         Self {
             prog,
             u_model,
             u_view,
             u_proj,
             white,
-            shell: PartGl::new(
-                gl,
-                &mesh.shell.verts,
-                &mesh.shell.normals,
-                &mesh.shell.uvs,
-                &mesh.shell.indices,
-            ),
-            field: PartGl::new(
-                gl,
-                &mesh.field.verts,
-                &mesh.field.normals,
-                &mesh.field.uvs,
-                &mesh.field.indices,
-            ),
-            planes_low: PartGl::new(
-                gl,
-                &mesh.planes_low.verts,
-                &mesh.planes_low.normals,
-                &mesh.planes_low.uvs,
-                &mesh.planes_low.indices,
-            ),
-            lid: PartGl::new(
-                gl,
-                &mesh.lid.verts,
-                &mesh.lid.normals,
-                &mesh.lid.uvs,
-                &mesh.lid.indices,
-            ),
-            planes_high: PartGl::new(
-                gl,
-                &mesh.planes_high.verts,
-                &mesh.planes_high.normals,
-                &mesh.planes_high.uvs,
-                &mesh.planes_high.indices,
-            ),
+            cut,
+            roof,
         }
     }
 
-    /// Draws the cutaway (shell + field + low planes), plus the roof
-    /// (lid + high backdrop) when `enclosed`. Viewport in GL pixels.
+    /// Draws the cutaway in ONE draw (shell + field + low planes), plus the
+    /// roof in ONE draw when `enclosed`. Viewport in GL pixels.
     /// Resets ALL shared-context GL state first (egui painter state leaks:
     /// blend/scissor/cull/mask — every draw owns its state, no exceptions).
     pub fn draw(
@@ -189,15 +190,11 @@ impl ArenaGl {
             gl.uniform_matrix_4_f32_slice(Some(&self.u_view), false, &view.to_cols_array());
             gl.uniform_matrix_4_f32_slice(Some(&self.u_proj), false, &proj.to_cols_array());
             self.white.bind(gl);
-            for part in [&self.shell, &self.field, &self.planes_low] {
-                gl.bind_vertex_array(Some(part.vao));
-                gl.draw_elements(glow::TRIANGLES, part.n_indices, glow::UNSIGNED_INT, 0);
-            }
+            gl.bind_vertex_array(Some(self.cut.vao));
+            gl.draw_elements(glow::TRIANGLES, self.cut.n_indices, glow::UNSIGNED_INT, 0);
             if enclosed {
-                for part in [&self.lid, &self.planes_high] {
-                    gl.bind_vertex_array(Some(part.vao));
-                    gl.draw_elements(glow::TRIANGLES, part.n_indices, glow::UNSIGNED_INT, 0);
-                }
+                gl.bind_vertex_array(Some(self.roof.vao));
+                gl.draw_elements(glow::TRIANGLES, self.roof.n_indices, glow::UNSIGNED_INT, 0);
             }
             gl.bind_vertex_array(None);
             gl.use_program(None);
@@ -207,11 +204,8 @@ impl ArenaGl {
     /// Deletes every GL object. Call on the GL thread before dropping.
     pub fn destroy(&self, gl: &glow::Context) {
         unsafe {
-            self.shell.destroy(gl);
-            self.field.destroy(gl);
-            self.planes_low.destroy(gl);
-            self.lid.destroy(gl);
-            self.planes_high.destroy(gl);
+            self.cut.destroy(gl);
+            self.roof.destroy(gl);
             self.white.destroy(gl);
             gl.delete_program(self.prog);
         }
@@ -231,5 +225,43 @@ mod tests {
         assert!(ARENA_VERT_SRC.contains("uniform mat4 u_model"));
         assert!(ARENA_FRAG_SRC.contains("team_color_from_pos"));
         assert!(ARENA_FRAG_SRC.contains("get_grid_line_val"));
+    }
+
+    #[test]
+    fn merge_two_rebases_and_preserves_order() {
+        use crate::mesh::ArenaPart;
+        let a = ArenaPart {
+            verts: vec![Vec3::ZERO, Vec3::X, Vec3::Y],
+            normals: vec![Vec3::Z; 3],
+            uvs: vec![Vec2::ZERO; 3],
+            indices: vec![0, 1, 2],
+        };
+        let b = ArenaPart {
+            verts: vec![Vec3::ONE, Vec3::NEG_ONE],
+            normals: vec![Vec3::Z; 2],
+            uvs: vec![Vec2::ONE; 2],
+            indices: vec![0, 1, 0],
+        };
+        let (v, n, u, i) = merge_two(&a, &b);
+        assert_eq!(v.len(), 5);
+        assert_eq!(n.len(), 5);
+        assert_eq!(u.len(), 5);
+        // a-tris verbatim, then b-tris rebased past a's verts.
+        assert_eq!(i, vec![0, 1, 2, 3, 4, 3]);
+        assert_eq!(v[3], Vec3::ONE);
+    }
+
+    #[test]
+    fn merge_two_empty_is_valid() {
+        // TheVoid builds empty parts; merging must stay a valid no-op.
+        use crate::mesh::ArenaPart;
+        let empty = ArenaPart {
+            verts: vec![],
+            normals: vec![],
+            uvs: vec![],
+            indices: vec![],
+        };
+        let (v, _, _, i) = merge_two(&empty, &empty);
+        assert!(v.is_empty() && i.is_empty());
     }
 }

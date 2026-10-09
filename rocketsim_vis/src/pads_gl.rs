@@ -90,7 +90,7 @@ impl VariantGl {
             gl.bind_buffer(glow::ARRAY_BUFFER, Some(inst_vbo));
             gl.buffer_data_u8_slice(
                 glow::ARRAY_BUFFER,
-                &vec![0u8; MAX_PAD_INSTANCES * INSTANCE_BYTES],
+                &[0u8; MAX_PAD_INSTANCES * INSTANCE_BYTES],
                 glow::DYNAMIC_DRAW,
             );
             for col in 0..4 {
@@ -129,7 +129,13 @@ impl VariantGl {
 
     /// Streams instance matrices (truncates past the buffer — with the
     /// 34-pad cap the caller never exceeds it; truncation is still loud).
+    /// Empty groups skip the upload (stale buffer contents are harmless:
+    /// zero instances draw nothing) — a hidden pad layer costs no GL calls.
     fn upload(&mut self, gl: &glow::Context, matrices: &[Mat4]) {
+        self.n_instances = matrices.len() as i32;
+        if matrices.is_empty() {
+            return;
+        }
         assert!(
             matrices.len() <= MAX_PAD_INSTANCES,
             "pad instances exceed buffer: {}",
@@ -140,7 +146,6 @@ impl VariantGl {
             gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, bytes_of(matrices), glow::DYNAMIC_DRAW);
             gl.bind_buffer(glow::ARRAY_BUFFER, None);
         }
-        self.n_instances = matrices.len() as i32;
     }
 
     fn destroy(&self, gl: &glow::Context) {
@@ -200,7 +205,12 @@ impl PadsGl {
 
     /// Draws non-empty variants with (`view`, `proj`). State reset matches
     /// the arena pass (shared egui context — every draw owns its state).
+    /// With zero instances everywhere (pads hidden in settings) this issues
+    /// no GL calls at all.
     pub fn draw(&self, gl: &glow::Context, view: &Mat4, proj: &Mat4) {
+        if self.variants.iter().all(|v| v.n_instances == 0) {
+            return;
+        }
         unsafe {
             gl.disable(glow::CULL_FACE);
             gl.disable(glow::SCISSOR_TEST);

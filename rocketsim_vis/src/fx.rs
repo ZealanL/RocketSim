@@ -186,7 +186,9 @@ impl CarFx {
     /// line segments.
     pub fn update(&mut self, state: &ArenaState, dt: f32) -> Vec<Segment> {
         let dt = dt.clamp(0.0, 1.0 / 30.0);
-        let mut segs = Vec::new();
+        // One segment per live particle plus a full ring per live ring;
+        // latched wheel-glows grow past this (capacity only, never output).
+        let mut segs = Vec::with_capacity(self.parts.len() + self.rings.len() * RING_SEGS);
 
         for (idx, (info, car)) in state.cars.iter().enumerate() {
             if self.prev.len() <= idx {
@@ -327,27 +329,29 @@ impl CarFx {
                     });
                 }
 
-                // Latched reset: dim glowing ring around each wheel (axle =
-                // car Y). Quiet on purpose — RL shows only the momentary
-                // burst, and this held indicator must never outshine it.
+                // Latched reset: dim ring per wheel. Quiet on purpose: RL
+                // shows only the burst, so the held cue stays dimmer.
+                // Segments emit directly (no per-wheel point Vec): the
+                // endpoints match the old windows(2) expansion exactly.
                 if latched {
                     let right = car.rot_mat.y_axis.try_normalize().unwrap_or(Vec3A::X);
                     let up = Vec3A::Z;
+                    let color = RESET_FLASH.with_alpha(0.7);
                     for w in wheels {
-                        let mut pts = Vec::with_capacity(RING_SEGS + 1);
-                        for k in 0..=RING_SEGS {
+                        let mut prev = w + right * 24.0;
+                        for k in 1..=RING_SEGS {
                             let a = (k as f32 / RING_SEGS as f32) * std::f32::consts::TAU;
-                            pts.push(w + right * a.cos() * 24.0 + up * a.sin() * 24.0);
+                            let cur = w + right * a.cos() * 24.0 + up * a.sin() * 24.0;
+                            segs.push(Segment {
+                                a: prev,
+                                b: cur,
+                                color_a: color,
+                                color_b: color,
+                                width_a: 2.5,
+                                width_b: 2.5,
+                            });
+                            prev = cur;
                         }
-                        let color = RESET_FLASH.with_alpha(0.7);
-                        segs.extend(pts.windows(2).map(|pair| Segment {
-                            a: pair[0],
-                            b: pair[1],
-                            color_a: color,
-                            color_b: color,
-                            width_a: 2.5,
-                            width_b: 2.5,
-                        }));
                     }
                 }
             }
