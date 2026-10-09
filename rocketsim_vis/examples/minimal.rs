@@ -26,6 +26,11 @@ fn main() {
 
     // ~5 seconds at 120 Hz; the viewer keeps the last frame when we exit.
     for _ in 0..600 {
+        // Demo boost: pin to full so flames show (the old demo did the same).
+        let mut car = *arena.get_car_state(car_idx);
+        car.boost = 100.0;
+        arena.set_car_state(car_idx, car);
+
         arena.set_car_controls(car_idx, controls);
         arena.step_tick();
         std::thread::sleep(std::time::Duration::from_millis(8));

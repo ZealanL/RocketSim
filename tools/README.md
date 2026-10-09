@@ -40,9 +40,13 @@ Same seed + same ticks = same output; screenshot timing may vary, sim must not.
 | 4 | arena mesh | draw 0.87ms CPU; 62fps wall (cap 60) | 62 | ref `rocketsim_vis/tests/reference/stage4_arena.png`; weld 5.27x soccar (24090→4570), 5.60x hoops, 5.41x dropshot |
 | 5 | textured ball + cars (old look) | scene draw ~1.9ms CPU (llvmpipe; watch); 62fps wall | 62 | ref `rocketsim_vis/tests/reference/stage5_live.png`; white ball + blue/orange customs + team grid, live tick 1163 |
 | 6 | pads, instanced | scene draw ~1.9ms CPU (llvmpipe); 62fps wall | 62 | ref `rocketsim_vis/tests/reference/stage6_pads.png`; 4 instanced draws, 29/34 + 5 culled live, pill close-up verified |
-| 7 | lines/trails | | | |
-| 8a-d | cameras | | | |
-| 9 | menus + settings | | | |
-| 10 | effects | | | |
+| 7 | lines and trails | scene draw ~2.2ms CPU (llvmpipe); 62fps wall | 62 | ref `rocketsim_vis/tests/reference/stage7_lines.png`; 37 segs, ground line crisp, trail + boost via action sim, zero rainbow |
+| 8a | camera math | headless (21 tests) | n/a | rigid yaw, freezes, swing, FOV, director holds, auto rules |
+| 8b | birds-eye + car-cam | scene draw ~2.0ms CPU (llvmpipe); 62fps wall | 62 | refs `stage8_birds.png` + `stage8_follow.png`; RL ball-cam verified, frustum follows (16/18 culled in follow) |
+| 8c | director + auto | scene draw ~1.5-1.7ms CPU (llvmpipe); 62fps wall | 62 | refs `stage8_director.png` (threat cut to car + boost flame) + `stage8_auto.png` (auto ball-cam chase); retreat rule also observed live |
+| 9 | menus + settings | scene draw ~1.8ms CPU (llvmpipe); 60fps wall | 60 | ref `rocketsim_vis/tests/reference/stage9_menu.png`; Escape menu live, TOML persist + toggle proof (pads off/FOV 90 loaded) |
+| 10 | effects | scene draw ~2ms CPU (llvmpipe); 60fps wall | 60 | ref `rocketsim_vis/tests/reference/stage10_fx.png`; dust/ring/flash/landing shot, glow unit-pinned; v1 airborne clause proven dead, fixed to acquisition+cooldown |
+| HW | real-GPU numbers (:0, 1280x720) | cpu ~0.08ms, submit ~0.01ms, gpu-work ~1.0ms (stall), present/egui ~0.5ms; ~1500fps uncapped, 167fps vsync-locked | — | vsync=false proven live; no code action justified (26x headroom @60fps/1440p) |
+| HW2 | A/B attribution (follow0, uncapped) | lines 0.30→0.02ms via tight quads; MSAA4 = 0.20ms (28%); pads ~0.3ms | — | tight-quad optimization landed (10x line-cost cut, vis-diff clean); MSAA is now the top lever (user knob: try 0/2) |
 
 Budget: <1ms CPU submit/frame, 60fps cap. Numbers recorded per stage here.

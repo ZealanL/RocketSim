@@ -12,11 +12,13 @@ use std::{
     time::{Duration, Instant},
 };
 
-use glam::{Mat3, Vec3};
+use glam::{Mat3, Vec3, Vec3A};
 use rocketsim::GameMode;
 use rocketsim_vis::{
     arena_gl::ArenaGl,
     frustum::frustum_planes,
+    lines::{RibbonConfig, RibbonEmitter, Segment, ground_line},
+    lines_gl::LinesGl,
     main_gl::{
         BALL_MODEL, BALL_TEXTURE, MainProgram, ModelGl, car_model_name, car_texture_name,
         model_matrix,
@@ -39,6 +41,7 @@ struct SceneGl {
     prog_main: MainProgram,
     pads: PadsGl,
     pad_radii: [f32; 4],
+    lines: LinesGl,
     models: HashMap<String, ModelGl>,
     textures: HashMap<String, TextureGl>,
 }
@@ -55,6 +58,7 @@ impl SceneGl {
             variant_radius(&pad_meshes[3]),
         ];
         let pads = PadsGl::new(gl, &pad_meshes);
+        let lines = LinesGl::new(gl);
         let mut models = HashMap::new();
         for (name, obj) in [
             (BALL_MODEL, include_str!("../models/ball.obj")),
@@ -87,6 +91,7 @@ impl SceneGl {
             prog_main,
             pads,
             pad_radii,
+            lines,
             models,
             textures,
         }
@@ -104,6 +109,15 @@ struct ViewerApp {
     last_draw_ms: Arc<Mutex<f64>>,
     /// (pads drawn, pads frustum-culled) from the GL callback.
     pads_info: Arc<Mutex<(usize, usize)>>,
+    /// (line segments drawn, truncated) from the GL callback.
+    lines_info: Arc<Mutex<(usize, usize)>>,
+    /// Trail state (CPU-side, updated per viewer frame from sim ticks).
+    ball_ribbon: RibbonEmitter,
+    boost_ribbons: Vec<RibbonEmitter>,
+    /// Last sim tick consumed (replays missed ticks into the ribbons).
+    last_tick: Option<u64>,
+    /// Line segments for the GL callback (built on the UI thread).
+    pending_segs: Arc<Mutex<Vec<Segment>>>,
     last_frame: Instant,
     fps_ema: f32,
     soup_verts: usize,
@@ -124,6 +138,11 @@ impl ViewerApp {
             client,
             last_draw_ms: Arc::new(Mutex::new(0.0)),
             pads_info: Arc::new(Mutex::new((0, 0))),
+            lines_info: Arc::new(Mutex::new((0, 0))),
+            ball_ribbon: RibbonEmitter::new(RibbonConfig::ball_trail()),
+            boost_ribbons: Vec::new(),
+            last_tick: None,
+            pending_segs: Arc::new(Mutex::new(Vec::new())),
             last_frame: Instant::now(),
             fps_ema: 60.0,
             soup_verts: soup,
@@ -147,12 +166,14 @@ impl eframe::App for ViewerApp {
         }
         self.frames += 1;
         let frames = self.frames;
-        let (scene, mesh, client_frame, last_draw_ms, pads_info) = (
+        let (scene, mesh, client_frame, last_draw_ms, pads_info, pending_segs, lines_info) = (
             self.scene.clone(),
             self.mesh.clone(),
             self.client.latest(),
             self.last_draw_ms.clone(),
             self.pads_info.clone(),
+            self.pending_segs.clone(),
+            self.lines_info.clone(),
         );
         let (soup, welded, indices, fps) = (
             self.soup_verts,
@@ -163,8 +184,43 @@ impl eframe::App for ViewerApp {
         let (status, received) = (self.client.status(), self.client.received());
         let tick = client_frame.as_ref().map(|f| f.state.tick_count);
 
+        // Advance trails in SIM time: replay ticks missed since the last
+        // viewer frame (clamped — a reset jump must not spiral emitters).
+        if let Some(frame) = &client_frame {
+            let tick_now = frame.state.tick_count;
+            let steps = match self.last_tick {
+                Some(last) => tick_now.saturating_sub(last).clamp(1, 10),
+                None => 1,
+            } as usize;
+            self.last_tick = Some(tick_now);
+            let ball_pos = frame.state.ball.phys.pos;
+            for _ in 0..steps {
+                self.ball_ribbon
+                    .update(true, ball_pos, Vec3A::ZERO, frame.dt);
+            }
+            let mut segs = self.ball_ribbon.segments(ball_pos);
+            let floor_z = rocketsim::consts::arena::get_aabb(frame.state.game_mode())
+                .min
+                .z;
+            segs.push(ground_line(ball_pos, floor_z));
+            for (i, (_, car)) in frame.state.cars.iter().enumerate() {
+                while self.boost_ribbons.len() <= i {
+                    self.boost_ribbons
+                        .push(RibbonEmitter::new(RibbonConfig::boost()));
+                }
+                let fwd = car.phys.get_forward_dir();
+                let emit_pos = car.phys.pos - fwd * 60.0;
+                let emit_vel = -fwd * 300.0;
+                for _ in 0..steps {
+                    self.boost_ribbons[i].update(car.is_boosting, emit_pos, emit_vel, frame.dt);
+                }
+                segs.extend(self.boost_ribbons[i].segments(emit_pos));
+            }
+            *self.pending_segs.lock().expect("viewer segs poisoned") = segs;
+        }
+
         egui::Window::new("rocketsim vis_viewer").show(ctx, |ui| {
-            ui.label("stage 6 — pads, instanced (fixed pose)");
+            ui.label("stage 7 — lines and trails (fixed pose)");
             ui.monospace(format!("soccar soup={soup} welded={welded} idx={indices}"));
             match &status {
                 ConnStatus::Waiting => ui.monospace("sim: waiting".to_string()),
@@ -179,6 +235,8 @@ impl eframe::App for ViewerApp {
             ui.monospace(format!("scene draw: {ms:.3} ms"));
             let (drawn, culled) = pads_info.lock().map(|g| *g).unwrap_or((0, 0));
             ui.monospace(format!("pads: {drawn} drawn, {culled} culled"));
+            let (nlines, ltrunc) = lines_info.lock().map(|g| *g).unwrap_or((0, 0));
+            ui.monospace(format!("lines: {nlines} ({ltrunc} truncated)"));
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
@@ -251,6 +309,26 @@ impl eframe::App for ViewerApp {
                         scene.pads.draw(gl, &view_mat, &proj_mat);
                         if let Ok(mut info) = pads_info.lock() {
                             *info = (instances.iter().map(|v| v.len()).sum(), culled);
+                        }
+                        // Lines last (transparent): CPU-expanded tight quads.
+                        let segs = std::mem::take(
+                            &mut *pending_segs.lock().expect("viewer segs poisoned"),
+                        );
+                        // Eye for expansion = fixed-pose camera position
+                        // (view inverse translation); proj11 + height
+                        // drive min-width.
+                        let eye = Vec3A::from(view::arena_pose().0);
+                        scene.lines.upload(
+                            gl,
+                            &segs,
+                            eye,
+                            &view_mat,
+                            proj_mat.y_axis.y,
+                            h_px as f32,
+                        );
+                        scene.lines.draw(gl, &view_mat, &proj_mat);
+                        if let Ok(mut info) = lines_info.lock() {
+                            *info = (scene.lines.drawn(), scene.lines.truncated);
                         }
                         drop(guard);
                         if let Ok(mut g) = last_draw_ms.lock() {

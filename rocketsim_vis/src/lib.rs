@@ -25,6 +25,8 @@
 pub mod arena_gl;
 pub mod frustum;
 pub mod gl_util;
+pub mod lines;
+pub mod lines_gl;
 pub mod main_gl;
 pub mod mesh;
 pub mod net_client;
