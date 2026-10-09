@@ -25,6 +25,7 @@
 pub mod arena_gl;
 pub mod camera;
 pub mod frustum;
+pub mod fx;
 pub mod gl_util;
 pub mod lines;
 pub mod lines_gl;

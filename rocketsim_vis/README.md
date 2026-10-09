@@ -33,9 +33,12 @@ Window (handled every tick):
 * `C` — cycle camera: birds-eye, then each car in order
 * `Space` — toggle ball-cam while following a car
 
-The driveable demo (`examples/vis.rs`) additionally uses:
-WASD + mouse to drive, Q/E roll, Shift handbrake, `Backspace` reset to
-kickoff, `2` dribble the ball, `4` launch it.
+The driveable demo (`examples/drive.rs`) additionally uses, in the viewer
+window: WASD + mouse to drive the directly followed car (birds-eye,
+director, and free cam send neutral), Q/E roll, Shift handbrake,
+`Backspace` reset to kickoff, `F2` dribble the ball, `F4` launch it. Inputs stream to
+the sim over the control channel (`127.0.0.1:39202`); gamepads keep
+working from the sim side with no focus needed.
 
 ## Examples
 

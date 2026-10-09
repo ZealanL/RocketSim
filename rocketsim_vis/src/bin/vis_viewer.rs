@@ -20,6 +20,7 @@ use rocketsim_vis::{
         DirectorTarget,
     },
     frustum::frustum_planes,
+    fx::CarFx,
     lines::{RibbonConfig, RibbonEmitter, Segment, ground_line},
     lines_gl::LinesGl,
     main_gl::{
@@ -118,6 +119,8 @@ struct ViewerApp {
     /// Trail state (CPU-side, updated per viewer frame from sim ticks).
     ball_ribbon: RibbonEmitter,
     boost_ribbons: Vec<RibbonEmitter>,
+    /// Effect state (jump/dodge/reset, sim-time replayed).
+    car_fx: CarFx,
     /// Last sim tick consumed (replays missed ticks into the ribbons).
     last_tick: Option<u64>,
     /// Line segments for the GL callback (built on the UI thread).
@@ -235,6 +238,7 @@ impl ViewerApp {
             lines_info: Arc::new(Mutex::new((0, 0))),
             ball_ribbon: RibbonEmitter::new(RibbonConfig::ball_trail()),
             boost_ribbons: Vec::new(),
+            car_fx: CarFx::default(),
             last_tick: None,
             pending_segs: Arc::new(Mutex::new(Vec::new())),
             cam_man: None,
@@ -339,6 +343,14 @@ impl eframe::App for ViewerApp {
             if self.settings.show_ground_line {
                 segs.push(ground_line(ball_pos, floor_z));
             }
+            // Effects replay missed ticks but only keep the last call's
+            // segments (rings render at their current age — replaying the
+            // same tick's rings would double-draw them).
+            let mut fx_segs = Vec::new();
+            for _ in 0..steps {
+                fx_segs = self.car_fx.update(&frame.state, frame.dt);
+            }
+            segs.extend(fx_segs);
             for (i, (_, car)) in frame.state.cars.iter().enumerate() {
                 while self.boost_ribbons.len() <= i {
                     self.boost_ribbons
