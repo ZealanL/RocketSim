@@ -15,9 +15,11 @@ categories.workspace = true
 eframe = { version = "0.31", default-features = false, features = ["glow", "wayland", "x11", "default_fonts"] }
 egui = "0.31"
 egui_glow = "0.31"
+glam.workspace = true
 glow = "0.16"
 postcard = { version = "1", features = ["alloc"] }
 rocketsim = { path = "../rocketsim", version = "0.3.0", features = ["serde"] }
+rustc-hash.workspace = true
 serde = { version = "1", features = ["derive"] }
 
 [lints.clippy]

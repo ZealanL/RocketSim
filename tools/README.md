@@ -37,7 +37,7 @@ Same seed + same ticks = same output; screenshot timing may vary, sim must not.
 | 1 | empty window + overlay | ~0 (idle, repaint-on-demand; 4 frames/5s) | n/a (no loop) | ref `rocketsim_vis/tests/reference/stage1_empty.png` |
 | 2 | wire protocol (headless) | update ~1µs mean (gate <100µs); encode ~50µs @6car (gate <200µs) | n/a | payloads: 0car 676B / 1car 942B / 2car 1208B / 6car 2272B |
 | 3 | first triangle | draw 0.03ms CPU; 61fps wall (cap 60) | 61 | ref `rocketsim_vis/tests/reference/stage3_triangle.png` |
-| 4 | arena mesh | | | |
+| 4 | arena mesh | draw 0.87ms CPU; 62fps wall (cap 60) | 62 | ref `rocketsim_vis/tests/reference/stage4_arena.png`; weld 5.27x soccar (24090→4570), 5.60x hoops, 5.41x dropshot |
 | 5 | ball + cars | | | |
 | 6 | pads instanced | | | |
 | 7 | lines/trails | | | |
