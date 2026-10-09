@@ -1,7 +1,7 @@
 //! Minimal windowed sim: one car driving forward, no input.
 //!
-//! Shows the smallest setup needed for [`rocketsim_vis`]: init meshes,
-//! create the arena, enable the visualizer, then step ticks.
+//! Shows the smallest setup: init meshes, create the arena, enable the
+//! visualizer, then step ticks.
 //!
 //! Run with: `cargo run -p rocketsim_vis --example minimal`
 
@@ -26,7 +26,7 @@ fn main() {
 
     // ~5 seconds at 120 Hz; the viewer keeps the last frame when we exit.
     for _ in 0..600 {
-        // Demo boost: pin to full so flames show (the old demo did the same).
+        // Pin boost to full so flames show.
         let mut car = *arena.get_car_state(car_idx);
         car.boost = 100.0;
         arena.set_car_state(car_idx, car);

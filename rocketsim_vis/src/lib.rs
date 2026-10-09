@@ -1,7 +1,7 @@
-//! Detached 3D visualizer for RocketSim (v2 rebuild).
+//! Detached 3D visualizer for RocketSim.
 //!
 //! The sim streams frames over TCP to the `vis_viewer` process; see
-//! `tools/README.md` for the screenshot harness and stage plan.
+//! `tools/README.md` for the screenshot harness.
 //!
 //! Quick start (old base API — launches a viewer if none listens):
 //!
@@ -40,6 +40,7 @@ pub mod pads_gl;
 pub mod photo;
 pub mod proto;
 pub mod settings;
+pub mod spectate;
 pub mod textures;
 pub mod triangle;
 pub mod view;
@@ -53,15 +54,12 @@ pub const DEFAULT_VIEWER_ADDR: &str = "127.0.0.1:39201";
 
 /// Extension trait that attaches/detaches the detached viewer to an arena.
 ///
-/// [`set_vis_enabled`](ArenaVisExt::set_vis_enabled) is the old base API:
-/// enabling launches a viewer if none listens and streams every tick;
-/// disabling detaches and closes a viewer this call opened (never one the
-/// user started themselves). [`set_net_vis`](ArenaVisExt::set_net_vis)
-/// skips the auto-launch and streams to an explicit address.
+/// [`set_vis_enabled`](ArenaVisExt::set_vis_enabled) launches a viewer if
+/// none listens and streams every tick; disabling detaches and closes a
+/// viewer this call opened (never one the user started).
 pub trait ArenaVisExt {
-    /// Old base API: enable (`true`) or disable (`false`) the 3D visualizer.
-    /// Same signature as the classic in-process vis; here it drives the
-    /// detached viewer on [`DEFAULT_VIEWER_ADDR`].
+    /// Enable (`true`) or disable (`false`) the 3D visualizer on
+    /// [`DEFAULT_VIEWER_ADDR`].
     fn set_vis_enabled(&mut self, vis_enabled: bool) {
         if vis_enabled {
             ensure_viewer_running(DEFAULT_VIEWER_ADDR);

@@ -1,12 +1,7 @@
 //! Detached-viewer bridge: a [`rocketsim::Vis`] that forwards ticks to a
 //! separate viewer process over TCP without ever blocking the sim.
-//!
-//! The sim side pays one `ArenaState` clone per tick plus a `try_lock`;
-//! serialization and sockets live on a background sender thread with a
-//! latest-only slot, so a slow or missing viewer can only cause dropped
-//! frames, never a stalled tick.
-//!
-//! Wire format: [`crate::proto`] (`[u32 LE len][postcard(VisFrame)]`).
+//! Latest-only slot on a background thread: a slow or missing viewer costs
+//! dropped frames, never a stalled tick. Wire format: [`crate::proto`].
 
 use std::{
     io::{Read, Write},
@@ -65,29 +60,69 @@ impl Drop for NetVis {
 
 impl Vis for NetVis {
     fn update(&mut self, arena_state: &ArenaState, dt: f32) {
-        // Clone is ~0.1 µs (6 cars); encode happens on the sender thread.
-        // try_lock: if the sender is momentarily holding the slot, drop this
-        // tick rather than stall the sim. The slot always keeps the NEWEST
-        // frame (overwrite), so the viewer converges instead of lagging.
+        // Latest-only overwrite via try_lock: drops the tick rather than
+        // stalling the sim when the sender holds the slot.
         if let Ok(mut slot) = self.slot.try_lock() {
             *slot = Some(VisFrame::new(arena_state.clone(), dt));
         }
     }
 }
 
-/// Viewer→sim control channel, sim side (stage 5c).
+/// Viewer→sim control channel, sim side.
+/// The SIM listens here (default `127.0.0.1:39202`); the viewer dials lazily
+/// and streams [`ControlMsg`] frames. One background thread accepts and
+/// keeps only the LATEST message — poll each tick with
+/// [`ControlServer::latest`] (level state: same message until a newer one
+/// arrives, so failsafe to neutral on age). Construction never blocks,
+/// fails, or panics (the bind itself retries on the worker thread).
+/// Drop stops the thread.
 ///
-/// The SIM listens (default `127.0.0.1:39202`, see
-/// [`crate::proto::DEFAULT_CONTROL_PORT`]); the viewer dials lazily with
-/// `TCP_NODELAY` and streams [`ControlMsg`] frames at its frame rate (see
-/// `ControlSender` in [`crate::net_client`]). One background thread accepts
-/// and keeps only the LATEST message — the sim polls each tick with
-/// [`ControlServer::latest`] and stale inputs are dropped by construction.
+/// ```rust
+/// use std::{
+///     io::Write,
+///     net::TcpStream,
+///     time::{Duration, Instant},
+/// };
 ///
-/// Construction never blocks, never fails, never panics: the bind itself
-/// happens on the worker thread with backoff, so a busy port only delays
-/// input (driving falls back to neutral), never the sim. Drop stops the
-/// thread (`stop` + `join`, mirroring [`NetVis`]).
+/// use rocketsim::CarControls;
+/// use rocketsim_vis::{
+///     net_vis::ControlServer,
+///     proto::{ControlMsg, encode_control},
+/// };
+///
+/// // Sim side: bind (port 0 picks a free port; read it back).
+/// let server = ControlServer::bind("127.0.0.1:0");
+/// let deadline = Instant::now() + Duration::from_secs(10);
+/// let addr = loop {
+///     if let Some(addr) = server.local_addr() {
+///         break addr;
+///     }
+///     assert!(Instant::now() < deadline, "listener never bound");
+///     std::thread::sleep(Duration::from_millis(5));
+/// };
+///
+/// // Viewer side: dial in and send one input.
+/// let mut stream = TcpStream::connect(addr).unwrap();
+/// stream
+///     .write_all(&encode_control(&ControlMsg::new(
+///         0,
+///         CarControls::default(),
+///         0b001,
+///         7,
+///     )))
+///     .unwrap();
+///
+/// // Sim poll loop: the newest message arrives.
+/// let msg = loop {
+///     if let Some(msg) = server.latest() {
+///         break msg;
+///     }
+///     assert!(Instant::now() < deadline, "control never arrived");
+///     std::thread::sleep(Duration::from_millis(5));
+/// };
+/// assert_eq!(msg.seq, 7);
+/// assert_eq!(msg.buttons, 0b001);
+/// ```
 pub struct ControlServer {
     slot: Arc<Mutex<Option<ControlMsg>>>,
     /// Total control messages decoded (overlay diagnostics).
@@ -129,9 +164,7 @@ impl ControlServer {
         }
     }
 
-    /// Clones the newest control message, or `None` if no viewer has sent
-    /// one yet. Level semantics: returns the same message until a newer one
-    /// arrives (callers should failsafe to neutral on age — see drive.rs).
+    /// Clones the newest control message, or `None` if none arrived yet.
     /// Lock-only, never blocks on the network.
     pub fn latest(&self) -> Option<ControlMsg> {
         self.slot.lock().ok().and_then(|g| *g)
@@ -453,9 +486,8 @@ mod tests {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap().to_string();
         let mut vis = NetVis::connect(&addr);
-        // Server thread owns the read end and reports the newest tick seen;
-        // the main thread must NOT drop `vis` first (that would stop the
-        // sender before it pumps — the exact race this ordering avoids).
+        // Server owns the read end; main thread must NOT drop `vis` first
+        // (that would stop the sender before it pumps).
         let (tx, rx) = std::sync::mpsc::channel();
         let server = std::thread::spawn(move || {
             let (stream, _) = listener.accept().unwrap();
@@ -480,7 +512,7 @@ mod tests {
 
     #[test]
     fn update_without_viewer_never_blocks() {
-        // Port 1 never accepts: every update must still be fast (dropped).
+        // Port 1 never accepts: updates stay a clone + try_lock.
         let mut vis = NetVis::connect("127.0.0.1:1");
         crate::photo::init_meshes();
         let arena = crate::photo::build_arena();
@@ -523,8 +555,8 @@ mod tests {
             std::thread::sleep(Duration::from_millis(5));
         };
 
-        // Fake viewer: dial in and blast 50 inputs back-to-back, then close.
-        // The server must converge to the newest (seq 50), dropping stale.
+        // Fake viewer: 50 inputs back-to-back, then close. Server keeps
+        // the newest (seq 50), dropping stale.
         let mut stream = TcpStream::connect(addr).unwrap();
         for seq in 1..=50u64 {
             let msg = ControlMsg::new(
@@ -548,8 +580,7 @@ mod tests {
 
     #[test]
     fn control_poll_without_viewer_never_blocks() {
-        // Nobody dials: every poll must be a fast lock-only read (2s budget
-        // for 20k polls = <100µs each, same bar as NetVis::update).
+        // Nobody dials: polls are fast lock-only reads.
         let server = ControlServer::bind("127.0.0.1:0");
         let t = Instant::now();
         for _ in 0..20_000 {

@@ -1,14 +1,10 @@
-//! Automatic ball-cam: keeps ball-cam on unless a rule says otherwise
-//! (stage 8a).
+//! Automatic ball-cam: keeps ball-cam on unless a rule says otherwise.
 //!
-//! Each rule is a Schmitt trigger (separate enter/exit thresholds plus a
-//! minimum active time) evaluated on EMA-filtered signals (`tau ~= 0.15` s).
-//! Any active rule votes ball-cam *off*; the global state adds its own
-//! minimum on/off holds and a short blend. With no active rule — or when the
-//! followed car is demoed — ball-cam defaults on.
-//!
-//! Drive with [`update`](Self::update) every frame (pure in `(state, dt)`,
-//! `dt` clamped to `[0, 1/30]`, no RNG/wall-clock).
+//! Each rule is a Schmitt trigger (enter/exit thresholds + min active time)
+//! on EMA-filtered signals (`tau ~= 0.15` s). Any active rule votes off;
+//! the state adds min on/off holds and a short blend. Demoed cars default
+//! to on. Drive with [`update`](Self::update) every frame (pure in
+//! `(state, dt)`, no RNG/wall-clock).
 
 use std::fmt::Display;
 
@@ -402,12 +398,18 @@ mod tests {
     }
 
     #[test]
-    fn defaults_to_ball_cam() {
+    fn ball_cam_is_default() {
         let arena = arena_with(Vec3A::new(0.0, 2000.0, 93.0));
         let mut auto = AutoCam::new(0);
         assert!(auto.update(&arena, 1.0 / 30.0));
         assert_eq!(auto.off_reason(), None);
         assert_eq!(auto.blend(), 1.0);
+        // Demoed cars cannot be framed: ball-cam stays on.
+        let mut arena = arena_with(Vec3A::new(200.0, 0.0, 93.0));
+        arena.cars[0].1.is_demoed = true;
+        let mut auto = AutoCam::new(0);
+        assert!(auto.update(&arena, 1.0 / 30.0));
+        assert_eq!(auto.off_reason(), None);
     }
 
     #[test]
@@ -455,15 +457,6 @@ mod tests {
             auto.update(&arena, 1.0 / 30.0);
         }
         assert!(auto.ball_cam());
-        assert_eq!(auto.off_reason(), None);
-    }
-
-    #[test]
-    fn demoed_defaults_on() {
-        let mut arena = arena_with(Vec3A::new(200.0, 0.0, 93.0));
-        arena.cars[0].1.is_demoed = true;
-        let mut auto = AutoCam::new(0);
-        assert!(auto.update(&arena, 1.0 / 30.0));
         assert_eq!(auto.off_reason(), None);
     }
 }

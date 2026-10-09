@@ -1,10 +1,8 @@
-//! Birds-eye / follow-car camera manager (stage 8a).
+//! Birds-eye / follow-car camera manager.
 //!
-//! Persistent state across frames: `C` cycles birds-eye → each car,
-//! `Space` toggles ball-cam on the follow view. Smoothing resets when the
-//! followed car changes but survives toggles (the look blends). Demoed cars
-//! freeze the camera at the death pose (look re-aims at the ball); respawn
-//! snaps back to live.
+//! `C` cycles birds-eye → each car, `Space` toggles ball-cam on the follow
+//! view. Smoothing resets on target change but survives toggles. Demoed
+//! cars freeze the pose (look re-aims at the ball); respawn snaps back.
 
 use glam::Vec3A;
 use rocketsim::{ArenaState, GameMode};

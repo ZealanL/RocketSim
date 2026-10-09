@@ -1,9 +1,9 @@
-//! RL-authentic follow view for one car (stage 8a).
+//! Follow view for one car.
 //!
-//! `face_ball` is ball-cam: rigid orbit on the car→ball bearing, looking
-//! exactly at the ball. When `false`, the camera trails heading with
-//! stiffness lag. Temporal state lives in [`CarCamSmoothing`] (one slot per
-//! followed car); this struct only says *which* car and which mode.
+//! Ball-cam: rigid orbit on the car→ball bearing, look exactly at the ball.
+//! Car-cam: trails heading with stiffness lag. State lives in
+//! [`CarCamSmoothing`] (one slot per car); this struct only says which car
+//! and which mode.
 
 use glam::{Vec2, Vec3A};
 use rocketsim::ArenaState;
@@ -69,17 +69,15 @@ impl CarCam {
     }
 }
 
-/// Persistent follow-view state: boom yaw, speed dyes, toggle transition.
-///
-/// Per frame [`update`](Self::update), with `dt` clamped to `[0, 1/30]`:
-///
-/// * focus tracks the car rigidly (`car_pos + (0, 0, height)`) — no springs;
+/// Per-frame follow state: boom yaw, speed dyes, toggle transition.
+/// `dt` is clamped to `[0, 1/30]`:
+/// * focus tracks the car rigidly (`car_pos + (0, 0, height)`);
 /// * ball-cam yaw sets rigidly to the car→ball bearing (frozen when the
 ///   ball is nearly overhead); car-cam yaw relaxes toward heading with
-///   stiffness lag (snappy at 1.0);
-/// * boom length grows with speed (`+(1-stiffness)*115` at full speed);
-/// * on ball-cam toggles, yaw/distance/look swing around the live focus over
-///   `0.6 * (2 - transition_speed)` seconds (instant at 2.0);
+///   stiffness lag;
+/// * boom grows with speed (`+(1-stiffness)*115` at full speed);
+/// * toggles swing around the live focus over `0.6 * (2 - transition)`
+///   seconds (instant at 2.0);
 /// * horizontal FOV gains +5 with speed and +5 at supersonic.
 ///
 /// The first update after [`new`](Self::new)/[`reset`](Self::reset) snaps.
@@ -182,12 +180,10 @@ impl CarCamSmoothing {
         };
 
         // Mode yaw: rigid ball bearing (freeze when overhead), lagged
-        // heading otherwise. Airborne car-cam holds the liftoff yaw —
-        // only the focus keeps tracking the car.
+        // heading otherwise. Airborne car-cam holds liftoff yaw.
         //
-        // NOTE: the length gate runs BEFORE normalizing. Near-vertical
-        // noses leave microscopic horizontal residue that try_normalize
-        // would amplify into a violent yaw swing.
+        // The length gate runs BEFORE normalizing: near-vertical noses
+        // leave tiny horizontal residue that would swing yaw violently.
         let focus = car_state.pos + Vec3A::new(0.0, 0.0, cfg.height);
         if face_ball {
             let y = (ball_state.pos - focus).truncate();

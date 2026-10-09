@@ -1,35 +1,21 @@
-//! Cheap RL-style car effects: flip-reset glow, jump dust, dodge
-//! shockwaves.
+//! Cheap RL-style car effects: flip-reset glow, jump dust, dodge rings.
 //!
-//! Pure CPU state machine over [`ArenaState`] snapshots: edge-detects
-//! jump/dodge/reset events per car and emits fading [`Segment`]s
-//! (particles + expanding rings) for the line pass.
+//! Pure CPU state machine over snapshots: edge-detects jump/dodge/reset
+//! per car and emits fading [`Segment`]s (particles + rings).
 //!
-//! Trigger contract (pinned by tests):
-//! * reset flash + wheel glow: 0-2 → 3+ wheels on ball/car surfaces with
-//!   ZERO wheels on the world. The v1 code additionally required airborne,
-//!   but that clause is UNSATISFIABLE in real physics — 3+ contacts of any
-//!   kind grounds the car (`is_on_ground`), so it could only ever fire in
-//!   synthetic states (v1's glow was dead in real gameplay). v2 fires on
-//!   acquisition instead; sustained dribbling stays quiet anyway (edge needs
-//!   prev<3, and world contact unlatches), and a 1s per-car cooldown stops
-//!   contact flicker from strobing.
-//! * wheel glow latches until a wheel finds the WORLD (or a flip starts).
-//!   Ball/car touchdowns keep the glow: the reset was just earned, and the
-//!   sim really does report `is_on_ground` while parked on the ball.
-//! * jump dust: 4 wheels × 6 streaks on the jump edge.
-//! * dodge and double-jump share one orange shockwave ring.
-//! * world touchdowns emit nothing: RL lands with dust puffs, not rings,
-//!   and a floor ring next to the reset flash read as a reset (removed).
+//! Trigger rules (pinned by tests):
+//! * reset flash + wheel glow: 0-2 -> 3+ wheels on ball/car surfaces, no
+//!   wheel on the world. No airborne clause: 3+ contacts of any kind
+//!   ground the car, so that clause made v1's glow dead in real play.
+//! * glow latches until a wheel finds the WORLD (ball/car touchdowns keep
+//!   it: the sim reports `is_on_ground` while parked on the ball).
+//! * jump dust: 4 wheels x 6 streaks on the jump edge.
+//! * dodge and double-jump share one orange ring; world touchdowns are quiet.
 //!
-//! Match to the real game (researched Oct 2026): since RL v2.66 (Season 22)
-//! the official flip-reset indicator is a quick white holographic circle
-//! burst under the car + audio tick when 3+ wheels touch the ball, shown
-//! only as a momentary burst with no held glow. Our flash copies that look
-//! (warm-white tight burst under the car). The latched wheel glow is a
-//! deliberate deviation — it lets spectators see a banked reset — and it
-//! can never appear on world contact (world touch unlatches it the same
-//! tick).
+//! RL match (researched Oct 2026): since v2.66 the official reset cue is a
+//! quick white burst under the car with no held glow. The flash copies that
+//! look; the latched wheel glow is a deliberate spectator deviation (never
+//! on world contact: world touch unlatches the same tick).
 
 use std::collections::VecDeque;
 
@@ -197,9 +183,8 @@ impl CarFx {
             let prev = self.prev[idx];
             let first_tick = !prev.seen;
             let touch = reset_touch_count(car.wheels_with_contact);
-            // Resets are airborne events on ball/car surfaces: any wheel on
-            // the world (static geometry, tiles) vetoes the trigger, so
-            // grounded dribbling and world landings stay quiet.
+            // Resets need ball/car surfaces only: any world wheel vetoes,
+            // so grounded dribbling and landings stay quiet.
             let world_touch = car
                 .wheels_with_contact
                 .into_iter()
@@ -207,9 +192,8 @@ impl CarFx {
                 .any(|hit| !matches!(hit.user_info, UserInfoType::Ball | UserInfoType::Car));
             let mut latched = prev.reset_latched;
             let mut flash_cd = (prev.flash_cd - dt).max(0.0);
-            // Acquisition edge: 0-2 ball/car wheels → 3+. No airborne
-            // clause (see module docs: it made the trigger dead). The
-            // world veto + latch rules keep grounded play quiet.
+            // Edge: 0-2 ball/car wheels -> 3+ (no airborne clause: it made
+            // the trigger dead; the world veto + latch rules keep play quiet).
             let touch_edge = !first_tick
                 && !world_touch
                 && prev.touch_count < 3
@@ -221,10 +205,8 @@ impl CarFx {
             }
             let flipped = !first_tick && car.is_flipping && !prev.flipping;
             let double_edge = !first_tick && car.has_double_jumped && !prev.double_jumped;
-            // Touching the world ends the show (pinches, scrapes,
-            // touchdowns). Ball/car touchdowns do NOT unlatch: the sim sets
-            // `is_on_ground` while parked on the ball, and the reset was
-            // just earned, so the glow rides along until real ground/flip.
+            // World touch ends the show. Ball/car touchdowns do NOT unlatch
+            // (the sim grounds cars parked on the ball).
             if flipped || world_touch {
                 latched = false;
             }
@@ -243,9 +225,8 @@ impl CarFx {
                 let wheels =
                     wheel_world(car.pos, car.rot_mat, info.config, car.wheels_with_contact);
 
-                // Flip-reset pickup flash at the car's underside, oriented to
-                // the car (not the world). A quick burst like RL's own
-                // indicator: tight, short-lived, warm white.
+                // Reset flash at the car's underside, car-oriented. Quick
+                // burst like RL's own cue: tight, short, warm white.
                 if touch_edge {
                     let fwd = car
                         .get_forward_dir()
@@ -288,10 +269,8 @@ impl CarFx {
                     }
                 }
 
-                // Double jump and dodge share one effect: the dodge-style
-                // orange shockwave. Dodges fan it around the flip-torque
-                // axis; double jumps (no torque) use the car's horizontal
-                // plane instead.
+                // Double jump and dodge share the orange ring: around the
+                // flip-torque axis for dodges, the horizontal plane else.
                 if double_edge || flipped {
                     let (u, v) = if flipped {
                         let axis = if car.flip_rel_torque.length_squared() > 1e-6 {
@@ -529,9 +508,9 @@ mod tests {
 
     #[test]
     fn grounded_pickup_flashes_once_then_quiet() {
-        // Grounded ball acquisition still flashes (v1's airborne clause made
-        // this dead in real physics); sustained contact stays quiet; flicker
-        // inside the cooldown adds no second ring (would read 144).
+        // Grounded acquisition still flashes (the airborne clause would make
+        // this dead); sustained contact stays quiet; cooldown flicker adds
+        // no second ring (would read 144).
         let mut s = state_with_car();
         let ball_hit = RaycastHitInfo {
             user_info: UserInfoType::Ball,
@@ -558,38 +537,30 @@ mod tests {
     }
 
     #[test]
-    fn double_jump_emits_ring() {
-        let mut s = state_with_car();
-        s.cars[0].1.is_on_ground = false;
-        let mut fx = CarFx::default();
-        assert!(fx.update(&s, 1.0 / 120.0).is_empty());
-
-        s.cars[0].1.has_double_jumped = true;
-        // One shockwave ring = 24 segments.
-        assert_eq!(fx.update(&s, 1.0 / 120.0).len(), RING_SEGS);
+    fn air_tricks_share_one_ring() {
+        // Double jump and dodge share the orange shockwave (24 segs).
+        for flip in [false, true] {
+            let mut s = state_with_car();
+            s.cars[0].1.is_on_ground = false;
+            let mut fx = CarFx::default();
+            assert!(fx.update(&s, 1.0 / 120.0).is_empty());
+            if flip {
+                s.cars[0].1.is_flipping = true;
+            } else {
+                s.cars[0].1.has_double_jumped = true;
+            }
+            assert_eq!(fx.update(&s, 1.0 / 120.0).len(), RING_SEGS);
+        }
     }
 
     #[test]
-    fn dodge_emits_ring() {
+    fn touchdown_clears_and_stays_quiet() {
+        // Plain landing (field contacts report `UserInfoType::None`) emits
+        // nothing: no floor ring, no reset colors.
         let mut s = state_with_car();
         s.cars[0].1.is_on_ground = false;
         let mut fx = CarFx::default();
         assert!(fx.update(&s, 1.0 / 120.0).is_empty());
-
-        s.cars[0].1.is_flipping = true;
-        assert_eq!(fx.update(&s, 1.0 / 120.0).len(), RING_SEGS);
-    }
-
-    #[test]
-    fn world_touchdown_is_quiet() {
-        // Touchdown on the world (field contacts report
-        // `UserInfoType::None` in the real sim) emits nothing: no floor
-        // ring, and nothing reset-colored.
-        let mut s = state_with_car();
-        s.cars[0].1.is_on_ground = false;
-        let mut fx = CarFx::default();
-        assert!(fx.update(&s, 1.0 / 120.0).is_empty());
-
         let world_hit = RaycastHitInfo {
             user_info: UserInfoType::None,
             ..Default::default()
@@ -597,37 +568,23 @@ mod tests {
         s.cars[0].1.wheels_with_contact = [Some(world_hit); 4];
         s.cars[0].1.is_on_ground = true;
         assert!(fx.update(&s, 1.0 / 120.0).is_empty());
-        // Settled: still nothing.
         for _ in 0..60 {
             assert!(fx.update(&s, 1.0 / 120.0).is_empty());
         }
-    }
 
-    /// Warm-white reset channels; discriminates the reset flash/glow from
-    /// jump dust gray (0.75) and the orange dodge ring (g = 0.6).
-    fn is_reset_color(c: Color) -> bool {
-        c.r > 0.95 && c.g > 0.9
-    }
-
-    #[test]
-    fn ground_touchdown_clears_latched_glow_same_tick() {
-        // Regression: the reset FX must never play on a ground landing.
-        // Latch the glow via a ball touch, let the pickup flash expire
-        // mid-air, then touch down on the world: that tick emits nothing
-        // and the glow clears, and no reset color ever returns.
+        // Latch the glow via a ball touch, let the flash (0.35s) expire
+        // mid-air, then touch down: that tick emits nothing, the glow
+        // clears the same tick, and no reset color ever returns.
         let mut s = state_with_car();
         s.cars[0].1.is_on_ground = false;
         let mut fx = CarFx::default();
         assert!(fx.update(&s, 1.0 / 120.0).is_empty());
-
         let ball_hit = RaycastHitInfo {
             user_info: UserInfoType::Ball,
             ..Default::default()
         };
         s.cars[0].1.wheels_with_contact = [Some(ball_hit); 4];
         assert_eq!(fx.update(&s, 1.0 / 120.0).len(), LATCHED_SEGS);
-
-        // Wheels leave; glow rides along while the flash (0.35s) dies.
         s.cars[0].1.wheels_with_contact = [None; 4];
         for _ in 0..60 {
             fx.update(&s, 1.0 / 120.0);
@@ -637,21 +594,19 @@ mod tests {
             LATCHED_SEGS - RING_SEGS,
             "latched glow outlives the flash mid-air"
         );
-
-        // World touchdown: nothing emitted, glow cleared this same tick.
-        let world_hit = RaycastHitInfo {
-            user_info: UserInfoType::None,
-            ..Default::default()
-        };
         s.cars[0].1.wheels_with_contact = [Some(world_hit); 4];
         s.cars[0].1.is_on_ground = true;
         assert!(fx.update(&s, 1.0 / 120.0).is_empty());
-
-        // Settled: still nothing, reset colors never come back.
         for _ in 0..60 {
             let segs = fx.update(&s, 1.0 / 120.0);
             assert!(segs.iter().all(|sg| !is_reset_color(sg.color_a)));
         }
+    }
+
+    /// Warm-white reset channels; tells the reset flash/glow apart from
+    /// jump dust gray (0.75) and the orange dodge ring (g = 0.6).
+    fn is_reset_color(c: Color) -> bool {
+        c.r > 0.95 && c.g > 0.9
     }
 
     #[test]

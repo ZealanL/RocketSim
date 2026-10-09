@@ -1,20 +1,15 @@
-//! FPS-style free camera: a position plus a look direction.
+//! Free camera: a position plus a look direction.
 //!
-//! Mouse movement looks ([`FreeCam::look`]: right = yaw right, down = pitch
-//! down), `WASD` flies on the view-relative horizontal frame
-//! ([`FreeCam::fly`]: W along the view, D screen-right), `Space`/`Shift`
-//! move up/down in world Z, and the wheel dollies along the view
-//! ([`FreeCam::dolly`]). The pose ([`FreeCam::pos_dir`]) derives from
-//! `pos`/`yaw`/`pitch` every call, with a floor clamp and an arena-ish
-//! position box — there is no hidden temporal state, so a huge or
-//! non-finite `dt` can only shrink one step (clamped to `[0, 1/30]` like the
-//! other cameras), never poison the camera. No wall-clock, no RNG.
+//! Mouse looks ([`FreeCam::look`]), WASD flies on the view-relative frame
+//! ([`FreeCam::fly`]), Space/Shift move in world Z, wheel dollies
+//! ([`FreeCam::dolly`]). Pose ([`FreeCam::pos_dir`]) derives from
+//! `pos`/`yaw`/`pitch` each call, with a floor clamp and a position box.
+//! No hidden time state: huge or non-finite `dt` only shrinks one step.
+//! No wall-clock, no RNG.
 //!
-//! Conventions: `yaw` is the view bearing in the field plane, measured from
-//! +X toward +Y (so facing +Y is `yaw = +90°`); `pitch` is the view
-//! elevation, `+` looking up, clamped to `±MAX_PITCH_RAD`. Screen-right for
-//! a view `(yaw, pitch)` is `(sin yaw, −cos yaw, 0)` (level-flight form,
-//! well-defined even looking straight up/down).
+//! `yaw` is the bearing from +X toward +Y (+Y is `+90°`); `pitch` is `+`
+//! looking up, clamped to `±MAX_PITCH_RAD`. Screen-right is
+//! `(sin yaw, −cos yaw, 0)` (level form, valid at all pitches).
 
 use std::f32::consts::{FRAC_PI_2, PI};
 
@@ -45,6 +40,17 @@ pub const CAM_MIN_Z: f32 = 30.0;
 ///
 /// `yaw = 0` looks along +X; `yaw = +90°` looks along +Y. `pitch = 0` is
 /// level, `+` looks up. See the module docs for the full scheme.
+///
+/// ```rust
+/// use rocketsim_vis::camera::FreeCam;
+///
+/// let mut cam = FreeCam::new();
+/// cam.look(0.1, 0.05); // mouse deltas, already scaled by sensitivity
+/// cam.fly(1.0, 0.0, 0.0, 1.0 / 60.0); // forward one tick
+/// cam.dolly(100.0); // wheel step along the view
+/// let (pos, dir) = cam.pos_dir();
+/// assert!((dir.length() - 1.0).abs() < 1e-4);
+/// ```
 #[derive(Debug, Clone, Copy)]
 pub struct FreeCam {
     pos: Vec3A,
@@ -100,10 +106,8 @@ impl FreeCam {
     }
 
     /// Rotates the view by `d_yaw`/`d_pitch` radians (caller scales mouse
-    /// pixels by its own sensitivity; the viewer passes `-dx*s` for yaw so
-    /// a rightward mouse moves the view right, `-dy*s` for pitch so a
-    /// downward mouse looks down). Yaw wraps, pitch clamps; non-finite
-    /// deltas are ignored.
+    /// pixels; the viewer passes `-dx*s` for yaw and `-dy*s` for pitch).
+    /// Yaw wraps, pitch clamps; non-finite deltas are ignored.
     pub fn look(&mut self, d_yaw: f32, d_pitch: f32) {
         if d_yaw.is_finite() {
             self.yaw = wrap_yaw(self.yaw + d_yaw);
@@ -340,7 +344,6 @@ mod tests {
         cam = FreeCam::new();
         let p0 = cam.pos();
         cam.fly(1.0, 1.0, 1.0, 1.0 / 30.0);
-        // Normalized: total travel equals one full-speed step.
         assert!(((cam.pos() - p0).length() - MOVE_SPEED / 30.0).abs() < 1e-2);
     }
 
@@ -361,11 +364,8 @@ mod tests {
         assert_eq!(cam.pos().z, CAM_MIN_Z);
         assert!((cam.yaw() - DEFAULT_YAW_RAD).abs() < 1e-6);
         assert!((cam.pitch() - DEFAULT_PITCH_RAD).abs() < 1e-6);
-    }
 
-    #[test]
-    fn floor_clamp_holds() {
-        // Pitched straight down at the floor: position never goes under.
+        // Pitched straight down at the floor: flying never goes under.
         let mut cam = FreeCam::with_pose(Vec3A::new(0.0, 0.0, 100.0), 0.0, -MAX_PITCH_RAD);
         for _ in 0..60 {
             cam.fly(1.0, 0.0, 0.0, 1.0 / 30.0);

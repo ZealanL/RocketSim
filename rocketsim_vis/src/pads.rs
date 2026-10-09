@@ -1,10 +1,9 @@
-//! Boost-pad instancing data (stage 6a): variant mapping, instance matrices,
-//! bounds, and frustum-filtered instance lists.
+//! Boost-pad instancing data: variant mapping, instance matrices, bounds,
+//! and frustum-filtered instance lists.
 //!
-//! The old vis drew up to 34 individual pad models; v2 issues 4 instanced
-//! draws (big/small × on/off) with per-instance `mat4`s. Placement matches
-//! the old vis exactly: pad XZ... XY position from config, Z dropped to the
-//! field (`Temp Z-fix` in the old code), uniform 2x scale (`Resize` TODO).
+//! 4 instanced draws (big/small x on/off) with per-instance matrices.
+//! Placement matches the old vis: pad XY from config, Z dropped to the
+//! field, uniform 2x scale.
 
 use glam::{Mat4, Vec3, Vec3A};
 use rocketsim::{BoostPadConfig, BoostPadState};
@@ -16,10 +15,9 @@ pub const PAD_VARIANTS: [&str; 4] = ["pad_big_on", "pad_big_off", "pad_small_on"
 /// Max pads in Soccar (the instance buffer size).
 pub const MAX_PAD_INSTANCES: usize = 34;
 
-/// Maps (big, active) to a variant index. Small on/off contents are CROSSED
-/// exactly like the old loader (`pad_small_on` ← `small_off.obj`): the small
-/// files are misnamed (see the old `TODO: Rename these model files`), and
-/// the elaboration invariant below pins the intended visuals.
+/// Maps (big, active) to a variant index. The small on/off contents are
+/// CROSSED like the old loader (`pad_small_on` <- `small_off.obj`): the
+/// small files are misnamed, and the elaborate-ON test below pins this.
 pub fn variant_index(is_big: bool, is_active: bool) -> usize {
     match (is_big, is_active) {
         (true, true) => 0,
@@ -43,8 +41,7 @@ pub fn load_pad_meshes() -> [ObjMesh; 4] {
 }
 
 /// Instance transform for a pad at `pos`: translate to (x, y, 0) at 2x
-/// scale. Z is dropped (old `Temp Z-fix` — pads sit on the field plane);
-/// scale is uniform 2x (old `Resize pad models` TODO, now the spec).
+/// scale (Z dropped: pads sit on the field plane).
 pub fn instance_matrix(pos: Vec3A) -> Mat4 {
     Mat4::from_translation(Vec3::new(pos.x, pos.y, 0.0)) * Mat4::from_scale(Vec3::splat(2.0))
 }
@@ -122,14 +119,14 @@ mod tests {
     }
 
     #[test]
-    fn pad_meshes_load_and_on_is_elaborate() {
+    fn pad_meshes_load() {
         let meshes = load_pad_meshes();
         for (i, mesh) in meshes.iter().enumerate() {
             assert!(!mesh.verts.is_empty(), "{}: empty", PAD_VARIANTS[i]);
             assert_eq!(mesh.indices.len() % 3, 0);
         }
-        // ON looks are the elaborate ones (more verts), both sizes. This is
-        // what the small-pair cross preserves — flip the cross and it fails.
+        // ON looks are the elaborate ones, both sizes. This pins the
+        // small-pair cross (files are misnamed) — flip it and this fails.
         assert!(
             meshes[0].verts.len() > meshes[1].verts.len(),
             "big on/off inversion"
@@ -138,18 +135,15 @@ mod tests {
             meshes[2].verts.len() > meshes[3].verts.len(),
             "small on/off inversion (cross broken?)"
         );
-    }
-
-    #[test]
-    fn variant_radii_sane() {
-        // Pads are ~100-200uu across at 2x: radii in the low hundreds.
-        for (i, r) in radii().iter().enumerate() {
-            assert!(*r > 50.0 && *r < 1000.0, "{}: radius {r}", PAD_VARIANTS[i]);
+        // Cull radii: pads are ~100-200uu across at 2x, so low hundreds.
+        for (i, mesh) in meshes.iter().enumerate() {
+            let r = variant_radius(mesh);
+            assert!(r > 50.0 && r < 1000.0, "{}: radius {r}", PAD_VARIANTS[i]);
         }
     }
 
     #[test]
-    fn beauty_frustum_keeps_midfield_culls_edges() {
+    fn frustum_culling() {
         crate::photo::init_meshes();
         let arena = crate::photo::build_arena();
         assert_eq!(arena.get_arena_state().boost_pads.len(), 34);
@@ -173,12 +167,9 @@ mod tests {
         };
         assert!(has_pad(-1024.0, 0.0), "midfield pad missing");
         assert!(has_pad(1024.0, 0.0), "midfield pad missing");
-    }
 
-    #[test]
-    fn behind_camera_pads_culled() {
-        use crate::view::view_proj;
-        let (view, proj) = view_proj(Vec3::ZERO, Vec3::X, 90.0, 16.0 / 9.0);
+        // Behind the camera: everything culled.
+        let (view, proj) = crate::view::view_proj(Vec3::ZERO, Vec3::X, 90.0, 16.0 / 9.0);
         let planes = frustum_planes(proj * view);
         let pads = [(
             BoostPadConfig {

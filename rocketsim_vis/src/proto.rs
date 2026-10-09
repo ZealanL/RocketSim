@@ -1,9 +1,6 @@
 //! Wire protocol: `[u32 LE payload_len][postcard(VisFrame)]` over TCP.
 //!
-//! The sim dials; the viewer listens (default port [`DEFAULT_PORT`]). Baseline:
-//! a 6-car Soccar frame postcards to ~3KB, so [`MAX_FRAME_BYTES`] (4MB) is a
-//! sanity cap only, never approached in practice.
-//!
+//! The sim dials; the viewer listens (default port [`DEFAULT_PORT`]).
 //! Bump [`PROTOCOL_VERSION`] (and change port) on any breaking change.
 
 use rocketsim::{ArenaState, CarControls};
@@ -19,11 +16,10 @@ pub const DEFAULT_PORT: u16 = 39201;
 /// [`DEFAULT_PORT`] so both pass through one firewall rule / SSH forward.
 pub const DEFAULT_CONTROL_PORT: u16 = DEFAULT_PORT + 1;
 
-/// Sanity cap on one frame; real frames are a few KB (see size gates).
+/// Sanity cap on one frame; real frames are a few KB.
 pub const MAX_FRAME_BYTES: usize = 4 * 1024 * 1024;
 
-/// Sanity cap on one control message; real ones postcard to ~dozens of
-/// bytes (8 floats + flags + indices), so this is a corrupt-stream tripwire.
+/// Sanity cap on one control message (corrupt-stream tripwire).
 pub const MAX_CONTROL_BYTES: usize = 1024;
 
 /// One streamed tick: full arena snapshot + tick dt (`TICK_TIME`, 1/120).
@@ -44,9 +40,19 @@ impl VisFrame {
 /// sequence number (`seq`, starts at 1, +1 per send).
 ///
 /// Same framing as frames (`[u32 LE len][postcard]`); the sim keeps only the
-/// NEWEST message per tick and drops stale ones (monotonic `seq` lets it tell
-/// a reconnect replay from fresh input). `CarControls` already implements
-/// `Serialize` under `rocketsim/serde` (verified in `car_controls.rs`).
+/// NEWEST message per tick and drops stale ones (monotonic `seq` tells a
+/// reconnect replay from fresh input).
+///
+/// ```rust
+/// use rocketsim::CarControls;
+/// use rocketsim_vis::proto::{ControlMsg, decode_control, encode_control};
+///
+/// let msg = ControlMsg::new(0, CarControls::default(), 0b001, 1);
+/// let bytes = encode_control(&msg);
+/// let (back, consumed) = decode_control(&bytes).unwrap().unwrap();
+/// assert_eq!(back, msg);
+/// assert_eq!(consumed, bytes.len());
+/// ```
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ControlMsg {
     /// Which arena car these inputs drive (sim clamps to its car count).
@@ -161,15 +167,11 @@ mod tests {
     }
 
     #[test]
-    fn partial_reads_return_none() {
+    fn frame_framing_edge_cases() {
         let bytes = encode_frame(&frame_with_cars(3, 3));
         assert!(decode_frame(&bytes[..2]).unwrap().is_none());
         assert!(decode_frame(&bytes[..4]).unwrap().is_none());
         assert!(decode_frame(&bytes[..bytes.len() - 1]).unwrap().is_none());
-    }
-
-    #[test]
-    fn oversize_length_is_error() {
         let mut bad = (MAX_FRAME_BYTES as u32 + 1).to_le_bytes().to_vec();
         bad.extend_from_slice(&[0u8; 8]);
         assert!(decode_frame(&bad).is_err());
@@ -177,6 +179,7 @@ mod tests {
 
     #[test]
     fn control_round_trip() {
+        assert_eq!(DEFAULT_CONTROL_PORT, DEFAULT_PORT + 1);
         let msg = ControlMsg::new(
             2,
             rocketsim::CarControls {
@@ -202,7 +205,7 @@ mod tests {
     }
 
     #[test]
-    fn control_partial_and_oversize() {
+    fn control_framing_edge_cases() {
         let msg = ControlMsg::new(0, rocketsim::CarControls::default(), 0, 1);
         let bytes = encode_control(&msg);
         assert!(decode_control(&bytes[..2]).unwrap().is_none());
@@ -210,11 +213,5 @@ mod tests {
         let mut bad = (MAX_CONTROL_BYTES as u32 + 1).to_le_bytes().to_vec();
         bad.extend_from_slice(&[0u8; 8]);
         assert!(decode_control(&bad).is_err());
-    }
-
-    #[test]
-    fn control_ports_adjacent() {
-        assert_eq!(DEFAULT_CONTROL_PORT, DEFAULT_PORT + 1);
-        assert_eq!(DEFAULT_CONTROL_PORT, 39202);
     }
 }

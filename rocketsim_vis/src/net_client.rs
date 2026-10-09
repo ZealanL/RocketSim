@@ -1,14 +1,8 @@
-//! Viewer-side TCP frame server (stage 5b).
-//!
-//! The viewer LISTENS (default `127.0.0.1:39201`); sims dial in with
-//! [`NetVis`](crate::net_vis::NetVis) streams (`[u32 LE len][postcard]`,
-//! see [`crate::proto`]). One background thread accepts and keeps only the
-//! LATEST frame — no interpolation, no queue. At 120Hz ticks sampled by a
-//! 60Hz viewer this matches the old in-process look; a slow viewer drops
-//! frames by construction, never lags.
-//!
-//! Sim disconnect (exit/restart) returns to `Waiting` and the accept loop
-//! takes the next sim; the viewer keeps showing the last frame meanwhile.
+//! Viewer-side TCP frame server.
+//! The viewer LISTENS; sims dial in. One background thread accepts and
+//! keeps only the LATEST frame (no queue: a slow viewer drops frames,
+//! never lags). On sim disconnect the loop takes the next sim; the viewer
+//! keeps showing the last frame meanwhile.
 
 use std::{
     io::{Read, Write},
@@ -23,25 +17,27 @@ use std::{
 
 use crate::proto::{ControlMsg, VisFrame, decode_frame, encode_control};
 
-/// Viewer→sim control sender, viewer side (stage 5c).
+/// Viewer→sim control sender, viewer side.
+/// Dials the sim's control port lazily and streams [`ControlMsg`] frames.
+/// [`ControlSender::send`] overwrites any unsent message (latest-only), so
+/// it never blocks the viewer; with no sim listening the thread retries
+/// with backoff and inputs are dropped. Drop stops the thread.
+/// Construction never blocks, fails, or panics.
 ///
-/// The SIM listens (see `ControlServer` in [`crate::net_vis`]); this dials
-/// the sim's control port lazily with `TCP_NODELAY` and streams [`ControlMsg`]
-/// frames (`[u32 LE len][postcard]`, same framing as [`crate::proto`]).
-/// Intended use (viewer integration — NOT wired yet, see drive.rs docs):
-/// the viewer captures keyboard/mouse via egui input (works focused on
-/// Wayland, unlike global `device_query` reads), bumps a sequence number,
-/// and calls [`ControlSender::send`] once per viewer frame.
+/// ```rust
+/// use rocketsim::CarControls;
+/// use rocketsim_vis::{net_client::ControlSender, proto::ControlMsg};
 ///
-/// Latest-only slot + backoff reconnect mirror [`crate::net_vis::NetVis`]:
-/// [`ControlSender::send`] overwrites with `try_lock` (drops the tick rather
-/// than stalling the viewer when the sender thread momentarily holds the
-/// slot); the background thread pumps newest-first and reconnects. Drop
-/// stops the thread (`stop` + `join`); construction never blocks, fails, or
-/// panics.
+/// // Port 1 never accepts: sends are dropped, never block.
+/// let sender = ControlSender::connect("127.0.0.1:1");
+/// sender.send(ControlMsg::new(0, CarControls::default(), 0, 1));
+/// assert!(!sender.connected());
+/// ```
 pub struct ControlSender {
     slot: Arc<Mutex<Option<ControlMsg>>>,
     stop: Arc<AtomicBool>,
+    /// Set while the worker holds a live sim connection (overlay status).
+    connected: Arc<AtomicBool>,
     worker: Option<JoinHandle<()>>,
 }
 
@@ -52,24 +48,36 @@ impl ControlSender {
     pub fn connect(addr: &str) -> Self {
         let slot = Arc::new(Mutex::new(None));
         let stop = Arc::new(AtomicBool::new(false));
+        let connected = Arc::new(AtomicBool::new(false));
         let worker = {
-            let (slot, stop, addr) = (slot.clone(), stop.clone(), addr.to_string());
-            std::thread::spawn(move || control_sender_loop(&addr, &slot, &stop))
+            let (slot, stop, connected, addr) = (
+                slot.clone(),
+                stop.clone(),
+                connected.clone(),
+                addr.to_string(),
+            );
+            std::thread::spawn(move || control_sender_loop(&addr, &slot, &stop, &connected))
         };
         Self {
             slot,
             stop,
+            connected,
             worker: Some(worker),
         }
     }
 
-    /// Queues `msg` for sending (overwrites any unsent older message —
-    /// latest-only, so rapid viewer frames converge instead of queueing).
-    /// Lock-only via `try_lock`; never blocks the viewer, never panics.
+    /// Queues `msg` for sending (overwrites any unsent older message).
+    /// Lock-only via `try_lock`; never blocks, never panics.
     pub fn send(&self, msg: ControlMsg) {
         if let Ok(mut slot) = self.slot.try_lock() {
             *slot = Some(msg);
         }
+    }
+
+    /// True while the worker holds a live sim connection. False means
+    /// inputs are dropped (no sim listening).
+    pub fn connected(&self) -> bool {
+        self.connected.load(Ordering::Relaxed)
     }
 
     /// Stops the sender. Called automatically on drop.
@@ -89,7 +97,12 @@ impl Drop for ControlSender {
 
 /// Dials with backoff until `stop`; on connect pumps newest-first, then
 /// reconnects (mirrors the [`crate::net_vis`] sender loop).
-fn control_sender_loop(addr: &str, slot: &Mutex<Option<ControlMsg>>, stop: &AtomicBool) {
+fn control_sender_loop(
+    addr: &str,
+    slot: &Mutex<Option<ControlMsg>>,
+    stop: &AtomicBool,
+    connected: &AtomicBool,
+) {
     let mut backoff = Duration::from_millis(500);
     let max_backoff = Duration::from_secs(5);
     loop {
@@ -100,7 +113,9 @@ fn control_sender_loop(addr: &str, slot: &Mutex<Option<ControlMsg>>, stop: &Atom
             Ok(stream) => {
                 backoff = Duration::from_millis(500);
                 let _ = stream.set_nodelay(true);
+                connected.store(true, Ordering::Relaxed);
                 control_sender_pump(stream, slot, stop);
+                connected.store(false, Ordering::Relaxed);
                 // pump returned = connection lost; reconnect with backoff.
             }
             Err(_) => {
@@ -202,8 +217,6 @@ impl FrameClient {
     }
 
     /// Clones the newest frame, or `None` if no sim has sent one yet.
-    /// Cloning an `ArenaState` per viewer frame (~120Hz state, few KB) is
-    /// cheaper than holding the lock through the draw.
     pub fn latest(&self) -> Option<VisFrame> {
         self.frame.lock().ok().and_then(|g| g.clone())
     }
@@ -320,7 +333,7 @@ mod tests {
         let client = FrameClient::connect("127.0.0.1:0");
         let addr = client.local_addr();
 
-        // Sim side: dial in and send three ticks back-to-back, then close.
+        // Sim side: three ticks back-to-back, then close.
         let mut stream = TcpStream::connect(addr).unwrap();
         let mut arena = crate::photo::build_arena();
         for _ in 0..3 {
@@ -350,8 +363,7 @@ mod tests {
 
     #[test]
     fn server_waits_for_sim() {
-        // Bound but nobody dials: status stays Waiting, latest is None,
-        // and nothing blocks or panics.
+        // Bound but nobody dials: Waiting, latest None, no block or panic.
         let client = FrameClient::connect("127.0.0.1:0");
         std::thread::sleep(Duration::from_millis(200));
         assert!(client.latest().is_none());
@@ -399,14 +411,12 @@ mod tests {
 
     #[test]
     fn control_sender_converges_to_newest() {
-        // Fake sim: listen; the sender dials lazily (10s budget for dial).
+        // Fake sim listens; the sender dials lazily.
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap().to_string();
         let sender = ControlSender::connect(&addr);
 
-        // Rapid viewer frames: 50 sends back-to-back. Latest-only slot means
-        // the sim side converges to seq 50 (intermediate drops are fine and
-        // expected — the test only requires the NEWEST to arrive).
+        // 50 rapid sends: latest-only slot converges to seq 50 (drops fine).
         for seq in 1..=50u64 {
             sender.send(ControlMsg::new(
                 0,
@@ -433,8 +443,7 @@ mod tests {
 
     #[test]
     fn control_send_without_sim_never_blocks() {
-        // Port 1 never accepts: every send must still be fast (dropped).
-        // 2s budget for 20k sends = <100µs each, same bar as NetVis::update.
+        // Port 1 never accepts: sends must stay fast (dropped).
         let sender = ControlSender::connect("127.0.0.1:1");
         let t = Instant::now();
         for seq in 1..=20_000u64 {

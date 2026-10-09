@@ -1,10 +1,9 @@
-//! Stage 4/5a: indexed arena draw with the OLD team-color/grid look.
+//! Indexed arena draw with the old team-color/grid look.
 //!
-//! The shaders are the old `arena_vert/frag.glsl` bytes verbatim: team colors
-//! by world-Y (blue +Y / orange −Y, gray mid, goal-aware), three octaves of
-//! `fwidth`-antialiased grid lines, and normal-based brightness. Arena draws
-//! sample the flat-white texture so the procedural colors pass through
-//! untinted. Uniforms are cached at init; the sampler is bound to unit 0 once.
+//! Shaders are the old `arena_vert/frag.glsl` bytes verbatim: team colors
+//! by world-Y, `fwidth`-antialiased grid lines, normal-based brightness.
+//! Draws sample the flat-white texture so colors pass through untinted.
+//! Uniforms are cached at init; the sampler binds unit 0 once.
 
 use glam::{Mat4, Vec2, Vec3};
 use glow::HasContext;
@@ -87,11 +86,9 @@ impl PartGl {
     }
 }
 
-/// Merges two always-together static parts into one index pool, so one draw
-/// covers both (fewer draws + VAO binds per frame). Triangle order is kept:
-/// all of `a`, then all of `b` with indices rebased past `a`'s verts. With
-/// LEQUAL depth and blending off, the merged draw therefore resolves exactly
-/// like two sequential draws — pixels are unchanged.
+/// Merges two always-together static parts into one index pool (one draw
+/// covers both). Order is kept (all of `a`, then `b` rebased), so pixels
+/// match two sequential draws under LEQUAL depth with blending off.
 fn merge_two(a: &ArenaPart, b: &ArenaPart) -> (Vec<Vec3>, Vec<Vec3>, Vec<Vec2>, Vec<u32>) {
     let mut verts = Vec::with_capacity(a.verts.len() + b.verts.len());
     verts.extend_from_slice(&a.verts);
@@ -109,11 +106,9 @@ fn merge_two(a: &ArenaPart, b: &ArenaPart) -> (Vec<Vec3>, Vec<Vec3>, Vec<Vec2>, 
     (verts, normals, uvs, indices)
 }
 
-/// Owned GL objects for the arena: the cutaway bowl (shell + field cap +
-/// low backdrop, always drawn) plus the roof (ceiling lid + high backdrop,
-/// enclosed/interior views only). The cutaway hides the roof; interior
-/// cameras need it. Shell + field + low planes merged at init: 1 draw
-/// covers the cutaway (was 3), roof adds 1 more when enclosed (was 2).
+/// Owned GL objects for the arena: the cutaway bowl (always drawn) plus
+/// the roof (enclosed/interior views only). Shell + field + low planes
+/// merge at init (1 draw); roof adds 1 more when enclosed.
 pub struct ArenaGl {
     prog: glow::Program,
     u_model: glow::UniformLocation,
@@ -162,10 +157,9 @@ impl ArenaGl {
         }
     }
 
-    /// Draws the cutaway in ONE draw (shell + field + low planes), plus the
-    /// roof in ONE draw when `enclosed`. Viewport in GL pixels.
-    /// Resets ALL shared-context GL state first (egui painter state leaks:
-    /// blend/scissor/cull/mask — every draw owns its state, no exceptions).
+    /// Draws the cutaway in ONE draw, plus the roof in ONE draw when
+    /// `enclosed`. Viewport in GL pixels. Resets all shared GL state first
+    /// (egui painter state leaks: every draw owns its state).
     pub fn draw(
         &self,
         gl: &glow::Context,
@@ -228,7 +222,7 @@ mod tests {
     }
 
     #[test]
-    fn merge_two_rebases_and_preserves_order() {
+    fn merge_two_rebases() {
         use crate::mesh::ArenaPart;
         let a = ArenaPart {
             verts: vec![Vec3::ZERO, Vec3::X, Vec3::Y],
@@ -249,12 +243,7 @@ mod tests {
         // a-tris verbatim, then b-tris rebased past a's verts.
         assert_eq!(i, vec![0, 1, 2, 3, 4, 3]);
         assert_eq!(v[3], Vec3::ONE);
-    }
-
-    #[test]
-    fn merge_two_empty_is_valid() {
-        // TheVoid builds empty parts; merging must stay a valid no-op.
-        use crate::mesh::ArenaPart;
+        // TheVoid builds empty parts; merging stays a valid no-op.
         let empty = ArenaPart {
             verts: vec![],
             normals: vec![],

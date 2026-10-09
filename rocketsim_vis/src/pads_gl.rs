@@ -1,10 +1,8 @@
-//! Instanced boost-pad pipeline (stage 6b): 4 draws cover all pads.
+//! Instanced boost-pad pipeline: 4 draws cover all pads.
 //!
-//! `PAD_VERT` is the main vertex shader with the model matrix fed from
-//! per-instance `mat4` attributes (pinned locations 3-6, divisor 1) instead
-//! of `u_model`; the fragment shader is the old `main_frag.glsl` verbatim.
-//! Instance buffers stream per frame (`DYNAMIC_DRAW`, 34×64B max); the mesh
-//! VAOs are static. Draws with zero instances are skipped.
+//! Model matrix comes from per-instance `mat4` attributes (locations 3-6)
+//! instead of `u_model`; fragment shader is the old `main_frag.glsl`.
+//! Instance buffers stream per frame; empty draws skip.
 
 use glam::Mat4;
 use glow::HasContext;

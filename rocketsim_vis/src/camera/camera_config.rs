@@ -1,14 +1,9 @@
-//! Camera tuning (stage 8a): RL-authentic follow values.
+//! Camera tuning: RL follow values.
 //!
-//! `distance`/`height` place the camera boom behind the car on the
-//! horizontal bearing; `angle_deg` is the car-cam look pitch; `fov_degrees`
-//! is **horizontal** FOV (RL convention, converted at projection time).
-//! `stiffness` drives speed zoom-out and car-cam yaw lag (ball-cam yaw is
-//! always rigid); `transition_speed` drives the toggle swing time.
-//!
-//! Every field has a serde default rooted in the same `d_*` constants as the
-//! [`Default`] impls, so sparse/old TOML files parse with RL values intact
-//! (never 0.0 surprises).
+//! `distance`/`height` place the boom on the horizontal bearing;
+//! `angle_deg` is the car-cam look pitch; `fov_degrees` is horizontal FOV
+//! (RL convention). Every field has a serde default rooted in the `d_*`
+//! constants, so sparse/old TOML files parse with RL values (never 0.0).
 
 use glam::Vec3A;
 use serde::{Deserialize, Serialize};
@@ -110,16 +105,36 @@ impl Default for CameraConfig {
 
 /// Named camera preset (one-click tuning; values persist like sliders).
 ///
-/// The pro presets are transcribed from published pro settings (see each
-/// variant's docs). Only fields our follow camera models get applied: boom
+/// Only fields the follow camera models get applied: boom
 /// (`distance`/`height`/`angle_deg`), horizontal `fov`, `stiffness`, and
-/// `transition_speed`. Publish-only fields — swivel speed, camera shake,
-/// ball-cam mode, sensitivities — have no viewer equivalent and are ignored
-/// (their published values are noted in the docs for traceability, never
-/// invented).
+/// `transition_speed`. Publish-only fields (swivel, shake, sensitivities)
+/// have no viewer equivalent and are ignored.
 ///
-/// `Close`/`Far` are legacy generic presets kept so the existing viewer menu
-/// keeps compiling; prefer the pro presets for anything user-facing.
+/// `Close`/`Far` are legacy generic presets; prefer the pro presets.
+///
+/// | Preset | Boom (uu,uu,deg) | FOV | Stiff | Trans |
+/// |---|---|---|---|---|
+/// | Default | 270/100/-3 | 110 | 0.45 | 1.2 |
+/// | ApparentlyJack | 270/100/-3 | 110 | 0.35 | 1.8 |
+/// | BeastMode | 270/90/-4 | 109 | 0.45 | 1.2 |
+/// | Squishy | 270/90/-5 | 110 | 0.35 | 1.8 |
+/// | Vatira | 270/90/-5 | 110 | 0.35 | 1.5 |
+/// | Zen | 270/100/-3 | 110 | 0.35 | 1.4 |
+/// | Close | 200/80/-5 | 100 | - | - |
+/// | Far | 350/130/-1 | 110 | - | - |
+///
+/// ```rust
+/// use rocketsim_vis::camera::{CameraConfig, CameraPreset};
+///
+/// // Menus iterate ALL instead of hardcoding names.
+/// assert_eq!(CameraPreset::ALL[0], CameraPreset::Default);
+///
+/// // Apply one preset to the live tuning.
+/// let mut cfg = CameraConfig::default();
+/// CameraPreset::BeastMode.apply(&mut cfg.car_cam, &mut cfg.fov_degrees);
+/// assert_eq!(cfg.car_cam.distance, 270.0);
+/// assert_eq!(cfg.fov_degrees, 109.0);
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CameraPreset {
     /// RL defaults: 270/100/-3°/110°, stiffness 0.45, transition 1.2.

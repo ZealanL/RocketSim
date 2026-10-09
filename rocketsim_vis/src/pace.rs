@@ -1,13 +1,8 @@
 //! Wall-clock-disciplined tick pacer (real-time sim loops).
 //!
-//! `sleep(8ms)` after each tick drifts: sleep overshoots accumulate and the
-//! sim runs slower than wall clock. [`TickPacer`] instead anchors the next
-//! tick deadline to an [`Instant`] timeline — an early tick sleeps exactly
-//! the remainder, a late tick runs catch-up steps (capped by
-//! [`MAX_CATCH_UP`); anything beyond that is counted as dropped and the
-//! clock re-syncs, so a stall can never spiral into a catch-up backlog.
-//!
-//! Used by `examples/drive.rs`; the viewer keeps its own frame limiter.
+//! [`TickPacer`] anchors tick deadlines to a timeline: early ticks sleep
+//! the remainder, late ticks run capped catch-up steps, worse lateness
+//! counts as dropped and re-syncs. Used by `examples/drive.rs`.
 
 use std::time::{Duration, Instant};
 
@@ -20,9 +15,8 @@ pub const TICK_INTERVAL: Duration = Duration::from_nanos(8_333_333);
 /// Tick dt handed to the sim (`TICK_TIME` as `f32`).
 pub const TICK_DT: f32 = 1.0 / 120.0;
 
-/// Max extra ticks run when behind schedule; further lateness is dropped
-/// (counted in [`PaceStats::dropped`]) and the clock re-syncs. 5 keeps a
-/// ~40ms hitch recoverable without a visible spiral.
+/// Max extra ticks run when behind; further lateness is dropped
+/// and the clock re-syncs. 5 keeps a ~40ms hitch recoverable.
 pub const MAX_CATCH_UP: u32 = 5;
 
 /// Cumulative pacer counters (overlay / log diagnostics).
@@ -38,6 +32,23 @@ pub struct PaceStats {
 
 /// Real-time tick pacer: [`TickPacer::wait`] blocks to the next deadline and
 /// returns how many ticks to run now (`1` on time, more when catching up).
+///
+/// The next deadline is anchored to a timeline: an early tick sleeps the
+/// remainder, a late tick runs catch-up steps (capped by `max_catch_up`);
+/// further lateness counts as dropped and the clock re-syncs, so a stall
+/// never spirals into a backlog.
+///
+/// ```rust
+/// use std::time::Duration;
+///
+/// use rocketsim_vis::pace::TickPacer;
+///
+/// // Drive the sim at 120 Hz: wait, then step that many ticks.
+/// let mut pacer = TickPacer::at_120hz();
+/// let steps = pacer.wait();
+/// assert!(steps >= 1);
+/// assert!(pacer.stats().ticks >= 1);
+/// ```
 pub struct TickPacer {
     interval: Duration,
     max_catch_up: u32,
@@ -73,10 +84,7 @@ impl TickPacer {
     }
 
     /// Sleeps to the next deadline, then returns the ticks to run now.
-    ///
-    /// Never returns 0 (at least the current tick runs); caps at
-    /// `1 + max_catch_up` and re-syncs the clock past that so a long stall
-    /// costs dropped ticks, not a spiral.
+    /// Never 0; capped at `1 + max_catch_up`, then the clock re-syncs.
     pub fn wait(&mut self) -> u32 {
         let now = Instant::now();
         if now < self.next {
@@ -86,8 +94,7 @@ impl TickPacer {
             steps_for_lateness(Instant::now(), self.next, self.interval, self.max_catch_up);
         self.next += self.interval * steps;
         if Instant::now() >= self.next {
-            // Still behind after max catch-up (multi-second stall): re-sync
-            // to now instead of carrying a permanent offset.
+            // Multi-second stall: re-sync to now, count the rest as dropped.
             let missed = steps_for_lateness_missed(Instant::now(), self.next, self.interval);
             self.stats.dropped += missed as u64;
             self.next = Instant::now() + self.interval;
@@ -100,9 +107,8 @@ impl TickPacer {
     }
 }
 
-/// Pure catch-up math (unit-testable core of [`TickPacer::wait`]):
-/// given `now` past deadline `next`, returns `(steps, dropped)` where
-/// `steps` is clamped to `1 + max_catch_up` and `dropped` is the remainder.
+/// Pure catch-up math (core of [`TickPacer::wait`]): returns
+/// `(steps, dropped)` with steps clamped to `1 + max_catch_up`.
 pub fn steps_for_lateness(
     now: Instant,
     next: Instant,
@@ -137,7 +143,7 @@ mod tests {
     }
 
     #[test]
-    fn on_time_runs_single_tick() {
+    fn catch_up_math() {
         let base = t0();
         // Early and exactly-on-deadline both yield one step, zero drops.
         assert_eq!(
@@ -145,22 +151,12 @@ mod tests {
             (1, 0)
         );
         assert_eq!(steps_for_lateness(base, base, TICK_INTERVAL, 5), (1, 0));
-    }
-
-    #[test]
-    fn lateness_adds_catch_up_steps() {
-        let base = t0();
         // 2 intervals late -> this tick + 2 catch-up, nothing dropped.
         let now = base + 2 * TICK_INTERVAL + Duration::from_micros(100);
         assert_eq!(
             steps_for_lateness(now, base, TICK_INTERVAL, MAX_CATCH_UP),
             (3, 0)
         );
-    }
-
-    #[test]
-    fn catch_up_caps_and_drops() {
-        let base = t0();
         // 10 intervals late with cap 5 -> 6 steps, 5 dropped.
         let now = base + 10 * TICK_INTERVAL + Duration::from_micros(100);
         assert_eq!(

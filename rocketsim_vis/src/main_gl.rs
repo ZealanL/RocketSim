@@ -1,10 +1,9 @@
-//! Textured + lit object pipeline (stage 5a): ball and cars in the old look.
+//! Textured + lit object pipeline: ball and cars in the old look.
 //!
-//! The shaders are the old `main_vert/frag.glsl` bytes verbatim (ambient +
-//! sun lighting, transparent-texture bypass). Per-model VAOs bind position,
-//! normal, UV to pinned locations 0/1/2; all uniforms are cached at init.
-//! Model matrices are plain translation × rotation — no handedness flip
-//! (the view carries the single global x-flip instead).
+//! Shaders are the old `main_vert/frag.glsl` bytes (ambient + sun light,
+//! transparent-texture bypass). VAOs bind pos/normal/UV to locations
+//! 0/1/2; uniforms are cached at init. Model matrices are plain
+//! translation x rotation (the view carries the global x-flip).
 
 use glam::{Mat3, Mat4, Vec3};
 use glow::HasContext;
@@ -21,10 +20,8 @@ pub const MAIN_VERT_SRC: &str = include_str!("shaders/main_vert.glsl");
 pub const MAIN_FRAG_SRC: &str = include_str!("shaders/main_frag.glsl");
 
 /// Instanced car vertex shader: `main_vert` with `u_model` fed from a
-/// per-instance `mat4` (pinned locations 3-6, divisor 1) instead of a
-/// uniform — the pads pattern. The body is verbatim (`normalize`d
-/// `mat3(inst) * normal`, `u_proj * u_view * inst * v`), so pixels match
-/// the per-draw path exactly. Pairs with [`MAIN_FRAG_SRC`].
+/// per-instance `mat4` (locations 3-6) instead of a uniform. Body is
+/// verbatim, so pixels match the per-draw path. Pairs [`MAIN_FRAG_SRC`].
 pub const CAR_INST_VERT_SRC: &str = "#version 330 core
 
 layout (location = 0) in vec3 vs_vert;
@@ -108,7 +105,7 @@ pub fn car_model_name(config: &CarBodyConfig) -> &'static str {
     }
 }
 
-/// Maps a team to its car texture, as the old vis did.
+/// Maps a team to its car texture.
 pub fn car_texture_name(team: Team) -> &'static str {
     if team == Team::Blue {
         "car_blue"
@@ -473,7 +470,7 @@ mod tests {
     }
 
     #[test]
-    fn body_mapping_covers_all_configs() {
+    fn car_name_mapping() {
         // Every preset resolves to a BUNDLED model (no missing plank/hybrid).
         for config in [
             CarBodyConfig::OCTANE,
@@ -493,10 +490,6 @@ mod tests {
         assert_eq!(car_model_name(&CarBodyConfig::DOMINUS), "car_dominus");
         assert_eq!(car_model_name(&CarBodyConfig::BREAKOUT), "car_breakout");
         assert_eq!(car_model_name(&CarBodyConfig::MERC), "car_merc");
-    }
-
-    #[test]
-    fn team_mapping() {
         assert_eq!(car_texture_name(Team::Blue), "car_blue");
         assert_eq!(car_texture_name(Team::Orange), "car_orange");
     }
@@ -529,7 +522,12 @@ mod tests {
     }
 
     #[test]
-    fn group_car_draws_splits_body_and_team() {
+    fn group_car_draws_groups_by_body_and_team() {
+        assert!(group_car_draws(&[]).is_empty());
+        let m = Mat4::IDENTITY;
+        let groups = group_car_draws(&[("car_merc", "car_orange", m)]);
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].matrices, vec![m]);
         let m1 = Mat4::IDENTITY;
         let m2 = Mat4::from_translation(Vec3::new(1.0, 2.0, 3.0));
         let m3 = Mat4::from_scale(Vec3::splat(2.0));
@@ -554,14 +552,5 @@ mod tests {
             ]
         );
         assert_eq!(groups[0].matrices, vec![m1, m3]);
-    }
-
-    #[test]
-    fn group_car_draws_empty_and_singleton() {
-        assert!(group_car_draws(&[]).is_empty());
-        let m = Mat4::IDENTITY;
-        let groups = group_car_draws(&[("car_merc", "car_orange", m)]);
-        assert_eq!(groups.len(), 1);
-        assert_eq!(groups[0].matrices, vec![m]);
     }
 }

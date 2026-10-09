@@ -1,9 +1,7 @@
-//! Frustum culling for instanced passes (stage 6a).
+//! Frustum culling for instanced passes.
 //!
-//! Planes are extracted for `[0, 1]`-style depth (the projection is
-//! `directx::perspective`), so near is `row2` and far is `row3 - row2`.
-//! Left/right/top/bottom are API-independent. All planes are normalized,
-//! and touching counts as visible (no popping at the edge).
+//! Planes fit `[0, 1]`-style depth (near is `row2`, far is `row3 - row2`).
+//! All planes are normalized; touching counts as visible.
 
 use glam::{Mat4, Vec3, Vec4};
 

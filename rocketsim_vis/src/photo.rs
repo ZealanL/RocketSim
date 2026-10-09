@@ -1,8 +1,7 @@
 //! Deterministic scene for screenshot review and determinism gates.
 //!
-//! Fixed seed, fixed cars, fixed controls, no input: stepping N ticks must
-//! always yield the same state. The photo example streams/prints this scene;
-//! later stages attach the NetVis streamer here.
+//! Fixed seed, cars, and controls: stepping N ticks always yields the same
+//! state. The photo example streams/prints this scene.
 
 use rocketsim::{Arena, ArenaConfig, CarBodyConfig, CarControls, GameMode, Team};
 
@@ -34,9 +33,8 @@ pub fn init_meshes() {
     }
     rocketsim::init_from_default(true).unwrap();
 }
-/// Steps `ticks` times with fixed controls (car 0 drives forward, car 1 idles).
-/// Pure sim — no sleeping, so unit tests stay fast. The photo example adds its
-/// own pacing sleep for streaming.
+/// Steps `ticks` times with fixed controls (car 0 drives, car 1 idles).
+/// Pure sim (no sleeps), so unit tests stay fast.
 pub fn step_ticks(arena: &mut Arena, ticks: usize) {
     let drive = CarControls {
         throttle: 1.0,
@@ -66,25 +64,18 @@ mod tests {
     }
 
     #[test]
-    fn photo_scene_is_deterministic() {
+    fn photo_scene_contract() {
         let a = state_after(120);
         let b = state_after(120);
         assert_eq!(a.0, 120);
         assert_eq!(a, b, "same seed + same ticks must give same state");
-    }
-
-    #[test]
-    fn photo_scene_exercises_the_world() {
-        // Ball untouched at kickoff; car 0 must have driven from its spawn.
+        // The scene must move: car 0 drives from its spawn, ball sits still.
         init_meshes();
         let mut arena = build_arena();
         let y0 = arena.get_car_state(0).phys.pos.y;
         step_ticks(&mut arena, 120);
-        let (_, ball, car) = (
-            arena.tick_count(),
-            arena.get_ball_state().phys.pos,
-            arena.get_car_state(0).phys.pos,
-        );
+        let ball = arena.get_ball_state().phys.pos;
+        let car = arena.get_car_state(0).phys.pos;
         assert!(ball.x.abs() < 1.0 && ball.y.abs() < 1.0, "ball={ball:?}");
         assert!(car.y - y0 > 100.0, "car0 never moved? y0={y0} car={car:?}");
     }

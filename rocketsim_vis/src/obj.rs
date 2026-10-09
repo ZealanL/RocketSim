@@ -1,9 +1,8 @@
-//! Wavefront OBJ loading + smooth normals (stage 5a).
+//! Wavefront OBJ loading + smooth normals.
 //!
-//! Parses the bundled ZealanL customs (`src/models/*.obj`, tri-only faces),
-//! V-flips UVs (OBJ convention), ignores file normals, welds on exact
-//! `(position, uv)` corners, and recomputes smooth normals by face-normal
-//! accumulation (zero on degenerate tris).
+//! Parses the bundled tri-only models, V-flips UVs, welds on exact
+//! `(position, uv)` corners, and recomputes smooth normals (zero on
+//! degenerate tris). File normals are ignored.
 
 use glam::{UVec3, Vec2, Vec3};
 use rustc_hash::FxHashMap;
@@ -23,8 +22,8 @@ pub struct ObjMesh {
 }
 
 impl ObjMesh {
-    /// Parses + welds + smooths. Panics with the line on malformed input
-    /// (our assets are fixed at build time — fail fast, never half-load).
+    /// Parses + welds + smooths. Panics on malformed input (assets are
+    /// fixed at build time: fail fast, never half-load).
     pub fn load(obj_str: &str) -> Self {
         let mut positions = Vec::new();
         let mut uvs = Vec::new();
@@ -111,8 +110,8 @@ impl ObjMesh {
     }
 }
 
-/// Smooth per-vertex normals: face normals accumulated into each corner,
-/// then normalized (zero on degenerate tris).
+/// Smooth per-vertex normals: face normals summed per corner, then
+/// normalized (zero on degenerate tris).
 pub fn smooth_normals(verts: &[Vec3], indices: &[u32]) -> Vec<Vec3> {
     assert_eq!(indices.len() % 3, 0);
     let mut acc = vec![Vec3::ZERO; verts.len()];
@@ -167,24 +166,17 @@ mod tests {
     }
 
     #[test]
-    fn bundled_ball_loads() {
-        let mesh = ObjMesh::load(include_str!("models/ball.obj"));
-        check_sanity(&mesh, "ball");
+    fn bundled_models_load() {
+        let ball = ObjMesh::load(include_str!("models/ball.obj"));
+        check_sanity(&ball, "ball");
         // Ball is a smooth closed solid: weld must merge shared corners and
         // nearly every normal must be unit (no degenerate tris).
         assert!(
-            mesh.verts.len() < mesh.soup_corners,
+            ball.verts.len() < ball.soup_corners,
             "ball weld did nothing"
         );
-        let unit = mesh.normals.iter().filter(|n| n.length() > 0.5).count();
-        assert!(
-            unit * 100 / mesh.normals.len() > 95,
-            "ball normals mostly degenerate?"
-        );
-    }
-
-    #[test]
-    fn bundled_cars_load() {
+        let unit = ball.normals.iter().filter(|n| n.length() > 0.5).count();
+        assert!(unit * 100 / ball.normals.len() > 95);
         for (label, obj) in [
             ("octane", include_str!("models/car_octane.obj")),
             ("dominus", include_str!("models/car_dominus.obj")),

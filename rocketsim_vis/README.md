@@ -28,25 +28,33 @@ Calling it with the current state is a no-op.
 
 ## Controls
 
-Window (handled every tick):
+Viewer window (needs focus; input is read in-window so it works on
+Wayland):
 
-* `C` — cycle camera: birds-eye, then each car in order
-* `Space` — toggle ball-cam while following a car
+* `C` — cycle camera: wide view, then each car in order
+* `Space` — toggle ball cam while following a car
+* `1-8` — follow a car, `9` director, `0` auto cam, `F` free camera
+* WASD + mouse — drive the car you follow (other views send neutral)
+* `Backspace` or the settings-menu "Reset play" button — reset to kickoff
+* `Esc` — options menu (sliders, camera presets, overlays)
+
+While playing, the mouse is captured by the 3D view; it returns when the
+menu opens or the window loses focus. An unfocused window never drives.
 
 The driveable demo (`examples/drive.rs`) additionally uses, in the viewer
-window: WASD + mouse to drive the directly followed car (birds-eye,
-director, and free cam send neutral), Q/E roll, Shift handbrake,
-`Backspace` reset to kickoff, `F2` dribble the ball, `F4` launch it. Inputs stream to
-the sim over the control channel (`127.0.0.1:39202`); gamepads keep
-working from the sim side with no focus needed.
+window: Q/E roll, Shift handbrake, `F2` dribble the ball, `F4` launch it.
+Inputs stream to the sim over the control channel (`127.0.0.1:39202`);
+gamepads keep working from the sim side with no focus needed.
 
 ## Examples
 
 ```sh
-# Smallest windowed sim, no input
+# Smallest streaming sim, no input (launches vis_viewer if needed)
 cargo run -p rocketsim_vis --example minimal
-# Interactive driveable demo
-cargo run -p rocketsim_vis --example vis
+# Interactive driveable demo (drive from the viewer window)
+cargo run -p rocketsim_vis --example drive
+# Deterministic scene for screenshot review
+cargo run -p rocketsim_vis --example photo
 ```
 
 ## Camera

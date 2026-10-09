@@ -1,9 +1,8 @@
-//! Line segments, ribbon trails, and line config (stage 7a).
+//! Line segments, ribbon trails, and line config.
 //!
-//! Ports the old `RibbonEmitter` (rate emission, advection, expiry,
-//! oldest-fade) with headless-testable output: [`RibbonEmitter::segments`]
-//! returns line segments directly instead of pushing into a render state.
-//! Configs (ball trail, boost) are the old values verbatim.
+//! [`RibbonEmitter`] ports the old trail logic with testable output:
+//! [`RibbonEmitter::segments`] returns segments directly. Ball/boost
+//! configs keep the old values.
 
 use std::collections::VecDeque;
 
@@ -76,7 +75,7 @@ pub struct Segment {
 }
 
 impl Segment {
-    /// Flat segment (same color/width both ends), like old `add_line_simple`.
+    /// Flat segment (same color/width both ends).
     pub fn flat(a: Vec3A, b: Vec3A, color: Color, width: f32) -> Self {
         Self {
             a,
@@ -88,14 +87,13 @@ impl Segment {
         }
     }
 
-    /// Fully transparent (blending no-op at every pixel — safe to skip at
-    /// upload with bit-exact output, whatever the widths).
+    /// Fully transparent (safe to skip at upload; output is bit-exact).
     pub fn is_invisible(&self) -> bool {
         self.color_a.a <= 0.001 && self.color_b.a <= 0.001
     }
 }
 
-/// Ball-to-ground drop line, as the old vis drew it (white 0.15, width 2).
+/// Ball-to-ground drop line (white 0.15, width 2).
 pub fn ground_line(ball_pos: Vec3A, floor_z: f32) -> Segment {
     Segment::flat(
         ball_pos,
@@ -123,14 +121,13 @@ pub const CORNERS: [(f32, f32); 4] = [(-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1
 /// Size margin on expansion (superset guards float mismatch; ~1% overdraw).
 const EXPAND_MARGIN: f32 = 1.1;
 
-/// Expands a segment into its 4 camera-facing quad corners (world space),
-/// replicating the old vertex-shader math on CPU: axis interpolation,
+/// Expands a segment into 4 camera-facing quad corners (world space),
+/// matching the old vertex-shader math on CPU: axis interpolation,
 /// view-perp offset, 1px minimum width, end-cap pads.
 ///
-/// `eye` is the camera world position, `view` the view matrix (for
-/// camera-plane distance), `proj11` is `proj[1][1]`, `screen_h` the
-/// viewport height in pixels. Degenerate segments yield a zero-area quad
-/// (invisible, matching the old NaN-clipped behavior).
+/// `eye` is the camera pos, `view` the view matrix, `proj11` is
+/// `proj[1][1]`, `screen_h` the viewport height in pixels. Degenerate
+/// segments give a zero-area quad (invisible, like the old NaN-clip).
 pub fn expand_segment(
     seg: &Segment,
     eye: Vec3A,
@@ -223,7 +220,7 @@ impl RibbonPoint {
     }
 }
 
-/// Emission/visual config for a ribbon trail (old values verbatim).
+/// Emission/visual config for a ribbon trail (old values kept).
 #[derive(Debug, Copy, Clone)]
 pub struct RibbonConfig {
     /// Points per second.
@@ -245,7 +242,7 @@ pub struct RibbonConfig {
 }
 
 impl RibbonConfig {
-    /// Ball trail (old vis values): white 0.3→0 over 1s, width 30→0.
+    /// Ball trail: white 0.3→0 over 1s, width 30→0.
     pub const fn ball_trail() -> Self {
         Self {
             emit_rate: 30.0,
@@ -259,7 +256,7 @@ impl RibbonConfig {
         }
     }
 
-    /// Boost flames (old vis values): yellow-white→orange over 0.5s.
+    /// Boost flames: yellow-white→orange over 0.5s.
     pub const fn boost() -> Self {
         Self {
             emit_rate: 30.0,
@@ -274,7 +271,7 @@ impl RibbonConfig {
     }
 }
 
-/// Point-trail emitter (old `RibbonEmitter`, render-state free).
+/// Point-trail emitter (render-state free).
 #[derive(Debug, Clone)]
 pub struct RibbonEmitter {
     config: RibbonConfig,
@@ -337,7 +334,7 @@ impl RibbonEmitter {
     }
 
     /// Line segments from the head (`emit_pos`) through all live points.
-    /// Oldest point fades toward the head; disconnected heads emit nothing.
+    /// Disconnected heads emit nothing.
     pub fn segments(&self, emit_pos: Vec3A) -> Vec<Segment> {
         let mut segs = Vec::with_capacity(self.points.len());
         if self.points.is_empty() {
@@ -404,15 +401,16 @@ mod tests {
         let c = Color::new(0.0, 0.0, 0.0, 0.0).lerp(Color::new(1.0, 1.0, 1.0, 1.0), 0.5);
         assert_eq!(c, Color::new(0.5, 0.5, 0.5, 0.5));
         assert_eq!(Color::WHITE.with_alpha(0.15).a, 0.15);
-    }
-
-    #[test]
-    fn ground_line_shape() {
+        // Ball-to-ground drop line: white 0.15, width 2, straight down.
         let seg = ground_line(Vec3A::new(10.0, 20.0, 93.0), 0.0);
         assert_eq!(seg.a, Vec3A::new(10.0, 20.0, 93.0));
         assert_eq!(seg.b, Vec3A::new(10.0, 20.0, 0.0));
         assert_eq!(seg.width_a, 2.0);
         assert!((seg.color_a.a - 0.15).abs() < 1e-6);
+        // Boost flames: yellow-white to orange over 0.5 s.
+        let c = RibbonConfig::boost();
+        assert_eq!((c.emit_rate, c.emit_lifetime), (30.0, 0.5));
+        assert_eq!((c.start_width, c.end_width), (20.0, 0.0));
     }
 
     #[test]
@@ -434,7 +432,7 @@ mod tests {
     }
 
     #[test]
-    fn segments_follow_points() {
+    fn segments_and_detach() {
         let mut ribbon = RibbonEmitter::new(RibbonConfig::ball_trail());
         // Emit one point ahead, then read segments at the head.
         for _ in 0..10 {
@@ -445,26 +443,10 @@ mod tests {
         assert_eq!(segs.len(), ribbon.len(), "one segment per live point");
         assert_eq!(segs[0].a, Vec3A::ZERO, "head starts at emit pos");
         assert_eq!(segs[0].color_a, RibbonConfig::ball_trail().start_color);
-    }
-
-    #[test]
-    fn stopped_emission_detaches() {
-        let mut ribbon = RibbonEmitter::new(RibbonConfig::ball_trail());
-        for _ in 0..60 {
-            ribbon.update(true, Vec3A::ZERO, Vec3A::ZERO, 1.0 / 120.0);
-        }
+        // Stop emission: the head detaches (one fewer segment than points).
         let live = ribbon.len();
-        assert!(!ribbon.is_empty());
         ribbon.update(false, Vec3A::ZERO, Vec3A::ZERO, 1.0 / 120.0);
-        // Head disconnected → one fewer segment than points.
         assert_eq!(ribbon.segments(Vec3A::ZERO).len(), live - 1);
-    }
-
-    #[test]
-    fn boost_config_values() {
-        let c = RibbonConfig::boost();
-        assert_eq!((c.emit_rate, c.emit_lifetime), (30.0, 0.5));
-        assert_eq!((c.start_width, c.end_width), (20.0, 0.0));
     }
 
     fn test_view() -> (Vec3A, glam::Mat4, f32, f32) {
@@ -503,53 +485,40 @@ mod tests {
     }
 
     #[test]
-    fn expand_degenerate_is_zero_area() {
+    fn expand_edge_cases() {
+        let (eye, view, proj11, h) = test_view();
+        // Degenerate segment: zero-area quad (matches old NaN-clip).
         let seg = Segment::flat(
             Vec3A::new(1.0, 2.0, 3.0),
             Vec3A::new(1.0, 2.0, 3.0),
             Color::WHITE,
             5.0,
         );
-        let (eye, view, proj11, h) = test_view();
-        let corners = expand_segment(&seg, eye, &view, proj11, h);
-        for c in corners {
+        for c in expand_segment(&seg, eye, &view, proj11, h) {
             assert_eq!(c.world, seg.a);
         }
-    }
-
-    #[test]
-    fn expand_respects_min_width() {
-        // Hairline far away: corners must still span the 1px minimum.
+        // Hairline far away: corners still span the 1px minimum.
         let seg = Segment::flat(
             Vec3A::new(0.0, 4000.0, 0.0),
             Vec3A::new(100.0, 4000.0, 0.0),
             Color::WHITE,
             0.1,
         );
-        let (eye, view, proj11, h) = test_view();
         let corners = expand_segment(&seg, eye, &view, proj11, h);
         let spread = corners
             .iter()
             .map(|c| (c.world - seg.a).length())
             .fold(0.0_f32, f32::max);
         assert!(spread > 1.0, "min-width collapsed: {spread}");
-    }
-
-    #[test]
-    fn expand_is_symmetric_about_axis() {
-        // +side/-side corner midpoints land back on the axis (margin scales
-        // about the axis, so the quad stays centered).
+        // +/-side corner midpoints land back on the axis (quad centered).
         let seg = Segment::flat(
             Vec3A::new(-200.0, 100.0, 50.0),
             Vec3A::new(300.0, -100.0, 50.0),
             Color::WHITE,
             8.0,
         );
-        let (eye, view, proj11, h) = test_view();
         let corners = expand_segment(&seg, eye, &view, proj11, h);
         for along in [0, 2] {
-            // Pair midpoints sit on the axis line (end-cap pads shift along
-            // it; margin scales symmetrically about it).
             let mid = (corners[along].world + corners[along + 1].world) * 0.5;
             let frac = along as f32 / 2.0;
             let axis = seg.a.lerp(seg.b, frac);

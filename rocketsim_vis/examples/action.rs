@@ -1,9 +1,8 @@
 //! Scripted action scene: deterministic motion for dynamic gates.
 //!
 //! Fixed seed + fixed script (no input): blue drives with infinite boost,
-//! the ball is launched at tick 60, and everything streams to the viewer.
-//! Same ticks ⇒ same states (sleeps never touch the sim), so screenshots
-//! of trails (stage 7) and effects (stage 10) are reproducible.
+//! the ball launches at tick 60. Same ticks give same states, so trail and
+//! effect screenshots are reproducible.
 //!
 //! Run with: `cargo run -p rocketsim_vis --example action`
 
@@ -18,8 +17,7 @@ pub const JUMP_TICK: u64 = 100;
 /// Tick of the second jump press while airborne (double-jump ring edge).
 pub const DOUBLE_JUMP_TICK: u64 = 115;
 /// Tick at which the ball is set under the descending car (flip-reset
-/// edge: wheel rays strike the ball dome, no world contact). The car falls
-/// onto the ball; read from the live pose so the height always matches.
+/// edge: wheel rays strike the ball dome, no world contact).
 pub const RESET_TICK: u64 = 250;
 /// Total streamed ticks (~10s at 8ms pacing).
 pub const ACTION_TICKS: u64 = 1200;
@@ -49,10 +47,9 @@ fn main() {
         // Single-tick jump presses (edges, not holds).
         drive.jump = tick == JUMP_TICK || tick == DOUBLE_JUMP_TICK;
         if tick == RESET_TICK {
-            // Park the ball under the front axle: all four wheel rays
-            // strike the dome (empirically 4 contacts; centered only ever
-            // gives the backs). Offset follows the live heading, so it
-            // holds whatever yaw the car has. No world contact, airborne.
+            // Ball under the front axle: all four wheel rays strike the
+            // dome (centered only ever gives the backs). Offset follows the
+            // live heading. No world contact, airborne.
             let car = *arena.get_car_state(car_idx);
             let fwd2d = car.phys.get_forward_dir().truncate().normalize_or_zero();
             let mut ball = *arena.get_ball_state();

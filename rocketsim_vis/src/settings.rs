@@ -1,12 +1,8 @@
-//! Viewer settings: TOML persistence + back-compat (stage 9a).
+//! Viewer settings: TOML persistence.
 //!
-//! File: `settings.toml` under `rocketsim-vis/` (XDG config on Linux,
-//! `Application Support` on macOS, `%APPDATA%` on Windows; `./settings.toml`
-//! fallback when no home resolves). Shared by debug/release builds.
-//!
-//! Loading never fails: missing/corrupt files yield defaults (+ stderr
-//! note). Every field has a serde default, so old files missing new keys
-//! parse (pinned by `old_file_still_parses`).
+//! File: `settings.toml` under `rocketsim-vis/` in the OS config dir
+//! (`./settings.toml` fallback). Loading never fails (missing/corrupt
+//! files give defaults); every field has a default so old files parse.
 
 use std::{path::PathBuf, time::Instant};
 
@@ -24,6 +20,29 @@ pub const DEFAULT_MSAA: u16 = 4;
 const SAVE_DEBOUNCE_SECS: f32 = 1.0;
 
 /// Persistent viewer settings (TOML-serializable, all fields defaulted).
+///
+/// Shape: `[camera]` tuning (FOV, follow distance/height/angle, stiffness,
+/// transition) plus overlay flags (`show_trail`, `show_boost`,
+/// `show_ground_line`, `show_pads`), `fps_limit_hz` (0 = uncapped),
+/// `ui_scale`, `vsync`/`msaa` (apply on relaunch).
+/// Loading never fails (missing/corrupt files give defaults); every field
+/// has a default so old files missing new keys still parse.
+///
+/// ```rust
+/// use rocketsim_vis::settings::ViewerSettings;
+///
+/// let mut s = ViewerSettings::default();
+/// s.show_boost = false;
+/// s.fps_limit_hz = 0; // uncapped
+/// s.mark_dirty();
+/// s.reset_camera(); // back to RL defaults, stays dirty until saved
+///
+/// // File shape: plain TOML, unknown keys ignored on load.
+/// let text = toml::to_string(&s).unwrap();
+/// let back: ViewerSettings = toml::from_str(&text).unwrap();
+/// assert!(!back.show_boost);
+/// assert_eq!(back.fps_limit_hz, 0);
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ViewerSettings {
     /// Follow-camera + FOV tuning (RL defaults).
@@ -53,6 +72,9 @@ pub struct ViewerSettings {
     /// MSAA samples (applies on relaunch).
     #[serde(default = "default_msaa")]
     pub msaa: u16,
+    /// Spectate-only mode: watch the followed car, send neutral inputs.
+    #[serde(default)]
+    pub spectate_only: bool,
     /// Last save time (not persisted).
     #[serde(skip)]
     last_save: Option<Instant>,
@@ -89,6 +111,7 @@ impl Default for ViewerSettings {
             ui_scale: DEFAULT_UI_SCALE,
             vsync: true,
             msaa: DEFAULT_MSAA,
+            spectate_only: false,
             last_save: None,
             dirty: false,
         }
@@ -138,7 +161,8 @@ impl ViewerSettings {
         }
     }
 
-    /// Marks changed (call after any mutation); use [`save_if_due`](Self::save_if_due) per frame.
+    /// Marks changed (call after any mutation); flushed by
+    /// [`save_if_due`](Self::save_if_due) once per second.
     pub fn mark_dirty(&mut self) {
         self.dirty = true;
     }
@@ -231,15 +255,6 @@ mod tests {
         assert_eq!(back.camera.car_cam.stiffness, 0.45);
         assert!(back.show_trail && back.show_pads);
         assert_eq!(back.fps_limit_hz, DEFAULT_FPS_LIMIT);
-    }
-
-    #[test]
-    fn corrupt_is_default() {
-        let back: Result<ViewerSettings, _> = toml::from_str("[[[not toml");
-        assert!(back.is_err());
-        // load() maps that error to defaults (covered by round_trip path);
-        // the unit contract here is just that defaults are sane.
-        let _ = ViewerSettings::default();
     }
 
     #[test]

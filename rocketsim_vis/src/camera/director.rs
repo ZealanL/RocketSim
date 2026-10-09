@@ -1,14 +1,13 @@
-//! Broadcast director: auto-picks overview or one car (stage 8a).
+//! Broadcast director: picks overview or one car each frame.
 //!
-//! Each valid candidate (overview plus every non-demoed car) is scored every
-//! frame; the director sticks with its pick subject to hold times and only
-//! switches for a clearly better shot — except hard goal threats, which cut
-//! in (rate-limited). All timing runs on caller `dt` (clamped); no RNG or
+//! Candidates score every frame; the pick sticks through hold times and
+//! switches only for a clearly better shot — except hard goal threats,
+//! which cut in (rate-limited). All timing runs on caller `dt`; no RNG or
 //! wall-clock.
 //!
-//! Per-car score: `S = 1.0·P + 2.0·T + 0.5·E + 0.5·A` (proximity, shot
-//! threat, ball energy, activity). Overview: `S = 0.55 + 0.3·C − 0.3·E`
-//! (closest-car spread minus energy).
+//! Per-car: `S = 1.0·P + 2.0·T + 0.5·E + 0.5·A` (nearness, shot threat,
+//! ball energy, activity). Overview: `S = 0.55 + 0.3·C − 0.3·E` (spread
+//! minus energy).
 
 use glam::Vec3A;
 use rocketsim::{ArenaState, consts::arena::get_aabb};

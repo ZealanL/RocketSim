@@ -1,13 +1,10 @@
-//! Minimal glow helpers with fail-fast rules (established stage 3, kept ever after).
+//! Minimal glow helpers with fail-fast rules.
 //!
-//! * [`compile_program`] asserts shader compile + link status with info logs
-//!   and deletes the shaders after linking. A broken shader must crash with
-//!   its log, never render black silently.
-//! * Attribute locations are **hardcoded only when the shader pins them**
-//!   with `layout(location = …)`; otherwise they must be queried with
-//!   [`attrib_location`]. See `triangle` for the pinned example.
-//! * Uniform locations are **cached once at init**, never queried per draw
-//!   (per-frame `get_uniform_location` spam ate measurable CPU in v1).
+//! * [`compile_program`] panics with the info log on failure (broken
+//!   shaders crash, never render black).
+//! * Attribute locations are hardcoded only when the shader pins them with
+//!   `layout(location = …)`; else query with [`attrib_location`].
+//! * Uniform locations are cached once at init, never queried per draw.
 
 use glow::HasContext;
 

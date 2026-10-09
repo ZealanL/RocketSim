@@ -1,10 +1,8 @@
-//! PNG decoding + GL texture upload (stage 5a).
+//! PNG decoding + GL texture upload.
 //!
-//! Bundled ZealanL PNGs (`src/textures/*.png`, all 128x128 RGBA8) decode to
-//! raw rows; upload uses `UNPACK_ALIGNMENT 1`, trilinear min + linear mag,
-//! repeat wrap, and generated mipmaps. Unknown texture names panic loudly
-//! (a typo must crash, never render black); the magenta fallback exists so
-//! any future procedural path has a loud-not-black default.
+//! Bundled PNGs (all 128x128 RGBA8) decode to raw rows; upload uses
+//! `UNPACK_ALIGNMENT 1`, trilinear min + linear mag, repeat wrap, and
+//! mipmaps. Unknown names panic (a typo must crash, never render black).
 
 use std::io::Cursor;
 
@@ -53,8 +51,7 @@ impl PngImage {
         }
     }
 
-    /// 1x1 magenta: the loud-not-black default. Never used for known assets
-    /// (those panic on absence instead); tested so it stays valid.
+    /// 1x1 magenta: loud-not-black default for future procedural paths.
     pub fn fallback_magenta() -> Self {
         Self {
             width: 1,
@@ -146,15 +143,12 @@ mod tests {
     }
 
     #[test]
-    fn white_is_white() {
-        // The arena shader multiplies team colors by this texture: any tint
-        // here would tint the whole stadium.
+    fn special_images() {
+        // The arena shader multiplies team colors by white: any tint here
+        // would tint the whole stadium.
         let img = PngImage::decode(include_bytes!("textures/white.png"));
         assert!(img.bytes.chunks(4).all(|px| px == [255, 255, 255, 255]));
-    }
-
-    #[test]
-    fn fallback_is_magenta() {
+        // Loud-not-black 1x1 default for future procedural paths.
         let img = PngImage::fallback_magenta();
         assert_eq!((img.width, img.height), (1, 1));
         assert_eq!(img.bytes, vec![255, 0, 255, 255]);

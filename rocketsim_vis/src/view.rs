@@ -1,10 +1,10 @@
-//! View/projection scaffolding (stage 4).
+//! View/projection: Z-up look-at view + DirectX-depth (0..1) perspective.
 //!
-//! Fixed-pose helper for the arena beauty shot. The full camera system
-//! (birds-eye / car-cam / director, RL-authentic spec) lands in stage 8 and
-//! replaces [`arena_pose_mvp`]; the [`hfov_to_vfov_deg`] conversion and the
-//! Z-up LH view + DirectX-depth projection conventions are final and tested
-//! here day one.
+//! FOV settings are horizontal (RL convention), converted at projection
+//! time. The X-flip is load-bearing: glam's LH look-at with Z-up maps
+//! world +X to screen LEFT, so the view flips X once, globally (screen
+//! right is +X everywhere, no per-model fixes; culling stays OFF so the
+//! winding flip is harmless).
 
 use glam::{
     Mat4, Vec3,
@@ -21,15 +21,7 @@ pub fn hfov_to_vfov_deg(hfov_deg: f32, aspect: f32) -> f32 {
 
 /// Z-up look-at view + DirectX-depth (0..1) perspective, near 50 / far 60000.
 /// `fov_deg` is horizontal (RL convention). Near is 50 (not 5): a 5..50000
-/// ratio wastes depth precision and z-fights the 5uu hull/backdrop gap at
-/// range; 50 still clips nothing (closest geometry is meters away).
-///
-/// The X-flip is load-bearing: glam's LH `look_at` with a Z-up `up` maps
-/// world +X to screen LEFT (mirrored vs physical intuition — stand facing
-/// +Y with head +Z, your right hand is +X). v1 compensated per MODEL
-/// (`y_axis *= -1`) and still got team-color sides wrong. v2 flips the VIEW
-/// once, globally: screen-right is +X everywhere, no per-model fixes, and
-/// culling stays OFF so the winding inversion is harmless.
+/// ratio wastes depth precision and z-fights at range.
 pub fn view_proj(eye: Vec3, target: Vec3, hfov_deg: f32, aspect: f32) -> (Mat4, Mat4) {
     let view = Mat4::from_scale(Vec3::new(-1.0, 1.0, 1.0)) * look_at_mat4(eye, target, Vec3::Z);
     let vfov = hfov_to_vfov_deg(hfov_deg, aspect);
@@ -37,10 +29,8 @@ pub fn view_proj(eye: Vec3, target: Vec3, hfov_deg: f32, aspect: f32) -> (Mat4, 
     (view, proj)
 }
 
-/// Fixed open-bowl beauty shot: high at the -Y end, looking across the field.
-/// The ceiling lid is hidden for this view (see [`crate::mesh::ArenaMesh`]),
-/// so the bowl reads as a stadium from above. Stage-4 scaffolding (stage 8
-/// owns cameras).
+/// Fixed open-bowl pose: high at the -Y end, looking across the field.
+/// The lid is hidden for this view, so the bowl reads as a stadium.
 pub fn arena_pose() -> (Vec3, Vec3, f32) {
     (
         Vec3::new(0.0, -7000.0, 5000.0),
@@ -104,9 +94,8 @@ mod tests {
 
     #[test]
     fn arena_pose_frames_field() {
-        // Kickoff center, far goal, and the photo-scene actors: all in front
-        // (w > 0) and inside NDC. (The near end falls outside this closer
-        // framing — the wide stage-4 pose covered the whole bowl.)
+        // Kickoff center, far goal, and the photo-scene actors: all in
+        // front (w > 0) and inside NDC.
         let mvp = arena_pose_mvp(16.0 / 9.0);
         for corner in [
             Vec3::new(0.0, 0.0, 93.0),

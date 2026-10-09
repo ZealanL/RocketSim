@@ -1,10 +1,9 @@
-//! Triangle-soup meshes and exact-bit welding (stage 4).
+//! Triangle-soup meshes and exact-bit welding.
 //!
-//! The arena visual is built from the physics collision meshes (same data the
-//! sim uses, so what you see is what collides) plus four procedural backdrop
-//! planes (floor/ceiling/side walls). Soup vertices are welded on exact
-//! float-bit `(position, uv)` keys — the 5x index win is pinned by
-//! the `soccar_weld_ratio` test.
+//! The arena visual is built from the physics collision meshes (what you
+//! see is what collides) plus procedural backdrop planes. Soup corners
+//! weld on exact float-bit `(position, uv)` keys: hulls share exact
+//! corner values, so no epsilon is needed.
 
 use glam::{EulerRot, Mat3, Mat4, Vec2, Vec3};
 use rocketsim::{CollisionMeshFile, GameMode, consts::BT_TO_UU};
@@ -44,10 +43,9 @@ impl SoupMesh {
         Self::quad(-10_000.0, 10_000.0, -10_000.0, 10_000.0, 0.0)
     }
 
-    /// Axis-aligned playing-surface quad at height `z` (normal +Z, UVs 0..1).
-    /// The physics hull is open at the bottom (walls/goals/curves only — the
-    /// floor collision is analytic, not mesh), so the visual field is this
-    /// procedural cap tucked just under the wall/goal bases.
+    /// Axis-aligned playing-surface quad at height `z`. The physics hull
+    /// is open at the bottom (floor collision is analytic), so this cap
+    /// sits just under the wall/goal bases.
     pub fn field_cap(x0: f32, x1: f32, y0: f32, y1: f32, z: f32) -> Self {
         Self::quad(x0, x1, y0, y1, z)
     }
@@ -95,8 +93,7 @@ impl SoupMesh {
     }
 
     /// Welds soup into unique `(position, uv)` corners plus indices.
-    /// Exact float-bit key: only bit-identical corners merge (no epsilon
-    /// cracks — physics hulls share exact corner values).
+    /// Exact float-bit keys: only bit-identical corners merge.
     pub fn weld(&self) -> (Vec<Vec3>, Vec<Vec2>, Vec<u32>) {
         assert_eq!(self.verts.len(), self.uvs.len());
         let mut uniq_verts = Vec::new();
@@ -154,18 +151,8 @@ impl ArenaPart {
 
 /// Indexed arena visual for a game mode: open bowl (shell), ceiling lid,
 /// playing-surface cap, and backdrop planes weld (and draw) separately.
-///
-/// * `shell` — physics hull minus the ceiling: walls, goals, curbs.
-/// * `lid` — ceiling tris (face normal mostly ±Z, high up). Interior cameras
-///   (stage 8 car-cam lives inside the bowl) draw it.
-/// * `field` — procedural playing-surface cap. The hull is OPEN at the
-///   bottom (floor collision is analytic, not mesh), so without this the
-///   bowl interior shows the dark backdrop through the missing floor.
-/// * `planes_low` — backdrop floor + side walls (the infinite apron).
-/// * `planes_high` — backdrop ceiling (interior views only: from above it
-///   would cap the cutaway and hide the bowl).
-/// * Backdrop planes sit 5uu outside the MESH extent (logic AABB is smaller
-///   than the curves — walls placed from it ended up INSIDE the hull).
+/// Backdrop planes sit 5uu outside the mesh extent (the hull curves bulge
+/// past the logic AABB; AABB-placed walls ended up inside the hull).
 pub struct ArenaMesh {
     /// Hull without ceiling (walls, goals, curbs).
     pub shell: ArenaPart,
@@ -182,9 +169,8 @@ pub struct ArenaMesh {
 }
 
 impl ArenaMesh {
-    /// Ceiling classification: face normal mostly vertical AND high up.
-    /// (Normal alone would also grab the flat floor — the height gate keeps
-    /// the cut to the roof.)
+    /// Ceiling test: face normal mostly vertical AND high up (normal alone
+    /// would also grab the flat floor).
     const LID_MIN_Z: f32 = 1500.0;
 
     /// Builds hull soup, splits ceiling, adds 4 backdrop planes, welds each
@@ -213,9 +199,7 @@ impl ArenaMesh {
             dest.uvs.extend_from_slice(uvs);
         }
         let aabb = rocketsim::consts::arena::get_aabb(game_mode);
-        // Backdrop planes sit 5uu OUTSIDE the MESH extent (not the logic
-        // AABB — the hull curves bulge past it, and walls placed from the
-        // AABB ended up inside the hull, hiding it).
+        // Backdrop planes sit 5uu outside the mesh extent (see struct docs).
         let gap = 5.0;
         let (mesh_min_x, mesh_max_x, mesh_min_y, mesh_max_y, mesh_max_z) = {
             let (mut mnx, mut mxx, mut mny, mut mxy, mut mxz) =
@@ -227,8 +211,7 @@ impl ArenaMesh {
                 mxy = mxy.max(v.y);
                 mxz = mxz.max(v.z);
             }
-            // TheVoid hull is empty: fall back to the logic AABB so planes
-            // still build somewhere sane.
+            // TheVoid hull is empty: fall back to the logic AABB.
             if mnx > mxx {
                 (aabb.min.x, aabb.max.x, aabb.min.y, aabb.max.y, aabb.max.z)
             } else {
@@ -252,9 +235,7 @@ impl ArenaMesh {
             Vec3::new(mesh_max_x + gap, 0.0, aabb.center().z),
             Mat3::from_euler(EulerRot::ZYX, 0.0, -std::f32::consts::FRAC_PI_2, 0.0),
         );
-        // Playing-surface cap tucked under the wall/goal bases (see
-        // `field_cap`): footprint covers the bowl, edges hide inside the
-        // perimeter geometry.
+        // Cap footprint covers the bowl; edges hide inside the walls.
         let field_soup = SoupMesh::field_cap(
             mesh_min_x + gap,
             mesh_max_x - gap,
@@ -423,16 +404,12 @@ mod tests {
     }
 
     #[test]
-    fn big_plane_shape() {
+    fn weld_basics() {
         let plane = SoupMesh::big_plane();
         assert_eq!(plane.verts.len(), 6);
         let (verts, _, indices) = plane.weld();
         assert_eq!(verts.len(), 4, "quad corners must weld to 4");
         assert_eq!(indices.len(), 6);
-    }
-
-    #[test]
-    fn weld_shares_edges() {
         // Two tris sharing an edge: 6 soup verts -> 4 unique.
         let soup = SoupMesh {
             verts: vec![

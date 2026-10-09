@@ -1,9 +1,9 @@
-//! Camera logic: birds-eye, follow-car, director, auto-cam (stage 8a).
+//! Camera logic: birds-eye, follow-car, director, auto-cam.
 //!
-//! RL-authentic follow semantics: rigid ball-cam yaw (frozen when the ball
+//! Follow views use RL semantics: rigid ball-cam yaw (frozen when the ball
 //! is overhead), liftoff-frozen car-cam yaw with stiffness lag, speed zoom,
-//! toggle swing, dynamic FOV. All time advances through caller `dt`,
-//! clamped to `[0, 1/30]` — no wall-clock, no RNG, fully testable.
+//! toggle swing, dynamic FOV. Time advances through caller `dt`, clamped
+//! to `[0, 1/30]`.
 
 mod arena_bounds;
 mod auto_cam;

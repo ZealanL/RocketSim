@@ -1,13 +1,8 @@
-//! Tight line quads (optimized): CPU-expanded, one dynamic VBO, one draw.
+//! Line quads: CPU-expanded, one dynamic VBO, one draw.
 //!
-//! The old pass drew every segment as a FULLSCREEN instanced quad (37+ layers
-//! of overdraw at 1440p ≈ 0.3ms measured). Now [expand_segment] builds
-//! camera-facing quads on CPU (~4 corners each) into a single interleaved
-//! stream; the shaders only transform and discard-test.
-//! Fully transparent segments are skipped pre-cap (bit-exact no-op).
-//! Pixels are unchanged — proven by vis-diff against the stage-7 reference.
-//!
-//! Instance cap ([`MAX_LINES`]) and truncation counter carry over.
+//! [`expand_segment`](crate::lines::expand_segment) builds camera-facing
+//! quads on CPU; the shaders only transform and discard-test. Fully
+//! transparent segments skip pre-cap (bit-exact no-op).
 
 use glam::Mat4;
 use glow::HasContext;

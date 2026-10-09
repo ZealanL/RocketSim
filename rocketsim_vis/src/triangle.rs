@@ -1,16 +1,14 @@
-//! Stage 3: one program, one VAO, one draw — hardcoded triangle in NDC.
+//! One program, one VAO, one draw: hardcoded triangle in NDC.
 //!
-//! Establishes the draw path all later geometry reuses: pinned attrib
-//! location 0 (the shader declares `layout(location = 0)`, pinned by the
-//! `triangle_shader_pins_location_0` test), one cached uniform (`u_color`,
-//! queried once), explicit viewport + clear, unbind after draw.
+//! Sets the draw pattern later geometry reuses: pinned attrib location 0,
+//! one cached uniform, explicit viewport + clear, unbind after draw.
 
 use glow::HasContext;
 
 use crate::gl_util::{bytes_of, compile_program, uniform_location};
 
-/// Vertex shader: `layout(location = 0)` pin is load-bearing — the VAO binds
-/// position to location 0 without querying.
+/// Vertex shader: location-0 pin is load-bearing (the VAO binds position
+/// to 0 without querying).
 pub const TRI_VERT_SRC: &str = "#version 330 core
 layout(location = 0) in vec2 vs_pos;
 void main() {

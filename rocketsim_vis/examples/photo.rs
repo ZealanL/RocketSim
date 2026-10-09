@@ -1,7 +1,7 @@
 //! Deterministic scene used for screenshot review and determinism gates.
 //!
-//! Fixed seed-0 Soccar scene (blue drives, orange idles), 600 ticks, streams
-//! to the detached viewer and prints ball/car0 checksums.
+//! Fixed seed-0 Soccar scene (blue drives, orange idles), 600 ticks,
+//! streams to the viewer and prints ball/car0 checksums.
 //!
 //! Run with: `cargo run -p rocketsim_vis --example photo`
 
@@ -17,8 +17,7 @@ fn main() {
     arena.set_net_vis_enabled("127.0.0.1:39201");
     for _ in 0..600 {
         step_ticks(&mut arena, 1);
-        // Pacing only (does not affect sim): lets the viewer sample ~every
-        // other tick at 60Hz against the 120Hz stream.
+        // Pacing only (not sim): lets the 60Hz viewer sample the 120Hz stream.
         std::thread::sleep(std::time::Duration::from_millis(2));
     }
     let ball = arena.get_ball_state().phys.pos;
@@ -33,8 +32,7 @@ fn main() {
         car.y,
         car.z
     );
-    // Keep streaming live after the checksum (the viewer holds the last
-    // frame, so any capture sees this deterministic scene).
+    // Keep streaming after the checksum (the viewer holds the last frame).
     loop {
         step_ticks(&mut arena, 1);
         std::thread::sleep(std::time::Duration::from_millis(8));
