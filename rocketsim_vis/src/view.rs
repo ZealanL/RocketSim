@@ -41,10 +41,23 @@ pub fn view_proj(eye: Vec3, target: Vec3, hfov_deg: f32, aspect: f32) -> (Mat4, 
 /// The ceiling lid is hidden for this view (see [`crate::mesh::ArenaMesh`]),
 /// so the bowl reads as a stadium from above. Stage-4 scaffolding (stage 8
 /// owns cameras).
+pub fn arena_pose() -> (Vec3, Vec3, f32) {
+    (
+        Vec3::new(0.0, -7000.0, 5000.0),
+        Vec3::new(0.0, 500.0, 0.0),
+        80.0,
+    )
+}
+
+/// View + projection for the beauty-shot pose.
+pub fn arena_pose_view_proj(aspect: f32) -> (Mat4, Mat4) {
+    let (eye, target, hfov) = arena_pose();
+    view_proj(eye, target, hfov, aspect)
+}
+
+/// Combined MVP for the beauty-shot pose.
 pub fn arena_pose_mvp(aspect: f32) -> Mat4 {
-    let eye = Vec3::new(0.0, -11_000.0, 9000.0);
-    let target = Vec3::new(0.0, 500.0, 0.0);
-    let (view, proj) = view_proj(eye, target, 80.0, aspect);
+    let (view, proj) = arena_pose_view_proj(aspect);
     proj * view
 }
 
@@ -91,14 +104,14 @@ mod tests {
 
     #[test]
     fn arena_pose_frames_field() {
-        // Kickoff center, both goals, near corner: all in front (w > 0, no
-        // near-plane straddling from this far-out pose) and inside NDC.
+        // Kickoff center, far goal, and the photo-scene actors: all in front
+        // (w > 0) and inside NDC. (The near end falls outside this closer
+        // framing — the wide stage-4 pose covered the whole bowl.)
         let mvp = arena_pose_mvp(16.0 / 9.0);
         for corner in [
             Vec3::new(0.0, 0.0, 93.0),
             Vec3::new(0.0, 5120.0, 500.0),
-            Vec3::new(0.0, -5120.0, 500.0),
-            Vec3::new(-4096.0, -5120.0, 0.0),
+            Vec3::new(256.0, 2184.0, 17.0),
         ] {
             let clip = mvp * corner.extend(1.0);
             assert!(clip.w > 0.0, "corner {corner:?} behind camera");

@@ -1,25 +1,94 @@
-//! Detached viewer binary (v2 rebuild, stage 4: arena mesh).
+//! Detached viewer binary (v2 rebuild, stage 5b: old-look live scene).
 //!
-//! Fixed-pose beauty shot of the welded Soccar arena, unlit flat color.
-//! 60fps cap via explicit 16ms limiter (backend timer alone did not pace).
+//! Fixed-pose beauty shot: team-grid arena + textured ball/cars streamed
+//! from the sim over TCP (latest frame, no interpolation — matches the old
+//! in-process look). 60fps cap via explicit 16ms limiter.
+//!
+//! Usage: `vis_viewer [PORT]` (default 39201).
 
 use std::{
+    collections::HashMap,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
+use glam::{Mat3, Vec3};
 use rocketsim::GameMode;
-use rocketsim_vis::{arena_gl::ArenaGl, mesh::ArenaMesh, photo::init_meshes, view};
+use rocketsim_vis::{
+    arena_gl::ArenaGl,
+    main_gl::{
+        BALL_MODEL, BALL_TEXTURE, MainProgram, ModelGl, car_model_name, car_texture_name,
+        model_matrix,
+    },
+    mesh::ArenaMesh,
+    net_client::{ConnStatus, FrameClient},
+    obj::ObjMesh,
+    photo::init_meshes,
+    proto::DEFAULT_PORT,
+    textures::{PngImage, TextureGl},
+    view,
+};
+
+/// Owned GL scene: arena + main pipeline + all models/textures.
+/// Built once on the GL thread; reuses across frames.
+struct SceneGl {
+    arena: ArenaGl,
+    prog_main: MainProgram,
+    models: HashMap<String, ModelGl>,
+    textures: HashMap<String, TextureGl>,
+}
+
+impl SceneGl {
+    fn new(gl: &glow::Context, mesh: &ArenaMesh) -> Self {
+        let arena = ArenaGl::new(gl, mesh);
+        let prog_main = MainProgram::new(gl);
+        let mut models = HashMap::new();
+        for (name, obj) in [
+            (BALL_MODEL, include_str!("../models/ball.obj")),
+            ("car_octane", include_str!("../models/car_octane.obj")),
+            ("car_dominus", include_str!("../models/car_dominus.obj")),
+            ("car_breakout", include_str!("../models/car_breakout.obj")),
+            ("car_merc", include_str!("../models/car_merc.obj")),
+        ] {
+            models.insert(name.to_string(), ModelGl::new(gl, &ObjMesh::load(obj)));
+        }
+        let mut textures = HashMap::new();
+        for (name, png) in [
+            (
+                BALL_TEXTURE,
+                include_bytes!("../textures/ball.png").as_slice(),
+            ),
+            (
+                "car_blue",
+                include_bytes!("../textures/car_blue.png").as_slice(),
+            ),
+            (
+                "car_orange",
+                include_bytes!("../textures/car_orange.png").as_slice(),
+            ),
+        ] {
+            textures.insert(name.to_string(), TextureGl::new(gl, &PngImage::decode(png)));
+        }
+        Self {
+            arena,
+            prog_main,
+            models,
+            textures,
+        }
+    }
+
+    // NOTE: no destroy() — the scene lives with the process (stage 8 adds
+    // the mode-switch path that needs teardown).
+}
 
 struct ViewerApp {
     frames: u64,
-    /// CPU-side welded mesh (built once at startup, uploaded on the GL thread).
     mesh: Arc<ArenaMesh>,
-    arena: Arc<Mutex<Option<ArenaGl>>>,
+    scene: Arc<Mutex<Option<SceneGl>>>,
+    client: FrameClient,
     last_draw_ms: Arc<Mutex<f64>>,
     last_frame: Instant,
     fps_ema: f32,
-    /// Welded counts for the overlay (measured once at startup).
     soup_verts: usize,
     welded_verts: usize,
     n_indices: usize,
@@ -29,12 +98,13 @@ struct ViewerApp {
 const FRAME_BUDGET: Duration = Duration::from_millis(16);
 
 impl ViewerApp {
-    fn new(mesh: Arc<ArenaMesh>) -> Self {
+    fn new(mesh: Arc<ArenaMesh>, client: FrameClient) -> Self {
         let (soup, welded, indices) = (mesh.soup_verts, mesh.welded_verts(), mesh.index_count());
         Self {
             frames: 0,
             mesh,
-            arena: Arc::new(Mutex::new(None)),
+            scene: Arc::new(Mutex::new(None)),
+            client,
             last_draw_ms: Arc::new(Mutex::new(0.0)),
             last_frame: Instant::now(),
             fps_ema: 60.0,
@@ -59,9 +129,10 @@ impl eframe::App for ViewerApp {
         }
         self.frames += 1;
         let frames = self.frames;
-        let (arena, mesh, last_draw_ms) = (
-            self.arena.clone(),
+        let (scene, mesh, client_frame, last_draw_ms) = (
+            self.scene.clone(),
             self.mesh.clone(),
+            self.client.latest(),
             self.last_draw_ms.clone(),
         );
         let (soup, welded, indices, fps) = (
@@ -70,14 +141,23 @@ impl eframe::App for ViewerApp {
             self.n_indices,
             self.fps_ema,
         );
+        let (status, received) = (self.client.status(), self.client.received());
+        let tick = client_frame.as_ref().map(|f| f.state.tick_count);
 
         egui::Window::new("rocketsim vis_viewer").show(ctx, |ui| {
-            ui.label("stage 4 — arena mesh (flat, fixed pose)");
+            ui.label("stage 5 — old-look live scene (fixed pose)");
             ui.monospace(format!("soccar soup={soup} welded={welded} idx={indices}"));
+            match &status {
+                ConnStatus::Waiting => ui.monospace("sim: waiting".to_string()),
+                ConnStatus::Connected { addr } => ui.monospace(format!(
+                    "sim: {addr} tick={} frames={received}",
+                    tick.unwrap_or(0)
+                )),
+            };
             ui.monospace(format!("frames drawn: {frames}"));
             ui.monospace(format!("fps: {fps:.0} (cap 60)"));
             let ms = last_draw_ms.lock().map(|g| *g).unwrap_or(-1.0);
-            ui.monospace(format!("arena draw: {ms:.3} ms"));
+            ui.monospace(format!("scene draw: {ms:.3} ms"));
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
@@ -97,11 +177,46 @@ impl eframe::App for ViewerApp {
                         let y_px = (info.screen_size_px[1] as f32 - info.viewport.max.y * ppp)
                             .round() as i32;
                         let aspect = w_px as f32 / h_px as f32;
-                        let mvp = view::arena_pose_mvp(aspect);
+                        let (view_mat, proj_mat) = view::arena_pose_view_proj(aspect);
                         let t0 = Instant::now();
-                        let mut guard = arena.lock().expect("viewer arena poisoned");
-                        let arena = guard.get_or_insert_with(|| ArenaGl::new(gl, &mesh));
-                        arena.draw(gl, (x_px, y_px, w_px, h_px), &mvp);
+                        let mut guard = scene.lock().expect("viewer scene poisoned");
+                        let scene = guard.get_or_insert_with(|| SceneGl::new(gl, &mesh));
+                        scene.arena.draw(
+                            gl,
+                            (x_px, y_px, w_px, h_px),
+                            &glam::Mat4::IDENTITY,
+                            &view_mat,
+                            &proj_mat,
+                        );
+                        scene.prog_main.set_view_proj(gl, &view_mat, &proj_mat);
+                        if let Some(frame) = &client_frame {
+                            // Ball (old vis: textured, pos + rot).
+                            let ball = &frame.state.ball.phys;
+                            scene.prog_main.draw(
+                                gl,
+                                &scene.models[BALL_MODEL],
+                                &scene.textures[BALL_TEXTURE],
+                                &model_matrix(Vec3::from(ball.pos), Mat3::from(ball.rot_mat)),
+                            );
+                            // Cars (old vis: per-body model, team texture, skip demoed).
+                            for (info, state) in &frame.state.cars {
+                                if state.is_demoed {
+                                    continue;
+                                }
+                                let model = &scene.models[car_model_name(&info.config)];
+                                let texture = &scene.textures[car_texture_name(info.team)];
+                                scene.prog_main.draw(
+                                    gl,
+                                    model,
+                                    texture,
+                                    &model_matrix(
+                                        Vec3::from(state.phys.pos),
+                                        Mat3::from(state.phys.rot_mat),
+                                    ),
+                                );
+                            }
+                        }
+                        scene.prog_main.unbind(gl);
                         drop(guard);
                         if let Ok(mut g) = last_draw_ms.lock() {
                             *g = t0.elapsed().as_secs_f64() * 1000.0;
@@ -117,6 +232,13 @@ impl eframe::App for ViewerApp {
 
 fn main() {
     init_meshes();
+    let port: u16 = std::env::args()
+        .nth(1)
+        .and_then(|a| a.parse().ok())
+        .unwrap_or(DEFAULT_PORT);
+    let addr = format!("127.0.0.1:{port}");
+    eprintln!("vis_viewer: listening on {addr} (sim should dial this addr)");
+
     let mesh = Arc::new(ArenaMesh::build(GameMode::Soccar));
     eprintln!(
         "vis_viewer: soccar soup={} welded={} idx={}",
@@ -124,6 +246,7 @@ fn main() {
         mesh.welded_verts(),
         mesh.index_count()
     );
+    let client = FrameClient::connect(&addr);
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_inner_size([1280.0, 720.0]),
@@ -137,7 +260,7 @@ fn main() {
     if let Err(e) = eframe::run_native(
         "rocketsim vis_viewer",
         options,
-        Box::new(move |_cc| Ok(Box::new(ViewerApp::new(mesh.clone())) as _)),
+        Box::new(move |_cc| Ok(Box::new(ViewerApp::new(mesh.clone(), client)) as _)),
     ) {
         eprintln!("vis_viewer: eframe::run_native failed: {e:?}");
         std::process::exit(1);

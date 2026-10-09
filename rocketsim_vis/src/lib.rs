@@ -24,10 +24,14 @@
 
 pub mod arena_gl;
 pub mod gl_util;
+pub mod main_gl;
 pub mod mesh;
+pub mod net_client;
 pub mod net_vis;
+pub mod obj;
 pub mod photo;
 pub mod proto;
+pub mod textures;
 pub mod triangle;
 pub mod view;
 

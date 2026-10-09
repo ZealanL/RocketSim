@@ -17,6 +17,7 @@ egui = "0.31"
 egui_glow = "0.31"
 glam.workspace = true
 glow = "0.16"
+png = "0.18.0"
 postcard = { version = "1", features = ["alloc"] }
 rocketsim = { path = "../rocketsim", version = "0.3.0", features = ["serde"] }
 rustc-hash.workspace = true

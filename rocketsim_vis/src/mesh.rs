@@ -10,6 +10,8 @@ use glam::{EulerRot, Mat3, Mat4, Vec2, Vec3};
 use rocketsim::{CollisionMeshFile, GameMode, consts::BT_TO_UU};
 use rustc_hash::FxHashMap;
 
+use crate::obj::smooth_normals;
+
 /// Triangle soup with per-vertex UVs, in Unreal units (uu).
 #[derive(Debug, Clone)]
 pub struct SoupMesh {
@@ -128,8 +130,10 @@ impl SoupMesh {
 pub struct ArenaPart {
     /// Welded positions (uu).
     pub verts: Vec<Vec3>,
-    /// Welded UVs (unused until the textured pipeline, stage 5).
+    /// Welded UVs (mid-UV for hull, 0..1 for procedural).
     pub uvs: Vec<Vec2>,
+    /// Smooth per-vertex normals (unit, or zero on degenerate tris).
+    pub normals: Vec<Vec3>,
     /// Triangles over `verts`.
     pub indices: Vec<u32>,
 }
@@ -138,9 +142,11 @@ impl ArenaPart {
     /// Welds a soup subset (see [`SoupMesh::weld`]).
     fn from_soup(soup: &SoupMesh) -> Self {
         let (verts, uvs, indices) = soup.weld();
+        let normals = smooth_normals(&verts, &indices);
         Self {
             verts,
             uvs,
+            normals,
             indices,
         }
     }
@@ -317,6 +323,18 @@ mod tests {
             part.uvs.len(),
             "{label}: vert/uv mismatch"
         );
+        assert_eq!(
+            part.verts.len(),
+            part.normals.len(),
+            "{label}: vert/normal mismatch"
+        );
+        for n in &part.normals {
+            let len = n.length();
+            assert!(
+                len < 1e-6 || (len - 1.0).abs() < 1e-4,
+                "{label}: normal not unit-or-zero ({len})"
+            );
+        }
     }
 
     fn check_sanity(mesh: &ArenaMesh, label: &str) {
