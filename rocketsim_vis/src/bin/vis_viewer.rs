@@ -16,6 +16,7 @@ use glam::{Mat3, Vec3};
 use rocketsim::GameMode;
 use rocketsim_vis::{
     arena_gl::ArenaGl,
+    frustum::frustum_planes,
     main_gl::{
         BALL_MODEL, BALL_TEXTURE, MainProgram, ModelGl, car_model_name, car_texture_name,
         model_matrix,
@@ -23,17 +24,21 @@ use rocketsim_vis::{
     mesh::ArenaMesh,
     net_client::{ConnStatus, FrameClient},
     obj::ObjMesh,
+    pads::{build_instances, load_pad_meshes, variant_radius},
+    pads_gl::PadsGl,
     photo::init_meshes,
     proto::DEFAULT_PORT,
     textures::{PngImage, TextureGl},
     view,
 };
 
-/// Owned GL scene: arena + main pipeline + all models/textures.
+/// Owned GL scene: arena + main pipeline + pads + all models/textures.
 /// Built once on the GL thread; reuses across frames.
 struct SceneGl {
     arena: ArenaGl,
     prog_main: MainProgram,
+    pads: PadsGl,
+    pad_radii: [f32; 4],
     models: HashMap<String, ModelGl>,
     textures: HashMap<String, TextureGl>,
 }
@@ -42,6 +47,14 @@ impl SceneGl {
     fn new(gl: &glow::Context, mesh: &ArenaMesh) -> Self {
         let arena = ArenaGl::new(gl, mesh);
         let prog_main = MainProgram::new(gl);
+        let pad_meshes = load_pad_meshes();
+        let pad_radii = [
+            variant_radius(&pad_meshes[0]),
+            variant_radius(&pad_meshes[1]),
+            variant_radius(&pad_meshes[2]),
+            variant_radius(&pad_meshes[3]),
+        ];
+        let pads = PadsGl::new(gl, &pad_meshes);
         let mut models = HashMap::new();
         for (name, obj) in [
             (BALL_MODEL, include_str!("../models/ball.obj")),
@@ -72,6 +85,8 @@ impl SceneGl {
         Self {
             arena,
             prog_main,
+            pads,
+            pad_radii,
             models,
             textures,
         }
@@ -87,6 +102,8 @@ struct ViewerApp {
     scene: Arc<Mutex<Option<SceneGl>>>,
     client: FrameClient,
     last_draw_ms: Arc<Mutex<f64>>,
+    /// (pads drawn, pads frustum-culled) from the GL callback.
+    pads_info: Arc<Mutex<(usize, usize)>>,
     last_frame: Instant,
     fps_ema: f32,
     soup_verts: usize,
@@ -106,6 +123,7 @@ impl ViewerApp {
             scene: Arc::new(Mutex::new(None)),
             client,
             last_draw_ms: Arc::new(Mutex::new(0.0)),
+            pads_info: Arc::new(Mutex::new((0, 0))),
             last_frame: Instant::now(),
             fps_ema: 60.0,
             soup_verts: soup,
@@ -129,11 +147,12 @@ impl eframe::App for ViewerApp {
         }
         self.frames += 1;
         let frames = self.frames;
-        let (scene, mesh, client_frame, last_draw_ms) = (
+        let (scene, mesh, client_frame, last_draw_ms, pads_info) = (
             self.scene.clone(),
             self.mesh.clone(),
             self.client.latest(),
             self.last_draw_ms.clone(),
+            self.pads_info.clone(),
         );
         let (soup, welded, indices, fps) = (
             self.soup_verts,
@@ -145,7 +164,7 @@ impl eframe::App for ViewerApp {
         let tick = client_frame.as_ref().map(|f| f.state.tick_count);
 
         egui::Window::new("rocketsim vis_viewer").show(ctx, |ui| {
-            ui.label("stage 5 — old-look live scene (fixed pose)");
+            ui.label("stage 6 — pads, instanced (fixed pose)");
             ui.monospace(format!("soccar soup={soup} welded={welded} idx={indices}"));
             match &status {
                 ConnStatus::Waiting => ui.monospace("sim: waiting".to_string()),
@@ -158,6 +177,8 @@ impl eframe::App for ViewerApp {
             ui.monospace(format!("fps: {fps:.0} (cap 60)"));
             let ms = last_draw_ms.lock().map(|g| *g).unwrap_or(-1.0);
             ui.monospace(format!("scene draw: {ms:.3} ms"));
+            let (drawn, culled) = pads_info.lock().map(|g| *g).unwrap_or((0, 0));
+            ui.monospace(format!("pads: {drawn} drawn, {culled} culled"));
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
@@ -217,6 +238,20 @@ impl eframe::App for ViewerApp {
                             }
                         }
                         scene.prog_main.unbind(gl);
+                        // Pads: frustum-filtered instances, 4 instanced draws.
+                        let planes = frustum_planes(proj_mat * view_mat);
+                        let empty: [Vec<glam::Mat4>; 4] = Default::default();
+                        let (instances, culled) = match &client_frame {
+                            Some(frame) => {
+                                build_instances(&frame.state.boost_pads, &planes, &scene.pad_radii)
+                            }
+                            None => (empty, 0),
+                        };
+                        scene.pads.upload(gl, &instances);
+                        scene.pads.draw(gl, &view_mat, &proj_mat);
+                        if let Ok(mut info) = pads_info.lock() {
+                            *info = (instances.iter().map(|v| v.len()).sum(), culled);
+                        }
                         drop(guard);
                         if let Ok(mut g) = last_draw_ms.lock() {
                             *g = t0.elapsed().as_secs_f64() * 1000.0;

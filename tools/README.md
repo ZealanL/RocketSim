@@ -39,7 +39,7 @@ Same seed + same ticks = same output; screenshot timing may vary, sim must not.
 | 3 | first triangle | draw 0.03ms CPU; 61fps wall (cap 60) | 61 | ref `rocketsim_vis/tests/reference/stage3_triangle.png` |
 | 4 | arena mesh | draw 0.87ms CPU; 62fps wall (cap 60) | 62 | ref `rocketsim_vis/tests/reference/stage4_arena.png`; weld 5.27x soccar (24090→4570), 5.60x hoops, 5.41x dropshot |
 | 5 | textured ball + cars (old look) | scene draw ~1.9ms CPU (llvmpipe; watch); 62fps wall | 62 | ref `rocketsim_vis/tests/reference/stage5_live.png`; white ball + blue/orange customs + team grid, live tick 1163 |
-| 6 | pads instanced | | | |
+| 6 | pads, instanced | scene draw ~1.9ms CPU (llvmpipe); 62fps wall | 62 | ref `rocketsim_vis/tests/reference/stage6_pads.png`; 4 instanced draws, 29/34 + 5 culled live, pill close-up verified |
 | 7 | lines/trails | | | |
 | 8a-d | cameras | | | |
 | 9 | menus + settings | | | |

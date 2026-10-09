@@ -23,12 +23,15 @@
 //! ```
 
 pub mod arena_gl;
+pub mod frustum;
 pub mod gl_util;
 pub mod main_gl;
 pub mod mesh;
 pub mod net_client;
 pub mod net_vis;
 pub mod obj;
+pub mod pads;
+pub mod pads_gl;
 pub mod photo;
 pub mod proto;
 pub mod textures;
