@@ -683,7 +683,7 @@ impl Car {
             return;
         }
 
-        let ground_up_dir = if num_wheels_in_contact > 0 {
+        let ground_up_dir = if self.sticky_gate_prev && num_wheels_in_contact > 0 {
             // Same contacts as the sticky force above: reuse its cached direction.
             match *cached_upwards_dir {
                 Some(dir) => dir,
