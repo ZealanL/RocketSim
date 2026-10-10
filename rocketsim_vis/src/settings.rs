@@ -75,6 +75,16 @@ pub struct ViewerSettings {
     /// Spectate-only mode: watch the followed car, send neutral inputs.
     #[serde(default)]
     pub spectate_only: bool,
+    /// Drive-demo mutators, sent as ControlMsg mutator bits (all off = RL
+    /// defaults). Only options the sim can apply live are listed here.
+    #[serde(default)]
+    pub mut_unlimited_boost: bool,
+    #[serde(default)]
+    pub mut_recharge: bool,
+    #[serde(default)]
+    pub mut_flips: bool,
+    #[serde(default)]
+    pub mut_double_jumps: bool,
     /// Last save time (not persisted).
     #[serde(skip)]
     last_save: Option<Instant>,
@@ -112,6 +122,10 @@ impl Default for ViewerSettings {
             vsync: true,
             msaa: DEFAULT_MSAA,
             spectate_only: false,
+            mut_unlimited_boost: false,
+            mut_recharge: false,
+            mut_flips: false,
+            mut_double_jumps: false,
             last_save: None,
             dirty: false,
         }
@@ -193,6 +207,28 @@ impl ViewerSettings {
     pub fn reset_all(&mut self) {
         *self = Self::default();
         self.mark_dirty();
+    }
+
+    /// Packs the mutator toggles into a ControlMsg mutator bitmask (all
+    /// off = RL defaults = zero).
+    pub fn mutators_mask(&self) -> u8 {
+        use crate::proto::{
+            MUT_BOOST_RECHARGE, MUT_UNLIMITED_BOOST, MUT_UNLIMITED_DOUBLE_JUMPS, MUT_UNLIMITED_FLIPS,
+        };
+        let mut mask = 0u8;
+        if self.mut_unlimited_boost {
+            mask |= MUT_UNLIMITED_BOOST;
+        }
+        if self.mut_recharge {
+            mask |= MUT_BOOST_RECHARGE;
+        }
+        if self.mut_flips {
+            mask |= MUT_UNLIMITED_FLIPS;
+        }
+        if self.mut_double_jumps {
+            mask |= MUT_UNLIMITED_DOUBLE_JUMPS;
+        }
+        mask
     }
 }
 

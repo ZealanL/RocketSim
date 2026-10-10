@@ -32,6 +32,7 @@ pub mod lines;
 pub mod lines_gl;
 pub mod main_gl;
 pub mod mesh;
+pub mod mutators;
 pub mod net_client;
 pub mod net_vis;
 pub mod obj;

@@ -834,12 +834,10 @@ impl eframe::App for ViewerApp {
         let (controls, buttons) =
             spectate::gate(self.settings.spectate_only, driving, controls, buttons);
         self.ctrl_seq += 1;
-        self.controls.send(ControlMsg::new(
-            self.driven_car,
-            controls,
-            buttons,
-            self.ctrl_seq,
-        ));
+        self.controls.send(
+            ControlMsg::new(self.driven_car, controls, buttons, self.ctrl_seq)
+                .with_mutators(self.settings.mutators_mask()),
+        );
         // The menu reset fires once, on the next send.
         self.reset_requested = false;
 
@@ -957,6 +955,27 @@ impl eframe::App for ViewerApp {
                             .checkbox(&mut settings.spectate_only, "Spectate only (no inputs)")
                             .changed()
                         {
+                            settings.mark_dirty();
+                        }
+                    });
+                egui::CollapsingHeader::new("Mutators (drive demo)")
+                    .default_open(false)
+                    .show(ui, |ui| {
+                        // Live toggles: sent every frame, applied per tick.
+                        let mut touched = false;
+                        touched |= ui
+                            .checkbox(&mut settings.mut_unlimited_boost, "Unlimited boost")
+                            .changed();
+                        touched |= ui
+                            .checkbox(&mut settings.mut_recharge, "Boost regen")
+                            .changed();
+                        touched |= ui
+                            .checkbox(&mut settings.mut_flips, "Unlimited flips")
+                            .changed();
+                        touched |= ui
+                            .checkbox(&mut settings.mut_double_jumps, "Unlimited double jumps")
+                            .changed();
+                        if touched {
                             settings.mark_dirty();
                         }
                     });

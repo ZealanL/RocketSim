@@ -12,7 +12,8 @@
 //!   excess dropped).
 //! * Stale channel failsafe: no fresh viewer input within `STALE_AFTER`
 //!   falls back to neutral (no stuck throttle on disconnect).
-//! * Boost pins to full (demo behavior).
+//! * Live mutators (unlimited boost, regen, flips) toggle in the viewer
+//!   menu and apply per tick; all off = unmodded RL behavior.
 //!
 //! Run with: `cargo run -p rocketsim_vis --example drive`
 
@@ -22,8 +23,12 @@ use gilrs::{Axis, Button, Gilrs};
 use glam::Vec3A;
 use rocketsim::{Arena, ArenaConfig, CarBodyConfig, CarControls, GameMode, Team};
 use rocketsim_vis::{
-    ArenaVisExt, net_vis::ControlServer, pace::TickPacer, photo::init_meshes,
-    proto::DEFAULT_CONTROL_PORT,
+    ArenaVisExt,
+    mutators::Mutators,
+    net_vis::ControlServer,
+    pace::TickPacer,
+    photo::init_meshes,
+    proto::{DEFAULT_CONTROL_PORT, MUT_KNOWN_MASK},
 };
 
 const STICK_DEADZONE: f32 = 0.1;
@@ -110,11 +115,16 @@ fn main() {
     eprintln!("drive: control channel on {control_addr} (input needs viewer focus)");
 
     println!("Drive from the vis_viewer window (viewer send side pending).");
-    println!("Local gamepad works when connected. Boost pinned to full.");
+    println!("Local gamepad works when connected (bindings from settings.toml).");
+    println!("Mutators (unlimited boost etc.) toggle live in the viewer menu.");
 
     let mut pacer = TickPacer::at_120hz();
     let mut last_seq: Option<u64> = None;
     let mut channel = CarControls::default();
+    // Mutator level state: frozen at last-received on link loss (controls
+    // still failsafe to neutral — mutators must not switch off mid-flight
+    // on a dropped packet).
+    let mut channel_mutators: u8 = 0;
     let mut channel_at = Instant::now();
     let mut prev_buttons: u8 = 0;
 
@@ -132,6 +142,7 @@ fn main() {
             {
                 last_seq = Some(m.seq);
                 channel = m.controls;
+                channel_mutators = m.mutators & MUT_KNOWN_MASK;
                 channel_at = Instant::now();
             }
             let mut controls = if channel_at.elapsed() > STALE_AFTER {
@@ -146,10 +157,6 @@ fn main() {
             {
                 controls = determine_controller_controls(gilrs, controls);
             }
-
-            let mut car_state = *arena.get_car_state(car_idx);
-            car_state.boost = 100.0;
-            arena.set_car_state(car_idx, car_state);
 
             // Honor the viewer's car selection when it names a live car.
             let target = msg
@@ -177,6 +184,10 @@ fn main() {
                 ball_state.phys.vel += Vec3A::Z * 1000.0;
                 arena.set_ball_state(ball_state);
             }
+            // Live mutators, applied to the driven car before the tick.
+            let mut car_state = *arena.get_car_state(target);
+            Mutators::from_mask(channel_mutators).apply_pre_tick(&mut car_state);
+            arena.set_car_state(target, car_state);
             arena.set_car_controls(target, controls);
 
             arena.step_tick();

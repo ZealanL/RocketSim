@@ -36,6 +36,20 @@ impl VisFrame {
     }
 }
 
+/// Level-state mutator bits for [`ControlMsg::mutators`] (1 = on).
+/// Unlike `buttons`, these are NOT edge-triggered: the sim applies the
+/// current level every tick (see `mutators` module for the emulation).
+pub const MUT_UNLIMITED_BOOST: u8 = 0b0000_0001;
+/// Passive boost regen while the sim runs.
+pub const MUT_BOOST_RECHARGE: u8 = 0b0000_0010;
+/// Re-arm flips while airborne.
+pub const MUT_UNLIMITED_FLIPS: u8 = 0b0000_0100;
+/// Re-arm double jumps while airborne.
+pub const MUT_UNLIMITED_DOUBLE_JUMPS: u8 = 0b0000_1000;
+/// Bits the sim honors; the rest are reserved (ignored on receive).
+pub const MUT_KNOWN_MASK: u8 =
+    MUT_UNLIMITED_BOOST | MUT_BOOST_RECHARGE | MUT_UNLIMITED_FLIPS | MUT_UNLIMITED_DOUBLE_JUMPS;
+
 /// One viewer→sim driving update: inputs for `car_index` with a sender-side
 /// sequence number (`seq`, starts at 1, +1 per send).
 ///
@@ -47,7 +61,7 @@ impl VisFrame {
 /// use rocketsim::CarControls;
 /// use rocketsim_vis::proto::{ControlMsg, decode_control, encode_control};
 ///
-/// let msg = ControlMsg::new(0, CarControls::default(), 0b001, 1);
+/// let msg = ControlMsg::new(0, CarControls::default(), 0b001, 1).with_mutators(0b0001);
 /// let bytes = encode_control(&msg);
 /// let (back, consumed) = decode_control(&bytes).unwrap().unwrap();
 /// assert_eq!(back, msg);
@@ -62,19 +76,32 @@ pub struct ControlMsg {
     /// Action buttons as level state (bit0 = reset kickoff, bit1 = dribble
     /// ball, bit2 = launch ball); the sim fires each on its rising edge.
     pub buttons: u8,
+    /// Live mutators as level state (`MUT_*` bits); the sim applies the
+    /// current level every tick. On link loss the sim freezes the last
+    /// received level (controls still failsafe to neutral).
+    pub mutators: u8,
     /// Sender sequence (monotonic per connection; gaps = dropped frames).
     pub seq: u64,
 }
 
 impl ControlMsg {
     /// Builds message `seq` for `car_index` with `controls` and `buttons`.
+    /// Mutators default to off; set them with [`with_mutators`](Self::with_mutators).
     pub fn new(car_index: u32, controls: CarControls, buttons: u8, seq: u64) -> Self {
         Self {
             car_index,
             controls,
             buttons,
+            mutators: 0,
             seq,
         }
+    }
+
+    /// Sets the level-state mutator bitmask (`MUT_*` bits).
+    #[must_use]
+    pub fn with_mutators(mut self, mutators: u8) -> Self {
+        self.mutators = mutators;
+        self
     }
 }
 
@@ -202,6 +229,23 @@ mod tests {
         assert_eq!(consumed, bytes.len());
         assert_eq!(back, msg);
         assert_eq!(back.buttons, 0b101);
+        assert_eq!(back.mutators, 0);
+    }
+
+    #[test]
+    fn control_mutators_round_trip_stays_compact() {
+        let msg = ControlMsg::new(0, rocketsim::CarControls::default(), 0, 1)
+            .with_mutators(MUT_UNLIMITED_BOOST | MUT_UNLIMITED_FLIPS);
+        let bytes = encode_control(&msg);
+        // One bitmask byte on the wire: still far under the cap.
+        assert!(bytes.len() < 128, "control frame too big: {}", bytes.len());
+        let (back, consumed) = decode_control(&bytes).unwrap().unwrap();
+        assert_eq!(consumed, bytes.len());
+        assert_eq!(back, msg);
+        assert_eq!(back.mutators, MUT_UNLIMITED_BOOST | MUT_UNLIMITED_FLIPS);
+        // Builder only touches the mutator field.
+        let plain = ControlMsg::new(0, rocketsim::CarControls::default(), 0, 1);
+        assert_eq!(plain.mutators, 0);
     }
 
     #[test]
