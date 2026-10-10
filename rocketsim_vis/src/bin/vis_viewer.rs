@@ -309,7 +309,7 @@ fn draw_boost_gauge(ui: &egui::Ui, rect: egui::Rect, fraction: f32, label: &str,
         egui::Stroke::new(9.0_f32, egui::Color32::from_white_alpha(70)),
     );
     if fraction > 0.001 {
-        // Polyline arc (egui 0.31 has no arc primitive): 32 segments
+        // Polyline arc (no egui arc primitive): 32 segments
         // clockwise from the top.
         let start = -std::f32::consts::FRAC_PI_2;
         let end = start + fraction.clamp(0.0, 1.0) * TAU;
@@ -932,7 +932,9 @@ impl ViewerApp {
 }
 
 impl eframe::App for ViewerApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        // eframe hands us the root Ui; the body below works on the Context.
+        let ctx = &ui.ctx().clone();
         // Frame limiter from settings (0 = uncapped).
         let budget = if self.settings.fps_limit_hz == 0 {
             Duration::from_secs(0)
@@ -1393,11 +1395,12 @@ impl eframe::App for ViewerApp {
                         // camera). Free camera never drives (see below).
                         const LOOK_SENS: f32 = 0.005;
                         const DOLLY_SENS: f32 = -120.0;
-                        if !self.menu_open && !ctx.wants_pointer_input() {
+                        if !self.menu_open && !ctx.egui_wants_pointer_input() {
                             let d = ctx.input(|i| i.pointer.delta());
                             self.freecam.look(-d.x * LOOK_SENS, -d.y * LOOK_SENS);
-                            let wheel = ctx.input(|i| i.raw_scroll_delta.y);
-                            self.freecam.dolly(wheel * DOLLY_SENS / 50.0);
+                            let wheel = ctx.input(|i| i.smooth_scroll_delta.y);
+                            self.freecam
+                                .dolly_bounded(wheel * DOLLY_SENS / 50.0, bounds.as_deref());
                         }
                         // Flight reuses the car keys; up couples to the
                         // ball-cam key (Space by default).
@@ -1506,7 +1509,7 @@ impl eframe::App for ViewerApp {
             });
             let shift = ctx.input(|i| key_down(i, c.handbrake));
             // Pointer input counts only outside UI (sliders keep their drag).
-            let ui_busy = ctx.wants_pointer_input();
+            let ui_busy = ctx.egui_wants_pointer_input();
             if w {
                 controls.throttle += 1.0;
             }
@@ -2190,7 +2193,7 @@ impl eframe::App for ViewerApp {
             }
         });
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show(ui, |ui| {
             let (rect, _) = ui.allocate_exact_size(ui.available_size(), egui::Sense::hover());
             if rect.width() > 1.0 && rect.height() > 1.0 {
                 let cb = egui::PaintCallback {
@@ -2364,8 +2367,11 @@ fn main() {
         renderer: eframe::Renderer::Glow,
         // eframe defaults to zero depth bits; the 3D view needs real depth.
         depth_buffer: 24,
-        vsync: settings.vsync,
         multisampling: settings.msaa,
+        glow_options: egui_glow::GlowConfiguration {
+            vsync: settings.vsync,
+            ..Default::default()
+        },
         ..Default::default()
     };
     if let Err(e) = eframe::run_native(
