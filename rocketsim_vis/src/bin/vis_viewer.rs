@@ -22,6 +22,7 @@ use rocketsim_vis::{
     },
     frustum::frustum_planes,
     fx::CarFx,
+    hud::{boost_meter, spectated_boost},
     lines::{RibbonConfig, RibbonEmitter, Segment, ground_line},
     lines_gl::LinesGl,
     main_gl::{
@@ -218,6 +219,51 @@ impl StartMode {
             Self::Birds
         }
     }
+}
+
+/// RL-style boost gauge painted over the viewport corner: dim full dial,
+/// value arc clockwise from the top, number in the middle. Orange like
+/// RL boost, red when low.
+fn draw_boost_gauge(ui: &egui::Ui, rect: egui::Rect, fraction: f32, label: &str, low: bool) {
+    use std::f32::consts::TAU;
+    let r = (rect.width().min(rect.height()) * 0.07).clamp(30.0, 64.0);
+    let margin = 24.0;
+    let center = rect.right_bottom() - egui::vec2(margin + r, margin + r);
+    let painter = ui.painter();
+    painter.circle_filled(center, r + 14.0, egui::Color32::from_black_alpha(110));
+    painter.circle_stroke(
+        center,
+        r,
+        egui::Stroke::new(9.0_f32, egui::Color32::from_white_alpha(70)),
+    );
+    if fraction > 0.001 {
+        // Polyline arc (egui 0.31 has no arc primitive): 32 segments
+        // clockwise from the top.
+        let start = -std::f32::consts::FRAC_PI_2;
+        let end = start + fraction.clamp(0.0, 1.0) * TAU;
+        let pts: Vec<egui::Pos2> = (0..=32)
+            .map(|k| {
+                let a = start + (end - start) * (k as f32 / 32.0);
+                center + egui::vec2(a.cos() * r, a.sin() * r)
+            })
+            .collect();
+        let color = if low {
+            egui::Color32::from_rgb(255, 70, 50)
+        } else {
+            egui::Color32::from_rgb(255, 158, 0)
+        };
+        painter.add(egui::epaint::PathShape::line(
+            pts,
+            egui::Stroke::new(9.0_f32, color),
+        ));
+    }
+    painter.text(
+        center,
+        egui::Align2::CENTER_CENTER,
+        label,
+        egui::FontId::proportional(r * 0.55),
+        egui::Color32::WHITE,
+    );
 }
 
 /// Director rig: selection + follow smoothing + cut-blend pose mixing.
@@ -710,6 +756,12 @@ impl eframe::App for ViewerApp {
         if let Some(idx) = spectated {
             self.driven_car = idx;
         }
+        // Boost meter: raw boost of the watched car; None (no follow
+        // view, bad index, demoed car) hides the meter.
+        let meter = client_frame
+            .as_ref()
+            .and_then(|frame| spectated_boost(&frame.state.cars, spectated))
+            .map(boost_meter);
         // Unfocused: neutral controls, never a stale held key.
         let driving = spectated.is_some() && focused;
         let mut controls = CarControls::default();
@@ -1121,6 +1173,11 @@ impl eframe::App for ViewerApp {
                     })),
                 };
                 ui.painter().add(cb);
+                // RL-style boost gauge over the 3D view: dim dial, value
+                // arc clockwise from the top, number in the middle.
+                if let Some(m) = &meter {
+                    draw_boost_gauge(ui, rect, m.fraction, &m.label, m.low);
+                }
             }
         });
         self.cpu_ms = cpu_t0.elapsed().as_secs_f64() * 1000.0;
