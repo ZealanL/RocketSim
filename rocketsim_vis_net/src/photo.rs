@@ -19,13 +19,18 @@ pub fn build_arena() -> Arena {
 
 /// Initializes collision meshes from `ROCKETSIM_MESHES_DIR` if set, else the
 /// `./collision_meshes/` of the workspace root or the crate dir (tests run
-/// with the crate dir as CWD, examples with the workspace root).
+/// with the crate dir as CWD, examples with the workspace root; the net
+/// crate also probes one level up).
 pub fn init_meshes() {
     if let Some(dir) = std::env::var_os("ROCKETSIM_MESHES_DIR") {
         rocketsim::init(dir, true).unwrap();
         return;
     }
-    for cand in ["./collision_meshes/", "../collision_meshes/"] {
+    for cand in [
+        "./collision_meshes/",
+        "../collision_meshes/",
+        "../../collision_meshes/",
+    ] {
         if std::path::Path::new(cand).join("soccar").exists() {
             rocketsim::init(cand, true).unwrap();
             return;

@@ -3,10 +3,10 @@
 //! Shows the smallest setup: init meshes, create the arena, enable the
 //! visualizer, then step ticks.
 //!
-//! Run with: `cargo run -p rocketsim_vis --example minimal`
+//! Run with: `cargo run -p rocketsim_vis_net --example minimal`
 
 use rocketsim::{Arena, ArenaConfig, CarBodyConfig, CarControls, GameMode, Team};
-use rocketsim_vis::{ArenaVisExt, photo::init_meshes};
+use rocketsim_vis_net::{ArenaVisExt, photo::init_meshes};
 
 fn main() {
     init_meshes();

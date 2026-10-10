@@ -26,7 +26,7 @@ use crate::proto::{ControlMsg, VisFrame, decode_frame, encode_control};
 ///
 /// ```rust
 /// use rocketsim::CarControls;
-/// use rocketsim_vis::{net_client::ControlSender, proto::ControlMsg};
+/// use rocketsim_vis_net::{net_client::ControlSender, proto::ControlMsg};
 ///
 /// // Port 1 never accepts: sends are dropped, never block.
 /// let sender = ControlSender::connect("127.0.0.1:1");

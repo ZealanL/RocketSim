@@ -4,11 +4,11 @@
 //! the ball launches at tick 60. Same ticks give same states, so trail and
 //! effect screenshots are reproducible.
 //!
-//! Run with: `cargo run -p rocketsim_vis --example action`
+//! Run with: `cargo run -p rocketsim_vis_net --example action`
 
 use glam::Vec3A;
 use rocketsim::{Arena, ArenaConfig, CarBodyConfig, CarControls, GameMode, Team};
-use rocketsim_vis::{ArenaVisExt, photo::init_meshes};
+use rocketsim_vis_net::{ArenaVisExt, photo::init_meshes};
 
 /// Tick at which the script launches the ball (fast +Y with pop).
 pub const LAUNCH_TICK: u64 = 60;

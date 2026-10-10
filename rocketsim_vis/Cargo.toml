@@ -25,6 +25,7 @@ glow = "0.16"
 png = "0.18.0"
 postcard = { version = "1", features = ["alloc"] }
 rocketsim = { path = "../rocketsim", version = "0.3.0", features = ["serde"] }
+rocketsim_vis_net = { path = "../rocketsim_vis_net", version = "0.3.0" }
 rustc-hash.workspace = true
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"

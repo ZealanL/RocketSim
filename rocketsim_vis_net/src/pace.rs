@@ -41,7 +41,7 @@ pub struct PaceStats {
 /// ```rust
 /// use std::time::Duration;
 ///
-/// use rocketsim_vis::pace::TickPacer;
+/// use rocketsim_vis_net::pace::TickPacer;
 ///
 /// // Drive the sim at 120 Hz: wait, then step that many ticks.
 /// let mut pacer = TickPacer::at_120hz();

@@ -85,7 +85,7 @@ impl Vis for NetVis {
 /// };
 ///
 /// use rocketsim::CarControls;
-/// use rocketsim_vis::{
+/// use rocketsim_vis_net::{
 ///     net_vis::ControlServer,
 ///     proto::{ControlMsg, encode_control},
 /// };

@@ -13,6 +13,7 @@ members = [
   "rocketsim",
   "rocketsim_test",
   "rocketsim_vis",
+  "rocketsim_vis_net",
 ]
 
 [workspace.dependencies]
