@@ -267,11 +267,14 @@ impl PersistentManifold {
     }
 
     pub(crate) fn merge_contact_points(&mut self, other: &Self) {
-        // Borrow the fresh manifold: points are `Copy`, so iterating by
-        // reference moves the same values in the same order without
-        // memmoving the whole donor struct (`ArrayVec` + evicted point).
-        for contact in other.point_cache.iter() {
-            self.add_contact_without_callback(*contact);
+        if self.point_cache.is_empty() {
+            for contact in other.point_cache.iter() {
+                self.point_cache.push(*contact);
+            }
+        } else {
+            for contact in other.point_cache.iter() {
+                self.add_contact_without_callback(*contact);
+            }
         }
     }
 
