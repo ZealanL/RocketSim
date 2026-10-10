@@ -1,7 +1,7 @@
 //! Instanced boost-pad pipeline: 4 draws cover all pads.
 //!
 //! Model matrix comes from per-instance `mat4` attributes (locations 3-6)
-//! instead of `u_model`; fragment shader is the old `main_frag.glsl`.
+//! instead of `u_model`; fragment shader is `main_frag.glsl`.
 //! Instance buffers stream per frame; empty draws skip.
 
 use glam::Mat4;

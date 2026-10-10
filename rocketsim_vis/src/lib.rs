@@ -3,7 +3,7 @@
 //! The sim streams frames over TCP to the `vis_viewer` process; see
 //! `tools/README.md` for the screenshot harness.
 //!
-//! Quick start (old base API — launches a viewer if none listens):
+//! Quick start (launches a viewer if none listens):
 //!
 //! ```no_run
 //! use rocketsim::{Arena, CarBodyConfig, GameMode, Team, init_from_default};
@@ -51,7 +51,7 @@ pub mod view;
 pub use net_vis::{NetVis, ensure_viewer_running};
 use rocketsim::Arena;
 
-/// Default viewer address for the old [`ArenaVisExt::set_vis_enabled`] API
+/// Default viewer address for [`ArenaVisExt::set_vis_enabled`]
 /// (matches [`proto::DEFAULT_PORT`]).
 pub const DEFAULT_VIEWER_ADDR: &str = "127.0.0.1:39201";
 

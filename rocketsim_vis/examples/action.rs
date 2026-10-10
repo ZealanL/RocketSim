@@ -57,7 +57,7 @@ fn main() {
             ball.phys.vel = Vec3A::ZERO;
             arena.set_ball_state(ball);
         }
-        // Demo boost: pin to full (the old interactive demo did the same).
+        // Demo boost: pin to full so flames show.
         let mut car = *arena.get_car_state(car_idx);
         car.boost = 100.0;
         arena.set_car_state(car_idx, car);

@@ -1,6 +1,6 @@
-//! Textured + lit object pipeline: ball and cars in the old look.
+//! Textured + lit object pipeline for the ball and cars.
 //!
-//! Shaders are the old `main_vert/frag.glsl` bytes (ambient + sun light,
+//! Shaders are `main_vert/frag.glsl` (ambient + sun light,
 //! transparent-texture bypass). VAOs bind pos/normal/UV to locations
 //! 0/1/2; uniforms are cached at init. Model matrices are plain
 //! translation x rotation (the view carries the global x-flip).
@@ -15,7 +15,7 @@ use crate::{
     textures::TextureGl,
 };
 
-/// Old-look textured pipeline shaders (verbatim bytes, ZealanL).
+/// Textured pipeline shaders (ZealanL).
 pub const MAIN_VERT_SRC: &str = include_str!("shaders/main_vert.glsl");
 pub const MAIN_FRAG_SRC: &str = include_str!("shaders/main_frag.glsl");
 
@@ -91,8 +91,8 @@ pub const ARENA_TEXTURE: &str = "white";
 pub const BALL_MODEL: &str = "ball";
 
 /// Maps a body config to its bundled OBJ. Only four bodies have customs;
-/// the rest fall back to octane (the old code named nonexistent
-/// `car_plank`/`car_hybrid` models — fallback is strictly better).
+/// the rest fall back to octane (there are no `car_plank`/`car_hybrid`
+/// models — fallback is strictly better).
 pub fn car_model_name(config: &CarBodyConfig) -> &'static str {
     if *config == CarBodyConfig::DOMINUS {
         "car_dominus"
@@ -130,7 +130,7 @@ pub struct MainProgram {
 }
 
 impl MainProgram {
-    /// Compiles the old main shaders; panics with logs on failure.
+    /// Compiles the main shaders; panics with logs on failure.
     pub fn new(gl: &glow::Context) -> Self {
         let prog = compile_program(gl, "main", MAIN_VERT_SRC, MAIN_FRAG_SRC);
         let u_model = uniform_location(gl, prog, "main", "u_model");

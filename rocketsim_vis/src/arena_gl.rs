@@ -1,6 +1,6 @@
-//! Indexed arena draw with the old team-color/grid look.
+//! Indexed arena draw with the team-color/grid look.
 //!
-//! Shaders are the old `arena_vert/frag.glsl` bytes verbatim: team colors
+//! Shaders are `arena_vert/frag.glsl`: team colors
 //! by world-Y, `fwidth`-antialiased grid lines, normal-based brightness.
 //! Draws sample the flat-white texture so colors pass through untinted.
 //! Uniforms are cached at init; the sampler binds unit 0 once.
@@ -14,7 +14,7 @@ use crate::{
     textures::{PngImage, TextureGl},
 };
 
-/// Old-look arena shaders (verbatim bytes, ZealanL).
+/// Arena shaders (ZealanL).
 pub const ARENA_VERT_SRC: &str = include_str!("shaders/arena_vert.glsl");
 pub const ARENA_FRAG_SRC: &str = include_str!("shaders/arena_frag.glsl");
 

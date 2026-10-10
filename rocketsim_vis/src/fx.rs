@@ -311,7 +311,7 @@ impl CarFx {
                 // Latched reset: dim ring per wheel. Quiet on purpose: RL
                 // shows only the burst, so the held cue stays dimmer.
                 // Segments emit directly (no per-wheel point Vec): the
-                // endpoints match the old windows(2) expansion exactly.
+                // endpoints match the `windows(2)` expansion exactly.
                 if latched {
                     let right = car.rot_mat.y_axis.try_normalize().unwrap_or(Vec3A::X);
                     let up = Vec3A::Z;

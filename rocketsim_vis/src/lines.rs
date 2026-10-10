@@ -1,14 +1,14 @@
 //! Line segments, ribbon trails, and line config.
 //!
-//! [`RibbonEmitter`] ports the old trail logic with testable output:
+//! [`RibbonEmitter`] emits trail ribbons with testable output:
 //! [`RibbonEmitter::segments`] returns segments directly. Ball/boost
-//! configs keep the old values.
+//! configs keep their tuned values.
 
 use std::collections::VecDeque;
 
 use glam::{FloatExt, Vec3A};
 
-/// Linear RGBA color, components 0-1 (old `backend::Color` subset).
+/// Linear RGBA color, components 0-1.
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Color {
     /// Red channel (0-1).
@@ -122,12 +122,12 @@ pub const CORNERS: [(f32, f32); 4] = [(-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1
 const EXPAND_MARGIN: f32 = 1.1;
 
 /// Expands a segment into 4 camera-facing quad corners (world space),
-/// matching the old vertex-shader math on CPU: axis interpolation,
+/// matching the vertex-shader math on CPU: axis interpolation,
 /// view-perp offset, 1px minimum width, end-cap pads.
 ///
 /// `eye` is the camera pos, `view` the view matrix, `proj11` is
 /// `proj[1][1]`, `screen_h` the viewport height in pixels. Degenerate
-/// segments give a zero-area quad (invisible, like the old NaN-clip).
+/// segments give a zero-area quad (invisible — degenerate input clips away).
 pub fn expand_segment(
     seg: &Segment,
     eye: Vec3A,
@@ -220,7 +220,7 @@ impl RibbonPoint {
     }
 }
 
-/// Emission/visual config for a ribbon trail (old values kept).
+/// Emission/visual config for a ribbon trail (tuned values).
 #[derive(Debug, Copy, Clone)]
 pub struct RibbonConfig {
     /// Points per second.
@@ -415,8 +415,8 @@ mod tests {
 
     #[test]
     fn emission_rate_and_expiry() {
-        // Effective rate is ~24/s (emit every 5th tick at 120Hz — same
-        // off-by-one the old emitter had); 2s run reaches expiry steady
+        // Effective rate is ~24/s (emit every 5th tick at 120Hz, hence
+        // ~24/s rather than 25/s); 2s run reaches expiry steady
         // state (~24 alive with a 1s lifetime).
         let mut ribbon = RibbonEmitter::new(RibbonConfig::ball_trail());
         for _ in 0..240 {
@@ -487,7 +487,7 @@ mod tests {
     #[test]
     fn expand_edge_cases() {
         let (eye, view, proj11, h) = test_view();
-        // Degenerate segment: zero-area quad (matches old NaN-clip).
+        // Degenerate segment: zero-area quad (degenerate input clips away).
         let seg = Segment::flat(
             Vec3A::new(1.0, 2.0, 3.0),
             Vec3A::new(1.0, 2.0, 3.0),

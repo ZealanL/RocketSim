@@ -2,8 +2,9 @@
 //!
 //! BVH below (`Tree` and friends) is copied from
 //! `rocketsim/src/shared/bvh.rs` (same repo, MIT) so the viewer traces the
-//! exact hull the sim collides with. Only the Bullet-specific split
-//! (`build_bullet`/`calc_bullet_split`) is dropped; the SAH build and the
+//! exact hull the sim collides with. The Bullet-specific split and the
+//! unused AABB queries (`check_overlap_with`,
+//! `report_aabb_overlapping_node`) are dropped; the SAH build and the
 //! quad-ray traversal are verbatim. `Aabb`/`QuadRayInfo` are reused from
 //! `rocketsim::shared` (no copy).
 //!
@@ -37,10 +38,6 @@ use rustc_hash::FxHashMap;
 // ---------------------------------------------------------------------------
 // Copied BVH (rocketsim/src/shared/bvh.rs, bullet split removed).
 // ---------------------------------------------------------------------------
-
-pub trait ProcessNode {
-    fn process_node(&mut self, leaf_idx: usize);
-}
 
 pub trait ProcessQuadRayNode {
     fn process_node(&mut self, leaf_idx: usize, active_mask: u8, lambda_max: &mut Vec4);
@@ -197,66 +194,6 @@ impl Tree {
         debug_assert_ne!(i, split_idx);
         let [a, b] = unsafe { leaf_nodes.get_disjoint_unchecked_mut([split_idx, i]) };
         mem::swap(a, b);
-    }
-
-    #[allow(dead_code)]
-    pub fn check_overlap_with(&self, aabb: &Aabb) -> bool {
-        if !aabb.intersects(&self.aabb) {
-            return false;
-        }
-
-        let mut stack = [0usize; Self::TRAVERSAL_STACK_SIZE];
-        let mut stack_len = 1;
-        while stack_len != 0 {
-            stack_len -= 1;
-            let node = &self.wide_nodes[stack[stack_len]];
-            let mask = node.intersection_mask(aabb);
-            for lane in 0..node.child_count as usize {
-                if mask & (1 << lane) == 0 {
-                    continue;
-                }
-                if let Some(child_idx) = node.children[lane].leaf_idx() {
-                    let _ = child_idx;
-                    return true;
-                }
-                stack[stack_len] = node.children[lane].branch_idx();
-                stack_len += 1;
-            }
-        }
-        false
-    }
-
-    #[allow(dead_code)]
-    pub fn report_aabb_overlapping_node<T: ProcessNode>(&self, node_callback: &mut T, aabb: &Aabb) {
-        if !aabb.intersects(&self.aabb) {
-            return;
-        }
-
-        // Only the pushed prefix is read, so leave the rest uninitialized.
-        use std::mem::MaybeUninit;
-        let mut stack = [MaybeUninit::<WideChild>::uninit(); Self::TRAVERSAL_STACK_SIZE];
-        stack[0].write(WideChild::branch(0));
-        let mut stack_len = 1;
-        while stack_len != 0 {
-            stack_len -= 1;
-            // SAFETY: only indices below `stack_len + 1` are read, each written before bump.
-            let work = unsafe { stack[stack_len].assume_init() };
-            if let Some(storage_idx) = work.leaf_idx() {
-                node_callback.process_node(self.leaves[storage_idx].leaf_idx);
-                continue;
-            }
-
-            let node = &self.wide_nodes[work.branch_idx()];
-            let mask = node.intersection_mask(aabb);
-            for lane in (0..node.child_count as usize).rev() {
-                if mask & (1 << lane) != 0 {
-                    std::hint::cold_path();
-                    debug_assert!(stack_len < Self::TRAVERSAL_STACK_SIZE);
-                    stack[stack_len].write(node.children[lane]);
-                    stack_len += 1;
-                }
-            }
-        }
     }
 
     pub fn report_quad_ray_overlapping_node<T: ProcessQuadRayNode>(

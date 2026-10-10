@@ -38,7 +38,6 @@ impl SoupMesh {
     }
 
     /// Single ±10000uu quad in the XY plane (normal +Z, UVs 0..1).
-    /// Procedural equivalent of the old `big_plane.obj` custom asset.
     pub fn big_plane() -> Self {
         Self::quad(-10_000.0, 10_000.0, -10_000.0, 10_000.0, 0.0)
     }

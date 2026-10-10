@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# vis-shot.sh — deterministic screenshot harness for the vis rebuild.
+# vis-shot.sh — deterministic screenshot harness for the vis viewer.
 #
 # Ensures a nested Xephyr display exists, runs a command on it, captures the
 # root window with xwd, converts to PNG via tools/xwd2png.py.
@@ -9,7 +9,7 @@
 #
 # Example (prove the harness with a trivial client):
 #   tools/vis-shot.sh /tmp/probe.png -- xterm -e 'sleep 5'
-# Example (stage 1+: viewer + sim):
+# Example (viewer + sim):
 #   tools/vis-shot.sh -w 8 /tmp/shot.png -- ./target/debug/vis_viewer 39201
 #
 # The Xephyr server is left running for reuse across shots.

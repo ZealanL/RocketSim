@@ -2,21 +2,20 @@
 //! and frustum-filtered instance lists.
 //!
 //! 4 instanced draws (big/small x on/off) with per-instance matrices.
-//! Placement matches the old vis: pad XY from config, Z dropped to the
-//! field, uniform 2x scale.
+//! Pad XY comes from config, Z is dropped to the field, uniform 2x scale.
 
 use glam::{Mat4, Vec3, Vec3A};
 use rocketsim::{BoostPadConfig, BoostPadState};
 
 use crate::{frustum::sphere_visible, obj::ObjMesh};
 
-/// Variant order = draw order (matches old model names).
+/// Variant order = draw order (matches the model names).
 pub const PAD_VARIANTS: [&str; 4] = ["pad_big_on", "pad_big_off", "pad_small_on", "pad_small_off"];
 /// Max pads in Soccar (the instance buffer size).
 pub const MAX_PAD_INSTANCES: usize = 34;
 
 /// Maps (big, active) to a variant index. The small on/off contents are
-/// CROSSED like the old loader (`pad_small_on` <- `small_off.obj`): the
+/// CROSSED (`pad_small_on` <- `small_off.obj`): the
 /// small files are misnamed, and the elaborate-ON test below pins this.
 pub fn variant_index(is_big: bool, is_active: bool) -> usize {
     match (is_big, is_active) {
@@ -27,7 +26,7 @@ pub fn variant_index(is_big: bool, is_active: bool) -> usize {
     }
 }
 
-/// Loads the four pad meshes in [`PAD_VARIANTS`] order, with the old
+/// Loads the four pad meshes in [`PAD_VARIANTS`] order, with the
 /// small-pair cross (files are misnamed; code compensates).
 pub fn load_pad_meshes() -> [ObjMesh; 4] {
     [

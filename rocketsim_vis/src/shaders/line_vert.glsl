@@ -1,8 +1,8 @@
 #version 330 core
 
 // CPU-expanded quad corners (see lines::expand_segment): the GPU only
-// transforms and varies them through. Locations are pinned, so the VAO
-// hardcodes them (stage-3 rule).
+// transforms and varies them through. Attribute locations are pinned in
+// the shader, so the VAO binds them by index.
 layout (location = 0) in vec3 vs_world;
 layout (location = 1) in vec3 vs_pa;
 layout (location = 2) in vec3 vs_pb;

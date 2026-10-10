@@ -15,7 +15,7 @@ fn main() {
     let car_idx = arena.add_car(Team::Blue, CarBodyConfig::OCTANE);
     arena.reset_to_random_kickoff(None);
 
-    // Old base API: launches a viewer if none listens, streams every tick.
+    // Detached-viewer API: launches a viewer if none listens, streams every tick.
     arena.set_vis_enabled(true);
 
     let controls = CarControls {

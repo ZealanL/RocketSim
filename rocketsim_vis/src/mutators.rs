@@ -61,7 +61,7 @@ fn default_recharge_per_second() -> f32 {
 /// at local defaults and are not sent.
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Mutators {
-    /// Refill the tank every tick (replaces the old `boost = 100` hack).
+    /// Refill the tank every tick (no boost drain).
     #[serde(default)]
     pub unlimited_boost: bool,
     /// Passive regen at [`recharge_per_second`](Self::recharge_per_second).

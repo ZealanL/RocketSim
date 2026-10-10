@@ -1,6 +1,6 @@
 # rocketsim_vis
 
-3D visualizer for [RocketSim](https://github.com/ZealanL/RocketSim) games (miniquad + egui).
+3D visualizer for [RocketSim](https://github.com/ZealanL/RocketSim) games (eframe + egui).
 
 Enable it on any `rocketsim::Arena` and a window opens on a background thread,
 following the cars, ball, and boost pads while you keep stepping ticks.
@@ -43,53 +43,14 @@ Wayland):
 While playing, the mouse is captured by the 3D view; it returns when the
 menu opens or the window loses focus. An unfocused window never drives.
 
-The driveable demo (`examples/drive.rs`) additionally uses, in the viewer
-window: Q/E roll, Shift handbrake, `F2` dribble the ball, `F4` launch it.
-Inputs stream to the sim over the control channel (`127.0.0.1:39202`);
-gamepads keep working from the sim side with no focus needed, including
-right-stick look and Triangle/Y ball-cam. Stick deadzone is a slider in
-the Bindings section. All
-keys/mouse/pad bindings rebind in the settings menu (Bindings section) or
-by hand in `settings.toml`. Keys rebind by pressing the new key; pad
-slots rebind by pressing a button or moving a stick past 60% while
-armed (the push direction binds for sticks, so up binds `+Y` and down
-binds `-Y`; unmapped pads bind by raw code like `+2`). Rebinding
-pauses all other inputs, and the menu key cancels. Needs a connected
-gamepad; the drive sim hot-reloads the same file about once a second,
-so pad changes apply live. The Input section has spectate-only mode
-(watch, never drive) and the Mutators section has live toggles for
-unlimited boost, boost regen, and unlimited flips/double jumps.
-
 ## Examples
 
 ```sh
 # Smallest streaming sim, no input (launches vis_viewer if needed)
-cargo run -p rocketsim_vis --example minimal
+cargo run --example minimal
 # Interactive driveable demo (drive from the viewer window)
-cargo run -p rocketsim_vis --example drive
-# Deterministic scene for screenshot review
-cargo run -p rocketsim_vis --example photo
+cargo run --example drive
 ```
-
-## Camera
-
-`camera::CameraMan` holds the persistent view state (birds-eye or one
-`camera::CarCam`). Tune it with `camera::CameraConfig` /
-`camera::CarCameraConfig` (follow distance/height, ball-tilt curve, FOV,
-birds-eye position). Note: `VisInst` currently uses `CameraConfig::default()`.
-
-## Advanced: custom rendering
-
-`VisInst` rebuilds a `backend::VisRenderState` each tick (models, lines,
-overlay text, 2D shapes) and shares it with the renderer thread. To draw
-your own overlay, implement `rocketsim::Vis` and push into `objects`,
-`lines` (`add_line_simple`), `info_text_lines`, or `shapes_2d`
-(`backend::Elem2D`, `backend::Color`).
-
-`backend` also exposes the miniquad plumbing (`Model`/`ModelSet`,
-`Texture`/`TextureSet`, `ShaderSrc`, `VisRenderer`, `WindowEvent`) if you
-want to build a fully custom viewer. `vis_asset_loader` bundles the
-built-in models/textures and lists their known names.
 
 ## Assets
 

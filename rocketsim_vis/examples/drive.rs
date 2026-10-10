@@ -41,7 +41,7 @@ fn main() {
 
     let car_idx = arena.add_car(Team::Blue, CarBodyConfig::OCTANE);
 
-    // Old base API: launches a viewer if none listens, streams every tick.
+    // Detached-viewer API: launches a viewer if none listens, streams every tick.
     arena.set_vis_enabled(true);
 
     // Viewer→sim driving inputs (viewer dials this once its send side lands;

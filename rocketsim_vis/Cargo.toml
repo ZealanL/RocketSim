@@ -11,6 +11,10 @@ license.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+# Manual-review screenshots only (no test reads them); keep them out of
+# the published crate.
+exclude = ["tests/reference/"]
+
 [dependencies]
 eframe = { version = "0.31", default-features = false, features = ["glow", "wayland", "x11", "default_fonts"] }
 egui = "0.31"
