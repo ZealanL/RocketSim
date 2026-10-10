@@ -8,7 +8,7 @@ use std::{path::PathBuf, time::Instant};
 
 use serde::{Deserialize, Serialize};
 
-use crate::camera::CameraConfig;
+use crate::{bindings::Bindings, camera::CameraConfig};
 
 /// Frame-rate limiter (Hz, 0 = uncapped). Default 60.
 pub const DEFAULT_FPS_LIMIT: u32 = 60;
@@ -24,7 +24,8 @@ const SAVE_DEBOUNCE_SECS: f32 = 1.0;
 /// Shape: `[camera]` tuning (FOV, follow distance/height/angle, stiffness,
 /// transition) plus overlay flags (`show_trail`, `show_boost`,
 /// `show_ground_line`, `show_pads`), `fps_limit_hz` (0 = uncapped),
-/// `ui_scale`, `vsync`/`msaa` (apply on relaunch).
+/// `ui_scale`, `vsync`/`msaa` (apply on relaunch), and `[bindings]`
+/// key/mouse/gamepad tables (all defaulted, old files still parse).
 /// Loading never fails (missing/corrupt files give defaults); every field
 /// has a default so old files missing new keys still parse.
 ///
@@ -72,6 +73,9 @@ pub struct ViewerSettings {
     /// MSAA samples (applies on relaunch).
     #[serde(default = "default_msaa")]
     pub msaa: u16,
+    /// Key/mouse/gamepad bindings (all defaulted, old files parse).
+    #[serde(default)]
+    pub bindings: Bindings,
     /// Spectate-only mode: watch the followed car, send neutral inputs.
     #[serde(default)]
     pub spectate_only: bool,
@@ -121,6 +125,7 @@ impl Default for ViewerSettings {
             ui_scale: DEFAULT_UI_SCALE,
             vsync: true,
             msaa: DEFAULT_MSAA,
+            bindings: Bindings::default(),
             spectate_only: false,
             mut_unlimited_boost: false,
             mut_recharge: false,
@@ -213,7 +218,8 @@ impl ViewerSettings {
     /// off = RL defaults = zero).
     pub fn mutators_mask(&self) -> u8 {
         use crate::proto::{
-            MUT_BOOST_RECHARGE, MUT_UNLIMITED_BOOST, MUT_UNLIMITED_DOUBLE_JUMPS, MUT_UNLIMITED_FLIPS,
+            MUT_BOOST_RECHARGE, MUT_UNLIMITED_BOOST, MUT_UNLIMITED_DOUBLE_JUMPS,
+            MUT_UNLIMITED_FLIPS,
         };
         let mut mask = 0u8;
         if self.mut_unlimited_boost {
@@ -249,6 +255,7 @@ fn directories_dir() -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bindings::{Key, MouseButton, PadButton};
 
     #[test]
     fn defaults_match_spec() {
@@ -291,6 +298,41 @@ mod tests {
         assert_eq!(back.camera.car_cam.stiffness, 0.45);
         assert!(back.show_trail && back.show_pads);
         assert_eq!(back.fps_limit_hz, DEFAULT_FPS_LIMIT);
+    }
+
+    #[test]
+    fn bindings_default_and_old_file() {
+        // Defaults copy today's hardcoded mapping.
+        let s = ViewerSettings::default();
+        assert_eq!(s.bindings.car.throttle_fwd, Key::W);
+        assert_eq!(s.bindings.car.jump, MouseButton::Primary);
+        assert_eq!(s.bindings.actions.kickoff_reset, Key::Backspace);
+        assert_eq!(s.bindings.camera.free, Key::F);
+        assert_eq!(s.bindings.ui.menu_toggle, Key::Escape);
+        assert_eq!(s.bindings.pad.jump, PadButton::South);
+
+        // Old file without `[bindings]`: bindings use defaults.
+        let text = r#"
+            show_boost = false
+            [camera]
+            fov_degrees = 100.0
+        "#;
+        let back: ViewerSettings = toml::from_str(text).unwrap();
+        assert!(!back.show_boost);
+        assert_eq!(back.bindings, Bindings::default());
+
+        // Partial `[bindings]` table: known keys apply, rest default.
+        let text = r#"
+            [bindings.car]
+            throttle_fwd = "ArrowUp"
+            [bindings.camera]
+            free = "G"
+        "#;
+        let back: ViewerSettings = toml::from_str(text).unwrap();
+        assert_eq!(back.bindings.car.throttle_fwd, Key::ArrowUp);
+        assert_eq!(back.bindings.car.throttle_back, Key::S);
+        assert_eq!(back.bindings.camera.free, Key::G);
+        assert_eq!(back.bindings.camera.cycle, Key::C);
     }
 
     #[test]

@@ -76,8 +76,8 @@ impl CarCam {
 ///   ball is nearly overhead); car-cam yaw relaxes toward heading with
 ///   stiffness lag;
 /// * boom grows with speed (`+(1-stiffness)*115` at full speed);
-/// * toggles swing around the live focus over `0.6 * (2 - transition)`
-///   seconds (instant at 2.0);
+/// * toggles swing boom and look around the live focus over
+///   `0.6 * (2 - transition)` seconds (instant at 2.0);
 /// * horizontal FOV gains +5 with speed and +5 at supersonic.
 ///
 /// The first update after [`new`](Self::new)/[`reset`](Self::reset) snaps.

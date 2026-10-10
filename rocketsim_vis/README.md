@@ -37,6 +37,8 @@ Wayland):
 * WASD + mouse — drive the car you follow (other views send neutral)
 * `Backspace` or the settings-menu "Reset play" button — reset to kickoff
 * `Esc` — options menu (sliders, camera presets, overlays)
+* Pad: Options/Start toggles the menu · D-pad/left stick moves ·
+  A selects · B backs out · ◀▶ adjust sliders · right stick looks
 
 While playing, the mouse is captured by the 3D view; it returns when the
 menu opens or the window loses focus. An unfocused window never drives.
@@ -44,7 +46,19 @@ menu opens or the window loses focus. An unfocused window never drives.
 The driveable demo (`examples/drive.rs`) additionally uses, in the viewer
 window: Q/E roll, Shift handbrake, `F2` dribble the ball, `F4` launch it.
 Inputs stream to the sim over the control channel (`127.0.0.1:39202`);
-gamepads keep working from the sim side with no focus needed.
+gamepads keep working from the sim side with no focus needed, including
+right-stick look and Triangle/Y ball-cam. Stick deadzone is a slider in
+the Bindings section. All
+keys/mouse/pad bindings rebind in the settings menu (Bindings section) or
+by hand in `settings.toml`. Keys rebind by pressing the new key; pad
+slots rebind by pressing a button or moving a stick past 60% while
+armed (the push direction binds for sticks, so up binds `+Y` and down
+binds `-Y`; unmapped pads bind by raw code like `+2`). Rebinding
+pauses all other inputs, and the menu key cancels. Needs a connected
+gamepad; the drive sim hot-reloads the same file about once a second,
+so pad changes apply live. The Input section has spectate-only mode
+(watch, never drive) and the Mutators section has live toggles for
+unlimited boost, boost regen, and unlimited flips/double jumps.
 
 ## Examples
 

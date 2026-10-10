@@ -1,17 +1,16 @@
 //! Interactive driveable demo: `vis_viewer` shows it AND drives it.
 //!
-//! * Keyboard/mouse come from the VIEWER window: WASD + mouse buttons
-//!   drive, Q/E roll, Shift handbrake, `Backspace` resets kickoff,
-//!   `F2` dribbles, `F4` launches. The viewer streams
+//! * All inputs come from the VIEWER window (viewer is the single owner):
+//!   WASD + mouse buttons drive, Q/E roll, Shift handbrake, gamepad
+//!   sticks/triggers/buttons blend in vis-side. `Backspace` resets
+//!   kickoff, `F2` dribbles, `F4` launches. The viewer streams
 //!   [`ControlMsg`](rocketsim_vis::proto::ControlMsg) frames to this sim's
 //!   control port (`127.0.0.1:39202`).
-//! * Optional local gamepad (gilrs, USB — no focus needed) blends in when
-//!   connected.
+//! * This sim just takes the channel: newest input wins, stale or missing
+//!   channel falls back to neutral (no stuck throttle on disconnect).
 //! * Ticks run at wall-clock 120Hz via
 //!   [`TickPacer`](rocketsim_vis::pace::TickPacer) (catch-up capped,
 //!   excess dropped).
-//! * Stale channel failsafe: no fresh viewer input within `STALE_AFTER`
-//!   falls back to neutral (no stuck throttle on disconnect).
 //! * Live mutators (unlimited boost, regen, flips) toggle in the viewer
 //!   menu and apply per tick; all off = unmodded RL behavior.
 //!
@@ -19,7 +18,6 @@
 
 use std::time::{Duration, Instant};
 
-use gilrs::{Axis, Button, Gilrs};
 use glam::Vec3A;
 use rocketsim::{Arena, ArenaConfig, CarBodyConfig, CarControls, GameMode, Team};
 use rocketsim_vis::{
@@ -31,56 +29,8 @@ use rocketsim_vis::{
     proto::{DEFAULT_CONTROL_PORT, MUT_KNOWN_MASK},
 };
 
-const STICK_DEADZONE: f32 = 0.1;
-const TRIGGER_DEADZONE: f32 = 0.05;
-const TRIGGER_SENSITIVITY: f32 = 1.25;
-
 /// No fresh viewer input for this long → drive neutral (viewer gone/stalled).
 const STALE_AFTER: Duration = Duration::from_millis(250);
-
-fn determine_controller_controls(gilrs: &mut Gilrs, mut controls: CarControls) -> CarControls {
-    while gilrs.next_event().is_some() {}
-
-    for (_, gamepad) in gilrs.gamepads() {
-        controls.jump |= gamepad.is_pressed(Button::South);
-        controls.boost |= gamepad.is_pressed(Button::East);
-        controls.handbrake |= gamepad.is_pressed(Button::West);
-
-        let left_stick_x = gamepad.value(Axis::LeftStickX);
-        if left_stick_x.abs() > STICK_DEADZONE {
-            controls.steer = left_stick_x;
-            controls.yaw = left_stick_x;
-        }
-
-        let left_stick_y = gamepad.value(Axis::LeftStickY);
-        if left_stick_y.abs() > STICK_DEADZONE {
-            controls.pitch = -left_stick_y;
-        }
-
-        let left_trigger = gamepad
-            .button_data(Button::LeftTrigger2)
-            .map_or(0.0, |trigger| trigger.value());
-        let right_trigger = gamepad
-            .button_data(Button::RightTrigger2)
-            .map_or(0.0, |trigger| trigger.value());
-
-        if right_trigger > TRIGGER_DEADZONE {
-            controls.throttle = right_trigger * TRIGGER_SENSITIVITY;
-        }
-        if left_trigger > TRIGGER_DEADZONE {
-            controls.throttle = -left_trigger * TRIGGER_SENSITIVITY;
-        }
-
-        if gamepad.is_pressed(Button::RightTrigger) {
-            controls.roll += 1.0;
-        }
-        if gamepad.is_pressed(Button::LeftTrigger) {
-            controls.roll -= 1.0;
-        }
-    }
-
-    controls
-}
 
 fn main() {
     init_meshes();
@@ -88,20 +38,6 @@ fn main() {
         rng_seed: Some(0),
         ..ArenaConfig::new(GameMode::Soccar)
     });
-
-    // Local gamepad is optional (headless CI has none): warn, don't abort.
-    let mut gilrs = match Gilrs::new() {
-        Ok(g) => Some(g),
-        Err(e) => {
-            eprintln!("drive: no gamepad input ({e}); viewer channel only");
-            None
-        }
-    };
-    if let Some(gilrs) = gilrs.as_mut() {
-        for (_, gamepad) in gilrs.gamepads() {
-            println!("Detected gamepad: {}", gamepad.name());
-        }
-    }
 
     let car_idx = arena.add_car(Team::Blue, CarBodyConfig::OCTANE);
 
@@ -115,15 +51,15 @@ fn main() {
     eprintln!("drive: control channel on {control_addr} (input needs viewer focus)");
 
     println!("Drive from the vis_viewer window (viewer send side pending).");
-    println!("Local gamepad works when connected (bindings from settings.toml).");
+    println!("Gamepad works when connected (read vis-side, bindings from settings.toml).");
     println!("Mutators (unlimited boost etc.) toggle live in the viewer menu.");
 
     let mut pacer = TickPacer::at_120hz();
     let mut last_seq: Option<u64> = None;
     let mut channel = CarControls::default();
     // Mutator level state: frozen at last-received on link loss (controls
-    // still failsafe to neutral — mutators must not switch off mid-flight
-    // on a dropped packet).
+    // above still failsafe to neutral — mutators must not silently switch
+    // off mid-flight on a dropped packet).
     let mut channel_mutators: u8 = 0;
     let mut channel_at = Instant::now();
     let mut prev_buttons: u8 = 0;
@@ -145,18 +81,11 @@ fn main() {
                 channel_mutators = m.mutators & MUT_KNOWN_MASK;
                 channel_at = Instant::now();
             }
-            let mut controls = if channel_at.elapsed() > STALE_AFTER {
+            let controls = if channel_at.elapsed() > STALE_AFTER {
                 CarControls::default()
             } else {
                 channel
             };
-
-            // Blend in local gamepad input when one is connected.
-            if let Some(gilrs) = gilrs.as_mut()
-                && gilrs.gamepads().next().is_some()
-            {
-                controls = determine_controller_controls(gilrs, controls);
-            }
 
             // Honor the viewer's car selection when it names a live car.
             let target = msg
