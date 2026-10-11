@@ -58,18 +58,36 @@ impl<const N: usize> LinearPieceCurve<N> {
     /// # Arguments
     ///
     /// * `input` - The input to the curve
+    #[inline]
     pub fn get_output(&self, input: f32) -> f32 {
         debug_assert!(N != 0);
+
+        // A single-point curve is constant: both clamp ends return its `y`.
+        if N == 1 {
+            return self.curve[0].max_y;
+        }
 
         let first_val_pair = self.curve[0];
         if input <= first_val_pair.max_x {
             return first_val_pair.max_y;
         }
 
-        let Some(pair) = self.curve.iter().skip(1).find(|pair| pair.max_x > input) else {
+        // Manual index loop over `1..N`: the same strict-`>` first-match
+        // selection as the former `skip(1).find(...)`, but without iterator
+        // adapters. `N` is const per monomorphization, so this unrolls into
+        // check-free indexed loads.
+        let mut i = 1usize;
+        while i < N {
+            if self.curve[i].max_x > input {
+                break;
+            }
+            i += 1;
+        }
+        if i == N {
             return self.curve[N - 1].max_y;
-        };
+        }
 
+        let pair = self.curve[i];
         let interp_frac = (input - pair.base_x) / pair.x_diff;
         pair.y_diff * interp_frac + pair.base_y
     }
