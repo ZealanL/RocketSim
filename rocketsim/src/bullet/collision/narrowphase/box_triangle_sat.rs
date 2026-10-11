@@ -128,17 +128,21 @@ pub fn box_triangle_sat(
         debug_assert!(best_gap - margin < maximum_distance);
         let n_world = (box_trans.matrix3 * best_sep_axis).normalize_or_zero();
         if n_world.length_squared() < 0.5 {
+            // Degenerate SAT normal; essentially unreachable for real triangles.
+            std::hint::cold_path();
             return None;
         }
         // Closest-feature candidates are enumerated once and shared by the
         // strict first-minimum witness and the flat-tie analysis below.
-        let pairs = enum_aabb_triangle_pairs(half_unmargined, q);
+        let pairs = enum_aabb_triangle_pairs(half_unmargined, q, &edges);
         if let Some((pa_first, pb_first)) =
             first_min_of_pairs(&pairs).filter(|(pa, pb)| (*pa - *pb).length_squared() > 1e-24)
         {
+            // Single sqrt reused for the flat gate and the unsnapped depth.
+            let pair_len = (pa_first - pb_first).length();
             let mut pb_local = pb_first;
             let mut snapped = false;
-            if (pa_first - pb_first).length() - margin < 0.0
+            if pair_len - margin < 0.0
                 && let Some((e0, e1)) = flat_tie_segment(half_unmargined, &pairs)
             {
                 pb_local = closest_point_on_segment(centroid, e0, e1);
@@ -149,9 +153,12 @@ pub fn box_triangle_sat(
             let distance = if snapped {
                 (clamp_point_to_aabb(pb_local, half_unmargined) - pb_local).length() - margin
             } else {
-                (pa_first - pb_first).length() - margin
+                pair_len - margin
             };
             if distance >= maximum_distance {
+                // SAT gap admitted but the exact distance rejects (SAT
+                // underestimates the true distance); uncommon.
+                std::hint::cold_path();
                 return None;
             }
             return Some(BoxTriangleSatContact {
@@ -160,6 +167,8 @@ pub fn box_triangle_sat(
             });
         }
         // Degenerate touching pair: SAT axis + first-max support vertex.
+        // Cold: the exact minimum is zero only for touching features.
+        std::hint::cold_path();
         let n_local = best_sep_axis;
         let pb_local = tri_support_first_max(q, n_local);
         let distance = best_gap - margin;
@@ -171,6 +180,9 @@ pub fn box_triangle_sat(
 
     // Penetrating (or exactly touching): SAT minimum-overlap axis.
     if best_overlap == f32::MAX {
+        // No penetrating axis recorded; unreachable when `!has_sep` holds
+        // unless every axis was skipped as degenerate.
+        std::hint::cold_path();
         return None;
     }
     let n_local = if best_pen_axis.length_squared() > 0.5 {
@@ -179,19 +191,29 @@ pub fn box_triangle_sat(
         let s = face_axis.dot(-centroid);
         if s < 0.0 { -face_axis } else { face_axis }
     } else {
+        std::hint::cold_path();
         return None;
     };
     let distance = -best_overlap - margin;
     if distance >= maximum_distance {
+        std::hint::cold_path();
         return None;
     }
     // Witness by winning axis family; falls back to the overlap centroid, then support.
-    // Depth and normal stay on the min-overlap axis.
+    // Depth and normal stay on the min-overlap axis. Fallbacks are cold:
+    // the family rule succeeds for every regular configuration.
     let pb_local = pen_witness_by_kind(half_unmargined, q, sweep.pen_kind, n_local)
-        .or_else(|| clipped_tri_box_centroid(half_unmargined, q))
-        .unwrap_or_else(|| tri_support_first_max(q, n_local));
+        .or_else(|| {
+            std::hint::cold_path();
+            clipped_tri_box_centroid(half_unmargined, q)
+        })
+        .unwrap_or_else(|| {
+            std::hint::cold_path();
+            tri_support_first_max(q, n_local)
+        });
     let n_world = (box_trans.matrix3 * n_local).normalize_or_zero();
     if n_world.length_squared() < 0.5 {
+        std::hint::cold_path();
         return None;
     }
     Some(BoxTriangleSatContact {
@@ -216,12 +238,17 @@ struct SweepResult {
     best_sep_axis: Vec3A,
     best_overlap: f32,
     best_pen_axis: Vec3A,
+    /// Unoriented winning penetrating axis; oriented once after the sweep.
+    /// Keeping the raw axis during the sweep avoids a dot per candidate.
+    best_pen_raw: Vec3A,
     pen_kind: Option<AxisKind>,
 }
 
 /// Penetrating-axis orientation toward the box center (origin), from the
 /// triangle toward the box. Hoisted out of the per-axis sweep so every axis
-/// shares one exact `-centroid` value.
+/// shares one exact `-centroid` value. Called once for the winning axis
+/// after the sweep (see `sat_sweep`), not per candidate, to avoid a dot per
+/// penetrating axis.
 #[inline]
 fn orient_pen_axis(a: Vec3A, to_box: Vec3A, face_axis: Vec3A, has_face_axis: bool) -> Vec3A {
     let s = a.dot(to_box);
@@ -242,6 +269,8 @@ fn orient_pen_axis(a: Vec3A, to_box: Vec3A, face_axis: Vec3A, has_face_axis: boo
 /// Generic sweep axis for the triangle-face and edge-edge axes (the box faces
 /// above use the cached triangle bounds directly). Plain function instead of
 /// a closure so no environment is threaded through the hot per-axis calls.
+/// Stores the raw (unoriented) penetrating axis; orientation is applied once
+/// to the winner after the sweep.
 #[inline]
 #[allow(clippy::too_many_arguments)]
 fn consider_axis(
@@ -250,9 +279,6 @@ fn consider_axis(
     kind: AxisKind,
     q: &[Vec3A; 3],
     half: Vec3A,
-    to_box: Vec3A,
-    face_axis: Vec3A,
-    has_face_axis: bool,
     margin: f32,
     maximum_distance: f32,
 ) -> bool {
@@ -271,8 +297,7 @@ fn consider_axis(
         // Strict `<` keeps the first axis on exact ties.
         out.best_overlap = overlap;
         out.pen_kind = Some(kind);
-        // Orient toward the box center (origin): from triangle to box.
-        out.best_pen_axis = orient_pen_axis(a, to_box, face_axis, has_face_axis);
+        out.best_pen_raw = a;
     }
     false
 }
@@ -301,6 +326,7 @@ fn sat_sweep(
         best_sep_axis: Vec3A::ZERO,
         best_overlap: f32::MAX,
         best_pen_axis: Vec3A::ZERO,
+        best_pen_raw: Vec3A::ZERO,
         pen_kind: None,
     };
     let to_box = -centroid;
@@ -336,7 +362,7 @@ fn sat_sweep(
         if overlap < out.best_overlap {
             out.best_overlap = overlap;
             out.pen_kind = Some(AxisKind::BoxFace(0));
-            out.best_pen_axis = orient_pen_axis(Vec3A::X, to_box, face_axis, has_face_axis);
+            out.best_pen_raw = Vec3A::X;
         }
     }
     if tri_min.y > half.y {
@@ -367,7 +393,7 @@ fn sat_sweep(
         if overlap < out.best_overlap {
             out.best_overlap = overlap;
             out.pen_kind = Some(AxisKind::BoxFace(1));
-            out.best_pen_axis = orient_pen_axis(Vec3A::Y, to_box, face_axis, has_face_axis);
+            out.best_pen_raw = Vec3A::Y;
         }
     }
     if tri_min.z > half.z {
@@ -398,7 +424,7 @@ fn sat_sweep(
         if overlap < out.best_overlap {
             out.best_overlap = overlap;
             out.pen_kind = Some(AxisKind::BoxFace(2));
-            out.best_pen_axis = orient_pen_axis(Vec3A::Z, to_box, face_axis, has_face_axis);
+            out.best_pen_raw = Vec3A::Z;
         }
     }
     if has_face_axis
@@ -408,9 +434,6 @@ fn sat_sweep(
             AxisKind::TriFace,
             q,
             half,
-            to_box,
-            face_axis,
-            has_face_axis,
             margin,
             maximum_distance,
         )
@@ -427,6 +450,9 @@ fn sat_sweep(
             let c = b_axis.cross(*e);
             let l2 = c.length_squared();
             if l2 < 1e-18 {
+                // Triangle edge parallel to the box axis: no cross axis.
+                // Cold: real mesh edges are rarely axis-parallel in box space.
+                std::hint::cold_path();
                 continue;
             }
             if consider_axis(
@@ -438,15 +464,17 @@ fn sat_sweep(
                 },
                 q,
                 half,
-                to_box,
-                face_axis,
-                has_face_axis,
                 margin,
                 maximum_distance,
             ) {
                 return None;
             }
         }
+    }
+    // Orient the winning penetrating axis once. Skipped when separated
+    // (penetration data unused) to avoid dots on every candidate.
+    if !out.has_sep && out.pen_kind.is_some() {
+        out.best_pen_axis = orient_pen_axis(out.best_pen_raw, to_box, face_axis, has_face_axis);
     }
     Some(out)
 }
@@ -474,7 +502,10 @@ fn axis_gap_overlap(a: Vec3A, q: &[Vec3A; 3], half: Vec3A) -> (f32, f32, f32) {
     }
 }
 
-#[inline]
+/// First-max triangle support vertex (deterministic tie order).
+/// Cold: only the degenerate touching-pair fallback and the penetrating
+/// witness last resort reach here.
+#[cold]
 fn tri_support_first_max(q: &[Vec3A; 3], dir: Vec3A) -> Vec3A {
     let mut best = q[0];
     let mut best_d = q[0].dot(dir);
@@ -488,6 +519,9 @@ fn tri_support_first_max(q: &[Vec3A; 3], dir: Vec3A) -> Vec3A {
     best
 }
 
+/// Centroid of the triangle/box overlap patch. Cold: only the penetrating
+/// witness fallbacks reach here.
+#[cold]
 fn clipped_tri_box_centroid(half: Vec3A, q: &[Vec3A; 3]) -> Option<Vec3A> {
     let mut poly = [Vec3A::ZERO; 9];
     poly[0] = q[0];
@@ -513,6 +547,8 @@ fn clipped_tri_box_centroid(half: Vec3A, q: &[Vec3A; 3]) -> Option<Vec3A> {
     Some(sum / (len as f32))
 }
 
+/// Sutherland–Hodgman halfspace clip. Cold: see [`clipped_tri_box_centroid`].
+#[cold]
 fn clip_halfspace(
     input: &[Vec3A],
     output: &mut [Vec3A],
@@ -560,54 +596,6 @@ fn clamp_point_to_aabb(p: Vec3A, half: Vec3A) -> Vec3A {
     )
 }
 
-/// Closest point on triangle `q` to `p` (box-local), with a segment fallback
-/// for degenerate triangles.
-fn closest_point_on_triangle(p: Vec3A, q: &[Vec3A; 3]) -> Vec3A {
-    let ab = q[1] - q[0];
-    let ac = q[2] - q[0];
-    let ap = p - q[0];
-    let d1 = ab.dot(ap);
-    let d2 = ac.dot(ap);
-    if d1 <= 0.0 && d2 <= 0.0 {
-        return q[0];
-    }
-    let bp = p - q[1];
-    let d3 = ab.dot(bp);
-    let d4 = ac.dot(bp);
-    if d3 >= 0.0 && d4 <= d3 {
-        return q[1];
-    }
-    let vc = d1 * d4 - d3 * d2;
-    if vc <= 0.0 && d1 >= 0.0 && d3 <= 0.0 {
-        let v = d1 / (d1 - d3);
-        return q[0] + ab * v;
-    }
-    let cp = p - q[2];
-    let d5 = ab.dot(cp);
-    let d6 = ac.dot(cp);
-    if d6 >= 0.0 && d5 <= d6 {
-        return q[2];
-    }
-    let vb = d5 * d2 - d1 * d6;
-    if vb <= 0.0 && d2 >= 0.0 && d6 <= 0.0 {
-        let w = d2 / (d2 - d6);
-        return q[0] + ac * w;
-    }
-    let va = d3 * d6 - d5 * d4;
-    if va <= 0.0 && (d4 - d3) >= 0.0 && (d5 - d6) >= 0.0 {
-        let w = (d4 - d3) / ((d4 - d3) + (d5 - d6));
-        return q[1] + (q[2] - q[1]) * w;
-    }
-    // Inside face region; the denom can vanish for degenerate triangles.
-    let denom = va + vb + vc;
-    if denom.abs() < 1e-24 {
-        return closest_point_on_degenerate_triangle(p, q);
-    }
-    let v = vb / denom;
-    let w = vc / denom;
-    q[0] + ab * v + ac * w
-}
-
 fn closest_point_on_segment(p: Vec3A, a: Vec3A, b: Vec3A) -> Vec3A {
     let ab = b - a;
     let denom = ab.dot(ab);
@@ -618,6 +606,9 @@ fn closest_point_on_segment(p: Vec3A, a: Vec3A, b: Vec3A) -> Vec3A {
     a + ab * t
 }
 
+/// Degenerate-triangle fallback over the three segments. Cold: only
+/// degenerate triangles reach here.
+#[cold]
 fn closest_point_on_degenerate_triangle(p: Vec3A, q: &[Vec3A; 3]) -> Vec3A {
     let c0 = closest_point_on_segment(p, q[0], q[1]);
     let c1 = closest_point_on_segment(p, q[1], q[2]);
@@ -637,6 +628,9 @@ fn closest_point_on_degenerate_triangle(p: Vec3A, q: &[Vec3A; 3]) -> Vec3A {
 
 /// Closest points between segments `(p1,q1)` and `(p2,q2)` (Ericson 5.1.9);
 /// returns `(c1, c2)` with `c1` on the first segment.
+/// Cold: the hot edge-edge enumeration uses [`tri_edge_vs_box_edge_precomp`];
+/// only the penetrating witness fallback reaches here.
+#[cold]
 fn segment_segment_closest(p1: Vec3A, q1: Vec3A, p2: Vec3A, q2: Vec3A) -> (Vec3A, Vec3A) {
     let d1 = q1 - p1;
     let d2 = q2 - p2;
@@ -660,9 +654,9 @@ fn segment_segment_closest(p1: Vec3A, q1: Vec3A, p2: Vec3A, q2: Vec3A) -> (Vec3A
         } else {
             let b = d1.dot(d2);
             // Nearly parallel overlapping segments share a tie segment: use the overlap
-            // midpoint (~1.8-degree threshold).
-            let para = b.abs() / (a * e).sqrt();
-            if para > 0.9995 {
+            // midpoint (~1.8-degree threshold). Squared to avoid a sqrt per pair;
+            // `0.9995^2 = 0.99900025`.
+            if b * b > 0.999_000_25 * a * e {
                 let t0 = (p2 - p1).dot(d1) / a;
                 let t1 = (q2 - p1).dot(d1) / a;
                 let lo = 0.0f32.max(t0.min(t1));
@@ -696,7 +690,8 @@ fn segment_segment_closest(p1: Vec3A, q1: Vec3A, p2: Vec3A, q2: Vec3A) -> (Vec3A
 
 /// Box support corner without margin, mirroring
 /// `BoxShape::local_get_supporting_vertex_without_margin` (componentwise
-/// sign with ties toward +1).
+/// sign with ties toward +1). Cold: penetrating-witness only.
+#[cold]
 fn box_support_corner(half: Vec3A, dir: Vec3A) -> Vec3A {
     Vec3A::new(
         if dir.x < 0.0 { -half.x } else { half.x },
@@ -706,6 +701,8 @@ fn box_support_corner(half: Vec3A, dir: Vec3A) -> Vec3A {
 }
 
 /// Edge-function containment of `p` in triangle `q` with plane normal `n`.
+/// Cold: penetrating-witness only.
+#[cold]
 fn point_in_triangle_eps(p: Vec3A, q: &[Vec3A; 3], n: Vec3A) -> bool {
     const EPS: f32 = 1e-6;
     let mut pos = false;
@@ -725,6 +722,8 @@ fn point_in_triangle_eps(p: Vec3A, q: &[Vec3A; 3], n: Vec3A) -> bool {
 }
 
 /// Clip segment AB to the centered box `[-half, half]`.
+/// Cold: penetrating-witness only.
+#[cold]
 fn clip_segment_to_box(a: Vec3A, b: Vec3A, half: Vec3A) -> Option<(Vec3A, Vec3A)> {
     let mut t0 = 0.0f32;
     let mut t1 = 1.0f32;
@@ -768,7 +767,10 @@ fn clip_segment_to_box(a: Vec3A, b: Vec3A, half: Vec3A) -> Option<(Vec3A, Vec3A)
 /// `n_local` points from the triangle toward the box. All outputs lie on the
 /// triangle; returns `None` when the family rule has no witness (e.g. face
 /// projection outside the triangle), and the caller falls back to the overlap
-/// centroid.
+/// centroid. Cold: only the penetrating branch reaches here, and true
+/// unmargined overlap is rarer than separated near-contacts.
+/// Note: keep out-of-line so the hot separated path stays compact.
+#[cold]
 fn pen_witness_by_kind(
     half: Vec3A,
     q: &[Vec3A; 3],
@@ -833,6 +835,129 @@ struct CandidatePair {
     distance_sq: f32,
 }
 
+impl CandidatePair {
+    const DUMMY: Self = Self {
+        point_box: Vec3A::ZERO,
+        point_tri: Vec3A::ZERO,
+        distance_sq: f32::MAX,
+    };
+}
+
+/// Closest point on triangle `q` to `p` (box-local), with `ab = q[1]-q[0]`
+/// and `ac = q[2]-q[0]` hoisted out of the per-corner loop.
+fn closest_point_on_triangle_precomp(p: Vec3A, q: &[Vec3A; 3], ab: Vec3A, ac: Vec3A) -> Vec3A {
+    let ap = p - q[0];
+    let d1 = ab.dot(ap);
+    let d2 = ac.dot(ap);
+    if d1 <= 0.0 && d2 <= 0.0 {
+        return q[0];
+    }
+    let bp = p - q[1];
+    let d3 = ab.dot(bp);
+    let d4 = ac.dot(bp);
+    if d3 >= 0.0 && d4 <= d3 {
+        return q[1];
+    }
+    let vc = d1 * d4 - d3 * d2;
+    if vc <= 0.0 && d1 >= 0.0 && d3 <= 0.0 {
+        let v = d1 / (d1 - d3);
+        return q[0] + ab * v;
+    }
+    let cp = p - q[2];
+    let d5 = ab.dot(cp);
+    let d6 = ac.dot(cp);
+    if d6 >= 0.0 && d5 <= d6 {
+        return q[2];
+    }
+    let vb = d5 * d2 - d1 * d6;
+    if vb <= 0.0 && d2 >= 0.0 && d6 <= 0.0 {
+        let w = d2 / (d2 - d6);
+        return q[0] + ac * w;
+    }
+    let va = d3 * d6 - d5 * d4;
+    if va <= 0.0 && (d4 - d3) >= 0.0 && (d5 - d6) >= 0.0 {
+        let w = (d4 - d3) / ((d4 - d3) + (d5 - d6));
+        return q[1] + (q[2] - q[1]) * w;
+    }
+    // Inside face region; the denom can vanish for degenerate triangles.
+    let denom = va + vb + vc;
+    if denom.abs() < 1e-24 {
+        std::hint::cold_path();
+        return closest_point_on_degenerate_triangle(p, q);
+    }
+    let v = vb / denom;
+    let w = vc / denom;
+    q[0] + ab * v + ac * w
+}
+
+/// Triangle edge vs box edge (Ericson 5.1.9) with the triangle edge hoisted.
+/// `tri_p`/`tri_d`/`tri_a` are the triangle edge origin, vector and squared
+/// length (same across the 12 box edges, previously recomputed per pair).
+/// Otherwise bit-exact with [`segment_segment_closest`], including the
+/// squared parallel tie test.
+#[inline]
+fn tri_edge_vs_box_edge_precomp(
+    tri_p: Vec3A,
+    tri_d: Vec3A,
+    tri_a: f32,
+    box_p0: Vec3A,
+    box_p1: Vec3A,
+) -> (Vec3A, Vec3A) {
+    let d2 = box_p1 - box_p0;
+    let r = tri_p - box_p0;
+    let e = d2.dot(d2);
+    let f = d2.dot(r);
+    let eps = 1e-30;
+    if tri_a <= eps {
+        // Degenerate triangle edge; cold for real meshes.
+        std::hint::cold_path();
+        if e <= eps {
+            return (tri_p, box_p0);
+        }
+        let t = (f / e).clamp(0.0, 1.0);
+        return (tri_p, box_p0 + d2 * t);
+    }
+    if e <= eps {
+        // Degenerate box edge (zero-size box); cold.
+        std::hint::cold_path();
+        let c = tri_d.dot(r);
+        let s = (-c / tri_a).clamp(0.0, 1.0);
+        return (tri_p + tri_d * s, box_p0);
+    }
+    let c = tri_d.dot(r);
+    let b = tri_d.dot(d2);
+    // Nearly parallel overlapping segments share a tie segment: use the overlap
+    // midpoint (~1.8-degree threshold, squared).
+    if b * b > 0.999_000_25 * tri_a * e {
+        let t0 = (box_p0 - tri_p).dot(tri_d) / tri_a;
+        let t1 = (box_p1 - tri_p).dot(tri_d) / tri_a;
+        let lo = 0.0f32.max(t0.min(t1));
+        let hi = 1.0f32.min(t0.max(t1));
+        if lo <= hi {
+            let sm = (lo + hi) * 0.5;
+            let c1 = tri_p + tri_d * sm;
+            let tm = ((c1 - box_p0).dot(d2) / e).clamp(0.0, 1.0);
+            return (c1, box_p0 + d2 * tm);
+        }
+    }
+    let denom = tri_a * e - b * b;
+    // Remaining parallel cases do not overlap, so `s = 0` applies.
+    let mut s = if denom > eps {
+        ((b * f - c * e) / denom).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    let mut t = (b * s + f) / e;
+    if t < 0.0 {
+        t = 0.0;
+        s = (-c / tri_a).clamp(0.0, 1.0);
+    } else if t > 1.0 {
+        t = 1.0;
+        s = ((b - c) / tri_a).clamp(0.0, 1.0);
+    }
+    (tri_p + tri_d * s, box_p0 + d2 * t)
+}
+
 /// Every feature-pair candidate between the centered AABB `[-half, half]` and
 /// the triangle `q` (both box-local) in deterministic enumeration order: 3
 /// clamped triangle vertices, 8 box corners vs triangle, then 36 triangle-edge
@@ -840,37 +965,53 @@ struct CandidatePair {
 ///
 /// Keep the complete candidate set: flat-tie analysis intentionally examines
 /// pairs outside the current distance window.
-fn enum_aabb_triangle_pairs(half: Vec3A, q: &[Vec3A; 3]) -> ArrayVec<CandidatePair, 47> {
-    let mut pairs = ArrayVec::new();
+///
+/// Returns a fixed array (always exactly 47 entries) instead of an `ArrayVec`
+/// so the hot path pays no per-push capacity checks and `pairs[0]` needs no
+/// bounds check.
+fn enum_aabb_triangle_pairs(
+    half: Vec3A,
+    q: &[Vec3A; 3],
+    edges: &[Vec3A; 3],
+) -> [CandidatePair; 47] {
+    let mut pairs = [CandidatePair::DUMMY; 47];
+    let mut idx = 0usize;
 
     // Triangle vertices vs box (face interiors via clamping).
     for v in q.iter() {
         let point_box = clamp_point_to_aabb(*v, half);
         let point_tri = *v;
         let distance_sq = (point_box - point_tri).length_squared();
-        pairs.push(CandidatePair {
+        pairs[idx] = CandidatePair {
             point_box,
             point_tri,
             distance_sq,
-        });
+        };
+        idx += 1;
     }
-    // Box corners vs triangle (covers box-vertex vs tri-face).
+    // Box corners vs triangle (covers box-vertex vs tri-face). `ab`/`ac`
+    // hoisted: `ab == edges[0]`, `ac == q[2]-q[0] == -edges[2]`.
+    let ab = edges[0];
+    let ac = q[2] - q[0];
     for sx in [-1.0f32, 1.0] {
         for sy in [-1.0f32, 1.0] {
             for sz in [-1.0f32, 1.0] {
                 let corner = Vec3A::new(sx * half.x, sy * half.y, sz * half.z);
-                let point_tri = closest_point_on_triangle(corner, q);
+                let point_tri = closest_point_on_triangle_precomp(corner, q, ab, ac);
                 let distance_sq = (corner - point_tri).length_squared();
-                pairs.push(CandidatePair {
+                pairs[idx] = CandidatePair {
                     point_box: corner,
                     point_tri,
                     distance_sq,
-                });
+                };
+                idx += 1;
             }
         }
     }
 
-    // Edge-edge interiors: 3 triangle edges vs 12 box edges.
+    // Edge-edge interiors: 3 triangle edges vs 12 box edges. Triangle edge
+    // vectors/lengths hoisted across the 12 box edges (each was recomputed
+    // per pair before).
     let c = [
         Vec3A::new(-half.x, -half.y, -half.z),
         Vec3A::new(half.x, -half.y, -half.z),
@@ -881,40 +1022,49 @@ fn enum_aabb_triangle_pairs(half: Vec3A, q: &[Vec3A; 3]) -> ArrayVec<CandidatePa
         Vec3A::new(half.x, half.y, half.z),
         Vec3A::new(-half.x, half.y, half.z),
     ];
-    const BOX_EDGES: [(usize, usize); 12] = [
-        (0, 1),
-        (1, 2),
-        (2, 3),
-        (3, 0),
-        (4, 5),
-        (5, 6),
-        (6, 7),
-        (7, 4),
-        (0, 4),
-        (1, 5),
-        (2, 6),
-        (3, 7),
+    // Box edge corner pairs, precomputed so the inner loop below performs no
+    // runtime array indexing at all.
+    let box_edges = [
+        (c[0], c[1]),
+        (c[1], c[2]),
+        (c[2], c[3]),
+        (c[3], c[0]),
+        (c[4], c[5]),
+        (c[5], c[6]),
+        (c[6], c[7]),
+        (c[7], c[4]),
+        (c[0], c[4]),
+        (c[1], c[5]),
+        (c[2], c[6]),
+        (c[3], c[7]),
     ];
-    const TRI_EDGES: [(usize, usize); 3] = [(0, 1), (1, 2), (2, 0)];
-    for (ti0, ti1) in TRI_EDGES {
-        for (bi0, bi1) in BOX_EDGES {
-            let (point_tri, point_box) = segment_segment_closest(q[ti0], q[ti1], c[bi0], c[bi1]);
+    // Zip iteration performs no indexing: `tri_p` runs over q[0..2] in order,
+    // matching the old `(0,1),(1,2),(2,0)` edge order with `edges[ti]`.
+    for (tri_p, tri_d) in q.iter().zip(edges.iter()) {
+        let tri_p = *tri_p;
+        let tri_d = *tri_d;
+        let tri_a = tri_d.dot(tri_d);
+        for (box_p0, box_p1) in box_edges {
+            let (point_tri, point_box) =
+                tri_edge_vs_box_edge_precomp(tri_p, tri_d, tri_a, box_p0, box_p1);
             let distance_sq = (point_box - point_tri).length_squared();
-            pairs.push(CandidatePair {
+            pairs[idx] = CandidatePair {
                 point_box,
                 point_tri,
                 distance_sq,
-            });
+            };
+            idx += 1;
         }
     }
-    debug_assert!(pairs.len() <= 47);
+    debug_assert!(idx == 47);
     pairs
 }
 
 /// Strict first minimum over the exact closest-feature candidates: the first
 /// pair in enumeration order achieving the minimum distance wins ties, so
-/// repeated queries return the same witness without blending.
-fn first_min_of_pairs(pairs: &[CandidatePair]) -> Option<(Vec3A, Vec3A)> {
+/// repeated queries return the same witness without blending. Takes the fixed
+/// enumeration array so `pairs[0]` is check-free.
+fn first_min_of_pairs(pairs: &[CandidatePair; 47]) -> Option<(Vec3A, Vec3A)> {
     let mut best = pairs[0];
     let mut best_d2 = best.distance_sq;
     for pair in pairs.iter().skip(1) {
@@ -954,12 +1104,15 @@ fn flat_tie_segment(half: Vec3A, pairs: &[CandidatePair]) -> Option<(Vec3A, Vec3
         }
     }
     let best_d = best_d2.sqrt();
+    let flat_link2 = flat_link * flat_link;
 
     // Tied pairs (within the tie window) and their mean, which anchors the
-    // flat-valley search below.
+    // flat-valley search below. Squared compare avoids a sqrt per pair.
+    let tie_d = best_d + TIE_EPS;
+    let tie_d2 = tie_d * tie_d;
     let mut tied: ArrayVec<CandidatePair, 47> = ArrayVec::new();
     for pair in pairs.iter() {
-        if pair.distance_sq.sqrt() <= best_d + TIE_EPS {
+        if pair.distance_sq <= tie_d2 {
             tied.push(*pair);
         }
     }
@@ -979,13 +1132,15 @@ fn flat_tie_segment(half: Vec3A, pairs: &[CandidatePair]) -> Option<(Vec3A, Vec3
 
     // Flat extension past the tied set: both shapes are convex, so the middle of a
     // true tie segment is itself at minimum depth while distinct minima bulge away.
+    // Squared separation avoids a sqrt per pair; only far candidates pay for sqrt.
     let mut flat: Option<CandidatePair> = None;
     let mut best_slope = flat_slope;
     for pair in pairs.iter() {
-        let sep = (pair.point_tri - mean_b).length();
-        if sep <= flat_link {
+        let sep2 = (pair.point_tri - mean_b).length_squared();
+        if sep2 <= flat_link2 {
             continue;
         }
+        let sep = sep2.sqrt();
         let slope = (pair.distance_sq.sqrt() - d0) / sep;
         if slope <= best_slope {
             let mid_a = (mean_a + pair.point_box) * 0.5;
@@ -999,15 +1154,15 @@ fn flat_tie_segment(half: Vec3A, pairs: &[CandidatePair]) -> Option<(Vec3A, Vec3
 
     // Diameter endpoints over the tied set plus the verified flat partner; a
     // small diameter means a unique minimum (possibly with float-dust
-    // neighbours on the same feature).
+    // neighbours on the same feature). Squared span avoids a sqrt per pair.
     let mut end0 = tied[0];
     let mut end1 = tied[0];
-    let mut span = 0.0f32;
+    let mut span2 = 0.0f32;
     let mut consider = |cand: CandidatePair| {
         for pair in tied.iter().chain(flat.iter()) {
-            let s = (cand.point_tri - pair.point_tri).length();
-            if s > span {
-                span = s;
+            let s2 = (cand.point_tri - pair.point_tri).length_squared();
+            if s2 > span2 {
+                span2 = s2;
                 end0 = cand;
                 end1 = *pair;
             }
@@ -1019,7 +1174,7 @@ fn flat_tie_segment(half: Vec3A, pairs: &[CandidatePair]) -> Option<(Vec3A, Vec3
     if let Some(f) = flat {
         consider(f);
     }
-    if span <= flat_link {
+    if span2 <= flat_link2 {
         return None;
     }
     // Final guard: the diameter middle of two distinct minima bulges away
