@@ -61,6 +61,61 @@ impl DerefMut for Car {
     }
 }
 
+/// Roll select for the auto-flip recovery, in wrapped signed-16 units.
+///
+/// Runs on the matrix columns. Do not replace with `-roll.signum()`.
+/// [`autoflip_impulse_sign`] maps the units to ±1.
+fn autoflip_roll_units(rot_mat: &Mat3A) -> i16 {
+    let col0 = rot_mat.x_axis;
+    let col1 = rot_mat.y_axis;
+    let col2 = rot_mat.z_axis;
+
+    let yaw = axis_angle_to_int(col0.y, col0.x);
+    let len = f64::from(col0.x).hypot(f64::from(col0.y)) as f32;
+    let pitch = axis_angle_to_int(col0.z, len);
+    let r1 = rebuild_row1(pitch, yaw);
+
+    let roll = axis_angle_to_int(col2.dot(r1), col1.dot(r1));
+    roll as i16
+}
+
+/// Direction sign for the auto-flip roll: `+1.0` when the roll units
+/// are strictly positive, `-1.0` otherwise (zero maps to `-1`).
+fn autoflip_impulse_sign(rot_mat: &Mat3A) -> f32 {
+    if autoflip_roll_units(rot_mat) > 0 {
+        1.0
+    } else {
+        -1.0
+    }
+}
+
+/// Converts an `atan2(y, x)` angle to scaled integer units.
+fn axis_angle_to_int(a0: f32, a1: f32) -> i32 {
+    let ang = f64::from(a0).atan2(f64::from(a1));
+    let u = (ang as f32 * 32768.0) / PI;
+    let v = u * 2.0 + 0.5;
+    (v.round_ties_even() as i32) >> 1
+}
+
+/// Sine lookup for a 16384-entry table index.
+fn table_sin(idx: u32) -> f32 {
+    (idx as f64 * std::f64::consts::TAU / 16384.0).sin() as f32
+}
+
+/// Rebuilds the intermediate row vector from the pitch and yaw angles.
+fn rebuild_row1(pitch: i32, yaw: i32) -> Vec3A {
+    let tp = table_sin(((pitch >> 2) & 0x3FFF) as u32);
+    let ty = table_sin(((yaw >> 2) & 0x3FFF) as u32);
+    let tr = table_sin(0);
+    let tpq = table_sin((((pitch + 0x4000) >> 2) & 0x3FFF) as u32);
+    let tyq = table_sin((((yaw + 0x4000) >> 2) & 0x3FFF) as u32);
+    let trq = table_sin(0x1000);
+    let r1x = tp * tr * tyq - trq * ty;
+    let r1y = tyq * trq + tp * tr * ty;
+    let r1z = -tr * tpq;
+    Vec3A::new(r1x, r1y, r1z)
+}
+
 impl Car {
     pub(crate) fn new(
         idx: usize,
@@ -404,7 +459,7 @@ impl Car {
             );
         }
 
-        let do_air_control = allow_air && !self.state.is_auto_flipping;
+        let do_air_control = allow_air;
         if do_air_control {
             let inputs = quantize_axis_inputs(self.state.controls.pyr());
 
@@ -524,7 +579,7 @@ impl Car {
             let abs_roll = roll.abs();
             if abs_roll > car_consts::autoflip::ROLL_THRESH {
                 self.state.auto_flip_timer = car_consts::autoflip::TIME * (abs_roll / PI);
-                self.state.auto_flip_torque_scale = roll.signum();
+                self.state.auto_flip_torque_scale = autoflip_impulse_sign(&self.state.phys.rot_mat);
                 self.state.is_auto_flipping = true;
 
                 let force =
@@ -539,9 +594,9 @@ impl Car {
                 self.state.auto_flip_timer = 0.0;
             } else {
                 rb.ang_vel += self.state.get_forward_dir()
-                    * car_consts::autoflip::TORQUE
-                    * self.state.auto_flip_torque_scale
-                    * TICK_TIME;
+                    * car_consts::autoflip::ANG_VEL_DELTA
+                    * self.state.auto_flip_torque_scale;
+                rb.limit_vels(car_consts::MAX_SPEED * UU_TO_BT, car_consts::MAX_ANG_SPEED);
                 self.state.auto_flip_timer -= TICK_TIME;
             }
         }

@@ -210,7 +210,7 @@ pub mod car {
         use std::f32::consts::FRAC_1_SQRT_2;
 
         pub const IMPULSE: f32 = 200.0;
-        pub const TORQUE: f32 = 50.0;
+        pub const ANG_VEL_DELTA: f32 = 1000.0;
         pub const TIME: f32 = 0.4;
         pub const NORM_Z_THRESH: f32 = FRAC_1_SQRT_2;
         pub const ROLL_THRESH: f32 = 2.8;

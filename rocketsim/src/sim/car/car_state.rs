@@ -77,7 +77,7 @@ pub struct CarState {
     pub is_auto_flipping: bool,
     /// Counts down when auto-flipping
     pub auto_flip_timer: f32,
-    /// Roll direction sign for the auto-flip torque.
+    /// Roll direction sign for the auto-flip angular-velocity delta.
     pub auto_flip_torque_scale: f32,
     /// Seconds until this car can bump/demo again.
     pub bump_cooldown_timer: f32,
