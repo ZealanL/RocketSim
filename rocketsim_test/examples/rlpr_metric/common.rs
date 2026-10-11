@@ -295,12 +295,16 @@ pub trait ReplayBackend {
         false
     }
 
-    /// Set one car's bump-cooldown timer, in seconds.
+    /// Set one car's bump-cooldown timer for one victim pair, in seconds.
     ///
-    /// `0.0` means the cooldown is expired (bumps allowed); larger values
-    /// suppress the next bump for that long. Default is a no-op (see
+    /// `victim_idx` is the recording slot of the bumped car; backends map
+    /// both slots to arena cars. `0.0` means the cooldown is expired (bumps
+    /// allowed); larger values suppress the next bump on that pair for that
+    /// long. The sim scopes its live cooldown per pair, and the restore
+    /// follows truth pairs so a different-victim refire is not wrongly
+    /// suppressed. Default is a no-op (see
     /// [`ReplayBackend::supports_bump_restore`]).
-    fn set_bump_cooldown(&mut self, _car_idx: usize, _seconds: f32) {}
+    fn set_bump_cooldown(&mut self, _car_idx: usize, _victim_idx: usize, _seconds: f32) {}
 
     /// Restore jump-hold continuity after a state reset.
     ///
@@ -798,7 +802,10 @@ pub fn compute_bump_events(ticks: &[TickRecord]) -> Vec<BumpEvent> {
 /// RL sets the attacker's cooldown when it bumps and the sim must see the
 /// same gate: expired (0.0) on the pre-bump state so the replay bumps too,
 /// then the decaying remainder while inside the cooldown window so the
-/// replay does not re-bump sustained contact. Outside event windows the
+/// replay does not re-bump sustained contact. The restore is scoped to the
+/// truth attacker/victim pair, matching the sim's per-pair cooldown: a
+/// different-victim refire inside the window (e.g. partycannon attacker 3
+/// at ticks 12966 then 12987) stays allowed. Outside event windows the
 /// sim's live gate evolution is left alone: fed with truth poses each
 /// reset, it tracks RL's gates better than any blind default. Backends
 /// without bump support (see [`ReplayBackend::supports_bump_restore`])
@@ -813,12 +820,12 @@ pub fn restore_bump_cooldown<B: ReplayBackend>(
     }
     for event in events {
         if state_index + 1 == event.tick {
-            backend.set_bump_cooldown(event.attacker, 0.0);
+            backend.set_bump_cooldown(event.attacker, event.victim, 0.0);
         } else if state_index >= event.tick && state_index < event.tick + BUMP_COOLDOWN_TICKS {
             let elapsed = (state_index - event.tick) as f32 * rocketsim::consts::TICK_TIME;
             let remaining = rocketsim::consts::car::bump::COOLDOWN_TIME - elapsed;
             if remaining > 0.0 {
-                backend.set_bump_cooldown(event.attacker, remaining);
+                backend.set_bump_cooldown(event.attacker, event.victim, remaining);
             }
         }
     }
@@ -1830,7 +1837,7 @@ mod tests {
         supports_cooldown: bool,
         suppress_calls: Vec<(usize, bool)>,
         supports_bump: bool,
-        bump_calls: Vec<(usize, f32)>,
+        bump_calls: Vec<(usize, usize, f32)>,
     }
 
     struct BoostProbe {
@@ -1994,8 +2001,8 @@ mod tests {
             self.supports_bump
         }
 
-        fn set_bump_cooldown(&mut self, car_idx: usize, seconds: f32) {
-            self.bump_calls.push((car_idx, seconds));
+        fn set_bump_cooldown(&mut self, car_idx: usize, victim_idx: usize, seconds: f32) {
+            self.bump_calls.push((car_idx, victim_idx, seconds));
         }
 
         fn reset(&mut self, start: &TickRecord) {
@@ -2472,10 +2479,11 @@ mod tests {
         restore_bump_cooldown(&mut backend, &events, 35);
         restore_bump_cooldown(&mut backend, &events, 99);
         assert_eq!(backend.bump_calls.len(), 3);
-        assert_eq!(backend.bump_calls[0].0, 0);
-        assert!((backend.bump_calls[0].1 - 0.0).abs() < 1e-6);
-        assert!((backend.bump_calls[1].1 - 0.25).abs() < 1e-6);
-        assert!(backend.bump_calls[2].1 > 0.0 && backend.bump_calls[2].1 < 0.25);
+        assert_eq!(backend.bump_calls[0], (0, 1, 0.0));
+        assert!((backend.bump_calls[1].2 - 0.25).abs() < 1e-6);
+        assert_eq!(backend.bump_calls[1].0, 0);
+        assert_eq!(backend.bump_calls[1].1, 1);
+        assert!(backend.bump_calls[2].2 > 0.0 && backend.bump_calls[2].2 < 0.25);
 
         // Backends without support stay untouched.
         let mut backend = MirrorBackend::new(&[steady_tick(0, 0.0, 1200.0)]);

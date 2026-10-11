@@ -322,10 +322,12 @@ impl ReplayBackend for V3Backend {
         true
     }
 
-    fn set_bump_cooldown(&mut self, car_idx: usize, seconds: f32) {
+    fn set_bump_cooldown(&mut self, car_idx: usize, victim_idx: usize, seconds: f32) {
         let car_id = self.car_id(car_idx, "set_bump_cooldown");
+        let victim_id = self.car_id(victim_idx, "set_bump_cooldown");
         let mut state = *self.arena.get_car_state(car_id);
         state.bump_cooldown_timer = seconds.max(0.0);
+        state.bump_cooldown_victim = (seconds > 0.0).then_some(victim_id);
         self.arena.set_car_state(car_id, state);
     }
 

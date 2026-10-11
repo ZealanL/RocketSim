@@ -1429,8 +1429,12 @@ impl Arena {
             let attacker_state = &attacker.state;
             let victim_state = &victim.state;
 
-            if attacker_state.bump_cooldown_timer > 0.0 {
-                // In cooldown
+            if attacker_state.bump_cooldown_timer > 0.0
+                && attacker_state
+                    .bump_cooldown_victim
+                    .is_none_or(|v| v == victim_idx)
+            {
+                // In cooldown for this victim pair (None = all victims)
                 continue;
             }
 
@@ -1528,6 +1532,7 @@ impl Arena {
             }
 
             attacker.state.bump_cooldown_timer = self.config.mutators.bump_cooldown_time;
+            attacker.state.bump_cooldown_victim = Some(victim_idx);
 
             let contact_point = if is_swapped {
                 manifold_point.pos_world_on_b

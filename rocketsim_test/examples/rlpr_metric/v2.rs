@@ -263,7 +263,11 @@ impl ReplayBackend for V2Backend {
         true
     }
 
-    fn set_bump_cooldown(&mut self, car_idx: usize, seconds: f32) {
+    fn set_bump_cooldown(&mut self, car_idx: usize, victim_idx: usize, seconds: f32) {
+        // v2's C++ contact cooldown is per-attacker only, so the victim
+        // scope is intentionally ignored here; v2 keeps its legacy
+        // broad suppression. The v3 gate metric is scored on the v3 backend.
+        let _ = victim_idx;
         let Some(&car_id) = self.car_ids.get(car_idx) else {
             panic!("set_bump_cooldown needs car {car_idx}");
         };
