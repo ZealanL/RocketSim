@@ -575,7 +575,16 @@ impl Car {
                     world_contact_normal.z > car_consts::autoflip::NORM_Z_THRESH
                 })
         {
-            let (_, _, roll) = self.state.phys.rot_mat.to_euler(EulerRot::ZYX);
+            let rot_mat = self.state.phys.rot_mat;
+            let y_z = rot_mat.y_axis.z;
+            let z_z = rot_mat.z_axis.z;
+            let cy = (z_z * z_z + y_z * y_z).sqrt();
+            let roll = if cy > 16.0 * f32::EPSILON {
+                y_z.atan2(z_z)
+            } else {
+                0.0
+            };
+
             let abs_roll = roll.abs();
             if abs_roll > car_consts::autoflip::ROLL_THRESH {
                 self.state.auto_flip_timer = car_consts::autoflip::TIME * (abs_roll / PI);
