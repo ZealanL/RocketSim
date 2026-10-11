@@ -1450,13 +1450,31 @@ impl Arena {
                 continue;
             }
 
-            if !is_within_bump_cone(
+            let center_in_cone = is_within_bump_cone(
                 attacker_state.phys.get_forward_dir(),
                 attacker_state.phys.get_right_dir(),
                 attacker_state.phys.get_up_dir(),
                 delta_pos,
                 false,
-            ) {
+            );
+
+            // Contact-relative residual
+            let (contact_on_attacker, contact_on_victim) = if is_swapped {
+                (manifold_point.pos_world_on_b, manifold_point.pos_world_on_a)
+            } else {
+                (manifold_point.pos_world_on_a, manifold_point.pos_world_on_b)
+            };
+            let gate_vec = (victim_state.phys.pos - contact_on_victim * BT_TO_UU)
+                - (attacker_state.phys.pos - contact_on_attacker * BT_TO_UU);
+            let residual_in_cone = is_within_bump_cone(
+                attacker_state.phys.get_forward_dir(),
+                attacker_state.phys.get_right_dir(),
+                attacker_state.phys.get_up_dir(),
+                gate_vec,
+                false,
+            );
+
+            if !center_in_cone && !residual_in_cone {
                 continue;
             }
 
