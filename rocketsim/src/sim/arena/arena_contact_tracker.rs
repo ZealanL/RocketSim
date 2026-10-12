@@ -136,4 +136,38 @@ impl ContactAddedCallback for ArenaContactTracker {
             adjust_internal_edge_contacts(manifold_point, body_b, idx);
         }
     }
+
+    // Only restore car-world contact state. Do not repeat car-ball or car-car
+    // callbacks, which can apply additional impulses.
+    fn contact_processed<'a>(
+        &mut self,
+        manifold_point: &ManifoldPoint,
+        mut body_a: &'a RigidBody,
+        mut body_b: &'a RigidBody,
+    ) {
+        let should_swap =
+            if body_a.user_idx != UserInfoType::None && body_b.user_idx != UserInfoType::None {
+                body_a.user_idx > body_b.user_idx
+            } else {
+                body_b.user_idx != UserInfoType::None
+            };
+
+        if should_swap {
+            mem::swap(&mut body_a, &mut body_b);
+        }
+
+        if body_a.user_idx != UserInfoType::Car
+            || body_b.user_idx == UserInfoType::Ball
+            || body_b.user_idx == UserInfoType::Car
+        {
+            return;
+        }
+
+        self.collision_records.push(ContactRecord {
+            is_swap: should_swap,
+            rb_idx_a: body_a.world_array_idx,
+            rb_idx_b: body_b.world_array_idx,
+            manifold_point: *manifold_point,
+        });
+    }
 }

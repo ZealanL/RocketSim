@@ -465,6 +465,17 @@ impl CollisionDispatcher {
                     );
                 }
 
+                // No fresh point reported this pair. Report the retained contacts
+                // after refresh removes invalid points.
+                for i in 0..self.persistent_manifolds[cached_idx].point_cache.len() {
+                    let point = self.persistent_manifolds[cached_idx].point_cache[i];
+                    contact_added_callback.contact_processed(
+                        &point,
+                        &collision_objs[body0_idx],
+                        &collision_objs[body1_idx],
+                    );
+                }
+
                 cached_idx
             }
             (None, Some(_)) => self.insert_persistent_manifold(

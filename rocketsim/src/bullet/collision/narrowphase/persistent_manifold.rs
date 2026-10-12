@@ -15,6 +15,16 @@ pub trait ContactAddedCallback {
         body_b: &RigidBody,
         idx: Option<usize>,
     );
+
+    /// Report retained contacts without changing their material or geometry.
+    /// Keep this separate from the add callback to avoid repeated hit impulses.
+    fn contact_processed<'a>(
+        &mut self,
+        _point: &ManifoldPoint,
+        _body_a: &'a RigidBody,
+        _body_b: &'a RigidBody,
+    ) {
+    }
 }
 
 pub const CONTACT_BREAKING_THRESHOLD: f32 = 0.02;
