@@ -409,7 +409,7 @@ impl Ball {
             }
         }
 
-        if self.state.phys.vel.z * BT_TO_UU > -dropshot::MIN_DOWNWARD_SPEED_TO_DAMAGE {
+        if self.state.phys.vel.z > -dropshot::MIN_DOWNWARD_SPEED_TO_DAMAGE {
             return; // Not going fast enough downward
         }
 
