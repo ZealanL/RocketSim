@@ -193,13 +193,12 @@ pub const BALL_TELEPORT_DIST: f32 = 500.0;
 
 /// Per-component tolerances for one scoring mode. See [`normalized_error`].
 ///
-/// Position, angular velocity, and axis budgets are shared. Velocity is the
-/// only mode-dependent term: it dominates every observed failure, and the
-/// two modes sit at very different accuracy levels. Open-loop segments
-/// diverge over 120 ticks, so tightening there would only measure chaos
-/// rather than engine fidelity. A one-tick replay reproduces a tick far
-/// inside the segment budget, so velocity is tightened there to keep the
-/// gate sensitive enough to catch a regression.
+/// Every budget is tighter in one-tick replay than in open-loop segments.
+/// A one-tick replay reproduces a tick far inside the segment budget, so
+/// tighter budgets keep the gate sensitive enough to catch a regression;
+/// open-loop segments diverge over 120 ticks, so looser budgets there avoid
+/// measuring chaos rather than engine fidelity. Velocity dominates every
+/// observed failure, so its gap is the widest.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Tolerances {
     pub pos_uu: f32,
@@ -641,7 +640,14 @@ pub fn compute_extra_firings(ticks: &[TickRecord], has_touch_state: bool) -> Vec
         // Exactly one recent touch attributes the kick; zero or several
         // means the mechanism is unclear, so stay Unknown (restore leaves
         // the sim alone there, corrupting nothing).
-        if recent.len() == 1 {
+        //
+        // World contact shares the tick: the kick may be contact
+        // friction/separation rather than the extra impulse (e.g. a
+        // friction-cone-consistent kick while ceiling-grazing), and a
+        // validated Fire here would suppress the sim on the next reset even
+        // when RL refires there. Downgrade to Unknown; the sim replays with
+        // live gating evolution.
+        if recent.len() == 1 && !tick.ball_record.has_world_contact {
             let mut row = vec![ExtraFiring::NoFire; count];
             row[recent[0]] = ExtraFiring::Fire;
             out.push(row);
@@ -967,7 +973,12 @@ pub fn reconstruct_handbrake(
 fn push_chunks(segments: &mut Vec<Segment>, start: usize, end: usize, config: SegmentConfig) {
     let mut offset = start;
     while end - offset >= 2 {
-        let len = (config.segment_ticks).min(end - offset);
+        // A chunk needs a reset tick plus at least one scored tick, so
+        // clamp the length to >= 2. This also guarantees `offset` advances
+        // every iteration: with segment_ticks = 1, `len` was 1 and
+        // `offset += len - 1` never moved (infinite loop pushing identical
+        // chunks). Lengths >= 2 behave exactly as before.
+        let len = config.segment_ticks.max(2).min(end - offset);
         segments.push(Segment { start: offset, len });
         offset += len - 1;
     }
@@ -1649,15 +1660,15 @@ mod tests {
     }
 
     #[test]
-    fn splits_clean_run_into_non_overlapping_chunks() {
+    fn splits_clean_run_into_overlapping_chunks() {
         let ticks: Vec<_> = (0..10).map(|i| quiet_tick(i, i as f32 * 10.0)).collect();
         let segments = split_segments(&ticks, config(4));
         assert_eq!(
             segments,
             vec![
                 Segment { start: 0, len: 4 },
-                Segment { start: 4, len: 4 },
-                Segment { start: 8, len: 2 },
+                Segment { start: 3, len: 4 },
+                Segment { start: 6, len: 4 },
             ]
         );
     }
@@ -1665,12 +1676,13 @@ mod tests {
     #[test]
     fn keeps_short_tail_chunks() {
         // Every tick after the reset is scored, so even a short tail chunk
-        // is kept (warmup used to drop chunks with no scored ticks).
+        // is kept (warmup used to drop chunks with no scored ticks). The
+        // tail overlaps by one tick, so tick 4 is still scored.
         let ticks: Vec<_> = (0..5).map(|i| quiet_tick(i, i as f32 * 10.0)).collect();
         let segments = split_segments(&ticks, config(4));
         assert_eq!(
             segments,
-            vec![Segment { start: 0, len: 4 }, Segment { start: 4, len: 1 }]
+            vec![Segment { start: 0, len: 4 }, Segment { start: 3, len: 2 }]
         );
     }
 
@@ -1786,13 +1798,16 @@ mod tests {
     }
 
     #[test]
-    fn reset_each_tick_tightens_velocity_only() {
+    fn reset_each_tick_tightens_budgets() {
+        // One-tick replay tightens every budget relative to open-loop
+        // segments (see `Tolerances`): a replayed tick sits far inside the
+        // segment divergence budget.
         let seg = Tolerances::for_mode(false);
         let reset = Tolerances::for_mode(true);
-        assert_eq!(seg.pos_uu, reset.pos_uu);
-        assert_eq!(seg.ang_vel_rad_s, reset.ang_vel_rad_s);
-        assert_eq!(seg.axis, reset.axis);
+        assert!(reset.pos_uu < seg.pos_uu);
         assert!(reset.vel_uu_s < seg.vel_uu_s);
+        assert!(reset.ang_vel_rad_s < seg.ang_vel_rad_s);
+        assert!(reset.axis < seg.axis);
     }
 
     #[test]
@@ -1965,15 +1980,27 @@ mod tests {
 
     impl MirrorBackend {
         fn new(ticks: &[TickRecord]) -> Self {
+            // Mirror every car slot seen anywhere in the run. Slots missing
+            // on a tick fall back to car 0's snapshot there (uniform runs
+            // never trigger the fallback, so their snaps are unchanged).
             let num_cars = ticks
-                .first()
+                .iter()
                 .map(|tick| tick.car_records.len())
-                .unwrap_or(1);
+                .max()
+                .unwrap_or(1)
+                .max(1);
+            let car_zero: Vec<Snapshot> = ticks
+                .iter()
+                .map(|tick| snapshot_from_tick(tick, 0).unwrap())
+                .collect();
             let snaps = (0..num_cars)
                 .map(|car_idx| {
                     ticks
                         .iter()
-                        .map(|tick| snapshot_from_tick(tick, car_idx).unwrap())
+                        .enumerate()
+                        .map(|(i, tick)| {
+                            snapshot_from_tick(tick, car_idx).unwrap_or(car_zero[i])
+                        })
                         .collect()
                 })
                 .collect();
@@ -2177,10 +2204,14 @@ mod tests {
     #[test]
     fn splits_on_car_count_change_and_labels_per_car() {
         let mut ticks: Vec<_> = (0..4).map(|i| quiet_tick(i, i as f32 * 10.0)).collect();
-        // Tick 2 gains a second car that touches the ball.
+        // Tick 2 gains a second car that touches the ball. Tick 3 keeps both
+        // cars so the two-car run is long enough to chunk (single-tick runs
+        // hold no scored tick and are dropped).
         let mut second = ticks[2].car_records[0].clone();
         second.is_touching_ball = true;
         ticks[2].car_records.push(second);
+        let third_second = ticks[3].car_records[0].clone();
+        ticks[3].car_records.push(third_second);
         let segments = split_segments(&ticks, config(4));
         // No segment spans the count change at index 2: runs break there,
         // so every segment lies on one side and the change tick heads
