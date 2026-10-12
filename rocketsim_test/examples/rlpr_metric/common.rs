@@ -1998,9 +1998,7 @@ mod tests {
                     ticks
                         .iter()
                         .enumerate()
-                        .map(|(i, tick)| {
-                            snapshot_from_tick(tick, car_idx).unwrap_or(car_zero[i])
-                        })
+                        .map(|(i, tick)| snapshot_from_tick(tick, car_idx).unwrap_or(car_zero[i]))
                         .collect()
                 })
                 .collect();

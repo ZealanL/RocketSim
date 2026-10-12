@@ -945,9 +945,11 @@ impl Car {
             self.update_air_torque(rb, num_wheels_in_contact, prev_is_flipping, prev_flip_time);
         }
 
+        let quant_throttle = quantize_axis_input(self.state.controls.throttle);
+
         // Skip auto-roll on the tick a flip ends. The car still counts as
         // flipping for auto-roll on its last flip tick.
-        if self.state.controls.throttle != 0.0
+        if quant_throttle != 0.0
             && !self.state.is_flipping
             && !flip_ended
             && ((0 < num_wheels_in_contact && num_wheels_in_contact < 4)
@@ -963,7 +965,7 @@ impl Car {
         let real_throttle = if self.state.controls.boost && self.state.boost > 0.0 {
             1.0
         } else {
-            quantize_axis_input(self.state.controls.throttle)
+            quant_throttle
         };
         self.bullet_vehicle.update(
             collision_world,
