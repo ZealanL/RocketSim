@@ -1330,8 +1330,8 @@ pub fn jump_hold_broken_at(
     }
     // `prev_controls[u]` drove step u-1 -> u: every step since the start
     // step must be held for the hold to be continuous.
-    for u in (start + 1)..=state_index {
-        let held = ticks[u]
+    for tick in ticks.iter().take(state_index + 1).skip(start + 1) {
+        let held = tick
             .car_records
             .get(car_idx)
             .is_some_and(|tick_car| tick_car.prev_controls.jump);
