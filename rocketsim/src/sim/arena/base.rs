@@ -889,6 +889,15 @@ impl Arena {
         self.cars[car_idx].state.controls = controls;
     }
 
+    /// Sets a car's dodge deadzone (`|yaw| + |pitch| + |roll|` must reach this to flip instead of double-jumping).
+    ///
+    /// Defaults to `0.5` (see [`CarBodyConfig::dodge_deadzone`]). `0.0` always flips on second jump,
+    /// values above `3.0` never flip. Takes effect on the next [`Arena::step_tick`].
+    /// Panics if `car_idx` is OOB.
+    pub fn set_car_dodge_deadzone(&mut self, car_idx: usize, dodge_deadzone: f32) {
+        self.cars[car_idx].info.config.dodge_deadzone = dodge_deadzone;
+    }
+
     /// Respawns a car at a random team respawn pad with spawn boost.
     ///
     /// Normally demos auto-respawn after `mutators.respawn_delay`; use this
