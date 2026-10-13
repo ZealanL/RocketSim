@@ -54,7 +54,9 @@ impl VehicleRL {
     pub fn get_upwards_dir_from_wheel_contacts(&self, cb: &RigidBody) -> Vec3A {
         let mut sum_contact_dir = Vec3A::ZERO;
         for wheel in &self.wheels {
-            if let Some(raycast_info) = wheel.raycast_info.as_ref() {
+            if let Some(raycast_info) = wheel.raycast_info.as_ref()
+                && raycast_info.is_in_contact_with_world
+            {
                 sum_contact_dir += raycast_info.contact_normal;
             }
         }
