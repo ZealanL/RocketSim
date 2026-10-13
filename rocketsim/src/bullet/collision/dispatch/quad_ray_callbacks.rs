@@ -90,7 +90,7 @@ impl QuadRayResultCallback for ClosestQuadRayResultCallback<'_> {
     }
 
     fn add_single_result(&mut self, ray_result: LocalRayResult, ray_idx: usize) {
-        if ray_result.hit_fraction > self.base.closest_hit_fraction[ray_idx] {
+        if ray_result.hit_fraction >= self.base.closest_hit_fraction[ray_idx] {
             return;
         }
 
