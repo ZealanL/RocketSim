@@ -904,6 +904,16 @@ impl Arena {
         );
     }
 
+    /// Demolishes a car, disabling its physics until the respawn timer ends.
+    ///
+    /// Uses `mutators.respawn_delay` for the timer, matching demos from
+    /// car-car collisions. The car auto-respawns via [`Arena::respawn_car`]
+    /// logic once the timer expires; use [`Arena::respawn_car`] to force an
+    /// immediate respawn instead of waiting.
+    pub fn demolish_car(&mut self, car_idx: usize) {
+        self.cars[car_idx].demolish(self.config.mutators.respawn_delay);
+    }
+
     /// Remaining cooldown for a pad in seconds (`0` = active).
     ///
     /// # Panics
