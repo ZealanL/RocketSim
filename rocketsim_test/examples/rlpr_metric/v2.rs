@@ -197,6 +197,33 @@ impl V2Backend {
     pub fn benchmark_control(controls: ControlsRecord) -> CarControls {
         v2_controls(&controls)
     }
+
+    /// Motion-only reset: overwrite exactly car/ball `pos`/`vel`/`ang_vel`.
+    ///
+    /// Copy live state, edit three fields, write back. Preserve orientation
+    /// and logical state. Do not explicitly clear backend caches, overwrite
+    /// controls, clear `ball_hit_info`, or rebuild via `ensure_cars`. The
+    /// segment seed sizes the arena. Panics on a missing slot. Harness only.
+    pub fn reset_motion(&mut self, state_tick: &TickRecord) {
+        for (slot, car) in state_tick.car_records.iter().enumerate() {
+            let Some(&car_id) = self.car_ids.get(slot) else {
+                panic!("reset_motion needs car {slot}");
+            };
+            let mut live = self.arena.pin_mut().get_car(car_id);
+            live.pos = record_vec(car.phys.pos);
+            live.vel = record_vec(car.phys.lin_vel);
+            live.ang_vel = record_vec(car.phys.ang_vel);
+            self.arena
+                .pin_mut()
+                .set_car(car_id, live)
+                .expect("v2 car id is valid");
+        }
+        let mut ball = self.arena.pin_mut().get_ball();
+        ball.pos = record_vec(state_tick.ball_record.pos);
+        ball.vel = record_vec(state_tick.ball_record.lin_vel);
+        ball.ang_vel = record_vec(state_tick.ball_record.ang_vel);
+        self.arena.pin_mut().set_ball(ball);
+    }
 }
 
 impl Default for V2Backend {
@@ -209,6 +236,10 @@ impl ReplayBackend for V2Backend {
     fn reset(&mut self, start: &TickRecord) {
         self.ensure_cars(start.car_records.len());
         self.set_state(start);
+    }
+
+    fn reset_motion(&mut self, state_tick: &TickRecord) {
+        V2Backend::reset_motion(self, state_tick);
     }
 
     fn set_state(&mut self, state_tick: &TickRecord) {
@@ -637,6 +668,105 @@ mod tests {
         assert_eq!(backend.car_ids.len(), 2);
         assert_ne!(backend.arena.pin_mut().get_car(first_id).pos, sentinel);
         assert_eq!(backend.arena_body, Some(vec![2, 2]));
+        // Motion-only preservation, folded here to avoid an extra parallel
+        // C++ arena: two cars plus ball, orientation, controls, timers,
+        // cooldowns, boost latch, hit info.
+        use rocketsim_rs::math::{RotMat, Vec3 as V2Vec3};
+        let seed = motion_tick((0.0, 0.0, 100.0), (100.0, 0.0, 100.0), (0.0, 0.0, 500.0));
+        backend.reset(&seed);
+        let yaw90 = RotMat {
+            forward: V2Vec3::new(0.0, 1.0, 0.0),
+            right: V2Vec3::new(-1.0, 0.0, 0.0),
+            up: V2Vec3::new(0.0, 0.0, 1.0),
+        };
+        for slot in 0..2 {
+            let car_id = backend.car_ids[slot];
+            let mut live = backend.arena.pin_mut().get_car(car_id);
+            live.rot_mat = yaw90;
+            live.last_controls.throttle = 1.0;
+            live.is_boosting = true;
+            live.boosting_time = 1.25;
+            live.handbrake_val = 0.7;
+            live.boost = 50.0;
+            live.car_contact.cooldown_timer = 0.4;
+            live.car_contact.other_car_id = backend.car_ids[1 - slot];
+            live.ball_hit_info.is_valid = true;
+            live.ball_hit_info.tick_count_when_hit = 42;
+            live.is_on_ground = false;
+            live.jump_time = 0.5;
+            live.flip_time = 2.5;
+            backend
+                .arena
+                .pin_mut()
+                .set_car(car_id, live)
+                .expect("v2 car id is valid");
+        }
+        let mut ball = backend.arena.pin_mut().get_ball();
+        ball.rot_mat = yaw90;
+        ball.tick_count_since_update = 123;
+        backend.arena.pin_mut().set_ball(ball);
+        let ball_before = backend.arena.pin_mut().get_ball();
+        let mut target = motion_tick(
+            (1000.0, 2000.0, 300.0),
+            (1100.0, 2000.0, 300.0),
+            (4000.0, 5000.0, 600.0),
+        );
+        target.car_records[0].phys.lin_vel = motion_vec(100.0, 200.0, 300.0);
+        target.car_records[0].phys.ang_vel = motion_vec(1.0, 2.0, 3.0);
+        target.car_records[1].phys.lin_vel = motion_vec(110.0, 210.0, 310.0);
+        target.car_records[1].phys.ang_vel = motion_vec(1.5, 2.5, 3.5);
+        target.ball_record.lin_vel = motion_vec(400.0, 500.0, 600.0);
+        target.ball_record.ang_vel = motion_vec(4.0, 5.0, 6.0);
+        backend.reset_motion(&target);
+        for slot in 0..2 {
+            let car_id = backend.car_ids[slot];
+            let live = backend.arena.pin_mut().get_car(car_id);
+            for (got, want) in [
+                (live.pos, record_vec(target.car_records[slot].phys.pos)),
+                (live.vel, record_vec(target.car_records[slot].phys.lin_vel)),
+                (
+                    live.ang_vel,
+                    record_vec(target.car_records[slot].phys.ang_vel),
+                ),
+            ] {
+                assert!(
+                    (got.x - want.x).abs() < 1e-3
+                        && (got.y - want.y).abs() < 1e-3
+                        && (got.z - want.z).abs() < 1e-3,
+                    "motion vector differs: {got:?} vs {want:?}"
+                );
+            }
+            assert_eq!(live.rot_mat.forward, yaw90.forward);
+            assert_eq!(live.rot_mat.up, yaw90.up);
+            assert_eq!(live.last_controls.throttle, 1.0);
+            assert!(live.is_boosting);
+            assert_eq!(live.boosting_time, 1.25);
+            assert_eq!(live.handbrake_val, 0.7);
+            assert_eq!(live.boost, 50.0);
+            assert_eq!(live.car_contact.cooldown_timer, 0.4);
+            assert_eq!(live.car_contact.other_car_id, backend.car_ids[1 - slot]);
+            assert!(live.ball_hit_info.is_valid);
+            assert_eq!(live.ball_hit_info.tick_count_when_hit, 42);
+            assert!(!live.is_on_ground);
+        }
+        let after = backend.arena.pin_mut().get_ball();
+        for (got, want) in [
+            (after.pos, record_vec(target.ball_record.pos)),
+            (after.vel, record_vec(target.ball_record.lin_vel)),
+            (after.ang_vel, record_vec(target.ball_record.ang_vel)),
+        ] {
+            assert!(
+                (got.x - want.x).abs() < 1e-3
+                    && (got.y - want.y).abs() < 1e-3
+                    && (got.z - want.z).abs() < 1e-3,
+                "ball motion differs: {got:?} vs {want:?}"
+            );
+        }
+        assert_eq!(after.rot_mat.forward, yaw90.forward);
+        assert_eq!(
+            after.tick_count_since_update,
+            ball_before.tick_count_since_update
+        );
     }
 
     #[test]
@@ -688,5 +818,96 @@ mod tests {
         backend.set_bodies(&[2, 0]);
         backend.ensure_cars(2);
         assert_ne!(backend.arena_body, before);
+    }
+
+    fn motion_vec(x: f32, y: f32, z: f32) -> VecRecord {
+        VecRecord::new(x, y, z)
+    }
+
+    fn motion_ident_rot() -> Mat3Record {
+        Mat3Record {
+            rows: [
+                motion_vec(1.0, 0.0, 0.0),
+                motion_vec(0.0, 1.0, 0.0),
+                motion_vec(0.0, 0.0, 1.0),
+            ],
+        }
+    }
+
+    fn motion_phys(
+        pos: (f32, f32, f32),
+        vel: (f32, f32, f32),
+        ang: (f32, f32, f32),
+    ) -> rocketsim_test::rlpr::cpp_records::PhysRecord {
+        let mut phys: rocketsim_test::rlpr::cpp_records::PhysRecord = unsafe { std::mem::zeroed() };
+        phys.rot = motion_ident_rot();
+        phys.pos = motion_vec(pos.0, pos.1, pos.2);
+        phys.lin_vel = motion_vec(vel.0, vel.1, vel.2);
+        phys.ang_vel = motion_vec(ang.0, ang.1, ang.2);
+        phys
+    }
+
+    fn motion_car(
+        pos: (f32, f32, f32),
+        vel: (f32, f32, f32),
+        ang: (f32, f32, f32),
+    ) -> rocketsim_test::rlpr::cpp_records::CarRecord {
+        rocketsim_test::rlpr::cpp_records::CarRecord {
+            phys: motion_phys(pos, vel, ang),
+            is_on_ground: true,
+            is_jumping: false,
+            is_flipping: false,
+            jump_time: 0.0,
+            flip_time: 0.0,
+            has_jumped: false,
+            double_jumped_or_flipped: false,
+            has_flip: false,
+            flip_rel_torque: motion_vec(0.0, 0.0, 0.0),
+            boost_amount: 0.33,
+            is_touching_ball: false,
+            prev_controls: rocketsim_test::rlpr::cpp_records::ControlsRecord {
+                throttle: 0.0,
+                steer: 0.0,
+                pitch: 0.0,
+                yaw: 0.0,
+                roll: 0.0,
+                jump: false,
+                boost: false,
+                handbrake: false,
+            },
+            wheels: [rocketsim_test::rlpr::cpp_records::WheelRecord {
+                susp_length: 0.0,
+                susp_rel_vel: 0.0,
+                has_contact: false,
+                contact_normal: motion_vec(0.0, 0.0, 1.0),
+                steer_amount: 0.0,
+                engine_force: 0.0,
+                brake: 0.0,
+                lat_friction: 0.0,
+                long_friction: 0.0,
+                extra_pushback: 0.0,
+            }; 4],
+            is_touching_car: false,
+            _touch_pad: [0; 3],
+            is_boosting: false,
+            _boost_pad: [0; 3],
+            boosting_time: 0.0,
+            handbrake_val: 0.0,
+            last_ball_touch_frame: rocketsim_test::rlpr::TOUCH_FRAME_UNKNOWN,
+        }
+    }
+
+    fn motion_tick(
+        car0: (f32, f32, f32),
+        car1: (f32, f32, f32),
+        ball: (f32, f32, f32),
+    ) -> TickRecord {
+        TickRecord {
+            car_records: vec![
+                motion_car(car0, (0.0, 0.0, 0.0), (0.0, 0.0, 0.0)),
+                motion_car(car1, (10.0, 0.0, 0.0), (0.1, 0.0, 0.0)),
+            ],
+            ball_record: motion_phys(ball, (0.0, 0.0, 0.0), (0.0, 0.0, 0.0)),
+        }
     }
 }

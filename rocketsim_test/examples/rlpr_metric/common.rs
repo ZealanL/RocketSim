@@ -232,6 +232,38 @@ impl Tolerances {
             Self::SEGMENT
         }
     }
+
+    /// Tolerances for a reset mode. Motion-only uses one-tick budgets.
+    pub fn for_reset_mode(mode: ResetMode) -> Self {
+        match mode {
+            ResetMode::Segmented => Self::SEGMENT,
+            ResetMode::ResetEachTick | ResetMode::ResetMotionEachTick => Self::RESET_EACH_TICK,
+        }
+    }
+}
+
+/// State restoration mode. Motion-only seeds fully once per segment,
+/// then preserves orientation and logical history across transitions.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ResetMode {
+    Segmented,
+    ResetEachTick,
+    ResetMotionEachTick,
+}
+
+impl ResetMode {
+    /// Map CLI flags to a mode. Panics when both reset flags are set: the
+    /// CLI declares them conflicting, so this is a backup guard.
+    pub fn from_flags(reset_each_tick: bool, reset_motion_each_tick: bool) -> Self {
+        match (reset_each_tick, reset_motion_each_tick) {
+            (false, false) => Self::Segmented,
+            (true, false) => Self::ResetEachTick,
+            (false, true) => Self::ResetMotionEachTick,
+            (true, true) => {
+                panic!("--reset-each-tick and --reset-motion-each-tick are mutually exclusive")
+            }
+        }
+    }
 }
 
 /// Plain body state. Axes are unit vectors. Uses [`Vec3A`].
@@ -257,6 +289,15 @@ pub struct Snapshot {
 pub trait ReplayBackend {
     fn reset(&mut self, start: &TickRecord);
     fn set_state(&mut self, state: &TickRecord);
+
+    /// Motion-only reset: overwrite exactly car/ball `pos`/`vel`/`ang_vel`.
+    ///
+    /// Preserve orientation and logical history. Do not explicitly clear
+    /// wheel or manifold caches. State setters can clear transient caches.
+    /// Covers all cars plus ball. Default panics; no `set_state` fallback.
+    fn reset_motion(&mut self, _state: &TickRecord) {
+        panic!("reset_motion not implemented for this backend");
+    }
 
     /// Restore state that is not present in an RLPR car record.
     ///
@@ -1507,6 +1548,82 @@ pub fn evaluate<B: ReplayBackend>(
                     restore_handbrake_seed(backend, ticks, segment_run_start, state_index);
                 }
             }
+            let controls: Vec<ControlsRecord> = target
+                .car_records
+                .iter()
+                .map(|car| car.prev_controls)
+                .collect();
+            if controls.is_empty() {
+                continue;
+            }
+            let sim_events = backend.step(&controls);
+            if target_index > 0 && tick_is_kickoff_stasis(&ticks[target_index - 1], target) {
+                outcome.skipped_transitions += 1;
+                outcome.skipped_car_ticks += controls.len();
+                continue;
+            }
+            for car_idx in 0..controls.len() {
+                let Some(truth) = snapshot_from_tick(target, car_idx) else {
+                    continue;
+                };
+                let sim = if use_sim_events {
+                    sim_events.get(car_idx).copied().unwrap_or_default()
+                } else {
+                    SimContactEvents::default()
+                };
+                let norm = normalized_error(&backend.snapshot(car_idx), &truth, &tol);
+                report.add(classify_tick(target, car_idx, sim), target_index, norm);
+            }
+        }
+    }
+    outcome
+}
+
+/// Motion-only diagnostic between full reset and segmented.
+///
+/// Keep [`split_segments`] boundaries. Seed fully once per segment, same order
+/// as [`evaluate`]: `reset`, recorded handbrake plus fallback seed, recorded
+/// boost, extra/bump cooldowns, jump-hold continuity, `refresh_sticky_gates`.
+/// Then call [`ReplayBackend::reset_motion`] each transition: only
+/// car/ball `pos`/`vel`/`ang_vel`, orientation and logical history preserved.
+/// No per-step restores or sticky refresh. One-tick budgets unchanged.
+/// Stasis still steps unscored. Motion at `offset == 1` repeats seed values.
+#[allow(clippy::too_many_arguments)]
+pub fn evaluate_motion_each_tick<B: ReplayBackend>(
+    backend: &mut B,
+    ticks: &[TickRecord],
+    segments: &[Segment],
+    use_sim_events: bool,
+    has_boost_state: bool,
+    has_handbrake_state: bool,
+    has_touch_state: bool,
+) -> EvalOutcome {
+    let mut outcome = EvalOutcome::default();
+    let report = &mut outcome.report;
+    let tol = Tolerances::for_reset_mode(ResetMode::ResetMotionEachTick);
+    let firings = compute_extra_firings(ticks, has_touch_state);
+    let bumps = compute_bump_events(ticks);
+    for segment in segments {
+        if segment.end() > ticks.len() {
+            continue;
+        }
+        let segment_run_start = run_start(ticks, segment.start);
+        // Full seed once per segment, same order as `evaluate`.
+        backend.reset(&ticks[segment.start]);
+        restore_recorded_handbrake(backend, ticks, segment.start, has_handbrake_state);
+        if !has_handbrake_state {
+            restore_handbrake_seed(backend, ticks, segment_run_start, segment.start);
+        }
+        restore_recorded_boost_state(backend, ticks, segment.start, has_boost_state);
+        restore_extra_cooldown(backend, &firings, segment.start);
+        restore_bump_cooldown(backend, &bumps, segment.start);
+        restore_jump_hold_continuity(backend, ticks, segment_run_start, segment.start);
+        backend.refresh_sticky_gates();
+        for offset in 1..segment.len {
+            let target_index = segment.start + offset;
+            let target = &ticks[target_index];
+            // Motion-only: no per-step restores or sticky refresh.
+            backend.reset_motion(&ticks[target_index - 1]);
             let controls: Vec<ControlsRecord> = target
                 .car_records
                 .iter()
@@ -3125,5 +3242,357 @@ mod tests {
         let mut backend = LatchProbe { calls: Vec::new() };
         restore_jump_hold_continuity(&mut backend, &ticks, 0, 2);
         assert_eq!(backend.calls, vec![(0, true), (1, false)]);
+    }
+
+    /// Schedule probe for motion-only mode: mirrors truth for scoring and
+    /// counts every restoration call.
+    struct MotionScheduleProbe {
+        snaps: Vec<Vec<Snapshot>>,
+        cursor: usize,
+        resets: usize,
+        set_states: usize,
+        motions: usize,
+        boost_calls: Vec<(usize, bool, f32)>,
+        brake_calls: Vec<(usize, f32)>,
+        suppress_calls: Vec<(usize, bool)>,
+        bump_calls: Vec<(usize, usize, f32)>,
+        jump_calls: Vec<(usize, bool)>,
+        refreshes: usize,
+        steps: usize,
+        supports_cooldown: bool,
+        supports_bump: bool,
+    }
+
+    impl MotionScheduleProbe {
+        fn new(ticks: &[TickRecord]) -> Self {
+            let num_cars = ticks
+                .iter()
+                .map(|tick| tick.car_records.len())
+                .max()
+                .unwrap_or(1)
+                .max(1);
+            let car_zero: Vec<Snapshot> = ticks
+                .iter()
+                .map(|tick| snapshot_from_tick(tick, 0).unwrap())
+                .collect();
+            let snaps = (0..num_cars)
+                .map(|car_idx| {
+                    ticks
+                        .iter()
+                        .enumerate()
+                        .map(|(i, tick)| snapshot_from_tick(tick, car_idx).unwrap_or(car_zero[i]))
+                        .collect()
+                })
+                .collect();
+            Self {
+                snaps,
+                cursor: 0,
+                resets: 0,
+                set_states: 0,
+                motions: 0,
+                boost_calls: Vec::new(),
+                brake_calls: Vec::new(),
+                suppress_calls: Vec::new(),
+                bump_calls: Vec::new(),
+                jump_calls: Vec::new(),
+                refreshes: 0,
+                steps: 0,
+                supports_cooldown: true,
+                supports_bump: true,
+            }
+        }
+
+        fn seek(&mut self, state: &TickRecord) {
+            let want = snapshot_from_tick(state, 0).unwrap();
+            self.cursor = self.snaps[0]
+                .iter()
+                .position(|snap| snap.car.pos == want.car.pos)
+                .unwrap_or(0);
+        }
+    }
+
+    impl ReplayBackend for MotionScheduleProbe {
+        fn reset(&mut self, start: &TickRecord) {
+            self.resets += 1;
+            self.seek(start);
+        }
+
+        fn set_state(&mut self, state: &TickRecord) {
+            self.set_states += 1;
+            self.seek(state);
+        }
+
+        fn reset_motion(&mut self, state: &TickRecord) {
+            self.motions += 1;
+            self.seek(state);
+        }
+
+        fn set_boost_state(&mut self, car_idx: usize, armed: bool, time: f32) {
+            self.boost_calls.push((car_idx, armed, time));
+        }
+
+        fn set_handbrake_value(&mut self, car_idx: usize, value: f32) {
+            self.brake_calls.push((car_idx, value));
+        }
+
+        fn supports_cooldown_restore(&self) -> bool {
+            self.supports_cooldown
+        }
+
+        fn suppress_next_extra_hit(&mut self, car_idx: usize, suppress: bool) {
+            self.suppress_calls.push((car_idx, suppress));
+        }
+
+        fn supports_bump_restore(&self) -> bool {
+            self.supports_bump
+        }
+
+        fn set_bump_cooldown(&mut self, car_idx: usize, victim_idx: usize, seconds: f32) {
+            self.bump_calls.push((car_idx, victim_idx, seconds));
+        }
+
+        fn set_jump_hold_broken(&mut self, car_idx: usize, broken: bool) {
+            self.jump_calls.push((car_idx, broken));
+        }
+
+        fn refresh_sticky_gates(&mut self) {
+            self.refreshes += 1;
+        }
+
+        fn step(&mut self, _controls: &[ControlsRecord]) -> Vec<SimContactEvents> {
+            self.steps += 1;
+            self.cursor = (self.cursor + 1).min(self.snaps[0].len() - 1);
+            vec![SimContactEvents::default(); self.snaps.len()]
+        }
+
+        fn snapshot(&mut self, car_idx: usize) -> Snapshot {
+            self.snaps[car_idx][self.cursor]
+        }
+    }
+
+    #[test]
+    fn reset_mode_from_flags_maps() {
+        assert_eq!(ResetMode::from_flags(false, false), ResetMode::Segmented);
+        assert_eq!(ResetMode::from_flags(true, false), ResetMode::ResetEachTick);
+        assert_eq!(
+            ResetMode::from_flags(false, true),
+            ResetMode::ResetMotionEachTick
+        );
+    }
+
+    #[test]
+    fn reset_mode_from_flags_rejects_both() {
+        let result = std::panic::catch_unwind(|| ResetMode::from_flags(true, true));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn motion_tolerances_share_one_tick_budgets() {
+        assert_eq!(
+            Tolerances::for_reset_mode(ResetMode::ResetMotionEachTick),
+            Tolerances::RESET_EACH_TICK
+        );
+        assert_eq!(
+            Tolerances::for_reset_mode(ResetMode::ResetEachTick),
+            Tolerances::for_mode(true)
+        );
+        assert_eq!(
+            Tolerances::for_reset_mode(ResetMode::Segmented),
+            Tolerances::for_mode(false)
+        );
+    }
+
+    #[test]
+    fn reset_motion_default_panics_without_fallback() {
+        struct NoMotion {
+            snaps: Vec<Snapshot>,
+            cursor: usize,
+        }
+        impl ReplayBackend for NoMotion {
+            fn reset(&mut self, _start: &TickRecord) {}
+            fn set_state(&mut self, _state: &TickRecord) {}
+            fn step(&mut self, _controls: &[ControlsRecord]) -> Vec<SimContactEvents> {
+                vec![]
+            }
+            fn snapshot(&mut self, _car_idx: usize) -> Snapshot {
+                self.snaps[self.cursor]
+            }
+        }
+        let body = BodySnapshot {
+            pos: Vec3A::ZERO,
+            vel: Vec3A::ZERO,
+            ang_vel: Vec3A::ZERO,
+            forward: Vec3A::X,
+            up: Vec3A::Z,
+        };
+        let mut backend = NoMotion {
+            snaps: vec![Snapshot {
+                car: body,
+                ball: body,
+            }],
+            cursor: 0,
+        };
+        let tick = quiet_tick(0, 0.0);
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            backend.reset_motion(&tick);
+        }));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn motion_seed_once_per_segment_no_per_step_restores() {
+        // Two overlapping segments over six quiet ticks: targets 1,2,4,5.
+        let ticks: Vec<_> = (0..6).map(|i| quiet_tick(i, i as f32 * 10.0)).collect();
+        let segments = vec![Segment { start: 0, len: 3 }, Segment { start: 3, len: 3 }];
+        let mut backend = MotionScheduleProbe::new(&ticks);
+        let outcome =
+            evaluate_motion_each_tick(&mut backend, &ticks, &segments, true, true, true, false);
+        // Full seed once per segment.
+        assert_eq!(backend.resets, 2);
+        assert_eq!(backend.refreshes, 2);
+        // One boost/handbrake/jump write per car per segment seed.
+        assert_eq!(backend.boost_calls.len(), 2);
+        assert_eq!(backend.brake_calls.len(), 2);
+        assert_eq!(backend.jump_calls.len(), 2);
+        // Motion reset each transition (four targets), never full set_state.
+        assert_eq!(backend.motions, 4);
+        assert_eq!(backend.set_states, 0);
+        assert_eq!(backend.steps, 4);
+        // Mirror replays truth, so every car-tick passes.
+        assert_eq!(outcome.report.total.support, 4);
+        assert_eq!(outcome.report.total.passed, 4);
+        assert_eq!(outcome.skipped_transitions, 0);
+    }
+
+    #[test]
+    fn legacy_evaluate_never_calls_reset_motion() {
+        let ticks: Vec<_> = (0..6).map(|i| quiet_tick(i, i as f32 * 10.0)).collect();
+        let segments = vec![Segment { start: 0, len: 3 }, Segment { start: 3, len: 3 }];
+        // Segmented path: resets per segment, no motion, no full per-tick sets.
+        let mut backend = MotionScheduleProbe::new(&ticks);
+        evaluate(
+            &mut backend,
+            &ticks,
+            &segments,
+            false,
+            true,
+            true,
+            true,
+            false,
+        );
+        assert_eq!(backend.resets, 2);
+        assert_eq!(backend.motions, 0);
+        assert_eq!(backend.set_states, 0);
+        assert_eq!(backend.refreshes, 2);
+        // Full-reset path: per-tick set_state, segment-start refreshes only.
+        let mut backend = MotionScheduleProbe::new(&ticks);
+        evaluate(
+            &mut backend,
+            &ticks,
+            &segments,
+            true,
+            true,
+            true,
+            true,
+            false,
+        );
+        assert_eq!(backend.resets, 0);
+        assert_eq!(backend.motions, 0);
+        assert_eq!(backend.set_states, 4);
+        assert_eq!(backend.refreshes, 2);
+    }
+
+    #[test]
+    fn motion_skips_stasis_but_steps() {
+        // Same stasis shape as `evaluate_skips_stasis_but_steps`: 1->2 is
+        // kickoff stasis (stepped, unscored), 0->1 and 2->3 score.
+        let ticks: Vec<TickRecord> = [99u32, 100, 101, 102]
+            .iter()
+            .map(|&f| {
+                let x = match f {
+                    99 => 0.0,
+                    100 => 10.0,
+                    101 => 10.5,
+                    _ => 20.0,
+                };
+                let (ball_world, hxy) = if f == 100 || f == 101 {
+                    (true, 0.0)
+                } else {
+                    (false, 200.0)
+                };
+                let mut t = make_tick(
+                    f,
+                    (x, 0.0, 17.0),
+                    (0.0, 0.0, 92.75),
+                    (hxy, 0.0, 0.0),
+                    (0.0, 0.0, 0.0),
+                    false,
+                    ball_world,
+                    true,
+                    true,
+                );
+                let vel = match f {
+                    100 => 1200.0,
+                    102 => 1140.0,
+                    _ => hxy,
+                };
+                t.car_records[0].phys.lin_vel = vec(vel, 0.0, 0.0);
+                t.car_records.push(t.car_records[0].clone());
+                t
+            })
+            .collect();
+        assert!(tick_is_kickoff_stasis(&ticks[1], &ticks[2]));
+        let segments = vec![Segment { start: 0, len: 4 }];
+        let mut backend = MotionScheduleProbe::new(&ticks);
+        let outcome =
+            evaluate_motion_each_tick(&mut backend, &ticks, &segments, true, false, false, false);
+        // Motion resets run even for the skipped transition.
+        assert_eq!(backend.resets, 1);
+        assert_eq!(backend.motions, 3);
+        assert_eq!(backend.steps, 3);
+        assert_eq!(backend.set_states, 0);
+        assert_eq!(outcome.skipped_transitions, 1);
+        assert_eq!(outcome.skipped_car_ticks, 2);
+        assert_eq!(outcome.report.total.support, 4);
+        assert_eq!(outcome.report.total.passed, 4);
+    }
+
+    #[test]
+    fn motion_multi_car_support_and_boundaries() {
+        // Two-car run over two segments: every target scores once per car.
+        let mut ticks: Vec<_> = (0..6).map(|i| quiet_tick(i, i as f32 * 10.0)).collect();
+        for tick in &mut ticks {
+            tick.car_records.push(tick.car_records[0].clone());
+        }
+        let segments = vec![Segment { start: 0, len: 3 }, Segment { start: 3, len: 3 }];
+        let mut backend = MotionScheduleProbe::new(&ticks);
+        let outcome =
+            evaluate_motion_each_tick(&mut backend, &ticks, &segments, true, true, true, false);
+        assert_eq!(backend.resets, 2);
+        assert_eq!(backend.motions, 4);
+        assert_eq!(backend.set_states, 0);
+        // Four targets times two cars.
+        assert_eq!(outcome.report.total.support, 8);
+        assert_eq!(outcome.report.total.passed, 8);
+        // Teleport boundary: tick 2 jumps away, so no segment spans 1->2.
+        let mut split: Vec<_> = (0..4).map(|i| quiet_tick(i, i as f32 * 10.0)).collect();
+        split[2].car_records[0].phys.pos = vec(5000.0, 0.0, 100.0);
+        split[3].car_records[0].phys.pos = vec(5010.0, 0.0, 100.0);
+        let segments = split_segments(&split, config(8));
+        for segment in &segments {
+            let range = segment.start..segment.end();
+            assert!(!(range.contains(&1) && range.contains(&2)));
+        }
+        // Motion mode keeps the same boundaries: one full seed per segment.
+        let mut backend = MotionScheduleProbe::new(&split);
+        let outcome =
+            evaluate_motion_each_tick(&mut backend, &split, &segments, true, false, false, false);
+        assert_eq!(backend.resets, segments.len());
+        assert_eq!(backend.set_states, 0);
+        assert_eq!(backend.motions, backend.steps);
+        assert_eq!(
+            outcome.report.total.support + outcome.skipped_transitions,
+            backend.steps
+        );
     }
 }

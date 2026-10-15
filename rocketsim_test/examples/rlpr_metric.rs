@@ -40,6 +40,14 @@ struct Args {
     #[arg(long)]
     reset_each_tick: bool,
 
+    /// Reset only car/ball pos/vel/ang_vel before each scored tick.
+    ///
+    /// Motion-only diagnostic: full seed once per segment, then preserve
+    /// orientation and logical history. Setters still clear transient
+    /// accumulators and car impulse cache. Conflicts with `--reset-each-tick`.
+    #[arg(long, conflicts_with = "reset_each_tick")]
+    reset_motion_each_tick: bool,
+
     /// Label ticks from recorded RL flags by default; also include contacts the sim observed.
     #[arg(long)]
     use_sim_events: bool,
@@ -186,21 +194,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = common::SegmentConfig {
         segment_ticks: args.segment_ticks,
     };
-    if args.reset_each_tick {
-        println!("Mode: one-tick replay with a state reset before each tick");
-    } else {
-        println!("Segments: {} ticks", config.segment_ticks,);
+    let reset_mode =
+        common::ResetMode::from_flags(args.reset_each_tick, args.reset_motion_each_tick);
+    match reset_mode {
+        common::ResetMode::ResetEachTick => {
+            println!("Mode: one-tick replay with a state reset before each tick");
+        }
+        common::ResetMode::ResetMotionEachTick => {
+            println!(
+                "Mode: one-tick replay with motion-only reset before each tick (pos/vel/ang_vel; orientation and logical history preserved; transients cleared); segments: {} ticks; full seed once per segment",
+                config.segment_ticks,
+            );
+        }
+        common::ResetMode::Segmented => {
+            println!("Segments: {} ticks", config.segment_ticks,);
+        }
     }
     println!("Categories overlap. Support counts car-ticks (cars x ticks).");
     println!("Dodge deadzone: {:.2}", args.dodge_deadzone);
-    let tol = common::Tolerances::for_mode(args.reset_each_tick);
+    let tol = common::Tolerances::for_reset_mode(reset_mode);
     println!(
         "Tolerances: pos {:.1} uu, vel {:.1} uu/s, ang vel {:.2} rad/s, axis {:.2}{}",
         tol.pos_uu,
         tol.vel_uu_s,
         tol.ang_vel_rad_s,
         tol.axis,
-        if args.reset_each_tick {
+        if reset_mode != common::ResetMode::Segmented {
             " (velocity tightened for one-tick replay)"
         } else {
             ""
@@ -285,30 +304,54 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // One backend serves every recording. The detected body roster plus
         // `reset` rebuild the arena when the bodies or the car count change
         // between recordings.
-        let v3_outcome = common::evaluate(
-            &mut v3_backend,
-            &ticks,
-            &segments,
-            args.reset_each_tick,
-            args.use_sim_events,
-            rocketsim_test::rlpr::recording_has_boost_state(recording.version),
-            rocketsim_test::rlpr::recording_has_handbrake_state(recording.version),
-            rocketsim_test::rlpr::recording_has_touch_frames(recording.version),
-        );
+        let v3_outcome = if reset_mode == common::ResetMode::ResetMotionEachTick {
+            common::evaluate_motion_each_tick(
+                &mut v3_backend,
+                &ticks,
+                &segments,
+                args.use_sim_events,
+                rocketsim_test::rlpr::recording_has_boost_state(recording.version),
+                rocketsim_test::rlpr::recording_has_handbrake_state(recording.version),
+                rocketsim_test::rlpr::recording_has_touch_frames(recording.version),
+            )
+        } else {
+            common::evaluate(
+                &mut v3_backend,
+                &ticks,
+                &segments,
+                reset_mode == common::ResetMode::ResetEachTick,
+                args.use_sim_events,
+                rocketsim_test::rlpr::recording_has_boost_state(recording.version),
+                rocketsim_test::rlpr::recording_has_handbrake_state(recording.version),
+                rocketsim_test::rlpr::recording_has_touch_frames(recording.version),
+            )
+        };
         combined_v3.merge(&v3_outcome.report);
         skipped_transitions += v3_outcome.skipped_transitions;
 
         #[cfg(feature = "v2")]
-        let v2_outcome = common::evaluate(
-            &mut v2_backend,
-            &ticks,
-            &segments,
-            args.reset_each_tick,
-            args.use_sim_events,
-            rocketsim_test::rlpr::recording_has_boost_state(recording.version),
-            rocketsim_test::rlpr::recording_has_handbrake_state(recording.version),
-            rocketsim_test::rlpr::recording_has_touch_frames(recording.version),
-        );
+        let v2_outcome = if reset_mode == common::ResetMode::ResetMotionEachTick {
+            common::evaluate_motion_each_tick(
+                &mut v2_backend,
+                &ticks,
+                &segments,
+                args.use_sim_events,
+                rocketsim_test::rlpr::recording_has_boost_state(recording.version),
+                rocketsim_test::rlpr::recording_has_handbrake_state(recording.version),
+                rocketsim_test::rlpr::recording_has_touch_frames(recording.version),
+            )
+        } else {
+            common::evaluate(
+                &mut v2_backend,
+                &ticks,
+                &segments,
+                reset_mode == common::ResetMode::ResetEachTick,
+                args.use_sim_events,
+                rocketsim_test::rlpr::recording_has_boost_state(recording.version),
+                rocketsim_test::rlpr::recording_has_handbrake_state(recording.version),
+                rocketsim_test::rlpr::recording_has_touch_frames(recording.version),
+            )
+        };
         #[cfg(feature = "v2")]
         combined_v2.merge(&v2_outcome.report);
 
@@ -355,5 +398,53 @@ mod tests {
                 .unwrap();
         assert!(selected.per_recording);
         assert_eq!(selected.rlpr_files.len(), 2);
+    }
+
+    #[test]
+    fn motion_reset_defaults_off() {
+        let defaults = Args::try_parse_from(["rlpr_metric"]).unwrap();
+        assert!(!defaults.reset_each_tick);
+        assert!(!defaults.reset_motion_each_tick);
+        assert_eq!(
+            common::ResetMode::from_flags(
+                defaults.reset_each_tick,
+                defaults.reset_motion_each_tick
+            ),
+            common::ResetMode::Segmented
+        );
+    }
+
+    #[test]
+    fn motion_reset_flag_maps_to_mode() {
+        let full = Args::try_parse_from(["rlpr_metric", "--reset-each-tick"]).unwrap();
+        assert!(full.reset_each_tick);
+        assert!(!full.reset_motion_each_tick);
+        assert_eq!(
+            common::ResetMode::from_flags(full.reset_each_tick, full.reset_motion_each_tick),
+            common::ResetMode::ResetEachTick
+        );
+        let motion = Args::try_parse_from(["rlpr_metric", "--reset-motion-each-tick"]).unwrap();
+        assert!(!motion.reset_each_tick);
+        assert!(motion.reset_motion_each_tick);
+        assert_eq!(
+            common::ResetMode::from_flags(motion.reset_each_tick, motion.reset_motion_each_tick),
+            common::ResetMode::ResetMotionEachTick
+        );
+    }
+
+    #[test]
+    fn reset_flags_conflict() {
+        let result = Args::try_parse_from([
+            "rlpr_metric",
+            "--reset-each-tick",
+            "--reset-motion-each-tick",
+        ]);
+        assert!(result.is_err());
+        let err = result.err().unwrap();
+        let message = err.to_string();
+        assert!(
+            message.contains("--reset-each-tick") && message.contains("--reset-motion-each-tick"),
+            "conflict error names both flags: {message}"
+        );
     }
 }
