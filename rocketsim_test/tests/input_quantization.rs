@@ -424,9 +424,11 @@ fn steer_same_bin_matches_on_ground() {
 
 #[test]
 fn boost_overrides_tiny_throttle_in_air() {
-    // Boost latch forces throttle scale to 1.0 in air.
-    // Tiny, zero, and half inputs must match with boost held.
-    let start = air_start(Vec3A::new(0.0, 0.0, 1500.0), Vec3A::ZERO);
+    // Start with boost already active to isolate the latched throttle
+    // override from the first activation tick.
+    let mut start = air_start(Vec3A::new(0.0, 0.0, 1500.0), Vec3A::ZERO);
+    start.is_boosting = true;
+    start.boosting_time = 0.05;
 
     let mk = |throttle: f32| CarControls {
         throttle,

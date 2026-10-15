@@ -497,7 +497,7 @@ impl Car {
         }
 
         if allow_air {
-            let throttle_scale = if self.state.controls.boost || self.state.is_boosting {
+            let throttle_scale = if self.state.is_boosting {
                 1.0
             } else {
                 quantize_axis_input(self.state.controls.throttle)
