@@ -467,7 +467,7 @@ impl Car {
             if inputs != Vec3A::ZERO
                 && (prev_is_flipping
                     || self.state.is_flipping
-                    || self.state.has_flipped && prev_flip_time < flip::PITCHLOCK_EXTRA_TIME)
+                    || prev_flip_time < flip::PITCHLOCK_EXTRA_TIME)
             {
                 pitch_torque_scale = 0.0;
             }
@@ -623,7 +623,8 @@ impl Car {
             self.state.has_flipped = false;
             self.state.air_time = 0.0;
             self.state.air_time_since_jump = 0.0;
-            self.state.flip_time = 0.0;
+            self.state.flip_time += TICK_TIME;
+
             return false;
         }
 
@@ -739,9 +740,7 @@ impl Car {
             return !still_flipping;
         }
 
-        if self.state.has_flipped {
-            self.state.flip_time += TICK_TIME;
-        }
+        self.state.flip_time += TICK_TIME;
 
         false
     }

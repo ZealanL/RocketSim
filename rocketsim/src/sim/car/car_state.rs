@@ -40,8 +40,8 @@ pub struct CarState {
     /// Counts ticks since the current jump phase began; reset to 0 on jump
     /// activation and to 1 on the tick the jump ends.
     pub jump_ticks: u32,
-    /// Time since the current flip started.
-    /// It keeps counting after the flip ends until landing.
+    /// Elapsed seconds since the flip activity last changed.
+    /// Advances while inactive, including on the ground.
     pub flip_time: f32,
     /// True during a flip (not an auto-flip, and not after a flip)
     pub is_flipping: bool,
