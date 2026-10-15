@@ -930,6 +930,10 @@ impl Car {
         );
 
         if self.state.is_on_ground {
+            if self.state.is_flipping {
+                self.state.flip_time = 0.0;
+            }
+
             self.state.is_flipping = false;
         }
 
