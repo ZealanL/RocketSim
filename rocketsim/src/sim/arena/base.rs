@@ -257,6 +257,11 @@ impl Arena {
         }
     }
 
+    /// Face count identifying the Hoops net mesh component: it collides
+    /// with the ball only (cars pass through), and the viewer draws it
+    /// translucent for the same reason.
+    pub const HOOPS_NET_FACE_COUNT: usize = 798;
+
     fn setup_arena_collision_shapes(bullet_world: &mut DiscreteDynamicsWorld, game_mode: GameMode) {
         debug_assert!(game_mode != GameMode::TheVoid);
 
@@ -277,7 +282,7 @@ impl Arena {
         for mesh in collision_meshes {
             let is_hoops_net = if game_mode == GameMode::Hoops {
                 // Detect net mesh and disable car collision
-                mesh.shape.get_mesh_interface().get_total_num_faces() == 798
+                mesh.shape.get_mesh_interface().get_total_num_faces() == Self::HOOPS_NET_FACE_COUNT
             } else {
                 false
             };

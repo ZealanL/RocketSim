@@ -1,9 +1,11 @@
 //! Detached viewer binary: live 3D scene streamed from the sim over TCP.
 //!
-//! Usage: `rocketsim-viewer [PORT] [CAM] [flags...]` (defaults: 39201, birds).
-//! CAM is `birds`|`followN`|`director`|`autoN`|`free`; flags: `gpushot`
-//! (GPU-stall timing for profiling). The options menu starts open;
-//! Escape (or pad Start) toggles it.
+//! Usage: `rocketsim-viewer [PORT] [CAM] [-g MODE] [--gpushot]` (defaults:
+//! 39201, birds, soccar). CAM is `birds`|`followN`|`director`|`autoN`|`free`;
+//! MODE is `soccar`|`hoops`|`heatseeker`|`snowday`|`dropshot`|`thevoid` and
+//! sets the pre-connect mesh; once frames arrive the viewer follows the
+//! sim's mode automatically. `gpushot` is GPU-stall timing for profiling.
+//! The options menu starts open; Escape (or pad Start) toggles it.
 
 use std::{
     collections::HashMap,
@@ -11,6 +13,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use clap::Parser;
 use glam::{Mat3, Vec3, Vec3A};
 use glow::HasContext;
 use rocketsim::{CarControls, GameMode};
@@ -43,13 +46,17 @@ use rocketsim_viewer::{
     view,
 };
 use rocketsim_vis::{
+    game_mode_name,
     net_client::{ConnStatus, ControlSender, FrameClient},
+    parse_game_mode,
     photo::init_meshes,
     proto::{ControlMsg, DEFAULT_CONTROL_PORT, DEFAULT_PORT},
 };
 
 /// Owned GL scene: arena + main pipeline + pads + models/textures.
 struct SceneGl {
+    /// Mode the GL objects were uploaded for (rebuild on switches).
+    mode: GameMode,
     arena: ArenaGl,
     prog_main: MainProgram,
     prog_cars: MainInstProgram,
@@ -110,6 +117,7 @@ impl SceneGl {
             );
         }
         Self {
+            mode: mesh.mode,
             arena,
             prog_main,
             prog_cars: MainInstProgram::new(gl),
@@ -917,17 +925,14 @@ impl ViewerApp {
         }
     }
 
-    /// Builds the Soccar containment hull up front (other modes build
+    /// Builds the containment hull for `mode` up front (other modes build
     /// lazily on first sight). Logs tri count + build time.
-    fn warm_bounds(&mut self) {
+    fn warm_bounds(&mut self, mode: GameMode) {
         let t0 = Instant::now();
-        let n = self
-            .bounds
-            .get(GameMode::Soccar)
-            .map(|b| b.tri_count())
-            .unwrap_or(0);
+        let n = self.bounds.get(mode).map(|b| b.tri_count()).unwrap_or(0);
         eprintln!(
-            "rocketsim-viewer: soccar bounds={n} tris ({:.0} ms)",
+            "rocketsim-viewer: {} bounds={n} tris ({:.0} ms)",
+            game_mode_name(mode),
             t0.elapsed().as_secs_f32() * 1000.0
         );
     }
@@ -1195,6 +1200,26 @@ impl eframe::App for ViewerApp {
         let (cam_pos, mut cam_dir, cam_fov, cam_line) = match &client_frame {
             Some(frame) => {
                 let state = &frame.state;
+                // Game-mode switch: a restarted sim may stream a different
+                // mode than the mesh was built for. Rebuild the mesh (the
+                // GL scene follows it on the next paint) and re-point
+                // camera + bounds; a switch hitches one frame.
+                if state.game_mode() != self.mesh.mode {
+                    let mode = state.game_mode();
+                    let mesh = Arc::new(ArenaMesh::build(mode));
+                    self.soup_verts = mesh.soup_verts;
+                    self.welded_verts = mesh.welded_verts();
+                    self.n_indices = mesh.index_count();
+                    self.mesh = mesh;
+                    self.warm_bounds(mode);
+                    if let Some(man) = self.cam_man.as_mut() {
+                        man.set_game_mode(mode);
+                    }
+                    eprintln!(
+                        "rocketsim-viewer: game mode switched to {}",
+                        game_mode_name(mode)
+                    );
+                }
                 // Containment hull for this mode (lazy; TheVoid = None).
                 let bounds = self.bounds.get(state.game_mode());
                 if self.cam_man.is_none() {
@@ -2220,7 +2245,12 @@ impl eframe::App for ViewerApp {
                         );
                         let t0 = Instant::now();
                         let mut guard = scene.lock().expect("viewer scene poisoned");
-                        let scene = guard.get_or_insert_with(|| SceneGl::new(gl, &mesh));
+                        // Rebuild on game-mode switches (mesh + bounds follow
+                        // the stream; a switch hitches one frame).
+                        if guard.as_ref().is_none_or(|s| s.mode != mesh.mode) {
+                            *guard = Some(SceneGl::new(gl, &mesh));
+                        }
+                        let scene: &mut SceneGl = guard.as_mut().expect("viewer scene built");
                         scene.arena.draw(
                             gl,
                             (x_px, y_px, w_px, h_px),
@@ -2340,30 +2370,56 @@ impl eframe::App for ViewerApp {
     }
 }
 
+/// Command line: `rocketsim-viewer [PORT] [CAM] [-g MODE] [--gpushot]`.
+/// PORT/CAM stay positional (pre-clap usage keeps working).
+#[derive(clap::Parser)]
+#[command(name = "rocketsim-viewer", version)]
+struct Cli {
+    /// TCP port the viewer listens on (the sim dials it).
+    #[arg(default_value_t = DEFAULT_PORT)]
+    port: u16,
+    /// Start camera: birds|followN|director|autoN|free.
+    #[arg(default_value = "birds")]
+    cam: String,
+    /// Initial arena mesh + containment (pre-connect placeholder); the
+    /// viewer follows the sim's mode automatically once frames arrive.
+    #[arg(short, long, default_value = "soccar", value_parser = parse_mode)]
+    game_mode: GameMode,
+    /// GPU-stall timing for profiling.
+    #[arg(long)]
+    gpushot: bool,
+}
+
+/// Clap parser over the shared [`parse_game_mode`] vocabulary.
+fn parse_mode(s: &str) -> Result<GameMode, String> {
+    parse_game_mode(s).ok_or_else(|| {
+        format!("unknown game mode '{s}' (soccar|hoops|heatseeker|snowday|dropshot|thevoid|void)")
+    })
+}
+
 fn main() {
     init_meshes();
-    let args: Vec<String> = std::env::args().collect();
-    let port: u16 = args
-        .get(1)
-        .and_then(|a| a.parse().ok())
-        .unwrap_or(DEFAULT_PORT);
+    let cli = Cli::parse();
+    let port = cli.port;
     // Start camera: `birds` default; `followN`, `director`, `autoN`,
     // `free`. Runtime: `1-8` follow, `9` director, `0` autocam,
     // `F` free camera, `C` cycle, `Space` ball-cam.
     // Driving (WASD + mouse, Backspace/F2/F4) needs this window focused.
     // The options menu starts open (cursor free); Escape toggles it.
-    let init_mode = StartMode::parse(args.get(2).map(|s| s.as_str()).unwrap_or(""));
+    let init_mode = StartMode::parse(&cli.cam);
     let menu_open = true;
-    let measure_gpu = args.iter().any(|a| a == "gpushot");
+    // `gpushot` also accepted bare (pre-clap usage) anywhere in argv.
+    let measure_gpu = cli.gpushot || std::env::args().any(|a| a == "gpushot");
     // Load settings (creates the file on first run).
     let settings = ViewerSettings::load();
     settings.save();
     let addr = format!("127.0.0.1:{port}");
     eprintln!("rocketsim-viewer: listening on {addr} (sim should dial this addr)");
 
-    let mesh = Arc::new(ArenaMesh::build(GameMode::Soccar));
+    let mesh = Arc::new(ArenaMesh::build(cli.game_mode));
     eprintln!(
-        "rocketsim-viewer: soccar soup={} welded={} idx={}",
+        "rocketsim-viewer: {} soup={} welded={} idx={}",
+        game_mode_name(cli.game_mode),
         mesh.soup_verts,
         mesh.welded_verts(),
         mesh.index_count()
@@ -2398,7 +2454,7 @@ fn main() {
                 measure_gpu,
                 controls,
             );
-            app.warm_bounds();
+            app.warm_bounds(cli.game_mode);
             Ok(Box::new(app) as _)
         }),
     ) {

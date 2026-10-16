@@ -32,11 +32,39 @@ pub mod photo;
 pub mod proto;
 
 pub use net_vis::{NetVis, ensure_viewer_running};
-use rocketsim::Arena;
+use rocketsim::{Arena, GameMode};
 
 /// Default viewer address for [`ArenaVisExt::set_vis_enabled`]
 /// (matches [`proto::DEFAULT_PORT`]).
 pub const DEFAULT_VIEWER_ADDR: &str = "127.0.0.1:39201";
+
+/// Canonical lowercase name for a [`GameMode`], inverse of
+/// [`parse_game_mode`] (used in log lines).
+pub fn game_mode_name(mode: GameMode) -> &'static str {
+    match mode {
+        GameMode::Soccar => "soccar",
+        GameMode::Hoops => "hoops",
+        GameMode::Heatseeker => "heatseeker",
+        GameMode::Snowday => "snowday",
+        GameMode::Dropshot => "dropshot",
+        GameMode::TheVoid => "thevoid",
+    }
+}
+/// Parses an arena game mode name (case-insensitive): `soccar`, `hoops`,
+/// `heatseeker`, `snowday`, `dropshot`, `thevoid`, or `void`. Shared by the
+/// viewer binary and the sim examples so `-g hoops` means the same
+/// everywhere; `None` for anything else.
+pub fn parse_game_mode(text: &str) -> Option<GameMode> {
+    match text.to_lowercase().as_str() {
+        "soccar" => Some(GameMode::Soccar),
+        "hoops" => Some(GameMode::Hoops),
+        "heatseeker" => Some(GameMode::Heatseeker),
+        "snowday" => Some(GameMode::Snowday),
+        "dropshot" => Some(GameMode::Dropshot),
+        "thevoid" | "void" => Some(GameMode::TheVoid),
+        _ => None,
+    }
+}
 
 /// Extension trait that attaches/detaches the detached viewer to an arena.
 ///
@@ -111,5 +139,18 @@ mod tests {
         assert!(arena.is_vis_enabled());
         arena.set_vis_enabled(false);
         assert!(!arena.is_vis_enabled());
+    }
+
+    #[test]
+    fn game_mode_names_parse() {
+        assert_eq!(parse_game_mode("soccar"), Some(GameMode::Soccar));
+        assert_eq!(parse_game_mode("Hoops"), Some(GameMode::Hoops));
+        assert_eq!(parse_game_mode("HEATSEEKER"), Some(GameMode::Heatseeker));
+        assert_eq!(parse_game_mode("snowday"), Some(GameMode::Snowday));
+        assert_eq!(parse_game_mode("dropshot"), Some(GameMode::Dropshot));
+        assert_eq!(parse_game_mode("thevoid"), Some(GameMode::TheVoid));
+        assert_eq!(parse_game_mode("void"), Some(GameMode::TheVoid));
+        assert_eq!(parse_game_mode("soccer"), None);
+        assert_eq!(parse_game_mode(""), None);
     }
 }

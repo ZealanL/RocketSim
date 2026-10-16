@@ -66,6 +66,9 @@ menu opens or the window loses focus. An unfocused window never drives.
 cargo run -p rocketsim_vis --example minimal
 # Interactive driveable demo (drive from the viewer window)
 cargo run -p rocketsim_vis --example drive
+# Hoops: the viewer follows the sim's mode on its own (its -g only sets
+# the pre-connect mesh)
+cargo run -p rocketsim_vis --example drive -- -g hoops
 ```
 
 ## Assets

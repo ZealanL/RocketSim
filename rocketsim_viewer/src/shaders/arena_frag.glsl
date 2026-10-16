@@ -12,6 +12,10 @@ uniform mat4 u_model;
 uniform mat4 u_view;
 uniform mat4 u_proj;
 
+// Per-pass opacity: 1.0 for the opaque bowl, lower for the translucent
+// Hoops net (same shader, no second program).
+uniform float u_alpha;
+
 out vec4 out_frag_color;
 
 bool is_pos_in_goal(vec3 pos) {
@@ -81,5 +85,5 @@ void main() {
     float VERTICAL_GRID_COLOR_SCALE = 0.3;
     float team_color_frac = grid_val * (((1.0 - vertical_frac) * VERTICAL_GRID_COLOR_SCALE) + (1.0 - VERTICAL_GRID_COLOR_SCALE));
     vec3 team_color = team_color_from_pos(fs_pos * team_color_frac);
-    out_frag_color = vec4(grid_light * team_color * brightness, 1.0);
+    out_frag_color = vec4(grid_light * team_color * brightness, u_alpha);
 }

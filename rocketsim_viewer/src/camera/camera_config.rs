@@ -6,6 +6,7 @@
 //! constants, so sparse/old TOML files parse with RL values (never 0.0).
 
 use glam::Vec3A;
+use rocketsim::GameMode;
 use serde::{Deserialize, Serialize};
 
 /// RL default boom length (uu).
@@ -22,6 +23,17 @@ pub const D_TRANSITION: f32 = 1.2;
 pub const D_FOV: f32 = 110.0;
 /// RL default birds-eye position (uu).
 pub const D_BIRDS_EYE: Vec3A = Vec3A::new(-3000.0, 0.0, 1500.0);
+
+/// Default wide-view pose per mode. The Soccar default sits in open air
+/// there, but those same coordinates sit inside Hoops rim geometry, so
+/// Hoops gets a farther, higher anchor with the same downward tilt. An
+/// explicit `birds_eye_pos` in settings always wins (see `CameraMan`).
+pub fn default_birds_eye(game_mode: GameMode) -> Vec3A {
+    match game_mode {
+        GameMode::Hoops => Vec3A::new(0.0, -6000.0, 3500.0),
+        _ => D_BIRDS_EYE,
+    }
+}
 
 /// Tuning for the follow-car camera.
 #[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]

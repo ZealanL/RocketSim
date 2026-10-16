@@ -106,27 +106,34 @@ fn merge_two(a: &ArenaPart, b: &ArenaPart) -> (Vec<Vec3>, Vec<Vec3>, Vec<Vec2>, 
     (verts, normals, uvs, indices)
 }
 
-/// Owned GL objects for the arena: the cutaway bowl (always drawn) plus
-/// the roof (enclosed/interior views only). Shell + field + low planes
-/// merge at init (1 draw); roof adds 1 more when enclosed.
+/// Owned GL objects for the arena: the cutaway bowl (always drawn), the
+/// roof (enclosed/interior views only), and the translucent Hoops net
+/// (drawn last, never occludes). Shell + field + low planes merge at init
+/// (1 draw); roof adds 1 more when enclosed; net adds 1 more in Hoops.
 pub struct ArenaGl {
     prog: glow::Program,
     u_model: glow::UniformLocation,
     u_view: glow::UniformLocation,
     u_proj: glow::UniformLocation,
+    u_alpha: glow::UniformLocation,
     white: TextureGl,
     cut: PartGl,
     roof: PartGl,
+    net: PartGl,
 }
 
+/// Hoops-net opacity: visible as netting, see-through for play.
+const NET_ALPHA: f32 = 0.3;
+
 impl ArenaGl {
-    /// Uploads both merged parts; panics with logs on failure.
-    /// Empty parts (TheVoid) build valid objects.
+    /// Uploads all parts; panics with logs on failure.
+    /// Empty parts (TheVoid, net outside Hoops) build valid objects.
     pub fn new(gl: &glow::Context, mesh: &ArenaMesh) -> Self {
         let prog = compile_program(gl, "arena", ARENA_VERT_SRC, ARENA_FRAG_SRC);
         let u_model = uniform_location(gl, prog, "arena", "u_model");
         let u_view = uniform_location(gl, prog, "arena", "u_view");
         let u_proj = uniform_location(gl, prog, "arena", "u_proj");
+        let u_alpha = uniform_location(gl, prog, "arena", "u_alpha");
         unsafe {
             gl.use_program(Some(prog));
             gl.uniform_1_i32(gl.get_uniform_location(prog, "u_texture").as_ref(), 0);
@@ -146,20 +153,32 @@ impl ArenaGl {
         let cut = PartGl::new(gl, &v, &n, &u, &i);
         let (v, n, u, i) = merge_two(&mesh.lid, &mesh.planes_high);
         let roof = PartGl::new(gl, &v, &n, &u, &i);
+        // Net draws unmerged (its own alpha pass below).
+        let net = PartGl::new(
+            gl,
+            &mesh.net.verts,
+            &mesh.net.normals,
+            &mesh.net.uvs,
+            &mesh.net.indices,
+        );
         Self {
             prog,
             u_model,
             u_view,
             u_proj,
+            u_alpha,
             white,
             cut,
             roof,
+            net,
         }
     }
 
     /// Draws the cutaway in ONE draw, plus the roof in ONE draw when
-    /// `enclosed`. Viewport in GL pixels. Resets all shared GL state first
-    /// (egui painter state leaks: every draw owns its state).
+    /// `enclosed`, plus the translucent net in ONE draw when the mesh has
+    /// one (Hoops only; empty VAOs draw nothing). Viewport in GL pixels.
+    /// Resets all shared GL state first (egui painter state leaks: every
+    /// draw owns its state).
     pub fn draw(
         &self,
         gl: &glow::Context,
@@ -184,12 +203,25 @@ impl ArenaGl {
             gl.uniform_matrix_4_f32_slice(Some(&self.u_view), false, &view.to_cols_array());
             gl.uniform_matrix_4_f32_slice(Some(&self.u_proj), false, &proj.to_cols_array());
             self.white.bind(gl);
+            gl.uniform_1_f32(Some(&self.u_alpha), 1.0);
             gl.bind_vertex_array(Some(self.cut.vao));
             gl.draw_elements(glow::TRIANGLES, self.cut.n_indices, glow::UNSIGNED_INT, 0);
             if enclosed {
                 gl.bind_vertex_array(Some(self.roof.vao));
                 gl.draw_elements(glow::TRIANGLES, self.roof.n_indices, glow::UNSIGNED_INT, 0);
             }
+            // Translucent net last: depth-tested against the opaque bowl
+            // so walls in front occlude it, but writes no depth itself so
+            // overlapping net layers blend instead of z-fighting. Empty
+            // outside Hoops (zero-index draw is a no-op).
+            gl.enable(glow::BLEND);
+            gl.blend_func(glow::SRC_ALPHA, glow::ONE_MINUS_SRC_ALPHA);
+            gl.depth_mask(false);
+            gl.uniform_1_f32(Some(&self.u_alpha), NET_ALPHA);
+            gl.bind_vertex_array(Some(self.net.vao));
+            gl.draw_elements(glow::TRIANGLES, self.net.n_indices, glow::UNSIGNED_INT, 0);
+            gl.depth_mask(true);
+            gl.disable(glow::BLEND);
             gl.bind_vertex_array(None);
             gl.use_program(None);
         }
@@ -200,6 +232,7 @@ impl ArenaGl {
         unsafe {
             self.cut.destroy(gl);
             self.roof.destroy(gl);
+            self.net.destroy(gl);
             self.white.destroy(gl);
             gl.delete_program(self.prog);
         }

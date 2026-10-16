@@ -14,10 +14,11 @@
 //! * Live mutators (unlimited boost, regen, flips) toggle in the viewer
 //!   menu and apply per tick; all off = unmodded RL behavior.
 //!
-//! Run with: `cargo run -p rocketsim_vis --example drive`
+//! Run with: `cargo run -p rocketsim_vis --example drive -- [-g hoops]`
 
 use std::time::{Duration, Instant};
 
+use clap::Parser;
 use glam::Vec3A;
 use rocketsim::{Arena, ArenaConfig, CarBodyConfig, CarControls, GameMode, Team};
 use rocketsim_vis::{
@@ -25,6 +26,7 @@ use rocketsim_vis::{
     mutators::Mutators,
     net_vis::ControlServer,
     pace::TickPacer,
+    parse_game_mode,
     photo::init_meshes,
     proto::{DEFAULT_CONTROL_PORT, MUT_KNOWN_MASK},
 };
@@ -32,11 +34,28 @@ use rocketsim_vis::{
 /// No fresh viewer input for this long → drive neutral (viewer gone/stalled).
 const STALE_AFTER: Duration = Duration::from_millis(250);
 
+/// Driveable demo sim: `drive [-g MODE]` (defaults: soccar).
+#[derive(clap::Parser)]
+#[command(name = "drive", version)]
+struct Cli {
+    /// Arena game mode (the viewer follows automatically).
+    #[arg(short, long, default_value = "soccar", value_parser = parse_mode)]
+    game_mode: GameMode,
+}
+
+/// Clap parser over the shared [`parse_game_mode`] vocabulary.
+fn parse_mode(s: &str) -> Result<GameMode, String> {
+    parse_game_mode(s).ok_or_else(|| {
+        format!("unknown game mode '{s}' (soccar|hoops|heatseeker|snowday|dropshot|thevoid|void)")
+    })
+}
+
 fn main() {
     init_meshes();
+    let cli = Cli::parse();
     let mut arena = Arena::new_with_config(ArenaConfig {
         rng_seed: Some(0),
-        ..ArenaConfig::new(GameMode::Soccar)
+        ..ArenaConfig::new(cli.game_mode)
     });
 
     let car_idx = arena.add_car(Team::Blue, CarBodyConfig::OCTANE);

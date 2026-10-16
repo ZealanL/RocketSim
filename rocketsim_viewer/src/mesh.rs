@@ -6,7 +6,7 @@
 //! corner values, so no epsilon is needed.
 
 use glam::{EulerRot, Mat3, Mat4, Vec2, Vec3};
-use rocketsim::{CollisionMeshFile, GameMode, consts::BT_TO_UU};
+use rocketsim::{Arena, CollisionMeshFile, GameMode, consts::BT_TO_UU};
 use rustc_hash::FxHashMap;
 
 use crate::obj::smooth_normals;
@@ -21,18 +21,29 @@ pub struct SoupMesh {
 }
 
 impl SoupMesh {
+    /// Expands one collision-mesh component to soup (mid UVs — physics has
+    /// no UVs).
+    fn from_mesh(mesh: &CollisionMeshFile) -> Self {
+        let mut verts = Vec::new();
+        let mut uvs = Vec::new();
+        let m_verts = mesh.get_vertices();
+        for tri in mesh.get_indices().chunks(3) {
+            for &i in tri {
+                verts.push(Vec3::from(m_verts[i]) * BT_TO_UU);
+                uvs.push(Vec2::splat(0.5));
+            }
+        }
+        Self { verts, uvs }
+    }
+
     /// Expands collision-mesh tris to soup (mid UVs — physics has no UVs).
     pub fn from_arena_meshes(meshes: &[CollisionMeshFile]) -> Self {
         let mut verts = Vec::new();
         let mut uvs = Vec::new();
         for mesh in meshes {
-            let m_verts = mesh.get_vertices();
-            for tri in mesh.get_indices().chunks(3) {
-                for &i in tri {
-                    verts.push(Vec3::from(m_verts[i]) * BT_TO_UU);
-                    uvs.push(Vec2::splat(0.5));
-                }
-            }
+            let soup = Self::from_mesh(mesh);
+            verts.extend_from_slice(&soup.verts);
+            uvs.extend_from_slice(&soup.uvs);
         }
         Self { verts, uvs }
     }
@@ -153,10 +164,15 @@ impl ArenaPart {
 /// Backdrop planes sit 5uu outside the mesh extent (the hull curves bulge
 /// past the logic AABB; AABB-placed walls ended up inside the hull).
 pub struct ArenaMesh {
+    /// Mode this mesh was built for (drives scene rebuilds on switches).
+    pub mode: GameMode,
     /// Hull without ceiling (walls, goals, curbs).
     pub shell: ArenaPart,
     /// Hull ceiling (hidden for open-bowl shots, shown from inside).
     pub lid: ArenaPart,
+    /// Hoops net (ball-only collision): drawn translucent, never occludes.
+    /// Empty in every other mode.
+    pub net: ArenaPart,
     /// Procedural field cap (the visible playing surface).
     pub field: ArenaPart,
     /// Backdrop floor + side walls.
@@ -176,8 +192,30 @@ impl ArenaMesh {
     /// part. Needs [`crate::photo::init_meshes`] first (same as the sim).
     /// TheVoid has no hull — shell/lid stay empty, planes still build.
     pub fn build(game_mode: GameMode) -> Self {
-        let hull_soup =
-            SoupMesh::from_arena_meshes(&rocketsim::get_arena_collision_mesh_files(game_mode));
+        // The Hoops net collides with the ball only (cars pass through;
+        // see `Arena::HOOPS_NET_FACE_COUNT`): it welds/draws as its own
+        // part so the viewer can render it translucent. Everything else
+        // is hull.
+        let mut hull_soup = SoupMesh {
+            verts: Vec::new(),
+            uvs: Vec::new(),
+        };
+        let mut net_soup = SoupMesh {
+            verts: Vec::new(),
+            uvs: Vec::new(),
+        };
+        for mesh in &rocketsim::get_arena_collision_mesh_files(game_mode) {
+            let is_net = game_mode == GameMode::Hoops
+                && mesh.get_indices().len() / 3 == Arena::HOOPS_NET_FACE_COUNT;
+            let soup = SoupMesh::from_mesh(mesh);
+            let dest = if is_net {
+                &mut net_soup
+            } else {
+                &mut hull_soup
+            };
+            dest.verts.extend_from_slice(&soup.verts);
+            dest.uvs.extend_from_slice(&soup.uvs);
+        }
         let mut shell_soup = SoupMesh {
             verts: Vec::new(),
             uvs: Vec::new(),
@@ -246,12 +284,15 @@ impl ArenaMesh {
         let planes_high_soup = SoupMesh::concat(&[&ceiling]);
         let soup_verts = shell_soup.verts.len()
             + lid_soup.verts.len()
+            + net_soup.verts.len()
             + field_soup.verts.len()
             + planes_low_soup.verts.len()
             + planes_high_soup.verts.len();
         Self {
+            mode: game_mode,
             shell: ArenaPart::from_soup(&shell_soup),
             lid: ArenaPart::from_soup(&lid_soup),
+            net: ArenaPart::from_soup(&net_soup),
             field: ArenaPart::from_soup(&field_soup),
             planes_low: ArenaPart::from_soup(&planes_low_soup),
             planes_high: ArenaPart::from_soup(&planes_high_soup),
@@ -263,6 +304,7 @@ impl ArenaMesh {
     pub fn welded_verts(&self) -> usize {
         self.shell.verts.len()
             + self.lid.verts.len()
+            + self.net.verts.len()
             + self.field.verts.len()
             + self.planes_low.verts.len()
             + self.planes_high.verts.len()
@@ -272,6 +314,7 @@ impl ArenaMesh {
     pub fn index_count(&self) -> usize {
         self.shell.indices.len()
             + self.lid.indices.len()
+            + self.net.indices.len()
             + self.field.indices.len()
             + self.planes_low.indices.len()
             + self.planes_high.indices.len()
@@ -328,12 +371,27 @@ mod tests {
         );
         check_part(&mesh.shell, &format!("{label} shell"));
         check_part(&mesh.lid, &format!("{label} lid"));
+        check_part(&mesh.net, &format!("{label} net"));
         check_part(&mesh.field, &format!("{label} field"));
         check_part(&mesh.planes_low, &format!("{label} planes-low"));
         check_part(&mesh.planes_high, &format!("{label} planes-high"));
         // Partition accounting (every hull soup tri lands in shell xor lid)
         // is structural: weld preserves tri counts, and `lid_is_only_roof`
         // pins the classification boundary.
+    }
+
+    #[test]
+    fn mesh_remembers_its_mode() {
+        crate::photo::init_meshes();
+        // The GL scene rebuilds off this tag on stream-mode switches.
+        for mode in [
+            GameMode::Soccar,
+            GameMode::Hoops,
+            GameMode::Dropshot,
+            GameMode::TheVoid,
+        ] {
+            assert_eq!(ArenaMesh::build(mode).mode, mode);
+        }
     }
 
     #[test]
@@ -345,6 +403,39 @@ mod tests {
         let ratio = mesh.soup_verts as f64 / mesh.welded_verts() as f64;
         // Measured ~5.4x; 4x is generous headroom against hull changes.
         assert!(ratio >= 4.0, "weld win collapsed: {ratio:.2}x");
+    }
+
+    #[test]
+    fn hoops_net_splits_translucent() {
+        crate::photo::init_meshes();
+        // The 798-face net collides with the ball only: it must leave the
+        // opaque shell and land whole in the translucent net part (weld
+        // preserves tri counts, so the split is exact).
+        let hoops = ArenaMesh::build(GameMode::Hoops);
+        check_sanity(&hoops, "hoops");
+        // Whole 798-face components only (two rims → two net components);
+        // mirrors the sim's per-component HoopsNet rule.
+        let net_tris = hoops.net.indices.len() / 3;
+        assert_ne!(net_tris, 0, "hoops net must be non-empty");
+        assert_eq!(
+            net_tris % Arena::HOOPS_NET_FACE_COUNT,
+            0,
+            "hoops net must hold whole net components (got {net_tris} tris)"
+        );
+        // No other mode has a net part.
+        for mode in [
+            GameMode::Soccar,
+            GameMode::Heatseeker,
+            GameMode::Snowday,
+            GameMode::Dropshot,
+            GameMode::TheVoid,
+        ] {
+            let mesh = ArenaMesh::build(mode);
+            assert!(
+                mesh.net.indices.is_empty(),
+                "{mode:?} must have no net part"
+            );
+        }
     }
 
     #[test]

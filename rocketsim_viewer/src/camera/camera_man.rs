@@ -7,7 +7,9 @@
 use glam::Vec3A;
 use rocketsim::{ArenaState, GameMode};
 
-use crate::camera::{CameraConfig, CarCam, CarCamSmoothing, clamp_dt};
+use crate::camera::{
+    CameraConfig, CarCam, CarCamSmoothing, D_BIRDS_EYE, clamp_dt, default_birds_eye,
+};
 
 enum CameraViewMode {
     BirdsEye,
@@ -16,7 +18,7 @@ enum CameraViewMode {
 
 /// Persistent camera state: birds-eye or following one car.
 pub struct CameraMan {
-    _game_mode: GameMode,
+    game_mode: GameMode,
     config: CameraConfig,
     cur_pos: Vec3A,
     cur_dir: Vec3A,
@@ -29,22 +31,42 @@ pub struct CameraMan {
 }
 
 impl CameraMan {
-    /// Starts in birds-eye view, looking from `config.birds_eye_pos`.
+    /// Starts in birds-eye view, looking from the effective wide anchor.
     pub fn new(game_mode: GameMode, config: CameraConfig) -> Self {
+        let base = Self::birds_base(game_mode, &config);
         Self {
-            _game_mode: game_mode,
+            game_mode,
             config,
-            cur_pos: config.birds_eye_pos,
-            cur_dir: -config.birds_eye_pos.normalize_or_zero(),
+            cur_pos: base,
+            cur_dir: -base.normalize_or_zero(),
             smooth: CarCamSmoothing::new(),
             demo_frozen_pos: None,
             view_mode: CameraViewMode::BirdsEye,
         }
     }
 
+    /// Wide-view anchor: the user's `birds_eye_pos` setting, unless it is
+    /// still the Soccar default in a mode whose geometry collides with it
+    /// (Hoops rim) — then the per-mode default. An explicit user value
+    /// always wins, in every mode.
+    fn birds_base(game_mode: GameMode, config: &CameraConfig) -> Vec3A {
+        if config.birds_eye_pos == D_BIRDS_EYE {
+            default_birds_eye(game_mode)
+        } else {
+            config.birds_eye_pos
+        }
+    }
+
     /// Current camera position in uu.
     pub fn cur_pos(&self) -> Vec3A {
         self.cur_pos
+    }
+
+    /// Retargets an existing manager at a new stream mode (mesh switches
+    /// without losing follow state); the wide anchor follows on the next
+    /// update.
+    pub fn set_game_mode(&mut self, game_mode: GameMode) {
+        self.game_mode = game_mode;
     }
 
     /// Current normalized view direction.
@@ -130,9 +152,9 @@ impl CameraMan {
         };
         match follow {
             None => {
-                self.cur_pos = self.config.birds_eye_pos;
-                self.cur_dir =
-                    (arena_state.ball.pos - self.config.birds_eye_pos).normalize_or_zero();
+                let base = Self::birds_base(self.game_mode, &self.config);
+                self.cur_pos = base;
+                self.cur_dir = (arena_state.ball.pos - base).normalize_or_zero();
             }
             Some((car_idx, face_ball)) => {
                 let demoed = arena_state
@@ -209,11 +231,54 @@ mod tests {
     }
 
     #[test]
+    fn wide_anchor_follows_mode_until_customized() {
+        // Fresh (Soccar-default) settings track the per-mode default ...
+        let def = CameraConfig::default();
+        assert_eq!(CameraMan::birds_base(GameMode::Soccar, &def), D_BIRDS_EYE);
+        let hoops = CameraMan::birds_base(GameMode::Hoops, &def);
+        assert_ne!(hoops, D_BIRDS_EYE);
+        // ... and the Hoops anchor clears the rim geometry (logic AABB
+        // grown by a 500uu margin; the old shared anchor sat inside it).
+        let aabb = rocketsim::consts::arena::get_aabb(GameMode::Hoops);
+        let m = 500.0;
+        let outside = hoops.x < aabb.min.x - m
+            || hoops.x > aabb.max.x + m
+            || hoops.y < aabb.min.y - m
+            || hoops.y > aabb.max.y + m
+            || hoops.z < aabb.min.z - m
+            || hoops.z > aabb.max.z + m;
+        assert!(outside, "hoops wide anchor inside arena: {hoops:?}");
+        // ... while an explicit user value always wins, in every mode.
+        let mut custom = CameraConfig::default();
+        custom.birds_eye_pos = Vec3A::new(1.0, 2.0, 3.0);
+        assert_eq!(
+            CameraMan::birds_base(GameMode::Hoops, &custom),
+            custom.birds_eye_pos
+        );
+        assert_eq!(
+            CameraMan::birds_base(GameMode::Soccar, &custom),
+            custom.birds_eye_pos
+        );
+    }
+
+    #[test]
+    fn retargeting_modes_moves_wide_anchor() {
+        // Mesh switches must not lose follow state, but the wide anchor
+        // follows the new mode on the next update.
+        let mut man = CameraMan::new(GameMode::Soccar, CameraConfig::default());
+        let mut state = test_state();
+        man.update(&state, 1.0 / 120.0);
+        assert_eq!(man.cur_pos(), D_BIRDS_EYE);
+        man.set_game_mode(GameMode::Hoops);
+        man.update(&state, 1.0 / 120.0);
+        assert_eq!(man.cur_pos(), default_birds_eye(GameMode::Hoops));
+    }
+
+    #[test]
     fn cycle_and_toggle() {
         let state = test_state();
         let mut man = CameraMan::new(GameMode::Soccar, CameraConfig::default());
         assert!(man.car_cam().is_none());
-
         // Direct select valid + out-of-range (ignored, keeps current).
         man.follow_car(&state, 1);
         assert_eq!(man.car_cam().unwrap().car_idx, 1);
