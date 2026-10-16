@@ -446,7 +446,10 @@ impl Car {
                 && rel_dodge_torque.y.signum() == self.state.controls.pitch.signum()
                 && prev_flip_time >= flip::PITCH_CANCEL_GATE_MIN_TIME
             {
-                pitch_scale = 1.0 - self.state.controls.pitch.abs().min(1.0);
+                pitch_scale = 1.0
+                    - quantize_axis_input(-self.state.controls.pitch)
+                        .abs()
+                        .min(1.0);
             }
 
             rel_dodge_torque.y *= pitch_scale;
