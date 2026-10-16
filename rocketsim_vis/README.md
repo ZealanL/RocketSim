@@ -1,18 +1,17 @@
 # rocketsim_vis
 
-3D visualizer for [RocketSim](https://github.com/ZealanL/RocketSim) games (eframe + egui).
+Lightweight network interface for the RocketSim detached viewer: frame
+streaming, driving inputs, bindings, and the viewer launcher. No window,
+no renderer — sim crates depend on this, not on `rocketsim_vis`.
 
-Enable it on any `rocketsim::Arena` and a window opens on a background thread,
-following the cars, ball, and boost pads while you keep stepping ticks.
+Enable it on any `rocketsim::Arena` and it streams ticks to a viewer:
 
-## Quick start
-
-```rust
-use rocketsim::{Arena, ArenaConfig, CarBodyConfig, GameMode, Team, init_from_default};
+```rust,no_run
+use rocketsim::{Arena, CarBodyConfig, GameMode, Team, init_from_default};
 use rocketsim_vis::ArenaVisExt;
 
 init_from_default(true).unwrap();
-let mut arena = Arena::new_with_config(ArenaConfig::new(GameMode::Soccar));
+let mut arena = Arena::new(GameMode::Soccar);
 arena.add_car(Team::Blue, CarBodyConfig::OCTANE);
 arena.reset_to_random_kickoff(None);
 arena.set_vis_enabled(true);
@@ -21,38 +20,8 @@ for _ in 0..240 {
     arena.step_tick();
     std::thread::sleep(std::time::Duration::from_millis(8));
 }
+arena.set_vis_enabled(false);
 ```
 
-Disabling is symmetric: `arena.set_vis_enabled(false)` drops the window.
-Calling it with the current state is a no-op.
-
-## Controls
-
-Viewer window (needs focus; input is read in-window so it works on
-Wayland):
-
-* `C` — cycle camera: wide view, then each car in order
-* `Space` — toggle ball cam while following a car
-* `1-8` — follow a car, `9` director, `0` auto cam, `F` free camera
-* WASD + mouse — drive the car you follow (other views send neutral)
-* `Backspace` or the settings-menu "Reset play" button — reset to kickoff
-* `Esc` — options menu (sliders, camera presets, overlays)
-* Pad: Options/Start toggles the menu · D-pad/left stick moves ·
-  A selects · B backs out · ◀▶ adjust sliders · right stick looks
-
-While playing, the mouse is captured by the 3D view; it returns when the
-menu opens or the window loses focus. An unfocused window never drives.
-
-## Examples
-
-```sh
-# Smallest streaming sim, no input (launches vis_viewer if needed)
-cargo run --example minimal
-# Interactive driveable demo (drive from the viewer window)
-cargo run --example drive
-```
-
-## Assets
-
-Car/ball/arena models are by ZealanL (see `src/models/MODEL_LICENSE_README.md`):
-credit ZealanL and don't sell them.
+The viewer itself lives in `rocketsim_viewer` (`rocketsim-viewer` binary).
+Wire format is in `src/proto.rs`.

@@ -59,7 +59,7 @@ pub const MUT_KNOWN_MASK: u8 =
 ///
 /// ```rust
 /// use rocketsim::CarControls;
-/// use rocketsim_vis_net::proto::{ControlMsg, decode_control, encode_control};
+/// use rocketsim_vis::proto::{ControlMsg, decode_control, encode_control};
 ///
 /// let msg = ControlMsg::new(0, CarControls::default(), 0b001, 1).with_mutators(0b0001);
 /// let bytes = encode_control(&msg);

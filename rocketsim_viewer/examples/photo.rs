@@ -3,7 +3,7 @@
 //! Fixed seed-0 Soccar scene (blue drives, orange idles), 600 ticks,
 //! streams to the viewer and prints ball/car0 checksums.
 //!
-//! Run with: `cargo run -p rocketsim_vis --example photo`
+//! Run with: `cargo run -p rocketsim_viewer --example photo`
 
 use rocketsim_vis::{
     ArenaVisExt, ensure_viewer_running,

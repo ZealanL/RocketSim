@@ -10,7 +10,7 @@
 # Example (prove the harness with a trivial client):
 #   tools/vis-shot.sh /tmp/probe.png -- xterm -e 'sleep 5'
 # Example (viewer + sim):
-#   tools/vis-shot.sh -w 8 /tmp/shot.png -- ./target/debug/vis_viewer 39201
+#   tools/vis-shot.sh -w 8 /tmp/shot.png -- ./target/debug/rocketsim-viewer 39201
 #
 # The Xephyr server is left running for reuse across shots.
 set -euo pipefail

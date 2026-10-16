@@ -1,8 +1,8 @@
 //! Headless performance gates for the detached vis transport.
 //!
 //! No window, no viewer, no sleeps: synthetic [`ArenaState`]s exercise
-//! [`proto`](rocketsim_vis_net::proto) framing sizes/speed plus the
-//! [`NetVis`](rocketsim_vis_net::NetVis) hot path (`update` with nobody listening).
+//! [`proto`](rocketsim_vis::proto) framing sizes/speed plus the
+//! [`NetVis`](rocketsim_vis::NetVis) hot path (`update` with nobody listening).
 //! Everything is deterministic (fixed tick, default states, const pad layout).
 //!
 //! States include the real 34-pad Soccar layout from
@@ -17,7 +17,7 @@ use rocketsim::{
     ArenaState, BoostPadConfig, BoostPadState, CarInfo, CarState, GameMode, TileStates, Vis,
     consts::boost_pads::get_locations,
 };
-use rocketsim_vis_net::{
+use rocketsim_vis::{
     NetVis,
     proto::{VisFrame, decode_frame, encode_frame},
 };

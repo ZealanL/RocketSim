@@ -6,7 +6,7 @@
 //! (`0..100`; out-of-range input clamps, NaN maps to empty).
 //!
 //! ```rust
-//! use rocketsim_vis::hud::{boost_fraction, boost_label, is_boost_low};
+//! use rocketsim_viewer::hud::{boost_fraction, boost_label, is_boost_low};
 //!
 //! assert_eq!(boost_fraction(50.0), 0.5);
 //! assert_eq!(boost_label(87.0), "87");

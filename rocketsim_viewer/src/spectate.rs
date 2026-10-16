@@ -1,6 +1,6 @@
 //! Spectate-only input gate (pure, no IO).
 //!
-//! [`gate`] sits between the per-frame input build in `vis_viewer.rs` and
+//! [`gate`] sits between the per-frame input build in `rocketsim-viewer.rs` and
 //! the control-channel send: spectate-only mode (or a non-driving frame)
 //! forces neutral inputs plus zeroed buttons, so held keys and gamepad
 //! blends never reach the sim. Frames still send every tick, so the channel

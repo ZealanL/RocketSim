@@ -30,7 +30,7 @@ const SAVE_DEBOUNCE_SECS: f32 = 1.0;
 /// has a default so old files missing new keys still parse.
 ///
 /// ```rust
-/// use rocketsim_vis::settings::ViewerSettings;
+/// use rocketsim_viewer::settings::ViewerSettings;
 ///
 /// let mut s = ViewerSettings::default();
 /// s.show_boost = false;

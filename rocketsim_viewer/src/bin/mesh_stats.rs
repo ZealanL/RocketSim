@@ -1,9 +1,10 @@
 //! Prints soup-vs-welded vertex budgets per game mode.
 //!
-//! Run with: `cargo run -p rocketsim_vis --bin mesh_stats`
+//! Run with: `cargo run -p rocketsim_viewer --bin mesh_stats`
 
 use rocketsim::GameMode;
-use rocketsim_vis::{mesh::ArenaMesh, photo::init_meshes};
+use rocketsim_viewer::mesh::ArenaMesh;
+use rocketsim_vis::photo::init_meshes;
 
 fn main() {
     init_meshes();

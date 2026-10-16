@@ -1,6 +1,6 @@
 //! Detached viewer binary: live 3D scene streamed from the sim over TCP.
 //!
-//! Usage: `vis_viewer [PORT] [CAM] [flags...]` (defaults: 39201, birds).
+//! Usage: `rocketsim-viewer [PORT] [CAM] [flags...]` (defaults: 39201, birds).
 //! CAM is `birds`|`followN`|`director`|`autoN`|`free`; flags: `gpushot`
 //! (GPU-stall timing for profiling). The options menu starts open;
 //! Escape (or pad Start) toggles it.
@@ -14,7 +14,7 @@ use std::{
 use glam::{Mat3, Vec3, Vec3A};
 use glow::HasContext;
 use rocketsim::{CarControls, GameMode};
-use rocketsim_vis::{
+use rocketsim_viewer::{
     arena_gl::ArenaGl,
     bindings::{
         Bindings, Key, PadAnalog, PadAxis, PadBindings, PadButton, clamp_deadzone, key_down,
@@ -34,16 +34,18 @@ use rocketsim_vis::{
         car_model_name, car_texture_name, group_car_draws, model_matrix,
     },
     mesh::ArenaMesh,
-    net_client::{ConnStatus, ControlSender, FrameClient},
     obj::ObjMesh,
     pads::{build_instances, load_pad_meshes, variant_radius},
     pads_gl::PadsGl,
-    photo::init_meshes,
-    proto::{ControlMsg, DEFAULT_CONTROL_PORT, DEFAULT_PORT},
     settings::ViewerSettings,
     spectate,
     textures::{PngImage, TextureGl},
     view,
+};
+use rocketsim_vis::{
+    net_client::{ConnStatus, ControlSender, FrameClient},
+    photo::init_meshes,
+    proto::{ControlMsg, DEFAULT_CONTROL_PORT, DEFAULT_PORT},
 };
 
 /// Owned GL scene: arena + main pipeline + pads + models/textures.
@@ -76,31 +78,31 @@ impl SceneGl {
         // One ball: plain draw is cheaper than instancing.
         models.insert(
             BALL_MODEL.to_string(),
-            ModelGl::new(gl, &ObjMesh::load(include_str!("../models/ball.obj"))),
+            ModelGl::new(gl, &ObjMesh::load(include_str!("./models/ball.obj"))),
         );
         let mut textures = HashMap::new();
         for (name, png) in [
             (
                 BALL_TEXTURE,
-                include_bytes!("../textures/ball.png").as_slice(),
+                include_bytes!("./textures/ball.png").as_slice(),
             ),
             (
                 "car_blue",
-                include_bytes!("../textures/car_blue.png").as_slice(),
+                include_bytes!("./textures/car_blue.png").as_slice(),
             ),
             (
                 "car_orange",
-                include_bytes!("../textures/car_orange.png").as_slice(),
+                include_bytes!("./textures/car_orange.png").as_slice(),
             ),
         ] {
             textures.insert(name.to_string(), TextureGl::new(gl, &PngImage::decode(png)));
         }
         let mut car_models = HashMap::new();
         for (name, obj) in [
-            ("car_octane", include_str!("../models/car_octane.obj")),
-            ("car_dominus", include_str!("../models/car_dominus.obj")),
-            ("car_breakout", include_str!("../models/car_breakout.obj")),
-            ("car_merc", include_str!("../models/car_merc.obj")),
+            ("car_octane", include_str!("./models/car_octane.obj")),
+            ("car_dominus", include_str!("./models/car_dominus.obj")),
+            ("car_breakout", include_str!("./models/car_breakout.obj")),
+            ("car_merc", include_str!("./models/car_merc.obj")),
         ] {
             car_models.insert(
                 name.to_string(),
@@ -925,7 +927,7 @@ impl ViewerApp {
             .map(|b| b.tri_count())
             .unwrap_or(0);
         eprintln!(
-            "vis_viewer: soccar bounds={n} tris ({:.0} ms)",
+            "rocketsim-viewer: soccar bounds={n} tris ({:.0} ms)",
             t0.elapsed().as_secs_f32() * 1000.0
         );
     }
@@ -2159,7 +2161,7 @@ impl eframe::App for ViewerApp {
             }
         }
 
-        egui::Window::new("rocketsim vis_viewer").show(ctx, |ui| {
+        egui::Window::new("rocketsim viewer").show(ctx, |ui| {
             ui.label(sim_line);
             ui.label(format!("Camera: {cam_line}"));
             ui.label(drive_line);
@@ -2325,7 +2327,16 @@ impl eframe::App for ViewerApp {
             }
         });
         self.cpu_ms = cpu_t0.elapsed().as_secs_f64() * 1000.0;
-        ctx.request_repaint_after(Duration::from_millis(16));
+        // Repaint follows the frame limiter so idle frames are not pinned
+        // to 60Hz: uncapped repaints immediately (busy loop), capped waits
+        // out the rest of this frame's budget (the limiter sleep above
+        // already consumed part of it). Input events still repaint at once,
+        // which is why activity used to look faster than idling.
+        if self.settings.fps_limit_hz == 0 {
+            ctx.request_repaint();
+        } else {
+            ctx.request_repaint_after(budget.saturating_sub(cpu_t0.elapsed()));
+        }
     }
 }
 
@@ -2348,11 +2359,11 @@ fn main() {
     let settings = ViewerSettings::load();
     settings.save();
     let addr = format!("127.0.0.1:{port}");
-    eprintln!("vis_viewer: listening on {addr} (sim should dial this addr)");
+    eprintln!("rocketsim-viewer: listening on {addr} (sim should dial this addr)");
 
     let mesh = Arc::new(ArenaMesh::build(GameMode::Soccar));
     eprintln!(
-        "vis_viewer: soccar soup={} welded={} idx={}",
+        "rocketsim-viewer: soccar soup={} welded={} idx={}",
         mesh.soup_verts,
         mesh.welded_verts(),
         mesh.index_count()
@@ -2375,7 +2386,7 @@ fn main() {
         ..Default::default()
     };
     if let Err(e) = eframe::run_native(
-        "rocketsim vis_viewer",
+        "rocketsim viewer",
         options,
         Box::new(move |_cc| {
             let mut app = ViewerApp::new(
@@ -2391,7 +2402,7 @@ fn main() {
             Ok(Box::new(app) as _)
         }),
     ) {
-        eprintln!("vis_viewer: eframe::run_native failed: {e:?}");
+        eprintln!("rocketsim-viewer: eframe::run_native failed: {e:?}");
         std::process::exit(1);
     }
 }

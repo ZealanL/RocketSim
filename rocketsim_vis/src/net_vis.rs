@@ -6,6 +6,7 @@
 use std::{
     io::{Read, Write},
     net::{SocketAddr, TcpListener, TcpStream},
+    path::PathBuf,
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
@@ -85,7 +86,7 @@ impl Vis for NetVis {
 /// };
 ///
 /// use rocketsim::CarControls;
-/// use rocketsim_vis_net::{
+/// use rocketsim_vis::{
 ///     net_vis::ControlServer,
 ///     proto::{ControlMsg, encode_control},
 /// };
@@ -306,8 +307,9 @@ fn control_pump(
         }
     }
 }
-/// spawns the sibling `vis_viewer` binary (next to the current executable,
-/// i.e. `target/{debug,release}/`) and waits for the port to accept.
+/// Resolves the `rocketsim-viewer` binary via `PATH` first, then the
+/// sibling dev-layout exe next to the current executable (i.e.
+/// `target/{debug,release}/`), spawns it, and waits for the port to accept.
 /// Prints what it is doing; never fails (worst case the sim streams to a
 /// viewer started later — [`NetVis`] connects lazily).
 /// Makes `cargo run --example …` Just Work: if nothing listens on `addr`,
@@ -316,11 +318,8 @@ pub fn ensure_viewer_running(addr: &str) {
         eprintln!("rocketsim_vis: viewer already listening on {addr}");
         return;
     }
-    let viewer = std::env::current_exe().ok().and_then(|exe| {
-        exe.parent()?
-            .parent()
-            .map(|dir| dir.join(bin_name("vis_viewer")))
-    });
+    let name = bin_name("rocketsim-viewer");
+    let viewer = find_on_path(&[name.as_str()]).or_else(find_sibling_viewer);
     match viewer {
         Some(path) if path.exists() => {
             eprintln!("rocketsim_vis: starting viewer {path:?} ...");
@@ -335,7 +334,7 @@ pub fn ensure_viewer_running(addr: &str) {
                 }
                 Err(e) => {
                     eprintln!(
-                        "rocketsim_vis: could not spawn viewer ({e}); start it manually: vis_viewer"
+                        "rocketsim_vis: could not spawn viewer ({e}); start it manually: rocketsim-viewer"
                     );
                     return;
                 }
@@ -350,7 +349,7 @@ pub fn ensure_viewer_running(addr: &str) {
             eprintln!("rocketsim_vis: viewer did not accept {addr} in time");
         }
         _ => eprintln!(
-            "rocketsim_vis: no viewer on {addr} — start one: cargo run -p rocketsim_vis --bin vis_viewer"
+            "rocketsim_vis: no viewer on {addr} — start one: rocketsim-viewer or cargo run -p rocketsim_viewer --bin rocketsim-viewer"
         ),
     }
 }
@@ -380,6 +379,39 @@ fn bin_name(base: &str) -> String {
     } else {
         base.to_string()
     }
+}
+
+/// Searches `PATH` for the first matching binary name (ordered preference).
+/// Existence is enough on all platforms; directories are skipped.
+fn find_on_path(names: &[&str]) -> Option<PathBuf> {
+    let path_var = std::env::var_os("PATH")?;
+    for dir in std::env::split_paths(&path_var) {
+        if dir.as_os_str().is_empty() {
+            continue;
+        }
+        for name in names {
+            let candidate = dir.join(name);
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
+    None
+}
+
+/// Dev-layout fallback: `target/{debug,release}/rocketsim-viewer` next to
+/// the current executable, so `cargo run --example …` works without
+/// installing the viewer.
+fn find_sibling_viewer() -> Option<PathBuf> {
+    let dir = std::env::current_exe()
+        .ok()?
+        .parent()?
+        .parent()?
+        .to_path_buf();
+    ["rocketsim-viewer"]
+        .iter()
+        .map(|base| dir.join(bin_name(base)))
+        .find(|candidate| candidate.is_file())
 }
 
 fn port_of(addr: &str) -> u16 {

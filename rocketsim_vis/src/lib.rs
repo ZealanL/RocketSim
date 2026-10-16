@@ -1,10 +1,9 @@
-//! Detached 3D visualizer for RocketSim.
+//! Detached-viewer network interface for RocketSim (no window, no renderer).
 //!
-//! The sim streams frames over TCP to the `vis_viewer` process; see
-//! `tools/README.md` for the screenshot harness. Network types
-//! (`ArenaVisExt`, `NetVis`, `proto`, `bindings`, ...) live in the
-//! lightweight [`rocketsim_vis_net`] crate and are re-exported here, so
-//! existing `rocketsim_vis::` imports keep compiling unchanged.
+//! The sim streams frames over TCP to the `rocketsim-viewer` process (see the
+//! `rocketsim_viewer` crate for the viewer itself); the viewer streams driving
+//! inputs back. Sim crates depend on this crate, not on `rocketsim_viewer`,
+//! so they never compile the GUI stack.
 //!
 //! Quick start (launches a viewer if none listens):
 //!
@@ -25,30 +24,66 @@
 //! arena.set_vis_enabled(false);
 //! ```
 
-pub mod arena_gl;
-pub mod camera;
-pub mod frustum;
-pub mod fx;
-pub mod gl_util;
-pub mod hud;
-pub mod lines;
-pub mod lines_gl;
-pub mod main_gl;
-pub mod mesh;
-pub mod obj;
-pub mod pads;
-pub mod pads_gl;
-pub mod settings;
-pub mod textures;
-pub mod triangle;
-pub mod view;
+pub mod mutators;
+pub mod net_client;
+pub mod net_vis;
+pub mod pace;
+pub mod photo;
+pub mod proto;
 
-// Network interface (re-exported so `rocketsim_vis::proto`, ... keep
-// resolving; new code can depend on `rocketsim_vis_net` directly).
-pub use rocketsim_vis_net::{
-    ArenaVisExt, DEFAULT_VIEWER_ADDR, NetVis, bindings, ensure_viewer_running, mutators,
-    net_client, net_vis, pace, photo, proto, spectate,
-};
+pub use net_vis::{NetVis, ensure_viewer_running};
+use rocketsim::Arena;
+
+/// Default viewer address for [`ArenaVisExt::set_vis_enabled`]
+/// (matches [`proto::DEFAULT_PORT`]).
+pub const DEFAULT_VIEWER_ADDR: &str = "127.0.0.1:39201";
+
+/// Extension trait that attaches/detaches the detached viewer to an arena.
+///
+/// [`set_vis_enabled`](ArenaVisExt::set_vis_enabled) launches a viewer if
+/// none listens and streams every tick; disabling detaches and closes a
+/// viewer this call opened (never one the user started).
+pub trait ArenaVisExt {
+    /// Enable (`true`) or disable (`false`) the 3D visualizer on
+    /// [`DEFAULT_VIEWER_ADDR`].
+    fn set_vis_enabled(&mut self, vis_enabled: bool) {
+        if vis_enabled {
+            ensure_viewer_running(DEFAULT_VIEWER_ADDR);
+            self.set_net_vis(Some(DEFAULT_VIEWER_ADDR));
+        } else {
+            self.set_net_vis(None);
+            net_vis::stop_spawned_viewer();
+        }
+    }
+
+    /// Enable streaming to the viewer at `addr` (e.g. `"127.0.0.1:39201"`),
+    /// or disable it with `None`. No auto-launch (start the viewer yourself).
+    fn set_net_vis(&mut self, addr: Option<&str>);
+
+    /// Convenience: `set_net_vis(Some(addr))`.
+    fn set_net_vis_enabled(&mut self, addr: &str) {
+        self.set_net_vis(Some(addr));
+    }
+
+    /// Convenience: `set_net_vis(None)`.
+    fn set_net_vis_disabled(&mut self) {
+        self.set_net_vis(None);
+    }
+}
+
+impl ArenaVisExt for Arena {
+    fn set_net_vis(&mut self, addr: Option<&str>) {
+        match (addr, self.is_vis_enabled()) {
+            (Some(addr), false) => {
+                self.vis = Some(Box::new(NetVis::connect(addr)));
+            }
+            (None, true) => {
+                self.vis = None;
+            }
+            _ => {}
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {

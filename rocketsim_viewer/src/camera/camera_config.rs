@@ -124,7 +124,7 @@ impl Default for CameraConfig {
 /// | Far | 350/130/-1 | 110 | - | - |
 ///
 /// ```rust
-/// use rocketsim_vis::camera::{CameraConfig, CameraPreset};
+/// use rocketsim_viewer::camera::{CameraConfig, CameraPreset};
 ///
 /// // Menus iterate ALL instead of hardcoding names.
 /// assert_eq!(CameraPreset::ALL[0], CameraPreset::Default);

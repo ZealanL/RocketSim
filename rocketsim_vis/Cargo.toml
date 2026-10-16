@@ -3,7 +3,7 @@ name = "rocketsim_vis"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-description = "3D visualizer for RocketSim Rocket League simulation"
+description = "Detached-viewer network interface for RocketSim (frames, transport, launcher)"
 readme = "README.md"
 homepage.workspace = true
 repository.workspace = true
@@ -12,18 +12,12 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-eframe = { version = "0.36", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
-egui = "0.36"
-egui_glow = "0.36"
-gilrs = "0.11"
 glam.workspace = true
-glow = "0.17"
-png = "0.18.0"
 postcard = { version = "1", features = ["alloc"] }
 rocketsim = { path = "../rocketsim", version = "0.3.0", features = ["serde"] }
-rocketsim_vis_net = { path = "../rocketsim_vis_net", version = "0.3.0" }
-rustc-hash.workspace = true
 serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
 toml = "1.1.8"
 
 [lints.clippy]

@@ -26,7 +26,7 @@ use crate::proto::{ControlMsg, VisFrame, decode_frame, encode_control};
 ///
 /// ```rust
 /// use rocketsim::CarControls;
-/// use rocketsim_vis_net::{net_client::ControlSender, proto::ControlMsg};
+/// use rocketsim_vis::{net_client::ControlSender, proto::ControlMsg};
 ///
 /// // Port 1 never accepts: sends are dropped, never block.
 /// let sender = ControlSender::connect("127.0.0.1:1");
@@ -183,11 +183,13 @@ impl FrameClient {
     /// instead of starting a second viewer).
     pub fn connect(addr: &str) -> Self {
         let listener = TcpListener::bind(addr)
-            .unwrap_or_else(|e| panic!("vis_viewer: cannot listen on {addr} ({e})"));
+            .unwrap_or_else(|e| panic!("rocketsim-viewer: cannot listen on {addr} ({e})"));
         listener
             .set_nonblocking(true)
-            .expect("vis_viewer: nonblocking listen failed");
-        let local_addr = listener.local_addr().expect("vis_viewer: no local addr");
+            .expect("rocketsim-viewer: nonblocking listen failed");
+        let local_addr = listener
+            .local_addr()
+            .expect("rocketsim-viewer: no local addr");
         let frame = Arc::new(Mutex::new(None));
         let status = Arc::new(Mutex::new(ConnStatus::Waiting));
         let received = Arc::new(Mutex::new(0));

@@ -1,26 +1,26 @@
-//! Interactive driveable demo: `vis_viewer` shows it AND drives it.
+//! Interactive driveable demo: `rocketsim-viewer` shows it AND drives it.
 //!
 //! * All inputs come from the VIEWER window (viewer is the single owner):
 //!   WASD + mouse buttons drive, Q/E roll, Shift handbrake, gamepad
 //!   sticks/triggers/buttons blend in vis-side. `Backspace` resets
 //!   kickoff, `F2` dribbles, `F4` launches. The viewer streams
-//!   [`ControlMsg`](rocketsim_vis_net::proto::ControlMsg) frames to this sim's
+//!   [`ControlMsg`](rocketsim_vis::proto::ControlMsg) frames to this sim's
 //!   control port (`127.0.0.1:39202`).
 //! * This sim just takes the channel: newest input wins, stale or missing
 //!   channel falls back to neutral (no stuck throttle on disconnect).
 //! * Ticks run at wall-clock 120Hz via
-//!   [`TickPacer`](rocketsim_vis_net::pace::TickPacer) (catch-up capped,
+//!   [`TickPacer`](rocketsim_vis::pace::TickPacer) (catch-up capped,
 //!   excess dropped).
 //! * Live mutators (unlimited boost, regen, flips) toggle in the viewer
 //!   menu and apply per tick; all off = unmodded RL behavior.
 //!
-//! Run with: `cargo run -p rocketsim_vis_net --example drive`
+//! Run with: `cargo run -p rocketsim_vis --example drive`
 
 use std::time::{Duration, Instant};
 
 use glam::Vec3A;
 use rocketsim::{Arena, ArenaConfig, CarBodyConfig, CarControls, GameMode, Team};
-use rocketsim_vis_net::{
+use rocketsim_vis::{
     ArenaVisExt,
     mutators::Mutators,
     net_vis::ControlServer,
@@ -50,7 +50,7 @@ fn main() {
     let controls_rx = ControlServer::bind(&control_addr);
     eprintln!("drive: control channel on {control_addr} (input needs viewer focus)");
 
-    println!("Drive from the vis_viewer window (viewer send side pending).");
+    println!("Drive from the rocketsim-viewer window (viewer send side pending).");
     println!("Gamepad works when connected (read vis-side, bindings from settings.toml).");
     println!("Mutators (unlimited boost etc.) toggle live in the viewer menu.");
 

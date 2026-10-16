@@ -42,7 +42,7 @@ pub const CAM_MIN_Z: f32 = 30.0;
 /// level, `+` looks up. See the module docs for the full scheme.
 ///
 /// ```rust
-/// use rocketsim_vis::camera::FreeCam;
+/// use rocketsim_viewer::camera::FreeCam;
 ///
 /// let mut cam = FreeCam::new();
 /// cam.look(0.1, 0.05); // mouse deltas, already scaled by sensitivity

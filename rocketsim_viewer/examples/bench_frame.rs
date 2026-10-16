@@ -1,29 +1,28 @@
 //! Viewer per-frame CPU microbenchmark (headless, no GL).
 //!
-//! Mirrors the `vis_viewer` update body: frame clone, ball/boost trail
-//! ribbons, ground line, [`CarFx`](rocketsim_vis::fx::CarFx) effects,
+//! Mirrors the `rocketsim-viewer` update body: frame clone, ball/boost trail
+//! ribbons, ground line, [`CarFx`](rocketsim_viewer::fx::CarFx) effects,
 //! follow-camera smoothing, view/projection, frustum planes, pad instance
 //! build, car draw grouping, and CPU line expansion. Runs entirely on
 //! snapshots so results are comparable across machines and commits.
 //!
-//! Run with: `cargo run -r -p rocketsim_vis --example bench_frame`
+//! Run with: `cargo run -r -p rocketsim_viewer --example bench_frame`
 //! (`perf record` this binary for hotspot traces.)
 
 use std::{hint::black_box, time::Instant};
 
 use glam::{Mat3, Vec3, Vec3A};
 use rocketsim::{Arena, ArenaConfig, CarBodyConfig, CarControls, GameMode, Team};
-use rocketsim_vis::{
+use rocketsim_viewer::{
     camera::{CameraConfig, CarCamSmoothing},
     frustum::frustum_planes,
     fx::CarFx,
     lines::{RibbonConfig, RibbonEmitter, Segment, expand_segment, ground_line},
     main_gl::{car_model_name, car_texture_name, group_car_draws, model_matrix},
     pads::{build_instances, load_pad_meshes, variant_radius},
-    photo::init_meshes,
-    proto::VisFrame,
     view::view_proj,
 };
+use rocketsim_vis::{photo::init_meshes, proto::VisFrame};
 
 /// 3v3 with mixed bodies (matches a real match for grouping/culling).
 const BODIES: [CarBodyConfig; 6] = [
@@ -44,7 +43,7 @@ const ITERS: usize = 3000;
 /// 720p aspect (the CPU-limited case from the report).
 const ASPECT: f32 = 1280.0 / 720.0;
 
-/// Floats per packed corner in [`LinesGl`](rocketsim_vis::lines_gl::LinesGl)
+/// Floats per packed corner in [`LinesGl`](rocketsim_viewer::lines_gl::LinesGl)
 /// upload: world(3) + pa(3) + pb(3) + color(4) + width(1).
 const PACK_STRIDE: usize = 14;
 /// Segment cap mirrored from the lines pipeline.
