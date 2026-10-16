@@ -3,7 +3,7 @@ use crate::{BallState, BoostPadConfig, BoostPadState, CarInfo, CarState, GameMod
 /// Point-in-time snapshot from [`crate::Arena::get_arena_state`].
 ///
 /// `cars` and `boost_pads` are `(info/config, state)` pairs in arena order.
-/// Restore with `Arena::set_ball_state` / `set_car_state` /
+/// Restore with `Arena::set_ball_state` / `set_car_state_full` /
 /// `set_boost_pad_state` / `set_tile_states`. `tile_states` is `Some` only
 /// in Dropshot.
 #[derive(Debug, Clone)]

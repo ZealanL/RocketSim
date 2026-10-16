@@ -65,7 +65,8 @@ fn main() {
     println!("ball pos: {}, vel: {}", ball.pos, ball.vel);
     println!(
         "blue boost: {:.1}, on ground: {}",
-        car.boost, car.is_on_ground
+        car.boost,
+        car.is_on_ground()
     );
     println!("ticks: {}", arena.tick_count());
 }

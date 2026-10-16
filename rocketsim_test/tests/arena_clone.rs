@@ -58,11 +58,11 @@ fn ball_bits_eq(a: &BallState, b: &BallState) -> bool {
 }
 
 fn car_bits_eq(a: &CarState, b: &CarState) -> bool {
-    phys_bits_eq(&a.phys, &b.phys)
+    phys_bits_eq(a, b)
         && a.controls == b.controls
-        && a.prev_controls == b.prev_controls
-        && a.is_on_ground == b.is_on_ground
-        && a.wheels_with_contact == b.wheels_with_contact
+        && a.prev_controls() == b.prev_controls()
+        && a.is_on_ground() == b.is_on_ground()
+        && a.wheels_with_contact() == b.wheels_with_contact()
         && a.has_jumped == b.has_jumped
         && a.has_double_jumped == b.has_double_jumped
         && a.has_flipped == b.has_flipped
@@ -85,7 +85,7 @@ fn car_bits_eq(a: &CarState, b: &CarState) -> bool {
         && f32_bits_eq(a.auto_flip_torque_scale, b.auto_flip_torque_scale)
         && f32_bits_eq(a.bump_cooldown_timer, b.bump_cooldown_timer)
         && a.last_extra_hit_tick == b.last_extra_hit_tick
-        && match (a.world_contact_normal, b.world_contact_normal) {
+        && match (a.world_contact_normal(), b.world_contact_normal()) {
             (Some(x), Some(y)) => vec3a_bits_eq(x, y),
             (None, None) => true,
             _ => false,
@@ -219,9 +219,9 @@ fn arena_clone_preserves_rng_and_pads() {
     // Teleport onto pad 0 to collect it
     let pad_config = arena2.get_boost_pad_config(0);
     let mut st = *arena2.get_car_state(car);
-    st.phys.pos = pad_config.pos;
+    st.pos = pad_config.pos;
     st.boost = 0.0;
-    arena2.set_car_state(car, st);
+    arena2.set_car_state_full(car, st);
     arena2.step_tick();
     assert!(
         arena2.get_car_state(car).boost > 0.0,

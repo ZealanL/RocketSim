@@ -1,5 +1,5 @@
 [workspace]
-package.version = "0.2.12"
+package.version = "0.3.0"
 package.edition = "2024"
 package.rust-version = "1.95"
 package.documentation = "https://docs.rs/rocketsim"
@@ -16,7 +16,7 @@ members = [
 ]
 
 [workspace.dependencies]
-glam = { version = "0.33.5", features = ["debug-glam-assert"] }
+glam = { version = "0.34", features = ["debug-glam-assert"] }
 rustc-hash = "2.1.2"
 
 [profile.dev]

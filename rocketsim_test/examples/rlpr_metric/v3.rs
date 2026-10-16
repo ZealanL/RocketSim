@@ -6,8 +6,8 @@
 //! Step applies each recorded car's controls for one tick.
 
 use rocketsim::{
-    Arena, ArenaConfig, ArenaEvent, ArenaMemWeightMode, CarBodyConfig, CarControls, CarState,
-    GameMode, HITBOX_OFFSETS, HITBOX_SIZES, PhysState, Team,
+    Arena, ArenaConfig, ArenaEvent, ArenaMemWeightMode, CarBodyConfig, CarControls, GameMode,
+    HITBOX_OFFSETS, HITBOX_SIZES, PhysState, Team,
 };
 use rocketsim_test::rlpr::{
     cpp_records::{ControlsRecord, RecordingInfo},
@@ -161,17 +161,17 @@ impl V3Backend {
     /// Restore the handbrake integrator before a replayed tick.
     pub fn set_handbrake_value(&mut self, car_idx: usize, value: f32) {
         let car_id = self.car_id(car_idx, "set_handbrake_value");
-        let mut state = *self.arena.get_car_state(car_id);
-        state.handbrake_val = value.clamp(0.0, 1.0);
-        self.arena.set_car_state(car_id, state);
+        self.arena.edit_car_state_full(car_id, |state| {
+            state.handbrake_val = value.clamp(0.0, 1.0);
+        });
     }
 
     /// Restore jump-hold continuity before a replayed tick.
     pub fn set_jump_hold_broken(&mut self, car_idx: usize, broken: bool) {
         let car_id = self.car_id(car_idx, "set_jump_hold_broken");
-        let mut state = *self.arena.get_car_state(car_id);
-        state.jump_hold_broken = broken;
-        self.arena.set_car_state(car_id, state);
+        self.arena.edit_car_state_full(car_id, |state| {
+            state.jump_hold_broken = broken;
+        });
     }
 
     /// Refresh prior-tick wheel gates without advancing dynamics.
@@ -183,27 +183,27 @@ impl V3Backend {
 
     /// Motion-only reset: overwrite exactly car/ball `pos`/`vel`/`ang_vel`.
     ///
-    /// Copy live state, edit three fields, write back. Preserve orientation
-    /// and logical state. Setters clear transient accumulators and the car
+    /// Edit three fields in place. Preserve orientation and logical state.
+    /// Editors clear transient accumulators and the car
     /// impulse cache. Do not explicitly clear wheel or manifold caches, refresh
     /// sticky gates, or rebuild the arena. The segment seed sizes the arena.
     /// Panics on a missing slot. Harness only.
     pub fn reset_motion(&mut self, state_tick: &TickRecord) {
         for (slot, car) in state_tick.car_records.iter().enumerate() {
             let car_id = self.car_id(slot, "reset_motion");
-            let recorded: CarState = (*car).into();
-            let mut live = *self.arena.get_car_state(car_id);
-            live.phys.pos = recorded.phys.pos;
-            live.phys.vel = recorded.phys.vel;
-            live.phys.ang_vel = recorded.phys.ang_vel;
-            self.arena.set_car_state(car_id, live);
+            let recorded: PhysState = car.phys.into();
+            self.arena.edit_car_state_full(car_id, |live| {
+                live.phys.pos = recorded.pos;
+                live.phys.vel = recorded.vel;
+                live.phys.ang_vel = recorded.ang_vel;
+            });
         }
         let recorded_ball: PhysState = state_tick.ball_record.into();
-        let mut ball = *self.arena.get_ball_state();
-        ball.phys.pos = recorded_ball.pos;
-        ball.phys.vel = recorded_ball.vel;
-        ball.phys.ang_vel = recorded_ball.ang_vel;
-        self.arena.set_ball_state(ball);
+        self.arena.edit_ball_state(|ball| {
+            ball.phys.pos = recorded_ball.pos;
+            ball.phys.vel = recorded_ball.vel;
+            ball.phys.ang_vel = recorded_ball.ang_vel;
+        });
     }
 
     /// Step the arena without collecting replay metric events.
@@ -316,10 +316,10 @@ impl ReplayBackend for V3Backend {
 
     fn set_boost_state(&mut self, car_idx: usize, armed: bool, time: f32) {
         let car_id = self.car_id(car_idx, "set_boost_state");
-        let mut state = *self.arena.get_car_state(car_id);
-        state.is_boosting = armed;
-        state.boosting_time = time;
-        self.arena.set_car_state(car_id, state);
+        self.arena.edit_car_state_full(car_id, |state| {
+            state.is_boosting = armed;
+            state.boosting_time = time;
+        });
     }
 
     fn supports_cooldown_restore(&self) -> bool {
@@ -328,19 +328,20 @@ impl ReplayBackend for V3Backend {
 
     fn suppress_next_extra_hit(&mut self, car_idx: usize, suppress: bool) {
         let car_id = self.car_id(car_idx, "suppress_next_extra_hit");
-        let mut state = *self.arena.get_car_state(car_id);
-        if suppress {
-            // Block exactly the next executed step: the upcoming step runs at
-            // the current tick count, and the gate re-opens the step after.
-            // Fresh arenas (count 0) cannot represent "block step 0, allow
-            // step 1" in u64, so they over-suppress by one step; rebuilds are
-            // the only path there and are rare.
+        // Block exactly the next executed step: the upcoming step runs at
+        // the current tick count, and the gate re-opens the step after.
+        // Fresh arenas (count 0) cannot represent "block step 0, allow
+        // step 1" in u64, so they over-suppress by one step; rebuilds are
+        // the only path there and are rare.
+        let last_extra_hit_tick = if suppress {
             let current = self.arena.tick_count();
-            state.last_extra_hit_tick = Some(if current == 0 { 0 } else { current - 1 });
+            Some(if current == 0 { 0 } else { current - 1 })
         } else {
-            state.last_extra_hit_tick = None;
-        }
-        self.arena.set_car_state(car_id, state);
+            None
+        };
+        self.arena.edit_car_state_full(car_id, |state| {
+            state.last_extra_hit_tick = last_extra_hit_tick;
+        });
     }
 
     fn supports_bump_restore(&self) -> bool {
@@ -350,10 +351,10 @@ impl ReplayBackend for V3Backend {
     fn set_bump_cooldown(&mut self, car_idx: usize, victim_idx: usize, seconds: f32) {
         let car_id = self.car_id(car_idx, "set_bump_cooldown");
         let victim_id = self.car_id(victim_idx, "set_bump_cooldown");
-        let mut state = *self.arena.get_car_state(car_id);
-        state.bump_cooldown_timer = seconds.max(0.0);
-        state.bump_cooldown_victim = (seconds > 0.0).then_some(victim_id);
-        self.arena.set_car_state(car_id, state);
+        self.arena.edit_car_state_full(car_id, |state| {
+            state.bump_cooldown_timer = seconds.max(0.0);
+            state.bump_cooldown_victim = (seconds > 0.0).then_some(victim_id);
+        });
     }
 
     fn reset(&mut self, start: &TickRecord) {
@@ -371,40 +372,38 @@ impl ReplayBackend for V3Backend {
             let Some(&car_id) = self.car_ids.get(slot) else {
                 panic!("state has more cars than the arena");
             };
-            let recorded: CarState = (*car).into();
-            let mut state = *self.arena.get_car_state(car_id);
-            state.phys = recorded.phys;
-            state.is_on_ground = recorded.is_on_ground;
-            state.wheels_with_contact = recorded.wheels_with_contact;
-            state.is_jumping = recorded.is_jumping;
-            state.is_flipping = recorded.is_flipping;
-            state.jump_ticks = recorded.jump_ticks;
-            state.flip_time = recorded.flip_time;
-            state.has_jumped = recorded.has_jumped;
-            state.prev_controls = car.prev_controls.into();
-            state.controls = car.prev_controls.into();
-            state.flip_rel_torque = recorded.flip_rel_torque;
-            state.boost = recorded.boost;
-            state.is_demoed = false;
-            state.demo_respawn_timer = 0.0;
+            self.arena.edit_car_state_full(car_id, |state| {
+                state
+                    .set_contact_flags(car.is_on_ground, car.wheels.map(|wheel| wheel.has_contact));
+                state.set_prev_controls(car.prev_controls.into());
+                state.phys = car.phys.into();
+                state.is_jumping = car.is_jumping;
+                state.is_flipping = car.is_flipping;
+                state.jump_ticks = (car.jump_time * rocketsim::consts::TICK_RATE).round() as u32;
+                state.flip_time = car.flip_time;
+                state.has_jumped = car.has_jumped;
+                state.controls = car.prev_controls.into();
+                state.flip_rel_torque = car.flip_rel_torque.into();
+                state.boost = car.boost_amount * 100.0;
+                state.is_demoed = false;
+                state.demo_respawn_timer = 0.0;
 
-            if car.has_flip {
-                state.has_double_jumped = false;
-                state.has_flipped = false;
-            } else if car.is_flipping {
-                state.has_double_jumped = false;
-                state.has_flipped = true;
-            } else if car.double_jumped_or_flipped && !state.has_flipped {
-                state.has_double_jumped = true;
-            }
-
-            self.arena.set_car_state(car_id, state);
+                if car.has_flip {
+                    state.has_double_jumped = false;
+                    state.has_flipped = false;
+                } else if car.is_flipping {
+                    state.has_double_jumped = false;
+                    state.has_flipped = true;
+                } else if car.double_jumped_or_flipped && !state.has_flipped {
+                    state.has_double_jumped = true;
+                }
+            });
         }
 
         let recorded_ball: PhysState = state_tick.ball_record.into();
-        let mut ball = *self.arena.get_ball_state();
-        ball.phys = recorded_ball;
-        self.arena.set_ball_state(ball);
+        self.arena.edit_ball_state(|ball| {
+            ball.phys = recorded_ball;
+        });
     }
 
     fn step(&mut self, controls: &[ControlsRecord]) -> Vec<SimContactEvents> {
@@ -472,7 +471,7 @@ impl ReplayBackend for V3Backend {
 #[cfg(test)]
 mod tests {
     use glam::Vec3A;
-    use rocketsim::consts::BT_TO_UU;
+    use rocketsim::{CarState, consts::BT_TO_UU};
     use rocketsim_test::rlpr::cpp_records::VecRecord;
 
     use super::{super::common::SETTLED_HEIGHT_TOL_UU, *};
@@ -557,7 +556,9 @@ mod tests {
         let sentinel = Vec3A::new(1234.0, 567.0, 89.0);
         let mut planted = *backend.arena.get_car_state(backend.car_ids[0]);
         planted.phys.pos = sentinel;
-        backend.arena.set_car_state(backend.car_ids[0], planted);
+        backend
+            .arena
+            .set_car_state_full(backend.car_ids[0], planted);
         backend.ensure_cars(4);
         assert_eq!(
             backend.arena.get_car_state(backend.car_ids[0]).phys.pos,
@@ -803,20 +804,23 @@ mod tests {
             live.bump_cooldown_victim = Some(backend.car_ids[1 - slot]);
             live.last_extra_hit_tick = Some(42);
             live.jump_hold_broken = true;
-            live.is_on_ground = false;
             live.is_jumping = true;
             live.boost = 50.0;
             live.controls.throttle = 1.0;
-            live.prev_controls.throttle = 1.0;
             live.jump_ticks = 7;
             live.flip_time = 2.5;
-            backend.arena.set_car_state(car_id, live);
+            backend.arena.set_car_state_full(car_id, live);
         }
         let mut ball = *backend.arena.get_ball_state();
         ball.phys.rot_mat = yaw90;
         ball.tick_count_since_kickoff = 123;
         backend.arena.set_ball_state(ball);
         let ball_before = *backend.arena.get_ball_state();
+        let ground_before: Vec<bool> = backend
+            .car_ids
+            .iter()
+            .map(|&car_id| backend.arena.get_car_state(car_id).is_on_ground())
+            .collect();
 
         // Target carries new motion vectors but identity orientation: the
         // recorded orientation must be ignored.
@@ -855,7 +859,11 @@ mod tests {
             );
             assert_eq!(live.last_extra_hit_tick, Some(42), "car {slot} extra gate");
             assert!(live.jump_hold_broken, "car {slot} jump latch");
-            assert!(!live.is_on_ground, "car {slot} ground flag");
+            assert_eq!(
+                live.is_on_ground(),
+                ground_before[slot],
+                "car {slot} ground cache"
+            );
             assert!(live.is_jumping, "car {slot} jump flag");
             assert_eq!(live.boost, 50.0, "car {slot} boost");
             assert_eq!(live.controls.throttle, 1.0, "car {slot} controls");
@@ -874,6 +882,96 @@ mod tests {
         );
         assert_eq!(ball.hs_info.y_target_dir, ball_before.hs_info.y_target_dir);
         assert_eq!(ball.ds_info.charge_level, ball_before.ds_info.charge_level);
+    }
+
+    #[test]
+    fn reset_motion_matches_full_state_setter_reference() {
+        init();
+        let mut optimized = V3Backend::new();
+        optimized.set_bodies(&[0, 0]);
+        let seed = motion_tick((0.0, 0.0, 100.0), (100.0, 0.0, 100.0), (0.0, 0.0, 500.0));
+        optimized.reset(&seed);
+        optimized.refresh_sticky_gates();
+
+        // Give the live state contact and input history that a motion reset
+        // must retain. The reference backend starts from an exact arena clone.
+        for (slot, &car_id) in optimized.car_ids.iter().enumerate() {
+            let mut controls = CarControls::DEFAULT;
+            controls.jump = slot == 0;
+            controls.throttle = if slot == 0 { 0.75 } else { -0.25 };
+            optimized.arena.edit_car_state_full(car_id, |state| {
+                state.set_prev_controls(controls);
+            });
+        }
+        let mut reference = V3Backend {
+            arena: optimized.arena.clone(),
+            car_ids: optimized.car_ids.clone(),
+            bodies: optimized.bodies.clone(),
+            arena_body: optimized.arena_body.clone(),
+            dodge_deadzone: optimized.dodge_deadzone,
+            mem_weight_mode: optimized.mem_weight_mode,
+        };
+
+        let target = motion_tick(
+            (1200.0, 2100.0, 350.0),
+            (1450.0, 2200.0, 400.0),
+            (4100.0, 5100.0, 650.0),
+        );
+
+        // This is the prior manual set_car_state_full implementation. It
+        // deliberately copies the live state and changes only three vectors.
+        for (slot, car) in target.car_records.iter().enumerate() {
+            let car_id = reference.car_ids[slot];
+            let recorded: CarState = (*car).into();
+            let mut live = *reference.arena.get_car_state(car_id);
+            live.phys.pos = recorded.phys.pos;
+            live.phys.vel = recorded.phys.vel;
+            live.phys.ang_vel = recorded.phys.ang_vel;
+            reference.arena.set_car_state_full(car_id, live);
+        }
+        let recorded_ball: PhysState = target.ball_record.into();
+        let mut ball = *reference.arena.get_ball_state();
+        ball.phys.pos = recorded_ball.pos;
+        ball.phys.vel = recorded_ball.vel;
+        ball.phys.ang_vel = recorded_ball.ang_vel;
+        reference.arena.set_ball_state(ball);
+
+        optimized.reset_motion(&target);
+        let assert_same_state = |actual: &V3Backend, expected: &V3Backend, phase: &str| {
+            for slot in 0..actual.car_ids.len() {
+                assert_eq!(
+                    format!("{:?}", actual.arena.get_car_state(actual.car_ids[slot])),
+                    format!("{:?}", expected.arena.get_car_state(expected.car_ids[slot])),
+                    "car {slot} differs {phase}"
+                );
+            }
+            assert_eq!(
+                format!("{:?}", actual.arena.get_ball_state()),
+                format!("{:?}", expected.arena.get_ball_state()),
+                "ball differs {phase}"
+            );
+        };
+        assert_same_state(&optimized, &reference, "after reset");
+
+        for step in 0..10 {
+            let controls: Vec<CarControls> = (0..2)
+                .map(|slot| CarControls {
+                    throttle: if slot == 0 { 0.6 } else { -0.3 },
+                    steer: if step % 2 == 0 { 0.2 } else { -0.2 },
+                    jump: step == 3 && slot == 0,
+                    ..CarControls::DEFAULT
+                })
+                .collect();
+            for (slot, &car_id) in optimized.car_ids.iter().enumerate() {
+                optimized.arena.set_car_controls(car_id, controls[slot]);
+            }
+            for (slot, &car_id) in reference.car_ids.iter().enumerate() {
+                reference.arena.set_car_controls(car_id, controls[slot]);
+            }
+            optimized.arena.step_tick();
+            reference.arena.step_tick();
+            assert_same_state(&optimized, &reference, "after step");
+        }
     }
 
     #[test]

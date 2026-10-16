@@ -3,9 +3,7 @@
 use std::ops::{Index, IndexMut};
 
 use glam::{Mat3A, Vec3A};
-use rocketsim::{
-    CarControls, CarState, PhysState, RaycastHitInfo, UserInfoType, consts::TICK_RATE,
-};
+use rocketsim::{CarControls, CarState, PhysState, consts::TICK_RATE};
 
 const RL_BOOST_TO_ROCKETSIM_SCALE: f32 = 100.0;
 #[repr(C)]
@@ -250,34 +248,206 @@ pub struct CarRecord {
     pub last_ball_touch_frame: u32,
 }
 impl From<CarRecord> for CarState {
-    fn from(phys_record: CarRecord) -> Self {
-        Self {
-            phys: phys_record.phys.into(),
-            boost: phys_record.boost_amount * RL_BOOST_TO_ROCKETSIM_SCALE,
-            controls: phys_record.prev_controls.into(),
-            is_on_ground: phys_record.is_on_ground,
-            // Recordings only store contact as a bool, so seed a placeholder
-            // (assumed static ground); the sim recomputes full details —
-            // point, normal, fraction, hit object — on the next tick.
-            wheels_with_contact: phys_record.wheels.map(|wheel| {
-                wheel.has_contact.then_some(RaycastHitInfo {
-                    hit_point: Vec3A::ZERO,
-                    hit_normal: Vec3A::Z,
-                    hit_fraction: 0.0,
-                    user_info: UserInfoType::None,
-                })
-            }),
-            is_jumping: phys_record.is_jumping,
-            is_flipping: phys_record.is_flipping,
-            flip_rel_torque: phys_record.flip_rel_torque.into(),
-            // NOTE: must round, NOT truncate — RL's accumulated f32 lands
-            // below the integer multiple on ~54% of recorded ticks
-            // (e.g. 41.99999928), and truncating would drop a whole tick.
-            jump_ticks: (phys_record.jump_time * TICK_RATE).round() as u32,
-            flip_time: phys_record.flip_time,
-            has_jumped: phys_record.has_jumped,
-            ..Default::default()
+    fn from(record: CarRecord) -> Self {
+        let mut state = CarState::DEFAULT;
+        state.phys = record.phys.into();
+        state.boost = record.boost_amount * RL_BOOST_TO_ROCKETSIM_SCALE;
+        state.controls = record.prev_controls.into();
+        state.is_jumping = record.is_jumping;
+        state.is_flipping = record.is_flipping;
+        state.flip_rel_torque = record.flip_rel_torque.into();
+        // Round instead of truncate. Recorded f32 values can sit just below
+        // an integer tick and truncation would drop a whole tick.
+        state.jump_ticks = (record.jump_time * TICK_RATE).round() as u32;
+        state.flip_time = record.flip_time;
+        state.has_jumped = record.has_jumped;
+
+        state.set_contact_flags(
+            record.is_on_ground,
+            record.wheels.map(|wheel| wheel.has_contact),
+        );
+        state
+    }
+}
+
+/// Copy ground and wheel caches from an RLPR car record snapshot.
+///
+/// Keep the live world-contact cache and all core/tuning state unchanged.
+pub fn copy_recorded_contact_cache(live: &CarState, recorded: &CarState) -> CarState {
+    let mut live_value = serde_value::to_value(live).expect("serialize live car state");
+    let live_cache = value_map_field_mut(&mut live_value, "cache");
+    set_value_field(
+        live_cache,
+        "is_on_ground",
+        serde_value::Value::Bool(recorded.is_on_ground()),
+    );
+    set_value_field(
+        live_cache,
+        "wheels_with_contact",
+        serde_value::to_value(recorded.wheels_with_contact())
+            .expect("serialize recorded wheel contacts"),
+    );
+    live_value
+        .deserialize_into()
+        .expect("deserialize car state with recorded cache")
+}
+
+fn value_map_field_mut<'a>(
+    value: &'a mut serde_value::Value,
+    field: &str,
+) -> &'a mut serde_value::Value {
+    match value {
+        serde_value::Value::Map(map) => map
+            .get_mut(&serde_value::Value::String(field.to_owned()))
+            .expect("serialized map field exists"),
+        _ => panic!("serialized value is not a map"),
+    }
+}
+
+fn set_value_field(map: &mut serde_value::Value, field: &str, value: serde_value::Value) {
+    match map {
+        serde_value::Value::Map(map) => {
+            map.insert(serde_value::Value::String(field.to_owned()), value);
         }
+        _ => panic!("serialized value is not a map"),
+    }
+}
+
+#[cfg(test)]
+mod car_cache_tests {
+    use rocketsim::RaycastHitInfo;
+
+    use super::*;
+
+    #[test]
+    fn cache_copy_changes_only_ground_and_wheel_contacts() {
+        let mut live = CarState::DEFAULT;
+        live.boost = 23.0;
+        live.handbrake_val = 0.75;
+        live.set_prev_controls(CarControls {
+            jump: true,
+            ..CarControls::DEFAULT
+        });
+        let mut live_value = serde_value::to_value(live).unwrap();
+        set_value_field(
+            value_map_field_mut(&mut live_value, "cache"),
+            "world_contact_normal",
+            serde_value::to_value(Some(Vec3A::Y)).unwrap(),
+        );
+        let live: CarState = live_value.clone().deserialize_into().unwrap();
+
+        let hit = RaycastHitInfo {
+            hit_point: Vec3A::new(1.25, 2.5, 0.0),
+            hit_normal: Vec3A::Z,
+            hit_fraction: f32::from_bits(0x3e12_3456),
+            user_info: rocketsim::UserInfoType::Car,
+        };
+        let wheels = [Some(hit), None, Some(hit), Some(hit)];
+        let wheel_value = serde_value::to_value(wheels).unwrap();
+        let mut recorded = CarState::DEFAULT;
+        recorded.boost = 99.0;
+        recorded.handbrake_val = 0.25;
+        let mut recorded_value = serde_value::to_value(recorded).unwrap();
+        set_value_field(
+            value_map_field_mut(&mut recorded_value, "cache"),
+            "wheels_with_contact",
+            wheel_value.clone(),
+        );
+        let recorded: CarState = recorded_value.deserialize_into().unwrap();
+
+        let restored = copy_recorded_contact_cache(&live, &recorded);
+        let expected_cache = value_map_field_mut(&mut live_value, "cache");
+        set_value_field(
+            expected_cache,
+            "is_on_ground",
+            serde_value::Value::Bool(true),
+        );
+        set_value_field(expected_cache, "wheels_with_contact", wheel_value);
+        assert_eq!(serde_value::to_value(restored).unwrap(), live_value);
+        assert_eq!(restored.wheels_with_contact(), &wheels);
+        assert_eq!(restored.world_contact_normal(), Some(Vec3A::Y));
+        assert!(restored.prev_controls().jump);
+    }
+
+    #[test]
+    fn cache_copy_preserves_primary_and_tuning_float_bits() {
+        let mut live = CarState::DEFAULT;
+        live.pos.x = f32::from_bits(0x3f12_3456);
+        live.vel.y = f32::from_bits(0xbf65_4321);
+        live.handbrake_val = f32::from_bits(0x3e12_3456);
+        live.boosting_time = f32::from_bits(0x3d65_4321);
+
+        let mut recorded_value = serde_value::to_value(CarState::DEFAULT).unwrap();
+        let cache = value_map_field_mut(&mut recorded_value, "cache");
+        set_value_field(cache, "is_on_ground", serde_value::to_value(false).unwrap());
+        let mut controls = serde_value::to_value(CarControls::DEFAULT).unwrap();
+        set_value_field(&mut controls, "jump", serde_value::to_value(true).unwrap());
+        set_value_field(cache, "prev_controls", controls);
+        let recorded: CarState = recorded_value.deserialize_into().unwrap();
+        let mut restored = copy_recorded_contact_cache(&live, &recorded);
+        restored.set_prev_controls(*recorded.prev_controls());
+
+        assert_eq!(restored.pos.x.to_bits(), live.pos.x.to_bits());
+        assert_eq!(restored.vel.y.to_bits(), live.vel.y.to_bits());
+        assert_eq!(
+            restored.handbrake_val.to_bits(),
+            live.handbrake_val.to_bits()
+        );
+        assert_eq!(
+            restored.boosting_time.to_bits(),
+            live.boosting_time.to_bits()
+        );
+        assert!(!restored.is_on_ground());
+        assert!(restored.prev_controls().jump);
+    }
+
+    #[test]
+    fn cache_helpers_preserve_non_finite_and_signed_zero_bits() {
+        let mut live = CarState::DEFAULT;
+        live.pos.x = f32::from_bits(0x7fc0_1234);
+        live.vel.y = f32::INFINITY;
+        live.ang_vel.z = f32::NEG_INFINITY;
+        live.boost = -0.0;
+        live.handbrake_val = f32::from_bits(0x7fc0_5678);
+        live.supersonic_grace_timer = -0.0;
+        live.time_since_boosted = f32::INFINITY;
+        live.boosting_time = f32::NEG_INFINITY;
+        live.air_time = f32::from_bits(0x7fc0_9abc);
+
+        let mut recorded = CarState::DEFAULT;
+        let mut recorded_value = serde_value::to_value(recorded).unwrap();
+        set_value_field(
+            value_map_field_mut(&mut recorded_value, "cache"),
+            "is_on_ground",
+            serde_value::to_value(false).unwrap(),
+        );
+        recorded = recorded_value.deserialize_into().unwrap();
+
+        let mut restored = copy_recorded_contact_cache(&live, &recorded);
+        for (actual, expected) in [
+            (restored.pos.x, live.pos.x),
+            (restored.vel.y, live.vel.y),
+            (restored.ang_vel.z, live.ang_vel.z),
+            (restored.boost, live.boost),
+            (restored.handbrake_val, live.handbrake_val),
+            (restored.supersonic_grace_timer, live.supersonic_grace_timer),
+            (restored.time_since_boosted, live.time_since_boosted),
+            (restored.boosting_time, live.boosting_time),
+            (restored.air_time, live.air_time),
+        ] {
+            assert_eq!(actual.to_bits(), expected.to_bits());
+        }
+        assert!(!restored.is_on_ground());
+
+        let mut controls = *recorded.prev_controls();
+        controls.jump = true;
+        restored.set_prev_controls(controls);
+        assert!(restored.prev_controls().jump);
+        assert_eq!(restored.pos.x.to_bits(), live.pos.x.to_bits());
+        assert_eq!(
+            restored.handbrake_val.to_bits(),
+            live.handbrake_val.to_bits()
+        );
     }
 }
 

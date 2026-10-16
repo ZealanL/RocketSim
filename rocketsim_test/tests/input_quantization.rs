@@ -7,7 +7,7 @@
 use std::sync::Once;
 
 use glam::{Mat3A, Vec3A};
-use rocketsim::{Arena, CarBodyConfig, CarControls, CarState, GameMode, PhysState, Team};
+use rocketsim::{Arena, CarBodyConfig, CarControls, CarCore, CarState, GameMode, PhysState, Team};
 
 fn ensure_init() {
     static INIT: Once = Once::new();
@@ -37,42 +37,33 @@ fn expected_quantized_axis(x: f32) -> f32 {
 }
 
 fn air_start(pos: Vec3A, vel: Vec3A) -> CarState {
-    CarState {
-        phys: PhysState {
-            pos,
-            rot_mat: Mat3A::IDENTITY,
-            vel,
-            ang_vel: Vec3A::ZERO,
-        },
-        boost: 50.0,
-        is_on_ground: false,
-        wheels_with_contact: [None; 4],
-        world_contact_normal: None,
-        is_flipping: false,
-        is_auto_flipping: false,
-        ..CarState::DEFAULT
-    }
+    let core = CarCore::aerial(PhysState {
+        pos,
+        rot_mat: Mat3A::IDENTITY,
+        vel,
+        ang_vel: Vec3A::ZERO,
+    })
+    .with_boost(50.0);
+    CarState::from(core)
 }
 
 fn ground_start(pos: Vec3A, vel: Vec3A) -> CarState {
-    CarState {
-        phys: PhysState {
-            pos,
-            rot_mat: Mat3A::IDENTITY,
-            vel,
-            ang_vel: Vec3A::ZERO,
-        },
-        boost: 50.0,
-        is_on_ground: true,
-        ..CarState::DEFAULT
-    }
+    let mut state = CarState::DEFAULT;
+    state.phys = PhysState {
+        pos,
+        rot_mat: Mat3A::IDENTITY,
+        vel,
+        ang_vel: Vec3A::ZERO,
+    };
+    state.boost = 50.0;
+    state
 }
 
 fn run_air_case(start: CarState, controls: CarControls, steps: usize) -> CarState {
     ensure_init();
     let mut arena = Arena::new(GameMode::Soccar);
     let idx = arena.add_car(Team::Blue, CarBodyConfig::OCTANE);
-    arena.set_car_state(idx, start);
+    arena.set_car_state_full(idx, start);
     arena.reset_car_transient_contacts(idx);
     arena.clear_persistent_manifolds();
     for _ in 0..steps {
@@ -86,7 +77,7 @@ fn run_ground_case(start: CarState, controls: CarControls, steps: usize) -> CarS
     ensure_init();
     let mut arena = Arena::new(GameMode::Soccar);
     let idx = arena.add_car(Team::Blue, CarBodyConfig::OCTANE);
-    arena.set_car_state(idx, start);
+    arena.set_car_state_full(idx, start);
     arena.reset_car_transient_contacts(idx);
     arena.clear_persistent_manifolds();
     // Warm up wheels on flat ground with neutral inputs.
@@ -150,7 +141,7 @@ fn controls_stay_raw_after_tick() {
     let mut arena = Arena::new(GameMode::Soccar);
     let idx = arena.add_car(Team::Blue, CarBodyConfig::OCTANE);
     let start = ground_start(Vec3A::new(0.0, 0.0, 17.0), Vec3A::ZERO);
-    arena.set_car_state(idx, start);
+    arena.set_car_state_full(idx, start);
     arena.reset_car_transient_contacts(idx);
     arena.clear_persistent_manifolds();
 

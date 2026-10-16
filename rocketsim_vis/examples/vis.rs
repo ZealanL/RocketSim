@@ -151,23 +151,20 @@ fn main() {
             arena.reset_to_random_kickoff(None);
         }
 
-        let mut car_state = *arena.get_car_state(car_idx);
-        car_state.boost = 100.0;
-        arena.set_car_state(car_idx, car_state);
+        arena.set_car_boost(car_idx, 100.0);
 
         if pressed_keys.contains(&Keycode::Key2) {
             // Teleport ball to dribble position
-            let car_state = arena.get_car_state(car_idx);
-
-            let mut ball_state = *arena.get_ball_state();
-            ball_state.phys.pos = car_state.phys.pos + Vec3A::Z * 150.0;
-            ball_state.phys.vel = car_state.phys.vel;
-            arena.set_ball_state(ball_state);
+            let car_state = *arena.get_car_state(car_idx);
+            arena.edit_ball_state(|ball_state| {
+                ball_state.phys.pos = car_state.pos + Vec3A::Z * 150.0;
+                ball_state.phys.vel = car_state.vel;
+            });
         } else if pressed_keys.contains(&Keycode::Key4) {
             // Launch ball
-            let mut ball_state = *arena.get_ball_state();
-            ball_state.phys.vel += Vec3A::Z * 1000.0;
-            arena.set_ball_state(ball_state);
+            arena.edit_ball_state(|ball_state| {
+                ball_state.phys.vel += Vec3A::Z * 1000.0;
+            });
         }
 
         arena.set_car_controls(car_idx, controls);

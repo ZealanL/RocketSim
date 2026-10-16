@@ -54,7 +54,7 @@ fn bot_car_state(car_state: &CarState) -> BotCarState {
         ang_vel: car_state.phys.ang_vel,
         forward: car_state.phys.rot_mat.x_axis,
         right: car_state.phys.rot_mat.y_axis,
-        is_on_ground: car_state.is_on_ground,
+        is_on_ground: car_state.is_on_ground(),
         is_jumping: car_state.is_jumping,
         has_flip_or_jump: car_state.has_flip_or_jump(),
     }

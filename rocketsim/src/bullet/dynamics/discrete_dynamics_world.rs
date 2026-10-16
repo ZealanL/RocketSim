@@ -66,6 +66,10 @@ impl DiscreteDynamicsWorld {
         }
     }
 
+    pub fn refresh_aabbs(&mut self) {
+        self.collision_world.update_aabbs();
+    }
+
     pub fn ray_test<T: QuadRayResultCallback>(
         &self,
         ray_from_world: &[Vec3A; 4],

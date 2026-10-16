@@ -14,6 +14,7 @@ use crate::{
         },
         linear_math::QuatExt,
     },
+    consts::BT_TO_UU,
     sim::UserInfoType,
 };
 
@@ -64,6 +65,34 @@ impl VehicleRL {
         sum_contact_dir
             .try_normalize()
             .unwrap_or_else(|| cb.get_up_vector())
+    }
+
+    /// Query wheel contacts without changing wheel state.
+    #[must_use]
+    pub(crate) fn query_wheel_contacts(
+        &self,
+        world: &DiscreteDynamicsWorld,
+        chassis: &RigidBody,
+    ) -> [Option<crate::RaycastHitInfo>; NUM_WHEELS] {
+        let chassis_trans = *chassis.get_world_trans();
+        let mut sources = [Vec3A::ZERO; NUM_WHEELS];
+        let mut targets = [Vec3A::ZERO; NUM_WHEELS];
+        for (i, wheel) in self.wheels.iter().enumerate() {
+            let source = chassis_trans.transform_point3a(wheel.chassis_connection_point_cs);
+            sources[i] = source;
+            targets[i] = source - chassis_trans.matrix3.z_axis * wheel.real_ray_length;
+        }
+
+        let hits = self.raycaster.cast_rays(world, &sources, &targets, chassis);
+        std::array::from_fn(|i| {
+            hits[i].map(|info| crate::RaycastHitInfo {
+                hit_point: info.hit_point_in_world * BT_TO_UU,
+                hit_normal: info.hit_normal_in_world,
+                hit_fraction: (sources[i] - info.hit_point_in_world).length()
+                    / self.wheels[i].real_ray_length,
+                user_info: info.rigid_body.user_idx,
+            })
+        })
     }
 
     /// Refresh wheel raycast records for the sticky gate.

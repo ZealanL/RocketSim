@@ -55,7 +55,7 @@ impl CollisionWorld {
         idx
     }
 
-    fn update_aabbs(&mut self) {
+    pub fn update_aabbs(&mut self) {
         const CBT: Vec3A = Vec3A::splat(CONTACT_BREAKING_THRESHOLD);
 
         // Ball-only arenas have one dynamic body after the static prefix.

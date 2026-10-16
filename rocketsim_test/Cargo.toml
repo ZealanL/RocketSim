@@ -14,8 +14,9 @@ byteorder = "1.5.0"
 clap = { version = "4.6.0", features = ["derive"] }
 fastrand = "2.3.0"
 glam.workspace = true
-rocketsim = { path = "../rocketsim" }
+rocketsim = { path = "../rocketsim", features = ["serde"] }
 rocketsim_rs = { version = "=0.37.0", default-features = false, optional = true }
+serde-value = "0.7"
 zstd = "0.14"
 
 [features]

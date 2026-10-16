@@ -114,25 +114,28 @@ impl Ball {
     }
 
     pub fn set_state(&mut self, rb: &mut RigidBody, state: BallState) {
+        self.state = state;
+        self.sync_state_to_body(rb);
+    }
+
+    pub(crate) fn sync_state_to_body(&mut self, rb: &mut RigidBody) {
         debug_assert_eq!(rb.world_array_idx, self.rigid_body_idx);
         debug_assert_eq!(rb.user_idx, UserInfoType::Ball);
 
         rb.set_world_trans(Affine3A {
-            matrix3: state.phys.rot_mat,
-            translation: state.phys.pos * UU_TO_BT,
+            matrix3: self.state.phys.rot_mat,
+            translation: self.state.phys.pos * UU_TO_BT,
         });
         rb.interp_world_trans = *rb.get_world_trans();
 
-        rb.set_lin_vel(state.phys.vel * UU_TO_BT);
-        rb.set_ang_vel(state.phys.ang_vel);
+        rb.set_lin_vel(self.state.phys.vel * UU_TO_BT);
+        rb.set_ang_vel(self.state.phys.ang_vel);
         rb.clear_accum_vels();
         rb.update_inertia_tensor();
 
-        if state.phys.vel != Vec3A::ZERO || state.phys.ang_vel != Vec3A::ZERO {
+        if self.state.phys.vel != Vec3A::ZERO || self.state.phys.ang_vel != Vec3A::ZERO {
             rb.set_activation_state(ActivationState::Active);
         }
-
-        self.state = state;
     }
 
     pub(crate) fn pre_tick_update(&mut self, rb: &mut RigidBody, game_mode: GameMode) {
@@ -268,7 +271,7 @@ impl Ball {
 
         if rel_speed > 0.0 && can_accel {
             let extra_z_scale = game_mode == GameMode::Hoops
-                && car.state.is_on_ground
+                && car.state.cache.is_on_ground
                 && car.state.phys.rot_mat.z_axis.z
                     > consts::ball::car_hit_impulse::Z_SCALE_HOOPS_NORMAL_Z_THRESH;
             let z_scale = if extra_z_scale {

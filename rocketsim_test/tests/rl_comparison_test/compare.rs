@@ -133,11 +133,11 @@ fn compare_phys(phys_state: &PhysState, phys_record: &PhysRecord, comparisons: &
 }
 
 fn compare_car(car_state: &CarState, car_record: &CarRecord, comparisons: &mut ComparisonSet) {
-    compare_phys(&car_state.phys, &car_record.phys, comparisons);
+    compare_phys(car_state, &car_record.phys, comparisons);
 
     comparisons.insert(
         "is_on_ground",
-        Comparison::new_bool(car_state.is_on_ground, car_record.is_on_ground),
+        Comparison::new_bool(car_state.is_on_ground(), car_record.is_on_ground),
     );
 
     comparisons.insert(

@@ -7,7 +7,51 @@
 //! The tests do not load the recording or change contact geometry.
 
 use glam::{Mat3A, Vec3A};
-use rocketsim::{Arena, ArenaEvent, CarBodyConfig, CarControls, CarState, GameMode, Team, init};
+use rocketsim::{
+    Arena, ArenaEvent, CarBodyConfig, CarControls, CarCore, CarState, GameMode, Team, init,
+};
+use rocketsim_test::rlpr::cpp_records::copy_recorded_contact_cache;
+
+fn apply_recorded_pose(live: &mut CarState, recorded: &CarState) {
+    *live = copy_recorded_contact_cache(live, recorded);
+    live.set_prev_controls(*recorded.prev_controls());
+    live.pos = recorded.pos;
+    live.rot_mat = recorded.rot_mat;
+    live.vel = recorded.vel;
+    live.ang_vel = recorded.ang_vel;
+    live.controls = recorded.controls;
+    live.has_jumped = recorded.has_jumped;
+    live.has_double_jumped = recorded.has_double_jumped;
+    live.has_flipped = recorded.has_flipped;
+    live.flip_rel_torque = recorded.flip_rel_torque;
+    live.jump_ticks = recorded.jump_ticks;
+    live.flip_time = recorded.flip_time;
+    live.is_flipping = recorded.is_flipping;
+    live.is_jumping = recorded.is_jumping;
+    live.jump_hold_broken = recorded.jump_hold_broken;
+    live.air_time_since_jump = recorded.air_time_since_jump;
+    live.boost = recorded.boost;
+    live.is_auto_flipping = recorded.is_auto_flipping;
+    live.auto_flip_timer = recorded.auto_flip_timer;
+    live.auto_flip_torque_scale = recorded.auto_flip_torque_scale;
+    live.bump_cooldown_timer = recorded.bump_cooldown_timer;
+    live.bump_cooldown_victim = recorded.bump_cooldown_victim;
+    live.last_extra_hit_tick = recorded.last_extra_hit_tick;
+    live.is_demoed = recorded.is_demoed;
+    live.demo_respawn_timer = recorded.demo_respawn_timer;
+    live.handbrake_val = recorded.handbrake_val;
+    live.is_supersonic = recorded.is_supersonic;
+    live.supersonic_grace_timer = recorded.supersonic_grace_timer;
+    live.time_since_boosted = recorded.time_since_boosted;
+    live.boosting_time = recorded.boosting_time;
+    live.is_boosting = recorded.is_boosting;
+    live.air_time = recorded.air_time;
+}
+
+fn set_controls_and_previous(state: &mut CarState, controls: CarControls) {
+    state.controls = controls;
+    state.set_prev_controls(controls);
+}
 
 fn init_meshes() {
     init(
@@ -26,13 +70,11 @@ fn pose_2997() -> CarState {
         Vec3A::new(0.081757, 0.987671, 0.133501),
         Vec3A::new(-0.141264, 0.144080, -0.979431),
     );
-    let mut state = CarState::DEFAULT;
-    state.phys.pos = Vec3A::new(1550.600830, 5071.119141, 772.524719);
-    state.phys.rot_mat = rot_mat;
-    state.phys.vel = Vec3A::new(249.703308, 543.539124, 313.766296);
-    state.phys.ang_vel = Vec3A::new(-4.736583, -1.521454, -3.436491);
-    state.is_on_ground = false;
-    state.wheels_with_contact = [None, None, None, None];
+    let mut state = CarState::from(CarCore::aerial(CarState::DEFAULT.core().phys));
+    state.pos = Vec3A::new(1550.600830, 5071.119141, 772.524719);
+    state.rot_mat = rot_mat;
+    state.vel = Vec3A::new(249.703308, 543.539124, 313.766296);
+    state.ang_vel = Vec3A::new(-4.736583, -1.521454, -3.436491);
     state.has_jumped = true;
     state.has_double_jumped = true;
     state.has_flipped = false;
@@ -46,7 +88,6 @@ fn pose_2997() -> CarState {
     state.handbrake_val = 0.0;
     state.air_time = 5.0;
     state.air_time_since_jump = 5.0;
-    state.world_contact_normal = None;
     state
 }
 
@@ -57,13 +98,11 @@ fn pose_2998() -> CarState {
         Vec3A::new(0.028721, 0.998358, 0.049572),
         Vec3A::new(-0.139626, 0.053113, -0.988779),
     );
-    let mut state = CarState::DEFAULT;
-    state.phys.pos = Vec3A::new(1553.067871, 5072.542480, 775.086670);
-    state.phys.rot_mat = rot_mat;
-    state.phys.vel = Vec3A::new(296.154144, 245.674637, 308.010040);
-    state.phys.ang_vel = Vec3A::new(-9.909379, -0.863449, 6.000502);
-    state.is_on_ground = false;
-    state.wheels_with_contact = [None, None, None, None];
+    let mut state = CarState::from(CarCore::aerial(CarState::DEFAULT.core().phys));
+    state.pos = Vec3A::new(1553.067871, 5072.542480, 775.086670);
+    state.rot_mat = rot_mat;
+    state.vel = Vec3A::new(296.154144, 245.674637, 308.010040);
+    state.ang_vel = Vec3A::new(-9.909379, -0.863449, 6.000502);
     state.has_jumped = true;
     state.has_double_jumped = true;
     state.has_flipped = false;
@@ -75,7 +114,6 @@ fn pose_2998() -> CarState {
     state.handbrake_val = 0.0;
     state.air_time = 5.0;
     state.air_time_since_jump = 5.0;
-    state.world_contact_normal = None;
     state
 }
 
@@ -86,13 +124,11 @@ fn pose_2999() -> CarState {
         Vec3A::new(0.001816, 0.999993, 0.003136),
         Vec3A::new(-0.136873, 0.003355, -0.990583),
     );
-    let mut state = CarState::DEFAULT;
-    state.phys.pos = Vec3A::new(1555.501465, 5074.479492, 777.599121);
-    state.phys.rot_mat = rot_mat;
-    state.phys.vel = Vec3A::new(291.794250, 232.792191, 301.104340);
-    state.phys.ang_vel = Vec3A::new(-5.582328, -0.425622, 3.218727);
-    state.is_on_ground = false;
-    state.wheels_with_contact = [None, None, None, None];
+    let mut state = CarState::from(CarCore::aerial(CarState::DEFAULT.core().phys));
+    state.pos = Vec3A::new(1555.501465, 5074.479492, 777.599121);
+    state.rot_mat = rot_mat;
+    state.vel = Vec3A::new(291.794250, 232.792191, 301.104340);
+    state.ang_vel = Vec3A::new(-5.582328, -0.425622, 3.218727);
     state.has_jumped = true;
     state.has_double_jumped = true;
     state.has_flipped = false;
@@ -104,7 +140,6 @@ fn pose_2999() -> CarState {
     state.handbrake_val = 0.0;
     state.air_time = 5.0;
     state.air_time_since_jump = 5.0;
-    state.world_contact_normal = None;
     state
 }
 
@@ -115,13 +150,11 @@ fn pose_3000() -> CarState {
         Vec3A::new(-0.020495, 0.999076, -0.037784),
         Vec3A::new(-0.132612, -0.040175, -0.990354),
     );
-    let mut state = CarState::DEFAULT;
-    state.phys.pos = Vec3A::new(1557.927002, 5076.427246, 780.064636);
-    state.phys.rot_mat = rot_mat;
-    state.phys.vel = Vec3A::new(291.240692, 233.625076, 295.760406);
-    state.phys.ang_vel = Vec3A::new(-4.907515, -0.465823, 2.685506);
-    state.is_on_ground = false;
-    state.wheels_with_contact = [None, None, None, None];
+    let mut state = CarState::from(CarCore::aerial(CarState::DEFAULT.core().phys));
+    state.pos = Vec3A::new(1557.927002, 5076.427246, 780.064636);
+    state.rot_mat = rot_mat;
+    state.vel = Vec3A::new(291.240692, 233.625076, 295.760406);
+    state.ang_vel = Vec3A::new(-4.907515, -0.465823, 2.685506);
     state.has_jumped = true;
     state.has_double_jumped = true;
     state.has_flipped = false;
@@ -133,7 +166,6 @@ fn pose_3000() -> CarState {
     state.handbrake_val = 0.0;
     state.air_time = 5.0;
     state.air_time_since_jump = 5.0;
-    state.world_contact_normal = None;
     state
 }
 
@@ -144,13 +176,11 @@ fn pose_3001() -> CarState {
         Vec3A::new(-0.028433, 0.992789, -0.116456),
         Vec3A::new(-0.137048, -0.119275, -0.983357),
     );
-    let mut state = CarState::DEFAULT;
-    state.phys.pos = Vec3A::new(1559.802246, 5076.241211, 782.210388);
-    state.phys.rot_mat = rot_mat;
-    state.phys.vel = Vec3A::new(224.687531, -11.776859, 258.051025);
-    state.phys.ang_vel = Vec3A::new(-9.476849, 0.613153, 0.932627);
-    state.is_on_ground = false;
-    state.wheels_with_contact = [None, None, None, None];
+    let mut state = CarState::from(CarCore::aerial(CarState::DEFAULT.core().phys));
+    state.pos = Vec3A::new(1559.802246, 5076.241211, 782.210388);
+    state.rot_mat = rot_mat;
+    state.vel = Vec3A::new(224.687531, -11.776859, 258.051025);
+    state.ang_vel = Vec3A::new(-9.476849, 0.613153, 0.932627);
     state.has_jumped = true;
     state.has_double_jumped = true;
     state.has_flipped = false;
@@ -162,7 +192,6 @@ fn pose_3001() -> CarState {
     state.handbrake_val = 0.0;
     state.air_time = 5.0;
     state.air_time_since_jump = 5.0;
-    state.world_contact_normal = None;
     state
 }
 
@@ -173,13 +202,11 @@ fn pose_3002() -> CarState {
         Vec3A::new(-0.033414, 0.985372, -0.167106),
         Vec3A::new(-0.138262, -0.170149, -0.975670),
     );
-    let mut state = CarState::DEFAULT;
-    state.phys.pos = Vec3A::new(1561.667603, 5076.148438, 784.315857);
-    state.phys.rot_mat = rot_mat;
-    state.phys.vel = Vec3A::new(224.130920, -10.944331, 252.711792);
-    state.phys.ang_vel = Vec3A::new(-6.150740, 0.233085, 0.570879);
-    state.is_on_ground = false;
-    state.wheels_with_contact = [None, None, None, None];
+    let mut state = CarState::from(CarCore::aerial(CarState::DEFAULT.core().phys));
+    state.pos = Vec3A::new(1561.667603, 5076.148438, 784.315857);
+    state.rot_mat = rot_mat;
+    state.vel = Vec3A::new(224.130920, -10.944331, 252.711792);
+    state.ang_vel = Vec3A::new(-6.150740, 0.233085, 0.570879);
     state.has_jumped = true;
     state.has_double_jumped = true;
     state.has_flipped = false;
@@ -191,7 +218,6 @@ fn pose_3002() -> CarState {
     state.handbrake_val = 0.0;
     state.air_time = 5.0;
     state.air_time_since_jump = 5.0;
-    state.world_contact_normal = None;
     state
 }
 
@@ -298,9 +324,8 @@ fn retained_world_report_repairs_primary_chain() {
 
     // Fresh leg (passes pre and post): initial wall contact generates.
     let mut s = pose_2997();
-    s.controls = controls_2999();
-    s.prev_controls = controls_2999();
-    arena.set_car_state(car, s);
+    set_controls_and_previous(&mut s, controls_2999());
+    arena.set_car_state_full(car, s);
     arena.set_car_controls(car, controls_2999());
     let events: Vec<ArenaEvent> = arena.step_tick().to_vec();
     assert!(
@@ -310,17 +335,18 @@ fn retained_world_report_repairs_primary_chain() {
 
     // Retained-only leg: no fresh point at pose2998 (BVH visits nothing new),
     // but the cache retains survivors. Must report world state postpatch.
-    let mut s = pose_2998();
-    s.controls = controls_2999();
-    s.prev_controls = controls_2999();
-    arena.set_car_state(car, s);
+    let recorded = pose_2998();
+    let mut s = *arena.get_car_state(car);
+    apply_recorded_pose(&mut s, &recorded);
+    set_controls_and_previous(&mut s, controls_2999());
+    arena.set_car_state_full(car, s);
     arena.set_car_controls(car, controls_2999());
     let events: Vec<ArenaEvent> = arena.step_tick().to_vec();
     assert!(
         has_car_world(&events, car),
         "retained wall contact at pose2998 must report an event (processed callback)"
     );
-    let world = arena.get_car_state(car).world_contact_normal;
+    let world = arena.get_car_state(car).world_contact_normal();
     assert!(
         matches!(world, Some(n) if (n - Vec3A::new(0.0, -1.0, 0.0)).length() < 1e-3),
         "retained wall contact must set world normal (0,-1,0), got {:?}",
@@ -329,23 +355,23 @@ fn retained_world_report_repairs_primary_chain() {
 
     // Repair leg: carry world across set_state exactly like V3Backend (which
     // preserves the field), then auto-roll must fire and match truth3000.
-    let mut s = pose_2999();
-    s.world_contact_normal = arena.get_car_state(car).world_contact_normal;
-    s.controls = controls_3000();
-    s.prev_controls = controls_3000();
-    arena.set_car_state(car, s);
+    let recorded = pose_2999();
+    let mut s = *arena.get_car_state(car);
+    apply_recorded_pose(&mut s, &recorded);
+    set_controls_and_previous(&mut s, controls_3000());
+    arena.set_car_state_full(car, s);
     arena.set_car_controls(car, controls_3000());
     arena.step_tick();
     let after = *arena.get_car_state(car);
     assert!(
-        (after.phys.vel.y - 233.625076).abs() < 0.25,
+        (after.vel.y - 233.625076).abs() < 0.25,
         "auto-roll linear must apply (vel.y near 233.63), got {}",
-        after.phys.vel.y
+        after.vel.y
     );
     assert!(
-        (after.phys.ang_vel.x + 4.907515).abs() < 0.2,
+        (after.ang_vel.x + 4.907515).abs() < 0.2,
         "auto-roll torque must apply (ang.x near -4.9075), got {}",
-        after.phys.ang_vel.x
+        after.ang_vel.x
     );
 }
 
@@ -359,9 +385,8 @@ fn retained_world_report_repairs_heldout_chain() {
 
     // Fresh leg at pose3000 (passes pre and post): initial wall contact.
     let mut s = pose_3000();
-    s.controls = controls_3001();
-    s.prev_controls = controls_3001();
-    arena.set_car_state(car, s);
+    set_controls_and_previous(&mut s, controls_3001());
+    arena.set_car_state_full(car, s);
     arena.set_car_controls(car, controls_3001());
     let events: Vec<ArenaEvent> = arena.step_tick().to_vec();
     assert!(
@@ -370,10 +395,11 @@ fn retained_world_report_repairs_heldout_chain() {
     );
 
     // Retained-only leg at pose3001.
-    let mut s = pose_3001();
-    s.controls = controls_3002();
-    s.prev_controls = controls_3002();
-    arena.set_car_state(car, s);
+    let recorded = pose_3001();
+    let mut s = *arena.get_car_state(car);
+    apply_recorded_pose(&mut s, &recorded);
+    set_controls_and_previous(&mut s, controls_3002());
+    arena.set_car_state_full(car, s);
     arena.set_car_controls(car, controls_3002());
     let events: Vec<ArenaEvent> = arena.step_tick().to_vec();
     assert!(
@@ -381,28 +407,28 @@ fn retained_world_report_repairs_heldout_chain() {
         "retained wall contact at pose3001 must report an event (processed callback)"
     );
     assert!(
-        arena.get_car_state(car).world_contact_normal.is_some(),
+        arena.get_car_state(car).world_contact_normal().is_some(),
         "retained wall contact must set world state"
     );
 
     // Repair leg at pose3002 with carried world.
-    let mut s = pose_3002();
-    s.world_contact_normal = arena.get_car_state(car).world_contact_normal;
-    s.controls = controls_3003();
-    s.prev_controls = controls_3003();
-    arena.set_car_state(car, s);
+    let recorded = pose_3002();
+    let mut s = *arena.get_car_state(car);
+    apply_recorded_pose(&mut s, &recorded);
+    set_controls_and_previous(&mut s, controls_3003());
+    arena.set_car_state_full(car, s);
     arena.set_car_controls(car, controls_3003());
     arena.step_tick();
     let after = *arena.get_car_state(car);
     assert!(
-        (after.phys.vel.y + 10.112940).abs() < 0.25,
+        (after.vel.y + 10.112940).abs() < 0.25,
         "auto-roll linear must apply (vel.y near -10.11), got {}",
-        after.phys.vel.y
+        after.vel.y
     );
     assert!(
-        (after.phys.ang_vel.x + 6.126513).abs() < 0.2,
+        (after.ang_vel.x + 6.126513).abs() < 0.2,
         "auto-roll torque must apply (ang.x near -6.1265), got {}",
-        after.phys.ang_vel.x
+        after.ang_vel.x
     );
 }
 
@@ -411,11 +437,12 @@ fn retained_world_report_repairs_heldout_chain() {
 fn retained_report_stays_quiet_far_from_wall() {
     init_meshes();
     let (mut arena, car) = new_soccar_one_octane();
-    let mut s = pose_2998();
-    s.phys.pos -= Vec3A::new(0.0, 60.0, 0.0);
-    s.controls = controls_2999();
-    s.prev_controls = controls_2999();
-    arena.set_car_state(car, s);
+    let recorded = pose_2998();
+    let mut s = *arena.get_car_state(car);
+    apply_recorded_pose(&mut s, &recorded);
+    s.pos -= Vec3A::new(0.0, 60.0, 0.0);
+    set_controls_and_previous(&mut s, controls_2999());
+    arena.set_car_state_full(car, s);
     arena.set_car_controls(car, controls_2999());
     let events: Vec<ArenaEvent> = arena.step_tick().to_vec();
     assert!(
@@ -423,7 +450,7 @@ fn retained_report_stays_quiet_far_from_wall() {
         "far pose (105 UU from wall) must report no contact"
     );
     assert!(
-        arena.get_car_state(car).world_contact_normal.is_none(),
+        arena.get_car_state(car).world_contact_normal().is_none(),
         "far pose must leave world state empty"
     );
 }
@@ -437,19 +464,19 @@ fn retained_report_stays_quiet_when_cache_culls() {
 
     // Warm the cache with a fresh wall contact.
     let mut s = pose_2997();
-    s.controls = controls_2999();
-    s.prev_controls = controls_2999();
-    arena.set_car_state(car, s);
+    set_controls_and_previous(&mut s, controls_2999());
+    arena.set_car_state_full(car, s);
     arena.set_car_controls(car, controls_2999());
     let events: Vec<ArenaEvent> = arena.step_tick().to_vec();
     assert!(has_car_world(&events, car), "warmup contact must exist");
 
     // Teleport far: refresh must cull everything, no report either way.
-    let mut s = pose_2998();
-    s.phys.pos -= Vec3A::new(0.0, 60.0, 0.0);
-    s.controls = controls_2999();
-    s.prev_controls = controls_2999();
-    arena.set_car_state(car, s);
+    let recorded = pose_2998();
+    let mut s = *arena.get_car_state(car);
+    apply_recorded_pose(&mut s, &recorded);
+    s.pos -= Vec3A::new(0.0, 60.0, 0.0);
+    set_controls_and_previous(&mut s, controls_2999());
+    arena.set_car_state_full(car, s);
     arena.set_car_controls(car, controls_2999());
     let events: Vec<ArenaEvent> = arena.step_tick().to_vec();
     assert!(
@@ -461,7 +488,7 @@ fn retained_report_stays_quiet_when_cache_culls() {
         "no duplicate or retained event may appear after a full cull"
     );
     assert!(
-        arena.get_car_state(car).world_contact_normal.is_none(),
+        arena.get_car_state(car).world_contact_normal().is_none(),
         "fully culled cache must leave world state empty"
     );
 }
@@ -474,18 +501,16 @@ fn car_car_contacts_do_not_report_world_contact() {
     let a = arena.add_car(Team::Blue, CarBodyConfig::OCTANE);
     let b = arena.add_car(Team::Orange, CarBodyConfig::OCTANE);
     // Keep the overlapping cars away from the world geometry.
-    let mut sa = CarState::DEFAULT;
-    sa.phys.pos = Vec3A::new(1400.0, 4000.0, 500.0);
-    sa.phys.vel = Vec3A::ZERO;
-    sa.phys.ang_vel = Vec3A::ZERO;
-    sa.is_on_ground = false;
-    let mut sb = CarState::DEFAULT;
-    sb.phys.pos = Vec3A::new(1490.5, 4000.0, 500.0);
-    sb.phys.vel = Vec3A::ZERO;
-    sb.phys.ang_vel = Vec3A::ZERO;
-    sb.is_on_ground = false;
-    arena.set_car_state(a, sa);
-    arena.set_car_state(b, sb);
+    let mut sa = CarState::from(CarCore::aerial(CarState::DEFAULT.core().phys));
+    sa.pos = Vec3A::new(1400.0, 4000.0, 500.0);
+    sa.vel = Vec3A::ZERO;
+    sa.ang_vel = Vec3A::ZERO;
+    let mut sb = CarState::from(CarCore::aerial(CarState::DEFAULT.core().phys));
+    sb.pos = Vec3A::new(1490.5, 4000.0, 500.0);
+    sb.vel = Vec3A::ZERO;
+    sb.ang_vel = Vec3A::ZERO;
+    arena.set_car_state(a, sa.core());
+    arena.set_car_state(b, sb.core());
     let neutral = CarControls::DEFAULT;
     arena.set_car_controls(a, neutral);
     arena.set_car_controls(b, neutral);
@@ -493,11 +518,11 @@ fn car_car_contacts_do_not_report_world_contact() {
     let first: Vec<ArenaEvent> = arena.step_tick().to_vec();
     for car in [a, b] {
         assert!(!has_car_world(&first, car));
-        assert!(arena.get_car_state(car).world_contact_normal.is_none());
+        assert!(arena.get_car_state(car).world_contact_normal().is_none());
     }
     // Check that the solver processed the overlapping pair.
-    let pa = arena.get_car_state(a).phys.pos;
-    let pb = arena.get_car_state(b).phys.pos;
+    let pa = arena.get_car_state(a).pos;
+    let pb = arena.get_car_state(b).pos;
     assert!(
         (pa - pb).length() > 105.0,
         "solver rows must have separated the overlap, distance {}",

@@ -1,5 +1,7 @@
 use rocketsim::{Arena, CarBodyConfig, CarControls, CarState, GameMode, PhysState, Team};
-use rocketsim_test::rlpr::{Recording, tick_record::TickRecord};
+use rocketsim_test::rlpr::{
+    Recording, cpp_records::copy_recorded_contact_cache, tick_record::TickRecord,
+};
 
 mod compare;
 
@@ -13,15 +15,14 @@ pub fn set_state_to_record_tick(
         let mut cs = *arena.get_car_state(car_idx);
         let car_record = &tick.car_records[i];
         let rep_cs: CarState = (*car_record).into();
+        cs = copy_recorded_contact_cache(&cs, &rep_cs);
+        cs.set_prev_controls(car_record.prev_controls.into());
         cs.phys = rep_cs.phys;
-        cs.is_on_ground = rep_cs.is_on_ground;
-        cs.wheels_with_contact = rep_cs.wheels_with_contact;
         cs.is_jumping = rep_cs.is_jumping;
         cs.is_flipping = rep_cs.is_flipping;
         cs.jump_ticks = rep_cs.jump_ticks;
         cs.flip_time = rep_cs.flip_time;
         cs.has_jumped = rep_cs.has_jumped;
-        cs.prev_controls = car_record.prev_controls.into();
         cs.flip_rel_torque = rep_cs.flip_rel_torque;
         cs.boost = rep_cs.boost;
 
@@ -37,7 +38,7 @@ pub fn set_state_to_record_tick(
 
         cs.controls = car_controls[i];
 
-        arena.set_car_state(car_idx, cs);
+        arena.set_car_state_full(car_idx, cs);
     }
 
     let rep_bs_phys: PhysState = tick.ball_record.into();
