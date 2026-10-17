@@ -80,6 +80,9 @@ pub struct ViewerSettings {
     /// Key/mouse/gamepad bindings (all defaulted, old files parse).
     #[serde(default)]
     pub bindings: Bindings,
+    /// Device-independent actions. Missing tables use the legacy bindings.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub action_bindings: Option<crate::input::ActionMap>,
     /// Spectate-only mode: watch the followed car, send neutral inputs.
     #[serde(default)]
     pub spectate_only: bool,
@@ -132,6 +135,7 @@ impl Default for ViewerSettings {
             vsync: true,
             msaa: DEFAULT_MSAA,
             bindings: Bindings::default(),
+            action_bindings: None,
             spectate_only: false,
             mut_unlimited_boost: false,
             mut_recharge: false,
@@ -145,6 +149,12 @@ impl Default for ViewerSettings {
 }
 
 impl ViewerSettings {
+    pub fn input_bindings(&self) -> crate::input::ActionMap {
+        self.action_bindings
+            .clone()
+            .unwrap_or_else(|| crate::input::ActionMap::from_legacy(&self.bindings))
+    }
+
     /// Settings file path (`rocketsim-vis/settings.toml` in the OS config
     /// dir, `./settings.toml` fallback).
     pub fn path() -> PathBuf {
@@ -467,6 +477,75 @@ mod tests {
         assert_eq!(back.bindings.car.throttle_back, Key::S);
         assert_eq!(back.bindings.camera.free, Key::G);
         assert_eq!(back.bindings.camera.cycle, Key::C);
+    }
+
+    #[test]
+    fn universal_rebinds_survive_save_and_reload() {
+        use crate::input::{Action, Axis2, InputSource};
+
+        let path = test_path("actions");
+        let mut settings = ViewerSettings::load_from_path(&path);
+        let mut bindings = settings.input_bindings();
+        for (action, source) in [
+            (Action::Jump, InputSource::Key(Key::Escape)),
+            (Action::Director, InputSource::Mouse(MouseButton::Extra2)),
+            (
+                Action::MenuAccept,
+                InputSource::PadAxis {
+                    axis: crate::bindings::PadAxis::LeftStickY,
+                    sign: -1,
+                },
+            ),
+            (
+                Action::FreeUp,
+                InputSource::Wheel {
+                    axis: Axis2::Y,
+                    sign: 1,
+                },
+            ),
+            (
+                Action::Boost,
+                InputSource::PadRaw {
+                    code: 0x30000,
+                    sign: 1,
+                },
+            ),
+        ] {
+            bindings.set(action, 1, source);
+        }
+        bindings.set(Action::ThrottleBack, 0, InputSource::Unbound);
+        settings.action_bindings = Some(bindings.clone());
+        settings.mark_dirty();
+        settings.flush().unwrap();
+        assert_eq!(
+            ViewerSettings::load_from_path(&path).input_bindings(),
+            bindings
+        );
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn old_bindings_migrate_until_action_table_is_present() {
+        use crate::input::{Action, ActionMap, InputSource};
+
+        let mut settings: ViewerSettings = toml::from_str(
+            "[bindings.car]\nthrottle_fwd = \"ArrowUp\"\n[bindings.pad.camera]\ndirector = \"LeftThumb\"\n",
+        ).unwrap();
+        assert_eq!(
+            settings.input_bindings().sources(Action::ThrottleForward)[0],
+            InputSource::Key(Key::ArrowUp)
+        );
+        assert_eq!(
+            settings.input_bindings().sources(Action::Director)[1],
+            InputSource::PadButton(PadButton::LeftThumb)
+        );
+        settings.action_bindings = Some(ActionMap::default());
+        assert_eq!(
+            settings.input_bindings().sources(Action::ThrottleForward)[0],
+            InputSource::Key(Key::W)
+        );
+        settings.reset_all();
+        assert!(settings.action_bindings.is_none());
     }
 
     #[test]

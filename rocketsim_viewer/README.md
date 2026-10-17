@@ -89,17 +89,69 @@ timing.
 
 ## Controls and settings
 
-The keyboard camera defaults are `1`-`8` to follow cars, `9` for director,
-`0` for auto camera, `F` for free camera, `C` to cycle, and `Space` to toggle
-ball cam while following. Driving keys use WASD. Mouse movement looks around in free-camera mode. The
-primary mouse button jumps; the secondary mouse button boosts. Rebind keyboard
-and mouse driving actions, including jump and boost, in settings. Controller
-bindings are configurable.
+All controls use one action map. It has 56 actions, with two input slots for
+each action. Each slot can use a keyboard key, mouse input, or controller input.
+The settings menu groups actions and lets you search. Duplicate bindings show a
+warning; they are allowed. Clear a slot or reset an action to its defaults.
 
-Controller actions require the viewer window to have focus. This includes
-menu navigation. The right stick adjusts look direction while following a car.
-It does not control free-camera movement. Controller navigation can reach all
-menu sections.
+Supported inputs include egui keyboard keys and modifiers, five mouse buttons,
+signed X/Y mouse motion and wheel input, controller buttons and triggers,
+signed stick directions, and raw controller codes. Capture accepts any input
+the viewer receives, including Escape. Use the Cancel button to stop capture.
+Tap the current Back input to bind it. Hold it for 0.75 seconds to cancel.
+Operating-system-reserved keys may not reach egui. The settings menu shows
+capture status in its action label.
+
+Defaults include `W`/`S`/`A`/`D` driving and free-camera movement, `Space` for
+free-camera up, and `Shift` for handbrake, air roll, and free-camera down,
+and `Ctrl` for fast free-camera movement. The mouse buttons jump and boost.
+Mouse movement looks in free-camera mode; the wheel moves the free camera in
+and out. `R` resets it. Camera defaults are `1`-`8` to follow cars, `9` for
+Director, `0` for Auto, `F` for free camera, `C` to cycle, and `Space` to
+toggle ball camera while following.
+
+The controller defaults use the left stick for driving and free-camera movement,
+the right stick for look, and the triggers for throttle/brake and free-camera
+up/down. Follow-camera look and free-camera look have separate bindings. The left thumb button moves the free camera fast; the right thumb
+button resets it. Controller selection prefers a real mapped controller over a
+system controller. You can change the selected controller in settings.
+
+Input actions work only while the viewer window has focus. The menu blocks
+driving input. The viewer sends neutral drive controls when spectate-only mode
+is enabled. This mode does not apply inputs from any other unfocused window.
+
+`Auto` selects automatic ball-camera behavior. `Director` chooses a target with
+a deterministic, short-horizon ballistic and floor-bounce heuristic. It aims
+to frame predicted shots and saves and to select player views. It is not an
+implementation of Rocket League's proprietary Director AI and does not promise
+matching cuts or predictions. Rocket League describes its Director Mode as
+using match analysis to place and move cameras and select player views:
+[official Director Mode overview](https://www.rocketleague.com/en/news/autumn-update-local-matches-director-mode).
+Its [v1.37 patch notes](https://www.rocketleague.com/news/patch-notes-v1-37)
+describe prediction of shots, goals, and saves.
+
+New bindings are saved in `[action_bindings.bindings]`. Each action value has
+two source slots. For example:
+
+```toml
+[action_bindings.bindings]
+ThrottleForward = [
+  { type = "PadAxis", value = { axis = "RightZ", sign = 1 } },
+  { type = "Unbound" },
+]
+Jump = [
+  { type = "Key", value = "Space" },
+  { type = "Mouse", value = "Primary" },
+]
+```
+
+This example shows the source-tagged format. Use the exact enum names written
+by the viewer. The legacy `[bindings]` table is used only when
+`[action_bindings]` is absent. Once the new table exists, legacy bindings do not
+provide live actions. An action omitted from the new table is unbound. Use the
+viewer to change one action and retain the other actions. The example above is
+not a complete control map. This settings change does not change the network
+wire format.
 
 Settings use `settings.toml` in the OS config directory under
 `rocketsim-vis`. Linux uses `$XDG_CONFIG_HOME/rocketsim-vis/` or, if unset,

@@ -77,6 +77,7 @@ pub fn generation_changed(previous: Option<u64>, current: u64) -> bool {
     previous.is_some_and(|generation| generation != current)
 }
 
+#[cfg(test)]
 pub fn pad_edge_allowed(focused: bool, device_changed: bool, held: bool, was_held: bool) -> bool {
     focused && !device_changed && held && !was_held
 }

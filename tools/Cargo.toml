@@ -1,0 +1,14 @@
+[package]
+name = "input-control-probe"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+
+[[bin]]
+name = "input-control-probe"
+path = "input-control-probe.rs"
+
+[dependencies]
+rocketsim = { path = "../rocketsim" }
+rocketsim_vis = { path = "../rocketsim_vis" }

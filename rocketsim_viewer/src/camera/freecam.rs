@@ -4,12 +4,12 @@
 //! ([`FreeCam::fly`]), Space/Shift move in world Z, wheel dollies
 //! ([`FreeCam::dolly`]). Pose ([`FreeCam::pos_dir`]) derives from
 //! `pos`/`yaw`/`pitch` each call, with a floor clamp and a position box.
-//! No hidden time state: huge or non-finite `dt` only shrinks one step.
+//! No hidden time state: `dt` is clamped to `[0, 1]` and non-finite `dt` yields no movement.
 //! No wall-clock, no RNG.
 //!
-//! `yaw` is the bearing from +X toward +Y (+Y is `+90°`); `pitch` is `+`
+//! yaw` is the bearing from +X toward +Y (+Y is `+90°`); `pitch` is `+`
 //! looking up, clamped to `±MAX_PITCH_RAD`. Screen-right is
-//! `(sin yaw, −cos yaw, 0)` (level form, valid at all pitches).
+//! `(sin yaw, −cos yaw, 0)` and forward follows the full view direction.
 
 use std::f32::consts::{FRAC_PI_2, PI};
 
@@ -117,22 +117,17 @@ impl FreeCam {
         }
     }
 
-    /// Flies view-relative: `forward` (W) along the LEVEL view bearing
-    /// (never changes height — pitch is ignored), `right` (D)
-    /// screen-right, `up` (Space/Shift) in world Z. Only Space/Shift move
-    /// vertically. Inputs clamp to `[-1, 1]` and normalize when longer
-    /// than 1; `dt` clamps to `[0, 1/30]`.
+    /// Flies view-relative: `forward` (W) follows the view direction,
+    /// `right` (D) follows screen-right, and `up` (Space/Shift) moves in
+    /// world Z. Inputs clamp to `[-1, 1]` and normalize when longer than 1;
+    /// `dt` clamps to `[0, 1]`.
     pub fn fly(&mut self, forward: f32, right: f32, up: f32, dt: f32) {
         let dt = clamp_dt(dt);
         let f = sanitize(forward, 0.0).clamp(-1.0, 1.0);
         let r = sanitize(right, 0.0).clamp(-1.0, 1.0);
         let u = sanitize(up, 0.0).clamp(-1.0, 1.0);
         let (fwd, rgt) = frame(self.yaw, self.pitch);
-        // Level flight: drop the pitch component so W/D never climb.
-        let fwd_level = Vec3A::new(fwd.x, fwd.y, 0.0)
-            .try_normalize()
-            .unwrap_or(Vec3A::new(self.yaw.cos(), self.yaw.sin(), 0.0));
-        let mut v = fwd_level * f + rgt * r + Vec3A::Z * u;
+        let mut v = fwd * f + rgt * r + Vec3A::Z * u;
         let speed = v.length();
         if dt <= 0.0 || speed == 0.0 {
             self.pos = clamp_pos(self.pos);
@@ -332,13 +327,17 @@ mod tests {
         cam.fly(0.0, 0.0, 1.0, 1.0 / 60.0);
         assert!(((cam.pos() - p0) - Vec3A::new(0.0, 0.0, MOVE_SPEED / 60.0)).length() < 1e-2);
 
-        // Pitched down 45°: W/D still fly level (no height change);
-        // only Space/Shift move vertically.
+        // Forward follows pitch; screen-right remains level.
         cam = FreeCam::with_pose(Vec3A::new(0.0, 0.0, 500.0), FRAC_PI_2, -FRAC_PI_4);
         let p0 = cam.pos();
-        cam.fly(1.0, 1.0, 0.0, 1.0 / 60.0);
+        cam.fly(1.0, 0.0, 0.0, 1.0 / 60.0);
+        assert!((cam.pos().z - p0.z + MOVE_SPEED / 60.0 * FRAC_PI_4.sin()).abs() < 1e-2);
+        assert!((cam.pos().y - p0.y) > 0.0);
+        cam = FreeCam::with_pose(Vec3A::new(0.0, 0.0, 500.0), FRAC_PI_2, -FRAC_PI_4);
+        let p0 = cam.pos();
+        cam.fly(0.0, 1.0, 0.0, 1.0 / 60.0);
         assert!((cam.pos().z - p0.z).abs() < 1e-2);
-        assert!((cam.pos().y - p0.y) > 0.0 && (cam.pos().x - p0.x) > 0.0);
+        assert!((cam.pos().x - p0.x) > 0.0);
 
         // Combined inputs move at the same unit speed (normalized).
         cam = FreeCam::new();

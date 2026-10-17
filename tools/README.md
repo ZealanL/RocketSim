@@ -58,3 +58,146 @@ screenshot timing may vary.
 | HW3 | draw-call batching | 17→10 draws/frame (instanced cars, merged arena, empty skips); ~20 fewer driver calls, single-digit µs real-HW est. | — | pixel-identical (0.000% vs pre-batch binary); llvmpipe can't resolve the delta |
 
 Budget: <1ms CPU submit/frame, 60fps cap. Numbers recorded here.
+
+## Input review harness
+
+Run the input review against a stable viewer build. The harness uses the isolated
+`target/input-review` tree. It does not use the user's normal config. It starts
+Xephyr on `:99`, launches each child with its own `XDG_CONFIG_HOME`, and stops
+the child processes when it exits.
+
+The `input-control-probe` runs a real Soccar or TheVoid arena. It receives
+`ControlMsg` values from the viewer over the normal sim connection. It applies
+the controls and writes JSON Lines records for controls, actions, mutators, and
+car state. This verifies the viewer-to-simulation path.
+
+Build after the viewer source is stable. The probe manifest and source are tracked
+in `tools/Cargo.toml` and `tools/input-control-probe.rs`. Cargo keeps the probe's
+dependency lockfile in `tools/Cargo.lock`. Use a target directory under ignored
+`target/input-review` for build files.
+
+```sh
+cargo build -p rocketsim_viewer --bin rocketsim-viewer
+cargo build -p rocketsim_vis --example drive
+cargo build --offline --manifest-path tools/Cargo.toml --target-dir target/input-review/control-probe/target
+python3 tools/input-review-profiles.py
+```
+
+Create source-specific profiles under the ignored target tree. Start one run per
+profile so each run has a clean simulator log. Example: test the keyboard throttle
+binding and save before/active/after screenshots:
+
+```sh
+python3 tools/input-review.py --profile keyboard \
+  --settings target/input-review/profiles/keyboard.toml \
+  --window 'rocketsim viewer' --control-probe --probe-seconds 30 \
+  --control-log target/input-review/keyboard-controls.jsonl \
+  --action key:Escape --action key:1 \
+  --action capture:target/input-review/keyboard-before.png \
+  --action key:Up:down --action wait:1 \
+  --action capture:target/input-review/keyboard-active.png \
+  --action key:Up:up --action wait:1
+python3 tools/verify-input-review.py \
+  target/input-review/keyboard-controls.jsonl \
+  --transition throttle --require 'throttle>=0.8' --state-moved
+```
+
+Use `--controller` to create the uinput pad before the viewer starts. The helper
+supports buttons, signed sticks, triggers, and hats. Example: verify that a pad
+stick reaches the sim as steering:
+
+```sh
+python3 tools/input-review.py --profile pad-axis \
+  --settings target/input-review/profiles/pad-axis.toml \
+  --window 'rocketsim viewer' --controller --control-probe \
+  --control-log target/input-review/pad-axis-controls.jsonl \
+  --action key:Escape --action key:1 \
+  --action axis:ABS_X:0 --action wait:0.5 \
+  --action capture:target/input-review/pad-neutral.png \
+  --action axis:ABS_X:28000 --action wait:0.5 \
+  --action capture:target/input-review/pad-steer-right.png \
+  --action axis:ABS_X:0 --action wait:0.5
+python3 tools/verify-input-review.py \
+  target/input-review/pad-axis-controls.jsonl \
+  --transition steer --require 'steer>=0.8'
+```
+
+The profile stores the follow binding as `Num1`. Send X11 keysym `1` with the
+harness to select Follow 1. Use `--mode thevoid` to run the probe in TheVoid.
+The default mode is Soccar.
+The `--drive` option starts the stock drive example instead of the JSON probe.
+Do not pass `--drive` and `--control-probe` in the same run.
+
+The helper accepts these action types:
+
+- `key:KEY`, `key:KEY:down`, and `key:KEY:up` send key events. A short key press
+  stays down for 150 ms.
+- `mouse:N:down` and `mouse:N:up` hold or release an X11 mouse button.
+- `move:X:Y` moves the mouse to an X11 screen coordinate. Use it to test mouse
+  look. Capture before and after images in free-camera mode.
+- `drag:X1:Y1:X2:Y2` holds mouse button 1 while it moves between the points.
+  Use it to resize the settings window.
+- `wheel:UP` and `wheel:DOWN` send one scroll event.
+- `pad:BTN_SOUTH[:0|1]` presses or releases an evdev button.
+- `axis:ABS_X:VALUE` sends an evdev axis value. Other registered `ABS_*` axis
+  names work in the same form.
+- `focus:out` moves focus away from the viewer. `focus:in` restores it.
+- `wait:SECONDS` waits for up to 5 seconds. Use this for control and save debounce.
+- `capture:FILE` writes a screenshot at that point in the action list.
+
+The harness writes each profile to `target/input-review/<profile>-controls.jsonl`
+by default. Set `--control-log` to choose another path under `target/input-review`.
+Pass that path as the first argument to the checker.
+
+The JSON checker accepts dotted control names. For example, use
+`--require 'jump=true'`, `--action-bit 0`, `--button-bit 0`, or
+`--mutator-bit 1` to check jump, reset, a control pulse, or a mutator. Use
+`--neutral` to require a neutral control sample. Use `--transition throttle`
+to require both neutral and active throttle values. Use `--state-moved` to require a car position change.
+
+The current viewer has 56 actions and seven input source types: key, mouse
+button, mouse axis, wheel, pad button, pad axis, and raw pad code. The unit test
+`exhaustive_sources_actions_and_slots_roundtrip_and_evaluate_edges` checks every
+concrete source in both binding slots for every action. This includes at least
+392 action/source-type combinations. The test also checks the source variants
+for keys, buttons, axes, and raw codes. Run it after the source is stable:
+
+```sh
+cargo test -p rocketsim_viewer input::tests::exhaustive_sources_actions_and_slots_roundtrip_and_evaluate_edges
+```
+
+The real-window review uses representative end-to-end profiles for each source
+type:
+
+| Profile | Input | Required evidence |
+|---|---|---|
+| `keyboard` | Up/Down keys | throttle changes in the sim control log |
+| `mouse-button` | primary/secondary buttons | jump or boost changes in the sim control log |
+| `mouse-axis` | signed mouse motion | free-camera screenshot changes in the expected direction |
+| `wheel` | scroll up/down | throttle changes in the sim control log |
+| `pad-button` | South/East buttons | jump or boost changes in the sim control log |
+| `pad-axis` | left-stick X | steer changes in the sim control log |
+| `pad-trigger` | trigger axes | free-camera height changes in the screenshot |
+| `pad-raw` | raw ABS_X code (`196608`) | throttle changes in the sim log |
+| `shared-key` | one key bound to throttle and jump | both control fields change in one run |
+
+Capture the single Bindings section. Rebind one action. Capture the armed state
+and the resulting binding. Then check the TOML file in
+`target/input-review/config/<profile>/rocketsim-vis/settings.toml`. On the
+restart run, pass `--profile <profile>` but do not pass `--settings` again. This
+keeps the saved file. Repeat the input and check the control log. Also capture
+free-camera before and after keyboard movement, mouse motion, and pad-stick
+motion. Use screenshots for view actions; the sim log does not contain camera
+poses.
+
+The viewer selects the Xbox-style virtual pad for these runs. Require matching
+control records from `input-control-probe` for pad driving tests. Do not disable
+or grab the host input devices.
+
+For focus-loss review, hold a bound input, use `focus:out`, wait, and capture.
+Restore focus while the input is still held. Confirm that the sim receives
+neutral controls until the input is released. Repeat with a pad axis and a pad
+button. For shared bindings, assign the same source to two actions and assert
+both outputs. Require a control or action record from `input-control-probe` for
+driving and simulation actions. Require a camera or menu screenshot change for
+view-only actions.

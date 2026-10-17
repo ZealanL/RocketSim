@@ -5,9 +5,10 @@
 //! which cut in (rate-limited). All timing runs on caller `dt`; no RNG or
 //! wall-clock.
 //!
-//! Per-car: `S = 1.0·P + 2.0·T + 0.5·E + 0.5·A` (nearness, shot threat,
-//! ball energy, activity). Overview: `S = 0.55 + 0.3·C − 0.3·E` (spread
-//! minus energy).
+//! Per-car scores combine ball proximity, energy, activity, aerial focus,
+//! likely-shot attacker priority, and projected-save opportunity. Scores are
+//! heuristics. Scoring projections use simple motion and do not model arena
+//! collision meshes.
 
 use glam::Vec3A;
 use rocketsim::{ArenaState, consts::arena::get_aabb};
@@ -26,6 +27,7 @@ pub enum DirectorTarget {
 /// Broadcast director: picks [`DirectorTarget`] from the arena state.
 pub struct DirectorState {
     current: DirectorTarget,
+    current_car_id: Option<usize>,
     time_on_target: f32,
     time_since_force: f32,
     last_switch_forced: bool,
@@ -48,14 +50,14 @@ impl DirectorState {
     /// Cut blend duration (s), applied as a smoothstep.
     pub const BLEND_T: f32 = 0.7;
 
-    /// Ball speed above which a shot can threaten (uu/s).
+    /// Ball speed above which a projected scoring event is considered (uu/s).
     pub const SHOT_MIN_SPEED: f32 = 800.0;
-    /// Ball-velocity alignment with the goal direction for a threat.
+    /// Minimum useful alignment with a Soccar goal direction.
     pub const SHOT_MIN_ALIGN: f32 = 0.70;
-    /// Time for the ball to reach the goal mouth for a threat (s).
+    /// Maximum time horizon for a projected scoring event (s).
     pub const SHOT_MAX_T_GOAL: f32 = 3.0;
-    /// Ball speed below which (near center) the state counts as kickoff.
-    pub const KICKOFF_MAX_SPEED: f32 = 400.0;
+    /// Ball speed below which the centered spawn ball can count as kickoff.
+    pub const KICKOFF_MAX_SPEED: f32 = 200.0;
     /// Aerial-play score bonus (mirrors RL's "focus on aerials" autocam:
     /// an airborne car under a high ball is where the play is).
     pub const AERIAL_BONUS: f32 = 0.25;
@@ -63,13 +65,21 @@ impl DirectorState {
     pub const AERIAL_BALL_Z: f32 = 600.0;
     /// Car-ball distance under which the aerial bonus applies (uu).
     pub const AERIAL_MAX_DIST: f32 = 1500.0;
-    /// Ball distance from center below which (when slow) counts as kickoff.
-    pub const KICKOFF_MAX_DIST: f32 = 1500.0;
+    /// Ball horizontal distance from center for a kickoff spawn (uu).
+    pub const KICKOFF_MAX_DIST: f32 = 250.0;
+    const BALL_GRAVITY: f32 = 650.0;
+    /// Approximate ball radius for floor and Soccar-mouth clearance. Snowday
+    /// uses puck geometry, which this lightweight projection does not model.
+    const BALL_RADIUS: f32 = 92.75;
+    const FLOOR_RESTITUTION: f32 = 0.60;
+    const PROJECTION_STEP: f32 = 1.0 / 120.0;
+    const REST_BOUNCE_SPEED: f32 = 40.0;
 
     /// Starts on [`DirectorTarget::Overview`].
     pub fn new() -> Self {
         Self {
             current: DirectorTarget::Overview,
+            current_car_id: None,
             time_on_target: 0.0,
             time_since_force: Self::FORCE_CD,
             last_switch_forced: false,
@@ -80,6 +90,7 @@ impl DirectorState {
     /// Reset target and timing state to a clean overview.
     pub fn reset(&mut self) {
         self.current = DirectorTarget::Overview;
+        self.current_car_id = None;
         self.time_on_target = 0.0;
         self.time_since_force = Self::FORCE_CD;
         self.last_switch_forced = false;
@@ -101,43 +112,101 @@ impl DirectorState {
         self.time_on_target
     }
 
-    /// Goal-mouth point for the `side` end of the field (`+1` = +Y).
-    fn goal_center(arena: &ArenaState, side: f32) -> Vec3A {
-        let aabb = get_aabb(arena.game_mode());
-        Vec3A::new(0.0, side * aabb.max.y, aabb.max.z * 0.15)
-    }
+    /// Project a scoring event with constant horizontal velocity, gravity,
+    /// and a simple damped floor bounce. This is a camera heuristic, not
+    /// RocketSim collision physics.
+    /// Unsupported scoring geometry returns no event rather than using a
+    /// Soccar goal shape for another mode.
+    fn scoring_event(arena: &ArenaState) -> Option<(f32, Vec3A, f32)> {
+        use rocketsim::GameMode;
 
-    /// Graded shot threat (`0`, or alignment `0.70..1.0`) toward `goal`.
-    fn shot_threat(
-        mode: rocketsim::GameMode,
-        ball_pos: Vec3A,
-        ball_vel: Vec3A,
-        goal: Vec3A,
-    ) -> f32 {
-        let speed = ball_vel.length();
-        if speed <= Self::SHOT_MIN_SPEED {
-            return 0.0;
+        let mode = arena.game_mode();
+        if !matches!(
+            mode,
+            GameMode::Soccar | GameMode::Heatseeker | GameMode::Snowday | GameMode::Hoops
+        ) {
+            return None;
         }
-        let to_goal = goal - ball_pos;
-        let dist = to_goal.length();
-        if dist < 1.0 {
-            return 0.0;
-        }
-        let align = ball_vel.dot(to_goal) / (speed * dist);
-        let t = (goal.y - ball_pos.y) / ball_vel.y;
-        if align <= Self::SHOT_MIN_ALIGN || t <= 0.0 || t >= Self::SHOT_MAX_T_GOAL {
-            return 0.0;
-        }
-        let predicted = ball_pos + ball_vel * t;
-        let scores = match mode {
-            rocketsim::GameMode::Hoops => {
-                let dy = predicted.y.abs() * 0.9 - 2770.0;
-                predicted.z < rocketsim::consts::goal::HOOPS_GOAL_SCORE_THRESHOLD_Z
-                    && predicted.x * predicted.x + dy * dy < 716.0 * 716.0
+        let p = arena.ball.pos;
+        let v = arena.ball.vel;
+        let side = v.y.signum();
+        if mode == GameMode::Hoops {
+            // Hoops is a horizontal ring. Project to the descending crossing
+            // of its score height, then test the ring radius in the floor plane.
+            let ring_z = rocketsim::consts::goal::HOOPS_GOAL_SCORE_THRESHOLD_Z;
+            let height = p.z - ring_z;
+            let discriminant = v.z * v.z + 2.0 * Self::BALL_GRAVITY * height;
+            if discriminant < 0.0 || (v.length_squared() < 1.0 && height < 350.0) {
+                return None;
             }
-            _ => predicted.x.abs() < 893.0 && (0.0..642.0).contains(&predicted.z),
-        };
-        if scores { align.clamp(0.0, 1.0) } else { 0.0 }
+            // The larger root is the descending crossing. It also handles a
+            // ball rising from below the ring before falling through it.
+            let t = (v.z + discriminant.sqrt()) / Self::BALL_GRAVITY;
+            if !(0.0..=Self::SHOT_MAX_T_GOAL).contains(&t) {
+                return None;
+            }
+            let predicted = Vec3A::new(p.x + v.x * t, p.y + v.y * t, ring_z);
+            let side = predicted.y.signum();
+            if side == 0.0 {
+                return None;
+            }
+            let dy = predicted.y.abs() * 0.9 - 2770.0;
+            let ring_dist = (predicted.x * predicted.x + dy * dy).sqrt();
+            let threat = if ring_dist < 716.0 {
+                (1.0 - ring_dist / 716.0).clamp(0.25, 1.0)
+            } else {
+                0.0
+            };
+            return (threat > 0.0).then_some((threat, predicted, t));
+        }
+
+        if v.length() < Self::SHOT_MIN_SPEED || v.y.abs() < 1.0 {
+            return None;
+        }
+        let bounds = get_aabb(mode);
+        let plane_y = side * bounds.max.y;
+        let mut pos = p;
+        let mut vel = v;
+        let mut elapsed = 0.0;
+        while elapsed < Self::SHOT_MAX_T_GOAL {
+            let dt = Self::PROJECTION_STEP.min(Self::SHOT_MAX_T_GOAL - elapsed);
+            vel.z -= Self::BALL_GRAVITY * dt;
+            let next = pos + vel * dt;
+            let next_time = elapsed + dt;
+            if next.z < Self::BALL_RADIUS {
+                pos.z = Self::BALL_RADIUS;
+                if vel.z.abs() < Self::REST_BOUNCE_SPEED {
+                    vel.z = 0.0;
+                } else {
+                    vel.z = vel.z.abs() * Self::FLOOR_RESTITUTION;
+                }
+            } else {
+                pos.z = next.z;
+            }
+            pos.x = next.x;
+            pos.y = next.y;
+            if (pos.y - plane_y) * side >= 0.0 {
+                let span = pos.y - (pos.y - vel.y * dt);
+                let fraction = if span.abs() > 1e-4 {
+                    ((plane_y - (pos.y - vel.y * dt)) / span).clamp(0.0, 1.0)
+                } else {
+                    0.0
+                };
+                let predicted = Vec3A::new(pos.x - vel.x * dt * (1.0 - fraction), plane_y, pos.z);
+                let align = (v.y.abs() / v.length()).clamp(0.0, 1.0);
+                let threat = if align >= Self::SHOT_MIN_ALIGN
+                    && predicted.x.abs() < 893.0 - Self::BALL_RADIUS
+                    && (Self::BALL_RADIUS..642.0).contains(&predicted.z)
+                {
+                    align
+                } else {
+                    0.0
+                };
+                return (threat > 0.0).then_some((threat, predicted, elapsed + dt * fraction));
+            }
+            elapsed = next_time;
+        }
+        None
     }
 
     /// Aerial bonus for `activity`-style scoring: an airborne car within
@@ -159,6 +228,7 @@ impl DirectorState {
     fn is_kickoff(arena: &ArenaState) -> bool {
         arena.ball.vel.length() < Self::KICKOFF_MAX_SPEED
             && arena.ball.pos.truncate().length() < Self::KICKOFF_MAX_DIST
+            && (arena.ball.pos.z - rocketsim::consts::ball::REST_Z).abs() < 60.0
     }
 
     /// Activity bonus: boosting, supersonic, or lining up a demo.
@@ -204,14 +274,70 @@ impl DirectorState {
         self.time_since_force += dt;
         self.blend_age += dt;
 
+        // `DirectorTarget::Car` is a vector index for the caller, but the
+        // selected player is tracked by RocketSim's stable car id.
+        let selected_car_missing = self
+            .current_car_id
+            .is_some_and(|id| !arena_state.cars.iter().any(|(info, _)| info.idx == id));
+        if let Some(id) = self.current_car_id {
+            self.current = arena_state
+                .cars
+                .iter()
+                .position(|(info, _)| info.idx == id)
+                .map(DirectorTarget::Car)
+                .unwrap_or(DirectorTarget::Overview);
+        }
+
         let ball_speed = arena_state.ball.vel.length();
         let energy = (ball_speed / 3000.0).clamp(0.0, 1.0);
         let kickoff = Self::is_kickoff(arena_state);
 
-        // Per-car scores (`None` = demoed, not a valid candidate).
+        // Score each player independently. A scoring event boosts only the
+        // most plausible attacker and defenders close to its projected path.
+        let event = if kickoff {
+            None
+        } else {
+            Self::scoring_event(arena_state)
+        };
+        let mut attacker = None;
+        let mut attacker_value = 0.0_f32;
+        let mut defender_best: Option<(usize, f32)> = None;
+        if let Some((_, event_pos, event_time)) = event {
+            let side = event_pos.y.signum();
+            for (i, (info, car)) in arena_state.cars.iter().enumerate() {
+                if car.is_demoed {
+                    continue;
+                }
+                let attacked_goal_side = -info.team.get_y_dir();
+                let predicted_car = car.pos + car.vel * event_time.min(1.5);
+                if attacked_goal_side == side {
+                    let delta = arena_state.ball.pos - car.pos;
+                    let closing = if delta.length_squared() > 1.0 {
+                        car.vel.dot(delta.normalize()).clamp(-1000.0, 2000.0) / 2000.0
+                    } else {
+                        0.0
+                    };
+                    let reach = (delta.length() / (car.vel.length().max(900.0))).clamp(0.0, 3.0);
+                    let value = 1.0 / (1.0 + reach) + 0.25 * closing.max(0.0);
+                    if value > attacker_value {
+                        attacker = Some(i);
+                        attacker_value = value;
+                    }
+                } else {
+                    let dist = (predicted_car - event_pos).length();
+                    if dist < 2200.0 {
+                        let value = 1.0 / (1.0 + dist / 900.0);
+                        if defender_best.is_none_or(|(_, best)| value > best) {
+                            defender_best = Some((i, value));
+                        }
+                    }
+                }
+            }
+        }
+
         let mut scores: Vec<Option<(f32, f32)>> = Vec::with_capacity(arena_state.num_cars());
         let mut min_dist = f32::INFINITY;
-        for (i, (info, car)) in arena_state.cars.iter().enumerate() {
+        for (i, (_, car)) in arena_state.cars.iter().enumerate() {
             if car.is_demoed {
                 scores.push(None);
                 continue;
@@ -219,21 +345,25 @@ impl DirectorState {
             let d = (arena_state.ball.pos - car.pos).length();
             min_dist = min_dist.min(d);
             let proximity = 1.0 / (1.0 + d / 1500.0);
-            let threat = if kickoff {
-                0.0
+            let is_attacker = attacker == Some(i);
+            let save_weight = defender_best
+                .filter(|(candidate, _)| *candidate == i)
+                .map_or(0.0, |(_, weight)| weight);
+            let threat = event.map_or(0.0, |(threat, _, _)| {
+                threat * if is_attacker { 1.0 } else { save_weight * 0.9 }
+            });
+            let attack_bonus = if is_attacker {
+                0.75 * attacker_value
             } else {
-                Self::shot_threat(
-                    arena_state.game_mode(),
-                    arena_state.ball.pos,
-                    arena_state.ball.vel,
-                    Self::goal_center(arena_state, -info.team.get_y_dir()),
-                )
+                0.0
             };
-            let score = 1.0 * proximity
-                + 2.0 * threat
+            let save_bonus = 1.1 * save_weight * event.map_or(0.0, |(threat, _, _)| threat);
+            let score = proximity
                 + 0.5 * energy
                 + 0.5 * Self::activity(arena_state, i)
-                + Self::aerial_bonus(arena_state, i, d);
+                + Self::aerial_bonus(arena_state, i, d)
+                + attack_bonus
+                + save_bonus;
             scores.push(Some((score, threat)));
         }
 
@@ -257,16 +387,24 @@ impl DirectorState {
             }
         }
 
-        let (current_valid, current_score) = match self.current {
-            DirectorTarget::Overview => (true, overview_score),
-            DirectorTarget::Car(i) => match scores.get(i).copied().flatten() {
-                Some((score, _)) => (true, score),
-                None => (false, f32::NEG_INFINITY),
-            },
+        let (current_valid, current_score) = if selected_car_missing {
+            (false, f32::NEG_INFINITY)
+        } else {
+            match self.current {
+                DirectorTarget::Overview => (true, overview_score),
+                DirectorTarget::Car(i) => match scores.get(i).copied().flatten() {
+                    Some((score, _)) => (true, score),
+                    None => (false, f32::NEG_INFINITY),
+                },
+            }
         };
 
         if !current_valid {
             self.switch_to(best, false);
+            self.current_car_id = match best {
+                DirectorTarget::Car(i) => Some(arena_state.cars[i].0.idx),
+                DirectorTarget::Overview => None,
+            };
         } else if best != self.current {
             let force = best_threat >= Self::FORCE_T
                 && self.time_since_force >= Self::FORCE_CD
@@ -274,6 +412,10 @@ impl DirectorState {
             if force {
                 self.time_since_force = 0.0;
                 self.switch_to(best, true);
+                self.current_car_id = match best {
+                    DirectorTarget::Car(i) => Some(arena_state.cars[i].0.idx),
+                    DirectorTarget::Overview => None,
+                };
             } else {
                 let hold = if self.last_switch_forced {
                     Self::MIN_SHOT
@@ -287,6 +429,10 @@ impl DirectorState {
                 };
                 if self.time_on_target >= hold && best_score > current_score + margin {
                     self.switch_to(best, false);
+                    self.current_car_id = match best {
+                        DirectorTarget::Car(i) => Some(arena_state.cars[i].0.idx),
+                        DirectorTarget::Overview => None,
+                    };
                 }
             }
         }
@@ -338,30 +484,69 @@ mod tests {
     }
 
     #[test]
-    fn obvious_goal_misses_are_not_shot_threats() {
-        let goal = Vec3A::new(0.0, get_aabb(GameMode::Soccar).max.y, 0.0);
-        let wide = DirectorState::shot_threat(
-            GameMode::Soccar,
-            Vec3A::new(1500.0, 0.0, 100.0),
-            Vec3A::new(0.0, 3000.0, 0.0),
-            goal,
-        );
-        let over_crossbar = DirectorState::shot_threat(
-            GameMode::Soccar,
-            Vec3A::new(0.0, 0.0, 1000.0),
-            Vec3A::new(0.0, 3000.0, 0.0),
-            goal,
-        );
-        assert_eq!(wide, 0.0);
-        assert_eq!(over_crossbar, 0.0);
+    fn kickoff_requires_a_low_slow_ball_at_spawn_center() {
+        let mut arena = ArenaState::new_empty(GameMode::Soccar);
+        arena.ball.vel = Vec3A::ZERO;
+        arena.ball.pos = Vec3A::new(0.0, 0.0, rocketsim::consts::ball::REST_Z);
+        assert!(DirectorState::is_kickoff(&arena));
+        arena.ball.pos.x = DirectorState::KICKOFF_MAX_DIST + 1.0;
+        assert!(!DirectorState::is_kickoff(&arena));
+        arena.ball.pos = Vec3A::new(0.0, 0.0, rocketsim::consts::ball::REST_Z + 100.0);
+        assert!(!DirectorState::is_kickoff(&arena));
+    }
+
+    #[test]
+    fn hoops_accepts_vertical_dunks_and_rising_balls_below_rim() {
+        let mut arena = ArenaState::new_empty(GameMode::Hoops);
+        // The projected location, not Y velocity, identifies the hoop side.
+        arena.ball.pos = Vec3A::new(0.0, 3077.0, 1000.0);
+        arena.ball.vel = Vec3A::ZERO;
+        assert!(DirectorState::scoring_event(&arena).is_some());
+
+        // A rising ball below ring height can still cross on its downward arc.
+        arena.ball.pos.z = 100.0;
+        arena.ball.vel.z = 1000.0;
+        assert!(DirectorState::scoring_event(&arena).is_some());
+
+        arena.ball.pos.x = 1500.0;
+        assert!(DirectorState::scoring_event(&arena).is_none());
+    }
+
+    #[test]
+    fn floor_rolling_and_bounced_soccar_shots_are_projected() {
+        let mut arena = ArenaState::new_empty(GameMode::Soccar);
+        arena.ball.pos = Vec3A::new(0.0, 3000.0, DirectorState::BALL_RADIUS);
+        arena.ball.vel = Vec3A::new(0.0, 3000.0, 0.0);
+        let rolling = DirectorState::scoring_event(&arena).unwrap();
+        assert!(rolling.2 > 0.6 && rolling.2 < 0.8);
+
+        // The descending ball bounces before reaching the goal plane.
+        arena.ball.pos = Vec3A::new(0.0, 3000.0, 300.0);
+        arena.ball.vel = Vec3A::new(0.0, 3000.0, -1000.0);
+        let bounced = DirectorState::scoring_event(&arena).unwrap();
+        assert!(bounced.2 > 0.6 && bounced.2 < 0.8);
+        assert!(bounced.1.z > DirectorState::BALL_RADIUS);
+
+        arena.ball.pos.x = 1200.0;
+        assert!(DirectorState::scoring_event(&arena).is_none());
+    }
+
+    #[test]
+    fn wide_and_high_projections_are_not_scoring_events() {
+        let mut arena = ArenaState::new_empty(GameMode::Soccar);
+        arena.ball.pos = Vec3A::new(1500.0, 3000.0, 500.0);
+        arena.ball.vel = Vec3A::new(0.0, 3000.0, 0.0);
+        assert!(DirectorState::scoring_event(&arena).is_none());
+        arena.ball.pos = Vec3A::new(0.0, 3000.0, 1100.0);
+        assert!(DirectorState::scoring_event(&arena).is_none());
     }
 
     #[test]
     fn shot_threat_takes_over() {
         let mut arena = ArenaState::new_empty(GameMode::Soccar);
-        arena.cars.push(car_at(0, Team::Blue, 0.0, -1000.0));
-        // Ball roaring at the Orange (+Y) goal.
-        arena.ball.pos = Vec3A::new(0.0, 0.0, 93.0);
+        arena.cars.push(car_at(0, Team::Blue, 0.0, 2500.0));
+        // Ball projected toward the Orange (+Y) goal.
+        arena.ball.pos = Vec3A::new(0.0, 3000.0, 500.0);
         arena.ball.vel = Vec3A::new(0.0, 3000.0, 0.0);
 
         let mut director = DirectorState::new();
@@ -373,10 +558,84 @@ mod tests {
     }
 
     #[test]
+    fn shot_start_selects_relevant_player_and_stays_stable_after_event_ends() {
+        let mut arena = ArenaState::new_empty(GameMode::Soccar);
+        arena.cars.push(car_at(3, Team::Blue, 0.0, 2600.0));
+        arena.ball.pos = Vec3A::new(0.0, 3000.0, 500.0);
+        arena.ball.vel = Vec3A::new(0.0, 3000.0, 0.0);
+        let mut director = DirectorState::new();
+        for _ in 0..100 {
+            director.update(&arena, 1.0 / 30.0);
+        }
+        assert_eq!(director.target(), DirectorTarget::Car(0));
+        arena.ball.pos = Vec3A::new(2500.0, 3000.0, 500.0);
+        assert!(DirectorState::scoring_event(&arena).is_none());
+        let retained = director.update(&arena, 1.0 / 30.0);
+        assert_eq!(retained, DirectorTarget::Car(0));
+    }
+
+    #[test]
+    fn scoring_event_favors_relevant_attacker_over_distant_booster() {
+        let mut arena = ArenaState::new_empty(GameMode::Soccar);
+        let mut shooter = car_at(3, Team::Blue, 0.0, 2600.0);
+        shooter.1.vel = Vec3A::new(0.0, 1000.0, 0.0);
+        let mut booster = car_at(8, Team::Blue, 3000.0, -3500.0);
+        booster.1.is_boosting = true;
+        arena.cars.extend([shooter, booster]);
+        arena.ball.pos = Vec3A::new(0.0, 3000.0, 500.0);
+        arena.ball.vel = Vec3A::new(0.0, 3000.0, 0.0);
+        let mut director = DirectorState::new();
+        for _ in 0..100 {
+            director.update(&arena, 1.0 / 30.0);
+        }
+        assert_eq!(director.target(), DirectorTarget::Car(0));
+    }
+
+    #[test]
+    fn plausible_defender_gets_save_view() {
+        let mut arena = ArenaState::new_empty(GameMode::Soccar);
+        arena.cars.push(car_at(0, Team::Blue, 0.0, 2500.0));
+        arena.cars.push(car_at(1, Team::Orange, 0.0, 4800.0));
+        arena.ball.pos = Vec3A::new(0.0, 3000.0, 500.0);
+        arena.ball.vel = Vec3A::new(0.0, 3000.0, 0.0);
+        let mut director = DirectorState::new();
+        for _ in 0..100 {
+            director.update(&arena, 1.0 / 30.0);
+        }
+        assert_eq!(director.target(), DirectorTarget::Car(1));
+    }
+
+    #[test]
+    fn selected_player_identity_survives_reorder_and_removal() {
+        let mut arena = ArenaState::new_empty(GameMode::Soccar);
+        arena.cars.push(car_at(3, Team::Blue, 0.0, 2600.0));
+        arena.cars.push(car_at(8, Team::Blue, 3000.0, -3500.0));
+        arena.ball.pos = Vec3A::new(0.0, 3000.0, 500.0);
+        arena.ball.vel = Vec3A::new(0.0, 3000.0, 0.0);
+        let mut director = DirectorState::new();
+        for _ in 0..100 {
+            director.update(&arena, 1.0 / 30.0);
+        }
+        assert_eq!(director.target(), DirectorTarget::Car(0));
+        arena.cars.swap(0, 1);
+        assert_eq!(director.update(&arena, 1.0 / 30.0), DirectorTarget::Car(1));
+        arena.cars.remove(1);
+        assert_eq!(director.update(&arena, 1.0 / 30.0), DirectorTarget::Car(0));
+    }
+
+    #[test]
+    fn unsupported_mode_has_no_soccar_shot_event() {
+        let mut arena = ArenaState::new_empty(GameMode::Dropshot);
+        arena.ball.pos = Vec3A::new(0.0, 3000.0, 500.0);
+        arena.ball.vel = Vec3A::new(0.0, 3000.0, 0.0);
+        assert!(DirectorState::scoring_event(&arena).is_none());
+    }
+
+    #[test]
     fn demoed_car_is_dropped() {
         let mut arena = ArenaState::new_empty(GameMode::Soccar);
-        arena.cars.push(car_at(0, Team::Blue, 0.0, -1000.0));
-        arena.ball.pos = Vec3A::new(0.0, 0.0, 93.0);
+        arena.cars.push(car_at(0, Team::Blue, 0.0, 2500.0));
+        arena.ball.pos = Vec3A::new(0.0, 3000.0, 500.0);
         arena.ball.vel = Vec3A::new(0.0, 3000.0, 0.0);
 
         let mut director = DirectorState::new();
