@@ -1,11 +1,11 @@
 //! Detached viewer binary: live 3D scene streamed from the sim over TCP.
 //!
-//! Usage: `rocketsim-viewer [PORT] [CAM] [-g MODE] [--gpushot]` (defaults:
-//! 39201, birds, soccar). CAM is `birds`|`followN`|`director`|`autoN`|`free`;
-//! MODE is `soccar`|`hoops`|`heatseeker`|`snowday`|`dropshot`|`thevoid` and
-//! sets the pre-connect mesh; once frames arrive the viewer follows the
-//! sim's mode automatically. `gpushot` is GPU-stall timing for profiling.
+//! Usage: `rocketsim-viewer [PORT] [CAM] [-g MODE] [--bind ADDRESS] [--gpushot]`.
+//! The viewer uses stream metadata to build the arena. `gpushot` measures
+//! GPU stalls for profiling.
 //! The options menu starts open; Escape (or pad Start) toggles it.
+
+mod session;
 
 use std::{
     collections::HashMap,
@@ -18,120 +18,35 @@ use glam::{Mat3, Vec3, Vec3A};
 use glow::HasContext;
 use rocketsim::{CarControls, GameMode};
 use rocketsim_viewer::{
-    arena_gl::ArenaGl,
     bindings::{
-        Bindings, Key, PadAnalog, PadAxis, PadBindings, PadButton, clamp_deadzone, key_down,
-        key_pressed, mouse_down,
+        Bindings, InputBinding, Key, MouseButton, PadAnalog, PadAxis, PadBindings, PadButton,
+        clamp_deadzone, input_down, key_down, key_pressed,
     },
     camera::{
         ArenaBoundsCache, AutoCam, CameraConfig, CameraMan, CameraPreset, CarCamSmoothing,
         DirectorState, DirectorTarget, FreeCam,
     },
+    dropshot::DropshotTileMesh,
     frustum::frustum_planes,
     fx::CarFx,
     hud::{boost_meter, spectated_boost},
-    lines::{RibbonConfig, RibbonEmitter, Segment, ground_line},
-    lines_gl::LinesGl,
+    lines::{Color, RibbonConfig, RibbonEmitter, Segment, ground_line},
     main_gl::{
-        BALL_MODEL, BALL_TEXTURE, InstancedModelGl, MainInstProgram, MainProgram, ModelGl,
-        car_model_name, car_texture_name, group_car_draws, model_matrix,
+        BALL_MODEL, BALL_TEXTURE, PUCK_MODEL, car_model_name, car_texture_name, group_car_draws,
+        model_matrix,
     },
     mesh::ArenaMesh,
-    obj::ObjMesh,
-    pads::{build_instances, load_pad_meshes, variant_radius},
-    pads_gl::PadsGl,
+    pads::build_instances,
+    scene::SceneGl,
     settings::ViewerSettings,
-    spectate,
-    textures::{PngImage, TextureGl},
-    view,
+    spectate, view,
 };
 use rocketsim_vis::{
     game_mode_name,
-    net_client::{ConnStatus, ControlSender, FrameClient},
+    net_client::{ConnStatus, FrameClient},
     parse_game_mode,
-    photo::init_meshes,
-    proto::{ControlMsg, DEFAULT_CONTROL_PORT, DEFAULT_PORT},
+    proto::{ControlMsg, DEFAULT_PORT},
 };
-
-/// Owned GL scene: arena + main pipeline + pads + models/textures.
-struct SceneGl {
-    /// Mode the GL objects were uploaded for (rebuild on switches).
-    mode: GameMode,
-    arena: ArenaGl,
-    prog_main: MainProgram,
-    prog_cars: MainInstProgram,
-    pads: PadsGl,
-    pad_radii: [f32; 4],
-    lines: LinesGl,
-    models: HashMap<String, ModelGl>,
-    car_models: HashMap<String, InstancedModelGl>,
-    textures: HashMap<String, TextureGl>,
-}
-
-impl SceneGl {
-    fn new(gl: &glow::Context, mesh: &ArenaMesh) -> Self {
-        let arena = ArenaGl::new(gl, mesh);
-        let prog_main = MainProgram::new(gl);
-        let pad_meshes = load_pad_meshes();
-        let pad_radii = [
-            variant_radius(&pad_meshes[0]),
-            variant_radius(&pad_meshes[1]),
-            variant_radius(&pad_meshes[2]),
-            variant_radius(&pad_meshes[3]),
-        ];
-        let pads = PadsGl::new(gl, &pad_meshes);
-        let lines = LinesGl::new(gl);
-        let mut models = HashMap::new();
-        // One ball: plain draw is cheaper than instancing.
-        models.insert(
-            BALL_MODEL.to_string(),
-            ModelGl::new(gl, &ObjMesh::load(include_str!("./models/ball.obj"))),
-        );
-        let mut textures = HashMap::new();
-        for (name, png) in [
-            (
-                BALL_TEXTURE,
-                include_bytes!("./textures/ball.png").as_slice(),
-            ),
-            (
-                "car_blue",
-                include_bytes!("./textures/car_blue.png").as_slice(),
-            ),
-            (
-                "car_orange",
-                include_bytes!("./textures/car_orange.png").as_slice(),
-            ),
-        ] {
-            textures.insert(name.to_string(), TextureGl::new(gl, &PngImage::decode(png)));
-        }
-        let mut car_models = HashMap::new();
-        for (name, obj) in [
-            ("car_octane", include_str!("./models/car_octane.obj")),
-            ("car_dominus", include_str!("./models/car_dominus.obj")),
-            ("car_breakout", include_str!("./models/car_breakout.obj")),
-            ("car_merc", include_str!("./models/car_merc.obj")),
-        ] {
-            car_models.insert(
-                name.to_string(),
-                InstancedModelGl::new(gl, &ObjMesh::load(obj)),
-            );
-        }
-        Self {
-            mode: mesh.mode,
-            arena,
-            prog_main,
-            prog_cars: MainInstProgram::new(gl),
-            pads,
-            pad_radii,
-            lines,
-            models,
-            textures,
-            car_models,
-        }
-    }
-
-    // NOTE: no destroy(): the scene lives as long as the process.
-}
 
 struct ViewerApp {
     frames: u64,
@@ -156,6 +71,9 @@ struct ViewerApp {
     car_fx: CarFx,
     /// Last sim tick consumed (missed ticks replay into the ribbons).
     last_tick: Option<u64>,
+    last_generation: Option<u64>,
+    last_ball_pos: Option<Vec3A>,
+    last_car_positions: Vec<Vec3A>,
     /// Line segments for the GL callback (built on the UI thread).
     pending_segs: Arc<Mutex<Vec<Segment>>>,
     /// Camera manager (built on the first frame; birds-eye default).
@@ -168,14 +86,15 @@ struct ViewerApp {
     director: DirectorRig,
     /// Arena containment hulls, one per game mode (lazy; Soccar warmed).
     bounds: ArenaBoundsCache,
+    bounds_for_scene: Option<Arc<rocketsim_viewer::camera::ArenaBounds>>,
+    last_metadata: Option<Arc<rocketsim_vis::proto::SceneMetadata>>,
     /// Auto-cam state for the followed car (`0` key arms it).
     auto_cam: Option<AutoCam>,
     /// Free-orbit camera state (`F` toggles; kept across switches).
     freecam: FreeCam,
     /// Last followed car (autocam target + drive default).
     last_followed: usize,
-    /// Viewer-to-sim driving channel.
-    controls: ControlSender,
+
     /// Control seq number (+1 per send; sim drops stale).
     ctrl_seq: u64,
     /// Arena car now driven (the directly watched car, else unchanged).
@@ -190,15 +109,21 @@ struct ViewerApp {
     menu_open: bool,
     /// Key-rebind capture slot (bindings editor); None = not rebinding.
     rebind: Option<usize>,
+    rebind_armed_frame: u64,
     /// Pad-rebind capture slot (bindings editor); None = not rebinding.
     pad_rebind: Option<usize>,
     /// Bindings editor tab (session-only, not persisted).
     bind_tab: BindTab,
+    headers_open: [bool; 6],
+    binding_warning: Option<String>,
     /// Local gamepad for pad rebinding (menu only; driving pads live sim-side).
     gilrs: Option<gilrs::Gilrs>,
-    /// Raw ev-code state for unmapped pads (buttons 1/0, axes deflection;
-    /// cleared on connect). Feeds `Raw`/`RawNeg` analog bindings.
+    /// Raw ev-code state for unmapped inputs on the active pad.
     raw_pad: HashMap<u32, f32>,
+    /// One selected controller owns all viewer pad input.
+    active_pad: Option<gilrs::GamepadId>,
+    /// Last effect segments remain visible on repeated sim frames.
+    last_fx_segs: Vec<Segment>,
     /// Menu focus index for pad navigation (into the per-frame nav list).
     menu_focus: usize,
     /// Pad moved the menu recently (highlights the focused row).
@@ -258,17 +183,21 @@ enum StartMode {
 }
 
 impl StartMode {
-    fn parse(s: &str) -> Self {
-        if let Some(n) = s.strip_prefix("follow").and_then(|n| n.parse().ok()) {
-            Self::Follow(n)
+    fn try_parse(s: &str) -> Option<Self> {
+        let s = s.to_ascii_lowercase();
+        let index = |prefix: &str| s.strip_prefix(prefix).and_then(|n| n.parse::<usize>().ok());
+        if let Some(n) = index("follow") {
+            Some(Self::Follow(n))
         } else if s == "director" {
-            Self::Director
-        } else if let Some(n) = s.strip_prefix("auto").and_then(|n| n.parse().ok()) {
-            Self::Auto(n)
+            Some(Self::Director)
+        } else if let Some(n) = index("auto") {
+            Some(Self::Auto(n))
         } else if s == "free" {
-            Self::Free
+            Some(Self::Free)
+        } else if s == "birds" {
+            Some(Self::Birds)
         } else {
-            Self::Birds
+            None
         }
     }
 }
@@ -292,6 +221,14 @@ const KEY_SLOTS: &[(&str, KeySlot)] = &[
     ("roll left", |b| &mut b.car.roll_left),
     ("roll right", |b| &mut b.car.roll_right),
     ("handbrake", |b| &mut b.car.handbrake),
+    ("follow 1", |b| &mut b.camera.follow[0]),
+    ("follow 2", |b| &mut b.camera.follow[1]),
+    ("follow 3", |b| &mut b.camera.follow[2]),
+    ("follow 4", |b| &mut b.camera.follow[3]),
+    ("follow 5", |b| &mut b.camera.follow[4]),
+    ("follow 6", |b| &mut b.camera.follow[5]),
+    ("follow 7", |b| &mut b.camera.follow[6]),
+    ("follow 8", |b| &mut b.camera.follow[7]),
     ("kickoff reset", |b| &mut b.actions.kickoff_reset),
     ("dribble", |b| &mut b.actions.dribble),
     ("launch", |b| &mut b.actions.launch),
@@ -500,19 +437,14 @@ fn to_gilrs_axis(a: PadAxis) -> gilrs::Axis {
     }
 }
 
-/// True if any connected pad holds the bound button.
-fn pad_button_down(gilrs: &gilrs::Gilrs, b: PadButton) -> bool {
-    let target = to_gilrs_button(b);
-    gilrs.gamepads().any(|(_, g)| g.is_pressed(target))
+/// Reads the selected controller only.
+fn pad_button_down(gilrs: &gilrs::Gilrs, id: Option<gilrs::GamepadId>, b: PadButton) -> bool {
+    id.map(|id| gilrs.gamepad(id).is_pressed(to_gilrs_button(b)))
+        .unwrap_or(false)
 }
 
-/// First connected pad's axis value, else 0.
-fn pad_axis_value(gilrs: &gilrs::Gilrs, a: PadAxis) -> f32 {
-    let target = to_gilrs_axis(a);
-    gilrs
-        .gamepads()
-        .next()
-        .map(|(_, g)| g.value(target))
+fn pad_axis_value(gilrs: &gilrs::Gilrs, id: Option<gilrs::GamepadId>, a: PadAxis) -> f32 {
+    id.map(|id| gilrs.gamepad(id).value(to_gilrs_axis(a)))
         .unwrap_or(0.0)
 }
 
@@ -611,46 +543,49 @@ fn pad_analog_value(gamepad: &gilrs::Gamepad, raw: &HashMap<u32, f32>, src: &Pad
 /// on `driving` so menu-open/unfocused/rebinding kills pads too.
 fn blend_pad_driving(
     gilrs: &gilrs::Gilrs,
+    id: Option<gilrs::GamepadId>,
     raw: &HashMap<u32, f32>,
     mut controls: CarControls,
     pad: &PadBindings,
 ) -> CarControls {
-    for (_, gamepad) in gilrs.gamepads() {
-        controls.jump |= gamepad.is_pressed(to_gilrs_button(pad.jump));
-        controls.boost |= gamepad.is_pressed(to_gilrs_button(pad.boost));
-        controls.handbrake |= gamepad.is_pressed(to_gilrs_button(pad.handbrake));
+    let Some(id) = id else {
+        return controls;
+    };
+    let gamepad = gilrs.gamepad(id);
+    controls.jump |= gamepad.is_pressed(to_gilrs_button(pad.jump));
+    controls.boost |= gamepad.is_pressed(to_gilrs_button(pad.boost));
+    controls.handbrake |= gamepad.is_pressed(to_gilrs_button(pad.handbrake));
 
-        // Stick deadzone comes from settings (live, like the rest).
-        let dz = clamp_deadzone(pad.stick_deadzone);
-        let left_stick_x = gamepad.value(to_gilrs_axis(pad.steer_axis));
-        if left_stick_x.abs() > dz {
-            // Physics sign: steer=+1 yaws LEFT, so stick-right (+X)
-            // sends -1.
-            controls.steer = -left_stick_x;
-            controls.yaw = -left_stick_x;
-        }
+    // Stick deadzone comes from settings (live, like the rest).
+    let dz = clamp_deadzone(pad.stick_deadzone);
+    let left_stick_x = gamepad.value(to_gilrs_axis(pad.steer_axis));
+    if left_stick_x.abs() > dz {
+        // Physics sign: steer=+1 yaws LEFT, so stick-right (+X)
+        // sends -1.
+        controls.steer = -left_stick_x;
+        controls.yaw = -left_stick_x;
+    }
 
-        let left_stick_y = gamepad.value(to_gilrs_axis(pad.pitch_axis));
-        if left_stick_y.abs() > dz {
-            controls.pitch = -left_stick_y;
-        }
+    let left_stick_y = gamepad.value(to_gilrs_axis(pad.pitch_axis));
+    if left_stick_y.abs() > dz {
+        controls.pitch = -left_stick_y;
+    }
 
-        let left_trigger = pad_analog_value(&gamepad, raw, &pad.brake_trigger);
-        let right_trigger = pad_analog_value(&gamepad, raw, &pad.throttle_trigger);
+    let left_trigger = pad_analog_value(&gamepad, raw, &pad.brake_trigger);
+    let right_trigger = pad_analog_value(&gamepad, raw, &pad.throttle_trigger);
 
-        if right_trigger > TRIGGER_DEADZONE {
-            controls.throttle = right_trigger * TRIGGER_SENSITIVITY;
-        }
-        if left_trigger > TRIGGER_DEADZONE {
-            controls.throttle = -left_trigger * TRIGGER_SENSITIVITY;
-        }
+    if right_trigger > TRIGGER_DEADZONE {
+        controls.throttle = right_trigger * TRIGGER_SENSITIVITY;
+    }
+    if left_trigger > TRIGGER_DEADZONE {
+        controls.throttle = -left_trigger * TRIGGER_SENSITIVITY;
+    }
 
-        if gamepad.is_pressed(to_gilrs_button(pad.roll_right)) {
-            controls.roll -= 1.0;
-        }
-        if gamepad.is_pressed(to_gilrs_button(pad.roll_left)) {
-            controls.roll += 1.0;
-        }
+    if gamepad.is_pressed(to_gilrs_button(pad.roll_right)) {
+        controls.roll -= 1.0;
+    }
+    if gamepad.is_pressed(to_gilrs_button(pad.roll_left)) {
+        controls.roll += 1.0;
     }
 
     controls
@@ -660,6 +595,34 @@ fn blend_pad_driving(
 /// window, no armed rebind, and no open menu. An open menu disables ALL
 /// movement (configuring never drives); closing it restores driving.
 /// Pure so the rule stays pinned by tests.
+fn assign_kbm_binding(
+    bindings: &mut Bindings,
+    slot: usize,
+    binding: InputBinding,
+) -> Result<(), Vec<String>> {
+    let mut candidate = *bindings;
+    if slot < KEY_SLOTS.len() {
+        if let InputBinding::Key(key) = binding {
+            *KEY_SLOTS[slot].1(&mut candidate) = key;
+        } else {
+            return Err(vec!["This action accepts keyboard input only".into()]);
+        }
+    } else if slot == KEY_SLOTS.len() {
+        candidate.car.jump = binding;
+    } else if slot == KEY_SLOTS.len() + 1 {
+        candidate.car.boost = binding;
+    } else {
+        return Err(vec!["Unknown binding slot".into()]);
+    }
+    let conflicts = candidate.conflicts();
+    if conflicts.is_empty() {
+        *bindings = candidate;
+        Ok(())
+    } else {
+        Err(conflicts)
+    }
+}
+
 fn can_drive(spectated: bool, focused: bool, rebinding: bool, menu_open: bool) -> bool {
     spectated && focused && !rebinding && !menu_open
 }
@@ -669,13 +632,28 @@ fn can_drive(spectated: bool, focused: bool, rebinding: bool, menu_open: bool) -
 /// activates buttons and flips toggles. Mirrors the mouse click
 /// handlers one row at a time.
 /// Mutable menu state for [`menu_pad_action`] (one struct beats nine args).
+const MSAA_LEVELS: [u16; 4] = [0, 2, 4, 8];
+
+fn step_msaa(current: u16, direction: i32) -> u16 {
+    let index = MSAA_LEVELS
+        .iter()
+        .position(|&value| value == current)
+        .unwrap_or(2);
+    MSAA_LEVELS[(index as i32 + direction.signum()).clamp(0, 3) as usize]
+}
+
 struct MenuPadCtx<'a> {
     settings: &'a mut ViewerSettings,
     cam_mode: &'a mut CamMode,
+    cam_man: &'a mut Option<CameraMan>,
     auto_cam: &'a mut Option<AutoCam>,
     rebind: &'a mut Option<usize>,
+    rebind_armed_frame: &'a mut u64,
+    frame_count: u64,
     pad_rebind: &'a mut Option<usize>,
     reset_requested: &'a mut bool,
+    bind_tab: &'a mut BindTab,
+    headers_open: &'a mut [bool; 6],
 }
 
 fn menu_pad_action(id: String, dx: i32, a: bool, cx: &mut MenuPadCtx) {
@@ -691,9 +669,20 @@ fn menu_pad_action(id: String, dx: i32, a: bool, cx: &mut MenuPadCtx) {
         }};
     }
     match id.as_str() {
+        "header.camera" if a => cx.headers_open[0] = !cx.headers_open[0],
+        "header.input" if a => cx.headers_open[1] = !cx.headers_open[1],
+        "header.mutators" if a => cx.headers_open[2] = !cx.headers_open[2],
+        "header.overlays" if a => cx.headers_open[3] = !cx.headers_open[3],
+        "header.display" if a => cx.headers_open[4] = !cx.headers_open[4],
+        "header.bindings" if a => cx.headers_open[5] = !cx.headers_open[5],
+        "bind.tab.kbm" if a => *cx.bind_tab = BindTab::Kbm,
+        "bind.tab.pad" if a => *cx.bind_tab = BindTab::Pad,
         "cam.wide" if a => {
             *cx.cam_mode = CamMode::Man;
             *cx.auto_cam = None;
+            if let Some(man) = cx.cam_man.as_mut() {
+                man.set_wide_view();
+            }
         }
         "cam.director" if a => {
             *cx.cam_mode = CamMode::Director;
@@ -775,7 +764,7 @@ fn menu_pad_action(id: String, dx: i32, a: bool, cx: &mut MenuPadCtx) {
             slide!(cx.settings.ui_scale, 0.05, 0.5, 2.0);
         }
         "disp.msaa" if dx != 0 => {
-            cx.settings.msaa = slide_val(cx.settings.msaa as f32, dx, 1.0, 0.0, 8.0) as u16;
+            cx.settings.msaa = step_msaa(cx.settings.msaa, dx);
             cx.settings.mark_dirty();
         }
         "bind.deadzone" if dx != 0 => {
@@ -807,7 +796,17 @@ fn menu_pad_action(id: String, dx: i32, a: bool, cx: &mut MenuPadCtx) {
                     .filter(|&n| n < KEY_SLOTS.len())
                 {
                     *cx.rebind = Some(n);
+                    *cx.rebind_armed_frame = cx.frame_count;
                     *cx.pad_rebind = None;
+                } else if let Some(n) = id
+                    .strip_prefix("bind.pad.clear.")
+                    .and_then(|n| n.parse::<usize>().ok())
+                    .filter(|&n| n < PAD_SLOTS.len())
+                {
+                    if let PadSlotFn::OptButton(f) = PAD_SLOTS[n].1 {
+                        *f(&mut cx.settings.bindings.pad) = PadButton::Unknown;
+                        cx.settings.mark_dirty();
+                    }
                 } else if let Some(n) = id
                     .strip_prefix("bind.pad.")
                     .and_then(|n| n.parse::<usize>().ok())
@@ -858,7 +857,6 @@ impl ViewerApp {
         settings: ViewerSettings,
         menu_open: bool,
         measure_gpu: bool,
-        controls: ControlSender,
     ) -> Self {
         let (soup, welded, indices) = (mesh.soup_verts, mesh.welded_verts(), mesh.index_count());
         let cam_mode = match init_mode {
@@ -884,25 +882,34 @@ impl ViewerApp {
             boost_ribbons: Vec::new(),
             car_fx: CarFx::default(),
             last_tick: None,
+            last_generation: None,
+            last_ball_pos: None,
+            last_car_positions: Vec::new(),
             pending_segs: Arc::new(Mutex::new(Vec::new())),
             cam_man: None,
             init_mode,
             cam_mode,
             director: DirectorRig::new(),
             bounds: ArenaBoundsCache::new(),
+            bounds_for_scene: None,
+            last_metadata: None,
             auto_cam: None,
             freecam: FreeCam::new(),
             last_followed: 0,
-            controls,
             ctrl_seq: 0,
             driven_car: 0,
             reset_requested: false,
             cursor_grabbed: false,
             rebind: None,
+            rebind_armed_frame: 0,
             pad_rebind: None,
             bind_tab: BindTab::Kbm,
+            headers_open: [true, true, false, false, true, false],
+            binding_warning: None,
             gilrs: gilrs::Gilrs::new().ok(),
             raw_pad: HashMap::new(),
+            active_pad: None,
+            last_fx_segs: Vec::new(),
             menu_focus: 0,
             menu_nav_active: false,
             nav_prev_dir: [false; 4],
@@ -924,40 +931,36 @@ impl ViewerApp {
             n_indices: indices,
         }
     }
-
-    /// Builds the containment hull for `mode` up front (other modes build
-    /// lazily on first sight). Logs tri count + build time.
-    fn warm_bounds(&mut self, mode: GameMode) {
-        let t0 = Instant::now();
-        let n = self.bounds.get(mode).map(|b| b.tri_count()).unwrap_or(0);
-        eprintln!(
-            "rocketsim-viewer: {} bounds={n} tris ({:.0} ms)",
-            game_mode_name(mode),
-            t0.elapsed().as_secs_f32() * 1000.0
-        );
-    }
 }
 
 impl eframe::App for ViewerApp {
+    fn on_exit(&mut self, gl: Option<&glow::Context>) {
+        if let Some(gl) = gl
+            && let Ok(scene) = self.scene.lock()
+            && let Some(scene) = scene.as_ref()
+        {
+            scene.destroy(gl);
+        }
+        if let Err(e) = self.settings.flush() {
+            eprintln!("rocketsim-viewer: cannot flush settings ({e})");
+        }
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         // eframe hands us the root Ui; the body below works on the Context.
         let ctx = &ui.ctx().clone();
-        // Frame limiter from settings (0 = uncapped).
+        // Use repaint scheduling for the frame cap. Do not block the UI thread.
         let budget = if self.settings.fps_limit_hz == 0 {
-            Duration::from_secs(0)
+            Duration::ZERO
         } else {
             Duration::from_secs_f32(1.0 / self.settings.fps_limit_hz as f32)
         };
-        let now = Instant::now();
-        let since_last = now.duration_since(self.last_frame);
-        if since_last < budget {
-            std::thread::sleep(budget - since_last);
-        }
         // UI scale applies live.
         if (self.settings.ui_scale - self.applied_ui_scale).abs() > 1e-6 {
             ctx.set_pixels_per_point(self.settings.ui_scale);
             self.applied_ui_scale = self.settings.ui_scale;
         }
+        let focused = ctx.input(|i| i.focused);
         // Frame-start bindings copy (rebinds apply next frame).
         let b = self.settings.bindings;
         // Esc cancels an armed rebind; otherwise it toggles the menu.
@@ -987,30 +990,63 @@ impl eframe::App for ViewerApp {
             while let Some(ev) = g.next_event() {
                 pad_events.push(ev);
             }
-            let m = pad_button_down(g, b.ui.menu_toggle_pad);
-            pad_menu_edge = m && !self.prev_menu_pad;
+            let old_active = self.active_pad;
+            let connected_event = pad_events
+                .iter()
+                .find_map(|ev| matches!(ev.event, gilrs::EventType::Connected).then_some(ev.id));
+            let disconnected_event = pad_events
+                .iter()
+                .find_map(|ev| matches!(ev.event, gilrs::EventType::Disconnected).then_some(ev.id));
+            let connected_ids: Vec<_> = g.gamepads().map(|(id, _)| id).collect();
+            self.active_pad = session::choose_active_pad(
+                self.active_pad,
+                connected_event,
+                disconnected_event,
+                &connected_ids,
+            );
+            let pad_device_changed = old_active != self.active_pad;
+            if pad_device_changed {
+                self.raw_pad.clear();
+                self.nav_prev_dir = [false; 4];
+                self.nav_prev_a = false;
+                self.nav_prev_b = false;
+                self.prev_menu_pad = false;
+                self.prev_ballcam_pad = false;
+                self.prev_pad_act = [false; 3];
+                self.prev_pad_cam = [false; 12];
+            }
+            let m = pad_button_down(g, self.active_pad, b.ui.menu_toggle_pad);
+            pad_menu_edge =
+                session::pad_edge_allowed(focused, pad_device_changed, m, self.prev_menu_pad);
             self.prev_menu_pad = m;
-            let sx = pad_axis_value(g, PadAxis::LeftStickX);
-            let sy = pad_axis_value(g, PadAxis::LeftStickY);
+            let sx = pad_axis_value(g, self.active_pad, PadAxis::LeftStickX);
+            let sy = pad_axis_value(g, self.active_pad, PadAxis::LeftStickY);
             let dirs = [
-                pad_button_down(g, PadButton::DPadUp) || sy > 0.6,
-                pad_button_down(g, PadButton::DPadDown) || sy < -0.6,
-                pad_button_down(g, PadButton::DPadLeft) || sx < -0.6,
-                pad_button_down(g, PadButton::DPadRight) || sx > 0.6,
+                pad_button_down(g, self.active_pad, PadButton::DPadUp) || sy > 0.6,
+                pad_button_down(g, self.active_pad, PadButton::DPadDown) || sy < -0.6,
+                pad_button_down(g, self.active_pad, PadButton::DPadLeft) || sx < -0.6,
+                pad_button_down(g, self.active_pad, PadButton::DPadRight) || sx > 0.6,
             ];
             for i in 0..4 {
-                nav_edge[i] = dirs[i] && !self.nav_prev_dir[i];
-                nav_held[i] = dirs[i];
+                nav_edge[i] = session::pad_edge_allowed(
+                    focused,
+                    pad_device_changed,
+                    dirs[i],
+                    self.nav_prev_dir[i],
+                );
+                nav_held[i] = focused && dirs[i];
                 self.nav_prev_dir[i] = dirs[i];
             }
-            let a = pad_button_down(g, b.ui.ui_activate);
-            nav_a_edge = a && !self.nav_prev_a;
+            let a = pad_button_down(g, self.active_pad, b.ui.ui_activate);
+            nav_a_edge = session::pad_edge_allowed(focused, pad_device_changed, a, self.nav_prev_a);
             self.nav_prev_a = a;
-            let bb = pad_button_down(g, b.ui.ui_back);
-            nav_b_edge = bb && !self.nav_prev_b;
+            let bb = pad_button_down(g, self.active_pad, b.ui.ui_back);
+            nav_b_edge =
+                session::pad_edge_allowed(focused, pad_device_changed, bb, self.nav_prev_b);
             self.nav_prev_b = bb;
-            let bc = pad_button_down(g, b.pad.ball_cam);
-            pad_ballcam_edge = bc && !self.prev_ballcam_pad;
+            let bc = pad_button_down(g, self.active_pad, b.pad.ball_cam);
+            pad_ballcam_edge =
+                session::pad_edge_allowed(focused, pad_device_changed, bc, self.prev_ballcam_pad);
             self.prev_ballcam_pad = bc;
             // Rebindable action + camera buttons (viewer folds them
             // into the buttons bitmask and the camera shortcuts below).
@@ -1027,8 +1063,13 @@ impl eframe::App for ViewerApp {
                     self.prev_pad_act[i] = false;
                     continue;
                 }
-                let cur = pad_button_down(g, pb);
-                pad_act_edge[i] = cur && !self.prev_pad_act[i] && !rebinding;
+                let cur = pad_button_down(g, self.active_pad, pb);
+                pad_act_edge[i] = session::pad_edge_allowed(
+                    focused && !rebinding,
+                    pad_device_changed,
+                    cur,
+                    self.prev_pad_act[i],
+                );
                 self.prev_pad_act[i] = cur;
             }
             let cam_bindings = [
@@ -1051,21 +1092,29 @@ impl eframe::App for ViewerApp {
                     self.prev_pad_cam[i] = false;
                     continue;
                 }
-                let cur = pad_button_down(g, pb);
-                pad_cam_edge[i] = cur && !self.prev_pad_cam[i] && !rebinding;
+                let cur = pad_button_down(g, self.active_pad, pb);
+                pad_cam_edge[i] = session::pad_edge_allowed(
+                    focused && !rebinding,
+                    pad_device_changed,
+                    cur,
+                    self.prev_pad_cam[i],
+                );
                 self.prev_pad_cam[i] = cur;
             }
-            if !self.menu_open {
+            if focused && !self.menu_open {
                 let dz = clamp_deadzone(b.pad.stick_deadzone);
                 look_raw = (
-                    pad_dz(pad_axis_value(g, b.pad.look_x), dz),
-                    pad_dz(pad_axis_value(g, b.pad.look_y), dz),
+                    pad_dz(pad_axis_value(g, self.active_pad, b.pad.look_x), dz),
+                    pad_dz(pad_axis_value(g, self.active_pad, b.pad.look_y), dz),
                 );
             }
         }
         // Raw ev-code state for unmapped pads (buttons 1/0, axes
         // deflection; cleared on connect). Feeds Raw/RawNeg bindings.
         for ev in &pad_events {
+            if Some(ev.id) != self.active_pad {
+                continue;
+            }
             match ev.event {
                 gilrs::EventType::ButtonPressed(_, code) => {
                     self.raw_pad.insert(code.into_u32(), 1.0);
@@ -1076,9 +1125,7 @@ impl eframe::App for ViewerApp {
                 gilrs::EventType::AxisChanged(_, v, code) => {
                     self.raw_pad.insert(code.into_u32(), v);
                 }
-                gilrs::EventType::Connected => {
-                    self.raw_pad.clear();
-                }
+
                 _ => {}
             }
         }
@@ -1090,20 +1137,14 @@ impl eframe::App for ViewerApp {
         if ctx.input(|i| i.pointer.delta() != egui::Vec2::ZERO) {
             self.menu_nav_active = false;
         }
-        // Cursor: Free gets Confined + hidden so look deltas flow with
-        // no cursor over the view; Man/Director get Locked + hidden;
+        // Keep the cursor locked for camera look. Menus and unfocused windows release it.
         // menu open or focus lost releases all. Sent on change.
-        let focused = ctx.input(|i| i.focused);
         let (want_grab, want_visible) = if !focused || self.menu_open {
             (egui::CursorGrab::None, true)
-        } else if self.cam_mode == CamMode::Free {
-            // Confined + hidden: deltas still flow, and no visible cursor
-            // sits over the view.
-            (egui::CursorGrab::Confined, false)
         } else {
             (egui::CursorGrab::Locked, false)
         };
-        // Full-state track so Locked<->Confined flips send once.
+        // Full-state track so grab changes send once.
         static LAST_CURSOR: std::sync::Mutex<Option<(egui::CursorGrab, bool)>> =
             std::sync::Mutex::new(Some((egui::CursorGrab::None, true)));
         {
@@ -1124,10 +1165,97 @@ impl eframe::App for ViewerApp {
         }
         self.frames += 1;
         let frames = self.frames;
-        let (scene, mesh, client_frame, last_draw_ms, pads_info, pending_segs, lines_info) = (
+        let snapshot = session::snapshot(&self.client);
+        let generation = snapshot.generation;
+        let client_frame = snapshot.frame;
+        let mut scene_metadata = snapshot.scene;
+        let generation_changed = session::generation_changed(self.last_generation, generation);
+        self.last_generation = Some(generation);
+        let metadata_mode_mismatch = matches!(
+            (&client_frame, &scene_metadata),
+            (Some(frame), Some(metadata)) if frame.state.game_mode() != metadata.game_mode
+        );
+        if metadata_mode_mismatch {
+            scene_metadata = None;
+        }
+        if generation_changed {
+            self.last_tick = None;
+            self.last_ball_pos = None;
+            self.last_car_positions.clear();
+            self.ball_ribbon = RibbonEmitter::new(RibbonConfig::ball_trail());
+            self.boost_ribbons.clear();
+            self.car_fx = CarFx::default();
+            self.last_fx_segs.clear();
+            self.cam_man = None;
+            self.auto_cam = None;
+            self.director = DirectorRig::new();
+            self.freecam = FreeCam::new();
+            self.bounds.reset();
+            self.bounds_for_scene = None;
+            self.last_metadata = None;
+            self.mesh = Arc::new(ArenaMesh::placeholder(self.mesh.mode));
+            self.soup_verts = self.mesh.soup_verts;
+            self.welded_verts = self.mesh.welded_verts();
+            self.n_indices = self.mesh.index_count();
+            self.last_followed = 0;
+            self.driven_car = 0;
+            self.swivel_yaw = 0.0;
+            self.swivel_pitch = 0.0;
+            if let Ok(mut segs) = self.pending_segs.lock() {
+                segs.clear();
+            }
+        }
+        let metadata_changed = scene_metadata
+            .as_ref()
+            .is_some_and(|metadata| metadata_changed(self.last_metadata.as_ref(), metadata));
+        if let Some(metadata) = &scene_metadata
+            && metadata_changed
+        {
+            let mesh = Arc::new(ArenaMesh::from_meshes(metadata.game_mode, &metadata.meshes));
+            self.soup_verts = mesh.soup_verts;
+            self.welded_verts = mesh.welded_verts();
+            self.n_indices = mesh.index_count();
+            self.mesh = mesh;
+            self.bounds_for_scene = self
+                .bounds
+                .get_for_meshes(metadata.game_mode, &metadata.meshes);
+            self.last_metadata = Some(metadata.clone());
+        }
+        let mut mode_changed = false;
+        if let Some(frame) = &client_frame
+            && frame.state.game_mode() != self.mesh.mode
+        {
+            let mode = frame.state.game_mode();
+            self.mesh = Arc::new(
+                scene_metadata
+                    .as_ref()
+                    .filter(|metadata| metadata.game_mode == mode)
+                    .map(|metadata| ArenaMesh::from_meshes(mode, &metadata.meshes))
+                    .unwrap_or_else(|| ArenaMesh::placeholder(mode)),
+            );
+            self.soup_verts = self.mesh.soup_verts;
+            self.welded_verts = self.mesh.welded_verts();
+            self.n_indices = self.mesh.index_count();
+            if let Some(metadata) = scene_metadata
+                .as_ref()
+                .filter(|metadata| metadata.game_mode == mode)
+            {
+                self.bounds_for_scene = self.bounds.get_for_meshes(mode, &metadata.meshes);
+                self.last_metadata = Some(metadata.clone());
+            } else {
+                self.bounds_for_scene = None;
+                self.last_metadata = None;
+            }
+            mode_changed = true;
+            eprintln!(
+                "rocketsim-viewer: game mode switched to {}",
+                game_mode_name(mode)
+            );
+        }
+        let rebuild_arena = generation_changed || metadata_changed || mode_changed;
+        let (scene, mesh, last_draw_ms, pads_info, pending_segs, lines_info) = (
             self.scene.clone(),
             self.mesh.clone(),
-            self.client.latest(),
             self.last_draw_ms.clone(),
             self.pads_info.clone(),
             self.pending_segs.clone(),
@@ -1142,18 +1270,45 @@ impl eframe::App for ViewerApp {
         );
         let (status, received) = (self.client.status(), self.client.received());
         let tick = client_frame.as_ref().map(|f| f.state.tick_count);
+        let debug_draw = client_frame.as_ref().map(|f| f.debug.clone());
         let show_pads = self.settings.show_pads;
+        let ball_radius_scale = scene_metadata
+            .as_ref()
+            .map_or(1.0, |m| (m.ball_radius / 91.25).max(0.01));
+        let dropshot_mesh = client_frame
+            .as_ref()
+            .and_then(|frame| dropshot_tile_mesh(&frame.state))
+            .unwrap_or_default();
 
         // Advance trails in sim time: replay missed ticks (clamped, so a
         // reset jump cannot spiral the emitters).
         if let Some(frame) = &client_frame {
             let tick_now = frame.state.tick_count;
-            let steps = match self.last_tick {
-                Some(last) => tick_now.saturating_sub(last).clamp(1, 10),
-                None => 1,
-            } as usize;
-            self.last_tick = Some(tick_now);
+            let advance = session::tick_advance(self.last_tick, tick_now);
+            let rewound = advance.reset;
+            let steps = advance.steps;
             let ball_pos = frame.state.ball.phys.pos;
+            let ball_teleport = self
+                .last_ball_pos
+                .is_some_and(|p| p.distance(ball_pos) > 1200.0);
+            if rewound || ball_teleport {
+                self.ball_ribbon = RibbonEmitter::new(RibbonConfig::ball_trail());
+                self.boost_ribbons.clear();
+                self.car_fx = CarFx::default();
+                self.last_fx_segs.clear();
+            }
+            if rewound {
+                self.cam_man = None;
+                self.auto_cam = None;
+                self.director = DirectorRig::new();
+                self.freecam = FreeCam::new();
+                self.swivel_yaw = 0.0;
+                self.swivel_pitch = 0.0;
+                self.last_followed = 0;
+                self.last_car_positions.clear();
+            }
+            self.last_tick = Some(tick_now);
+            self.last_ball_pos = Some(ball_pos);
             for _ in 0..steps {
                 self.ball_ribbon
                     .update(true, ball_pos, Vec3A::ZERO, frame.dt);
@@ -1171,18 +1326,35 @@ impl eframe::App for ViewerApp {
             }
             // Effects replay missed ticks but keep only the last output
             // (rings draw at current age; replay would double-draw them).
-            let mut fx_segs = Vec::new();
-            for _ in 0..steps {
-                fx_segs = self.car_fx.update(&frame.state, frame.dt);
+            if steps > 0 {
+                for _ in 0..steps {
+                    self.last_fx_segs = self.car_fx.update(&frame.state, frame.dt);
+                }
             }
-            segs.extend(fx_segs);
+            segs.extend(self.last_fx_segs.iter().cloned());
+            segs.extend(frame.debug.lines.iter().map(|line| {
+                Segment::flat(
+                    Vec3A::from_array(line.start),
+                    Vec3A::from_array(line.end),
+                    Color::new(line.color[0], line.color[1], line.color[2], line.color[3]),
+                    line.width,
+                )
+            }));
             for (i, (_, car)) in frame.state.cars.iter().enumerate() {
                 while self.boost_ribbons.len() <= i {
                     self.boost_ribbons
                         .push(RibbonEmitter::new(RibbonConfig::boost()));
                 }
+                let car_pos = car.phys.pos;
+                let car_teleport = self
+                    .last_car_positions
+                    .get(i)
+                    .is_some_and(|p| p.distance(car_pos) > 1200.0);
+                if car_teleport {
+                    self.boost_ribbons[i] = RibbonEmitter::new(RibbonConfig::boost());
+                }
                 let fwd = car.phys.get_forward_dir();
-                let emit_pos = car.phys.pos - fwd * 60.0;
+                let emit_pos = car_pos - fwd * 60.0;
                 let emit_vel = -fwd * 300.0;
                 for _ in 0..steps {
                     self.boost_ribbons[i].update(car.is_boosting, emit_pos, emit_vel, frame.dt);
@@ -1191,6 +1363,7 @@ impl eframe::App for ViewerApp {
                     segs.extend(self.boost_ribbons[i].segments(emit_pos));
                 }
             }
+            self.last_car_positions = frame.state.cars.iter().map(|(_, c)| c.phys.pos).collect();
             *self.pending_segs.lock().expect("viewer segs poisoned") = segs;
         }
 
@@ -1200,43 +1373,30 @@ impl eframe::App for ViewerApp {
         let (cam_pos, mut cam_dir, cam_fov, cam_line) = match &client_frame {
             Some(frame) => {
                 let state = &frame.state;
-                // Game-mode switch: a restarted sim may stream a different
-                // mode than the mesh was built for. Rebuild the mesh (the
-                // GL scene follows it on the next paint) and re-point
-                // camera + bounds; a switch hitches one frame.
-                if state.game_mode() != self.mesh.mode {
-                    let mode = state.game_mode();
-                    let mesh = Arc::new(ArenaMesh::build(mode));
-                    self.soup_verts = mesh.soup_verts;
-                    self.welded_verts = mesh.welded_verts();
-                    self.n_indices = mesh.index_count();
-                    self.mesh = mesh;
-                    self.warm_bounds(mode);
-                    if let Some(man) = self.cam_man.as_mut() {
-                        man.set_game_mode(mode);
-                    }
-                    eprintln!(
-                        "rocketsim-viewer: game mode switched to {}",
-                        game_mode_name(mode)
-                    );
+                if mode_changed && let Some(man) = self.cam_man.as_mut() {
+                    man.set_game_mode(state.game_mode());
                 }
                 // Containment hull for this mode (lazy; TheVoid = None).
-                let bounds = self.bounds.get(state.game_mode());
+                let bounds = if scene_metadata
+                    .as_ref()
+                    .is_some_and(|metadata| metadata.game_mode == state.game_mode())
+                {
+                    self.bounds_for_scene.clone()
+                } else {
+                    None
+                };
                 if self.cam_man.is_none() {
                     let mut man = CameraMan::new(state.game_mode(), CameraConfig::default());
                     match self.init_mode {
+                        StartMode::Follow(n) if n < state.num_cars() => man.follow_car(state, n),
+                        StartMode::Auto(n) if n < state.num_cars() => {
+                            man.follow_car(state, n);
+                            self.auto_cam = Some(AutoCam::new(n));
+                        }
                         StartMode::Follow(n) | StartMode::Auto(n) => {
-                            for _ in 0..=n {
-                                man.cycle_target(state);
-                            }
+                            eprintln!("rocketsim-viewer: car {n} is unavailable; using wide view");
                         }
                         _ => {}
-                    }
-                    // Auto CLI arms only if the cycle actually landed on n.
-                    if let StartMode::Auto(n) = self.init_mode
-                        && man.car_cam().is_some_and(|c| c.car_idx == n)
-                    {
-                        self.auto_cam = Some(AutoCam::new(n));
                     }
                     self.cam_man = Some(man);
                 }
@@ -1422,8 +1582,16 @@ impl eframe::App for ViewerApp {
                         // camera). Free camera never drives (see below).
                         const LOOK_SENS: f32 = 0.005;
                         const DOLLY_SENS: f32 = -120.0;
-                        if !self.menu_open && !ctx.egui_wants_pointer_input() {
-                            let d = ctx.input(|i| i.pointer.delta());
+                        if focused && !self.menu_open && !ctx.egui_wants_pointer_input() {
+                            let d = ctx.input(|i| {
+                                i.events
+                                    .iter()
+                                    .filter_map(|event| match event {
+                                        egui::Event::MouseMoved(delta) => Some(*delta),
+                                        _ => None,
+                                    })
+                                    .fold(egui::Vec2::ZERO, |sum, delta| sum + delta)
+                            });
                             self.freecam.look(-d.x * LOOK_SENS, -d.y * LOOK_SENS);
                             let wheel = ctx.input(|i| i.smooth_scroll_delta.y);
                             self.freecam
@@ -1433,7 +1601,7 @@ impl eframe::App for ViewerApp {
                         // ball-cam key (Space by default).
                         // Flight keys stay dead while rebinding or with the
                         // menu open (no movement while configuring).
-                        let (f, r, u) = if rebinding || self.menu_open {
+                        let (f, r, u) = if rebinding || self.menu_open || !focused {
                             (0.0, 0.0, 0.0)
                         } else {
                             ctx.input(|i| {
@@ -1530,8 +1698,8 @@ impl eframe::App for ViewerApp {
                     key_down(i, c.steer_right),
                     key_down(i, c.roll_left),
                     key_down(i, c.roll_right),
-                    mouse_down(i, c.jump),
-                    mouse_down(i, c.boost),
+                    input_down(i, c.jump),
+                    input_down(i, c.boost),
                 )
             });
             let shift = ctx.input(|i| key_down(i, c.handbrake));
@@ -1580,7 +1748,7 @@ impl eframe::App for ViewerApp {
             // kills pads too). Unclamped by design: trigger gain overshoots
             // 1.0 and the sim clamps on apply, exactly as before.
             if let Some(g) = self.gilrs.as_ref() {
-                controls = blend_pad_driving(g, &self.raw_pad, controls, &b.pad);
+                controls = blend_pad_driving(g, self.active_pad, &self.raw_pad, controls, &b.pad);
             }
             // NOTE: a modifier bound here would never fire (no press edge).
             if ctx.input(|i| key_pressed(i, b.actions.kickoff_reset))
@@ -1615,9 +1783,16 @@ impl eframe::App for ViewerApp {
             .and_then(|frame| spectated_boost(&frame.state.cars, spectated))
             .map(boost_meter);
         self.ctrl_seq += 1;
-        self.controls.send(
-            ControlMsg::new(self.driven_car, controls, buttons, self.ctrl_seq)
-                .with_mutators(self.settings.mutators_mask()),
+        session::send_controls(
+            &self.client,
+            generation,
+            ControlMsg::new(self.driven_car, controls, buttons, self.ctrl_seq).with_mutators(
+                if self.settings.spectate_only {
+                    0
+                } else {
+                    self.settings.mutators_mask()
+                },
+            ),
         );
         // The menu reset fires once, on the next send.
         self.reset_requested = false;
@@ -1628,7 +1803,17 @@ impl eframe::App for ViewerApp {
         let sim_line = match &status {
             ConnStatus::Waiting => "Sim: waiting for a sim…".to_string(),
             ConnStatus::Connected { .. } => {
-                format!("Sim: live (tick {})", tick.unwrap_or(0))
+                if let Some(frame) = &client_frame {
+                    format!(
+                        "Sim: live · {} · {} cars · ball {:.0} uu/s · tick {}",
+                        game_mode_name(frame.state.game_mode()),
+                        frame.state.num_cars(),
+                        frame.state.ball.phys.vel.length(),
+                        tick.unwrap_or(0)
+                    )
+                } else {
+                    format!("Sim: live (tick {})", tick.unwrap_or(0))
+                }
             }
         };
         let drive_line = if self.settings.spectate_only {
@@ -1640,8 +1825,8 @@ impl eframe::App for ViewerApp {
         } else if self.cam_mode == CamMode::Free {
             "Input: free camera — the car coasts".to_string()
         } else if spectated.is_some() {
-            if self.controls.connected() {
-                format!("Input: driving car {} · live", self.driven_car)
+            if self.client.controls_connected() {
+                format!("Input: sending to car {} · connected", self.driven_car)
             } else {
                 format!(
                     "Input: car {} · no sim (start the drive demo)",
@@ -1664,14 +1849,18 @@ impl eframe::App for ViewerApp {
                 .scroll([false, true])
                 .show(ctx, |ui| {
                 let (ids, focus, active, moved) = (&mut self.nav_ids, focus, active, moved);
-                egui::CollapsingHeader::new("Camera")
-                    .default_open(true)
+                let header = egui::CollapsingHeader::new("Camera")
+                    .id_salt("viewer.header.camera")
+                    .open(Some(self.headers_open[0]))
                     .show(ui, |ui| {
                         ui.horizontal(|ui| {
                             let r = ui.button("Wide view");
                             if r.clicked() {
                                 self.cam_mode = CamMode::Man;
                                 self.auto_cam = None;
+                                if let Some(man) = self.cam_man.as_mut() {
+                                    man.set_wide_view();
+                                }
                             }
                             nav_row(ui, &r, ids, "cam.wide".to_string(), focus, active, moved);
                             let r = ui.button("Director");
@@ -1780,8 +1969,11 @@ impl eframe::App for ViewerApp {
                             }
                         });
                     });
-                egui::CollapsingHeader::new("Input")
-                    .default_open(true)
+                if header.header_response.clicked() { self.headers_open[0] = !self.headers_open[0]; }
+                nav_row(ui, &header.header_response, ids, "header.camera".into(), focus, active, moved);
+                let header = egui::CollapsingHeader::new("Input")
+                    .id_salt("viewer.header.input")
+                    .open(Some(self.headers_open[1]))
                     .show(ui, |ui| {
                         let r = ui.checkbox(&mut settings.spectate_only, "Spectate only (no inputs)");
                         if r.changed() {
@@ -1789,8 +1981,11 @@ impl eframe::App for ViewerApp {
                         }
                         nav_row(ui, &r, ids, "input.spectate".to_string(), focus, active, moved);
                     });
-                egui::CollapsingHeader::new("Mutators (drive demo)")
-                    .default_open(false)
+                if header.header_response.clicked() { self.headers_open[1] = !self.headers_open[1]; }
+                nav_row(ui, &header.header_response, ids, "header.input".into(), focus, active, moved);
+                let header = egui::CollapsingHeader::new("Mutators (drive demo)")
+                    .id_salt("viewer.header.mutators")
+                    .open(Some(self.headers_open[2]))
                     .show(ui, |ui| {
                         // Live toggles: sent every frame, applied per tick.
                         for (id, label) in [
@@ -1817,8 +2012,11 @@ impl eframe::App for ViewerApp {
                             nav_row(ui, &r, ids, id.to_string(), focus, active, moved);
                         }
                     });
-                egui::CollapsingHeader::new("Overlays")
-                    .default_open(false)
+                if header.header_response.clicked() { self.headers_open[2] = !self.headers_open[2]; }
+                nav_row(ui, &header.header_response, ids, "header.mutators".into(), focus, active, moved);
+                let header = egui::CollapsingHeader::new("Overlays")
+                    .id_salt("viewer.header.overlays")
+                    .open(Some(self.headers_open[3]))
                     .show(ui, |ui| {
                         for (id, label) in [
                             ("ov.trail", "Ball trail"),
@@ -1840,8 +2038,11 @@ impl eframe::App for ViewerApp {
                             nav_row(ui, &r, ids, id.to_string(), focus, active, moved);
                         }
                     });
-                egui::CollapsingHeader::new("Display")
-                    .default_open(true)
+                if header.header_response.clicked() { self.headers_open[3] = !self.headers_open[3]; }
+                nav_row(ui, &header.header_response, ids, "header.overlays".into(), focus, active, moved);
+                let header = egui::CollapsingHeader::new("Display")
+                    .id_salt("viewer.header.display")
+                    .open(Some(self.headers_open[4]))
                     .show(ui, |ui| {
                         let r = ui.add(
                             egui::Slider::new(&mut settings.fps_limit_hz, 0..=240)
@@ -1864,30 +2065,44 @@ impl eframe::App for ViewerApp {
                                 settings.mark_dirty();
                             }
                             nav_row(ui, &r, ids, "disp.vsync".to_string(), focus, active, moved);
-                            let r =
-                                ui.add(egui::Slider::new(&mut settings.msaa, 0..=8).text("MSAA"));
+                            let mut samples = MSAA_LEVELS
+                                .iter()
+                                .position(|&value| value == settings.msaa)
+                                .unwrap_or(2);
+                            let r = ui.add(
+                                egui::Slider::new(&mut samples, 0..=3)
+                                    .text("MSAA")
+                                    .custom_formatter(|value, _| {
+                                        MSAA_LEVELS[value.round().clamp(0.0, 3.0) as usize].to_string()
+                                    }),
+                            );
                             if r.changed() {
+                                settings.msaa = MSAA_LEVELS[samples];
                                 settings.mark_dirty();
                             }
                             nav_row(ui, &r, ids, "disp.msaa".to_string(), focus, active, moved);
                         });
                         ui.label("(VSync/MSAA apply on relaunch)");
                     });
-                egui::CollapsingHeader::new("Bindings")
-                    .default_open(false)
+                if header.header_response.clicked() { self.headers_open[4] = !self.headers_open[4]; }
+                nav_row(ui, &header.header_response, ids, "header.display".into(), focus, active, moved);
+                let header = egui::CollapsingHeader::new("Bindings")
+                    .id_salt("viewer.header.bindings")
+                    .open(Some(self.headers_open[5]))
                     .show(ui, |ui| {
                         ui.horizontal(|ui| {
-                            ui.selectable_value(
+                            let r = ui.selectable_value(
                                 &mut self.bind_tab,
                                 BindTab::Kbm,
                                 "Keyboard + mouse",
                             );
-                            ui.selectable_value(&mut self.bind_tab, BindTab::Pad, "Controller");
+                            nav_row(ui, &r, ids, "bind.tab.kbm".into(), focus, active, moved);
+                            let r = ui.selectable_value(&mut self.bind_tab, BindTab::Pad, "Controller");
+                            nav_row(ui, &r, ids, "bind.tab.pad".into(), focus, active, moved);
                         });
                         match self.bind_tab {
                             BindTab::Kbm => {
-                        // Keys rebind by capture; mouse stays fixed
-                        // (hand-edit settings.toml for it).
+                        // Capture keyboard and mouse inputs for driving and shortcuts.
                         for (n, (label, slot)) in KEY_SLOTS.iter().enumerate() {
                             let resp = ui.horizontal(|ui| {
                                 ui.label(*label);
@@ -1898,6 +2113,7 @@ impl eframe::App for ViewerApp {
                                 };
                                 if ui.button(text).clicked() {
                                     self.rebind = Some(n);
+                                    self.rebind_armed_frame = self.frames;
                                     self.pad_rebind = None;
                                 }
                             });
@@ -1911,28 +2127,64 @@ impl eframe::App for ViewerApp {
                                 moved,
                             );
                         }
-                        ui.label(format!(
-                            "mouse: jump {:?} · boost {:?} (fixed)",
-                            settings.bindings.car.jump, settings.bindings.car.boost
-                        ));
+                        for (n, label) in [(KEY_SLOTS.len(), "jump"), (KEY_SLOTS.len() + 1, "boost")] {
+                            let binding = if n == KEY_SLOTS.len() { settings.bindings.car.jump } else { settings.bindings.car.boost };
+                            let resp = ui.horizontal(|ui| {
+                                ui.label(label);
+                                let text = if self.rebind == Some(n) { "press key or mouse…".to_string() } else { binding.name() };
+                                if ui.button(text).clicked() {
+                                    self.rebind = Some(n);
+                                    self.rebind_armed_frame = self.frames;
+                                    self.pad_rebind = None;
+                                }
+                            });
+                            nav_row(ui, &resp.response, ids, format!("bind.key.{n}"), focus, active, moved);
+                        }
                         if let Some(n) = self.rebind {
                             let hit = ctx.input(|i| {
-                                Key::ALL.iter().copied().find(|k| {
+                                let modifier = if n <= 6 || n >= KEY_SLOTS.len() {
+                                    if i.modifiers.shift { Some(Key::Shift) }
+                                    else if i.modifiers.ctrl { Some(Key::Ctrl) }
+                                    else if i.modifiers.alt { Some(Key::Alt) }
+                                    else { None }
+                                } else {
+                                    None
+                                };
+                                modifier.or_else(|| Key::ALL.iter().copied().find(|k| {
                                     k.to_egui().is_some_and(|ek| i.key_pressed(ek))
-                                })
+                                }))
+                            });
+                            let mouse_hit = ctx.input(|i| {
+                                if self.frames <= self.rebind_armed_frame { return None; }
+                                if i.pointer.button_pressed(egui::PointerButton::Primary) { Some(MouseButton::Primary) }
+                                else if i.pointer.button_pressed(egui::PointerButton::Secondary) { Some(MouseButton::Secondary) }
+                                else if i.pointer.button_pressed(egui::PointerButton::Middle) { Some(MouseButton::Middle) }
+                                else { None }
                             });
                             if let Some(k) = hit {
-                                // The menu key cancels instead of binding.
                                 if k == settings.bindings.ui.menu_toggle {
                                     self.rebind = None;
-                                    self.pad_rebind = None;
                                 } else {
-                                    *KEY_SLOTS[n].1(&mut settings.bindings) = k;
-                                    settings.mark_dirty();
-                                    self.rebind = None;
+                                    match assign_kbm_binding(&mut settings.bindings, n, InputBinding::Key(k)) {
+                                        Ok(()) => { settings.mark_dirty(); self.rebind = None; self.binding_warning = None; }
+                                        Err(conflicts) => self.binding_warning = Some(conflicts.join("; ")),
+                                    }
+                                }
+                            } else if let Some(mouse) = mouse_hit
+                                && n >= KEY_SLOTS.len()
+                            {
+                                match assign_kbm_binding(&mut settings.bindings, n, InputBinding::Mouse(mouse)) {
+                                    Ok(()) => { settings.mark_dirty(); self.rebind = None; self.binding_warning = None; }
+                                    Err(conflicts) => self.binding_warning = Some(conflicts.join("; ")),
                                 }
                             }
-                            ui.label("Press a key… (menu key cancels)");
+                            ui.label("Press a key or mouse button. Menu key cancels.");
+                        }
+                        if let Some(warning) = &self.binding_warning {
+                            ui.colored_label(egui::Color32::YELLOW, format!("Binding conflict: {warning}"));
+                        }
+                        for conflict in settings.bindings.conflicts() {
+                            ui.colored_label(egui::Color32::YELLOW, format!("Binding conflict: {conflict}"));
                         }
                             }
                             BindTab::Pad => {
@@ -1954,9 +2206,12 @@ impl eframe::App for ViewerApp {
                         // past 60% while armed captures the slot. The menu
                         // key cancels; stale pad events drain when idle so
                         // an old press never binds the moment you arm.
-                        if self.gilrs.is_none() {
-                            ui.label("controller: no gamepad found");
+                        if let (Some(g), Some(id)) = (self.gilrs.as_ref(), self.active_pad) {
+                            ui.label(format!("Active controller: {}", g.gamepad(id).name()));
                         } else {
+                            ui.label("controller: no active gamepad");
+                        }
+                        if self.gilrs.is_some() {
                             for (n, (label, slot)) in PAD_SLOTS.iter().enumerate() {
                                 let resp = ui.horizontal(|ui| {
                                     ui.label(*label);
@@ -1990,6 +2245,17 @@ impl eframe::App for ViewerApp {
                                         self.pad_rebind = Some(n);
                                         self.rebind = None;
                                     }
+                                    if matches!(slot, PadSlotFn::OptButton(_)) {
+                                        let clear = ui.small_button("clear");
+                                        nav_row(ui, &clear, ids, format!("bind.pad.clear.{n}"), focus, active, moved);
+                                        if clear.clicked()
+                                            && let PadSlotFn::OptButton(f) = slot
+                                        {
+                                            *f(&mut settings.bindings.pad) = PadButton::Unknown;
+                                            settings.mark_dirty();
+                                            self.pad_rebind = None;
+                                        }
+                                    }
                                 });
                                 nav_row(
                                     ui,
@@ -2012,6 +2278,9 @@ impl eframe::App for ViewerApp {
                             let mut hit_a = None;
                             let mut hit_raw = None;
                             for ev in &pad_events {
+                                if !focused || Some(ev.id) != self.active_pad {
+                                    continue;
+                                }
                                 match ev.event {
                                     gilrs::EventType::ButtonPressed(b, _) => {
                                         let mapped = from_gilrs_button(b);
@@ -2102,6 +2371,8 @@ impl eframe::App for ViewerApp {
                         }
 
                     });
+                if header.header_response.clicked() { self.headers_open[5] = !self.headers_open[5]; }
+                nav_row(ui, &header.header_response, ids, "header.bindings".into(), focus, active, moved);
                 ui.label("Pad: Start toggles menu · D-pad/stick move · A select · B back.");
                 let r = ui.button("Reset everything");
                 if r.clicked() {
@@ -2120,7 +2391,7 @@ impl eframe::App for ViewerApp {
         }
         // Pad nav stays dead while rebinding (a select press binds
         // instead of activating the focused row).
-        if self.menu_open && !rebinding && !self.nav_ids.is_empty() {
+        if focused && self.menu_open && !rebinding && !self.nav_ids.is_empty() {
             let n = self.nav_ids.len() as i32;
             let mut dy = 0i32;
             let mut dx = 0i32;
@@ -2177,10 +2448,15 @@ impl eframe::App for ViewerApp {
                     &mut MenuPadCtx {
                         settings: &mut self.settings,
                         cam_mode: &mut self.cam_mode,
+                        cam_man: &mut self.cam_man,
                         auto_cam: &mut self.auto_cam,
                         rebind: &mut self.rebind,
+                        rebind_armed_frame: &mut self.rebind_armed_frame,
+                        frame_count: self.frames,
                         pad_rebind: &mut self.pad_rebind,
                         reset_requested: &mut self.reset_requested,
+                        bind_tab: &mut self.bind_tab,
+                        headers_open: &mut self.headers_open,
                     },
                 );
             }
@@ -2206,7 +2482,7 @@ impl eframe::App for ViewerApp {
                 ui.monospace(format!(
                     "seq: {} connected: {}",
                     self.ctrl_seq,
-                    self.controls.connected()
+                    self.client.controls_connected()
                 ));
                 ui.monospace(format!("roof: {}", if enclosed { "on" } else { "off" }));
                 let (drawn, culled) = pads_info.lock().map(|g| *g).unwrap_or((0, 0));
@@ -2247,8 +2523,10 @@ impl eframe::App for ViewerApp {
                         let mut guard = scene.lock().expect("viewer scene poisoned");
                         // Rebuild on game-mode switches (mesh + bounds follow
                         // the stream; a switch hitches one frame).
-                        if guard.as_ref().is_none_or(|s| s.mode != mesh.mode) {
+                        if guard.is_none() {
                             *guard = Some(SceneGl::new(gl, &mesh));
+                        } else if rebuild_arena && let Some(scene) = guard.as_mut() {
+                            scene.rebuild_arena(gl, &mesh);
                         }
                         let scene: &mut SceneGl = guard.as_mut().expect("viewer scene built");
                         scene.arena.draw(
@@ -2263,12 +2541,43 @@ impl eframe::App for ViewerApp {
                         if let Some(frame) = &client_frame {
                             // Ball: textured, pos + rot.
                             let ball = &frame.state.ball.phys;
+                            let ball_model = if frame.state.game_mode() == GameMode::Snowday {
+                                PUCK_MODEL
+                            } else {
+                                BALL_MODEL
+                            };
+                            let ball_model = scene
+                                .models
+                                .get(ball_model)
+                                .or_else(|| scene.models.get(BALL_MODEL))
+                                .expect("scene has a ball or puck model");
                             scene.prog_main.draw(
                                 gl,
-                                &scene.models[BALL_MODEL],
+                                ball_model,
                                 &scene.textures[BALL_TEXTURE],
-                                &model_matrix(Vec3::from(ball.pos), Mat3::from(ball.rot_mat)),
+                                &(model_matrix(Vec3::from(ball.pos), Mat3::from(ball.rot_mat))
+                                    * glam::Mat4::from_scale(
+                                        if frame.state.game_mode() == GameMode::Snowday {
+                                            Vec3::new(ball_radius_scale, ball_radius_scale, 1.0)
+                                        } else {
+                                            Vec3::splat(ball_radius_scale)
+                                        },
+                                    )),
                             );
+                            for debug_model in &frame.debug.models {
+                                let rotation = Mat3::from_cols_array_2d(&debug_model.rotation);
+                                let transform =
+                                    model_matrix(Vec3::from_array(debug_model.position), rotation)
+                                        * glam::Mat4::from_scale(Vec3::from_array(
+                                            debug_model.scale,
+                                        ));
+                                if let (Some(model), Some(texture)) = (
+                                    scene.models.get(&debug_model.model),
+                                    scene.textures.get(&debug_model.texture),
+                                ) {
+                                    scene.prog_main.draw(gl, model, texture, &transform);
+                                }
+                            }
                             // Cars: one instanced draw per (body, team).
                             let mut placements = Vec::new();
                             for (info, state) in &frame.state.cars {
@@ -2284,6 +2593,7 @@ impl eframe::App for ViewerApp {
                                     ),
                                 ));
                             }
+
                             scene.prog_cars.set_view_proj(gl, &view_mat, &proj_mat);
                             for g in group_car_draws(&placements) {
                                 let m = scene
@@ -2294,6 +2604,22 @@ impl eframe::App for ViewerApp {
                                 scene
                                     .prog_cars
                                     .draw_group(gl, m, &scene.textures[g.texture]);
+                            }
+                            for debug_model in &frame.debug.models {
+                                if let (Some(model), Some(texture)) = (
+                                    scene.car_models.get_mut(&debug_model.model),
+                                    scene.textures.get(&debug_model.texture),
+                                ) {
+                                    let rotation = Mat3::from_cols_array_2d(&debug_model.rotation);
+                                    let transform = model_matrix(
+                                        Vec3::from_array(debug_model.position),
+                                        rotation,
+                                    ) * glam::Mat4::from_scale(Vec3::from_array(
+                                        debug_model.scale,
+                                    ));
+                                    model.upload(gl, &[transform]);
+                                    scene.prog_cars.draw_group(gl, model, texture);
+                                }
                             }
                             scene.prog_cars.unbind(gl);
                         }
@@ -2309,6 +2635,11 @@ impl eframe::App for ViewerApp {
                         };
                         scene.pads.upload(gl, &instances);
                         scene.pads.draw(gl, &view_mat, &proj_mat);
+                        scene.dropshot.upload(gl, &dropshot_mesh);
+                        scene.dropshot.draw(gl, &view_mat, &proj_mat);
+                        scene
+                            .arena
+                            .draw_net(gl, &glam::Mat4::IDENTITY, &view_mat, &proj_mat);
                         if let Ok(mut info) = pads_info.lock() {
                             *info = (instances.iter().map(|v| v.len()).sum(), culled);
                         }
@@ -2349,6 +2680,47 @@ impl eframe::App for ViewerApp {
                     })),
                 };
                 ui.painter().add(cb);
+                if let Some(debug) = &debug_draw {
+                    let painter = ui.painter();
+                    for debug_rect in &debug.rects {
+                        let point = |p: [f32; 2]| {
+                            egui::pos2(
+                                rect.left() + p[0].clamp(0.0, 1.0) * rect.width(),
+                                rect.top() + p[1].clamp(0.0, 1.0) * rect.height(),
+                            )
+                        };
+                        let color = egui::Color32::from_rgba_unmultiplied(
+                            (debug_rect.color[0].clamp(0.0, 1.0) * 255.0) as u8,
+                            (debug_rect.color[1].clamp(0.0, 1.0) * 255.0) as u8,
+                            (debug_rect.color[2].clamp(0.0, 1.0) * 255.0) as u8,
+                            (debug_rect.color[3].clamp(0.0, 1.0) * 255.0) as u8,
+                        );
+                        painter.rect_filled(
+                            egui::Rect::from_min_max(point(debug_rect.min), point(debug_rect.max)),
+                            0.0,
+                            color,
+                        );
+                    }
+                    for debug_text in &debug.text {
+                        let color = egui::Color32::from_rgba_unmultiplied(
+                            (debug_text.color[0].clamp(0.0, 1.0) * 255.0) as u8,
+                            (debug_text.color[1].clamp(0.0, 1.0) * 255.0) as u8,
+                            (debug_text.color[2].clamp(0.0, 1.0) * 255.0) as u8,
+                            (debug_text.color[3].clamp(0.0, 1.0) * 255.0) as u8,
+                        );
+                        let pos = egui::pos2(
+                            rect.left() + debug_text.position[0].clamp(0.0, 1.0) * rect.width(),
+                            rect.top() + debug_text.position[1].clamp(0.0, 1.0) * rect.height(),
+                        );
+                        painter.text(
+                            pos,
+                            egui::Align2::LEFT_TOP,
+                            &debug_text.text,
+                            egui::FontId::proportional(14.0),
+                            color,
+                        );
+                    }
+                }
                 // RL-style boost gauge over the 3D view: dim dial, value
                 // arc clockwise from the top, number in the middle.
                 if let Some(m) = &meter {
@@ -2375,59 +2747,73 @@ impl eframe::App for ViewerApp {
 #[derive(clap::Parser)]
 #[command(name = "rocketsim-viewer", version)]
 struct Cli {
-    /// TCP port the viewer listens on (the sim dials it).
+    /// TCP port the viewer listens on (the sim dials this).
     #[arg(default_value_t = DEFAULT_PORT)]
     port: u16,
+    /// Address the viewer binds (default: 127.0.0.1).
+    #[arg(long, default_value = "127.0.0.1", value_parser = clap::value_parser!(std::net::IpAddr))]
+    bind: std::net::IpAddr,
     /// Start camera: birds|followN|director|autoN|free.
-    #[arg(default_value = "birds")]
-    cam: String,
-    /// Initial arena mesh + containment (pre-connect placeholder); the
-    /// viewer follows the sim's mode automatically once frames arrive.
-    #[arg(short, long, default_value = "soccar", value_parser = parse_mode)]
+    #[arg(default_value = "birds", value_parser = parse_camera)]
+    cam: StartMode,
+    /// Initial placeholder game mode. Stream metadata replaces it on connect.
+    #[arg(short = 'g', long = "game-mode", default_value = "soccar", value_parser = parse_mode)]
     game_mode: GameMode,
+
     /// GPU-stall timing for profiling.
     #[arg(long)]
     gpushot: bool,
 }
 
-/// Clap parser over the shared [`parse_game_mode`] vocabulary.
+fn dropshot_tile_mesh(state: &rocketsim::ArenaState) -> Option<DropshotTileMesh> {
+    state
+        .tile_states
+        .as_ref()
+        .map(|states| DropshotTileMesh::from_states(states, 0.5))
+}
+
 fn parse_mode(s: &str) -> Result<GameMode, String> {
     parse_game_mode(s).ok_or_else(|| {
         format!("unknown game mode '{s}' (soccar|hoops|heatseeker|snowday|dropshot|thevoid|void)")
     })
 }
 
+fn parse_camera(s: &str) -> Result<StartMode, String> {
+    StartMode::try_parse(s)
+        .ok_or_else(|| format!("invalid camera '{s}' (birds|followN|director|autoN|free)"))
+}
+
+fn metadata_changed(
+    previous: Option<&Arc<rocketsim_vis::proto::SceneMetadata>>,
+    current: &Arc<rocketsim_vis::proto::SceneMetadata>,
+) -> bool {
+    previous.is_none_or(|previous| !Arc::ptr_eq(previous, current))
+}
+
 fn main() {
-    init_meshes();
-    let cli = Cli::parse();
+    let mut args: Vec<String> = std::env::args().collect();
+    let measure_gpu_compat = args.iter().any(|a| a == "gpushot");
+    args.retain(|a| a != "gpushot");
+    let cli = Cli::parse_from(args);
     let port = cli.port;
     // Start camera: `birds` default; `followN`, `director`, `autoN`,
     // `free`. Runtime: `1-8` follow, `9` director, `0` autocam,
     // `F` free camera, `C` cycle, `Space` ball-cam.
     // Driving (WASD + mouse, Backspace/F2/F4) needs this window focused.
     // The options menu starts open (cursor free); Escape toggles it.
-    let init_mode = StartMode::parse(&cli.cam);
+    let init_mode = cli.cam;
     let menu_open = true;
     // `gpushot` also accepted bare (pre-clap usage) anywhere in argv.
-    let measure_gpu = cli.gpushot || std::env::args().any(|a| a == "gpushot");
-    // Load settings (creates the file on first run).
+    let measure_gpu = cli.gpushot || measure_gpu_compat;
     let settings = ViewerSettings::load();
-    settings.save();
-    let addr = format!("127.0.0.1:{port}");
+    let addr = std::net::SocketAddr::new(cli.bind, port).to_string();
     eprintln!("rocketsim-viewer: listening on {addr} (sim should dial this addr)");
 
-    let mesh = Arc::new(ArenaMesh::build(cli.game_mode));
-    eprintln!(
-        "rocketsim-viewer: {} soup={} welded={} idx={}",
-        game_mode_name(cli.game_mode),
-        mesh.soup_verts,
-        mesh.welded_verts(),
-        mesh.index_count()
-    );
-    let client = FrameClient::connect(&addr);
-    // Driving channel: the sim listens on DEFAULT_CONTROL_PORT. Dials
-    // lazily; drops inputs until a sim appears. Never blocks or fails.
-    let controls = ControlSender::connect(&format!("127.0.0.1:{DEFAULT_CONTROL_PORT}"));
+    let mesh = Arc::new(ArenaMesh::placeholder(cli.game_mode));
+    let client = FrameClient::try_connect(&addr).unwrap_or_else(|e| {
+        eprintln!("rocketsim-viewer: cannot listen on {addr}: {e}");
+        std::process::exit(1);
+    });
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_inner_size([1280.0, 720.0]),
@@ -2445,16 +2831,14 @@ fn main() {
         "rocketsim viewer",
         options,
         Box::new(move |_cc| {
-            let mut app = ViewerApp::new(
+            let app = ViewerApp::new(
                 mesh.clone(),
                 client,
                 init_mode,
                 settings,
                 menu_open,
                 measure_gpu,
-                controls,
             );
-            app.warm_bounds(cli.game_mode);
             Ok(Box::new(app) as _)
         }),
     ) {
@@ -2497,6 +2881,10 @@ mod tests {
         pad_rebind: &mut Option<usize>,
         reset_requested: &mut bool,
     ) {
+        let mut cam_man = None;
+        let mut rebind_armed_frame = 0;
+        let mut bind_tab = BindTab::Kbm;
+        let mut headers_open = [true, true, false, false, true, false];
         menu_pad_action(
             id.to_string(),
             dx,
@@ -2504,10 +2892,15 @@ mod tests {
             &mut MenuPadCtx {
                 settings,
                 cam_mode,
+                cam_man: &mut cam_man,
                 auto_cam,
                 rebind,
+                rebind_armed_frame: &mut rebind_armed_frame,
+                frame_count: 0,
                 pad_rebind,
                 reset_requested,
+                bind_tab: &mut bind_tab,
+                headers_open: &mut headers_open,
             },
         );
     }
@@ -2706,6 +3099,149 @@ mod tests {
             &mut pr,
             &mut rr,
         );
+    }
+
+    #[test]
+    fn msaa_changes_use_supported_sample_counts() {
+        assert_eq!(step_msaa(0, 1), 2);
+        assert_eq!(step_msaa(2, 1), 4);
+        assert_eq!(step_msaa(4, 1), 8);
+        assert_eq!(step_msaa(8, 1), 8);
+        assert_eq!(step_msaa(8, -1), 4);
+        assert_eq!(step_msaa(0, -1), 0);
+    }
+
+    #[test]
+    fn cli_help_and_version_are_parser_only() {
+        let help = match Cli::try_parse_from(["rocketsim-viewer", "--help"]) {
+            Err(error) => error,
+            Ok(_) => panic!("--help must exit through clap"),
+        };
+        assert_eq!(help.kind(), clap::error::ErrorKind::DisplayHelp);
+        let version = match Cli::try_parse_from(["rocketsim-viewer", "--version"]) {
+            Err(error) => error,
+            Ok(_) => panic!("--version must exit through clap"),
+        };
+        assert_eq!(version.kind(), clap::error::ErrorKind::DisplayVersion);
+    }
+
+    #[test]
+    fn cli_initial_mode_parses_without_initializing_assets() {
+        let cli = Cli::try_parse_from(["rocketsim-viewer", "-g", "hoops"]).unwrap();
+        assert_eq!(cli.game_mode, GameMode::Hoops);
+    }
+
+    #[test]
+    fn cli_bind_accepts_ipv6_socket_address() {
+        let cli = Cli::try_parse_from(["rocketsim-viewer", "--bind", "::1", "1234"]).unwrap();
+        assert_eq!(
+            std::net::SocketAddr::new(cli.bind, cli.port).to_string(),
+            "[::1]:1234"
+        );
+    }
+
+    #[test]
+    fn metadata_changes_are_arc_identity_based() {
+        let metadata = Arc::new(rocketsim_vis::proto::SceneMetadata {
+            game_mode: GameMode::Soccar,
+            ball_radius: 91.25,
+            meshes: Vec::new(),
+        });
+        let same = metadata.clone();
+        assert!(!metadata_changed(Some(&metadata), &same));
+        assert!(metadata_changed(None, &same));
+    }
+
+    #[test]
+    fn camera_cli_rejects_huge_or_invalid_indices() {
+        assert!(parse_camera("follow7").is_ok());
+        assert!(parse_camera("auto0").is_ok());
+        assert!(parse_camera("follow999999999999999999999999999999").is_err());
+        assert!(parse_camera("follow8").is_ok());
+        assert!(parse_camera("follow1000000000").is_ok());
+        assert!(parse_camera("unknown").is_err());
+    }
+
+    #[test]
+    fn controller_can_select_bind_tabs_and_toggle_collapsed_headers() {
+        let mut settings = ViewerSettings::default();
+        let mut cam_mode = CamMode::Man;
+        let mut cam_man = None;
+        let mut auto_cam = None;
+        let mut rebind = None;
+        let mut pad_rebind = None;
+        let mut reset_requested = false;
+        let mut bind_tab = BindTab::Kbm;
+        let mut headers_open = [true, true, false, false, true, false];
+        let mut rebind_armed_frame = 0;
+        let mut cx = MenuPadCtx {
+            settings: &mut settings,
+            cam_mode: &mut cam_mode,
+            cam_man: &mut cam_man,
+            auto_cam: &mut auto_cam,
+            rebind: &mut rebind,
+            rebind_armed_frame: &mut rebind_armed_frame,
+            frame_count: 0,
+            pad_rebind: &mut pad_rebind,
+            reset_requested: &mut reset_requested,
+            bind_tab: &mut bind_tab,
+            headers_open: &mut headers_open,
+        };
+        menu_pad_action("bind.tab.pad".into(), 0, true, &mut cx);
+        menu_pad_action("header.bindings".into(), 0, true, &mut cx);
+        *cx.cam_mode = CamMode::Director;
+        menu_pad_action("cam.wide".into(), 0, true, &mut cx);
+        assert_eq!(*cx.bind_tab, BindTab::Pad);
+        assert!(cx.headers_open[5]);
+        assert_eq!(*cx.cam_mode, CamMode::Man);
+    }
+
+    #[test]
+    fn optional_controller_binding_can_be_cleared() {
+        let mut settings = ViewerSettings::default();
+        let slot = PAD_SLOTS
+            .iter()
+            .position(|(label, _)| *label == "pad follow 1")
+            .unwrap();
+        if let PadSlotFn::OptButton(set) = PAD_SLOTS[slot].1 {
+            *set(&mut settings.bindings.pad) = PadButton::South;
+        }
+        let mut cam_mode = CamMode::Man;
+        let mut cam_man = None;
+        let mut auto_cam = None;
+        let mut rebind = None;
+        let mut rebind_armed_frame = 0;
+        let mut pad_rebind = None;
+        let mut reset_requested = false;
+        let mut bind_tab = BindTab::Pad;
+        let mut headers_open = [true, true, false, false, true, false];
+        let mut cx = MenuPadCtx {
+            settings: &mut settings,
+            cam_mode: &mut cam_mode,
+            cam_man: &mut cam_man,
+            auto_cam: &mut auto_cam,
+            rebind: &mut rebind,
+            rebind_armed_frame: &mut rebind_armed_frame,
+            frame_count: 0,
+            pad_rebind: &mut pad_rebind,
+            reset_requested: &mut reset_requested,
+            bind_tab: &mut bind_tab,
+            headers_open: &mut headers_open,
+        };
+        menu_pad_action(format!("bind.pad.clear.{slot}"), 0, true, &mut cx);
+        assert_eq!(
+            cx.settings.bindings.pad.camera.follow[0],
+            PadButton::Unknown
+        );
+    }
+
+    #[test]
+    fn kbm_conflicting_rebind_is_rejected() {
+        let mut bindings = Bindings::default();
+        let original = bindings.car.jump;
+        let result = assign_kbm_binding(&mut bindings, KEY_SLOTS.len(), InputBinding::Key(Key::W));
+        assert!(result.is_err());
+        assert_eq!(bindings.car.jump, original);
     }
 
     #[test]

@@ -60,10 +60,14 @@ impl TickPacer {
     /// Pacer for `interval` ticks starting now (first [`TickPacer::wait`]
     /// sleeps one full interval).
     pub fn new(interval: Duration, max_catch_up: u32) -> Self {
+        assert!(!interval.is_zero(), "tick interval must be non-zero");
+        let max_catch_up = max_catch_up.min(u32::MAX - 1);
         Self {
             interval,
             max_catch_up,
-            next: Instant::now() + interval,
+            next: Instant::now()
+                .checked_add(interval)
+                .expect("tick interval is too large for the system clock"),
             stats: PaceStats::default(),
         }
     }
@@ -92,17 +96,17 @@ impl TickPacer {
         }
         let (steps, dropped) =
             steps_for_lateness(Instant::now(), self.next, self.interval, self.max_catch_up);
-        self.next += self.interval * steps;
+        self.next = self
+            .next
+            .checked_add(self.interval.saturating_mul(steps))
+            .unwrap_or_else(Instant::now);
         if Instant::now() >= self.next {
-            // Multi-second stall: re-sync to now, count the rest as dropped.
-            let missed = steps_for_lateness_missed(Instant::now(), self.next, self.interval);
-            self.stats.dropped += missed as u64;
-            self.next = Instant::now() + self.interval;
+            // Re-sync after a long stall. Excess lateness was counted above.
+            self.next = Instant::now()
+                .checked_add(self.interval)
+                .expect("tick interval is too large for the system clock");
         }
-        self.stats.ticks += u64::from(steps);
-        self.stats.dropped += u64::from(dropped);
-        let backlog = steps.saturating_sub(1);
-        self.stats.max_backlog = self.stats.max_backlog.max(backlog);
+        record_steps(&mut self.stats, steps, dropped);
         steps
     }
 }
@@ -115,12 +119,18 @@ pub fn steps_for_lateness(
     interval: Duration,
     max_catch_up: u32,
 ) -> (u32, u32) {
-    if now < next {
+    if now < next || interval.is_zero() {
         return (1, 0);
     }
     let missed = steps_for_lateness_missed(now, next, interval);
-    let catch_up = missed.min(max_catch_up);
+    let catch_up = missed.min(max_catch_up.min(u32::MAX - 1));
     (1 + catch_up, missed - catch_up)
+}
+
+fn record_steps(stats: &mut PaceStats, steps: u32, dropped: u32) {
+    stats.ticks = stats.ticks.saturating_add(u64::from(steps));
+    stats.dropped = stats.dropped.saturating_add(u64::from(dropped));
+    stats.max_backlog = stats.max_backlog.max(steps.saturating_sub(1));
 }
 
 /// Whole extra intervals elapsed between `next` and `now` (0 if early).
@@ -163,6 +173,28 @@ mod tests {
             steps_for_lateness(now, base, TICK_INTERVAL, MAX_CATCH_UP),
             (1 + MAX_CATCH_UP, 10 - MAX_CATCH_UP)
         );
+        // The returned drop count includes all excess intervals once, even
+        // when the caller re-syncs its deadline after this result.
+        assert_eq!(steps_for_lateness(now, base, TICK_INTERVAL, 0), (1, 10));
+    }
+
+    #[test]
+    fn dropped_ticks_are_recorded_once_after_resync() {
+        let base = t0();
+        let now = base + 10 * TICK_INTERVAL;
+        let (steps, dropped) = steps_for_lateness(now, base, TICK_INTERVAL, MAX_CATCH_UP);
+        let mut stats = PaceStats::default();
+        record_steps(&mut stats, steps, dropped);
+
+        assert_eq!(stats.ticks, 1 + u64::from(MAX_CATCH_UP));
+        assert_eq!(stats.dropped, 10 - u64::from(MAX_CATCH_UP));
+        assert_eq!(stats.max_backlog, MAX_CATCH_UP);
+    }
+
+    #[test]
+    fn zero_interval_math_is_safe() {
+        let base = t0();
+        assert_eq!(steps_for_lateness(base, base, Duration::ZERO, 5), (1, 0));
     }
 
     #[test]

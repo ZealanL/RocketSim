@@ -1,4 +1,4 @@
-//! View/projection: Z-up look-at view + DirectX-depth (0..1) perspective.
+//! View/projection: Z-up look-at view + OpenGL-depth (-1..1) perspective.
 //!
 //! FOV settings are horizontal (RL convention), converted at projection
 //! time. The X-flip is load-bearing: glam's LH look-at with Z-up maps
@@ -8,7 +8,7 @@
 
 use glam::{
     Mat4, Vec3,
-    camera::lh::{proj::directx, view::look_at_mat4},
+    camera::lh::{proj::opengl, view::look_at_mat4},
 };
 
 /// RL convention: FOV settings are horizontal. Converts to vertical degrees
@@ -19,13 +19,13 @@ pub fn hfov_to_vfov_deg(hfov_deg: f32, aspect: f32) -> f32 {
     2.0 * half_tan.atan().to_degrees()
 }
 
-/// Z-up look-at view + DirectX-depth (0..1) perspective, near 50 / far 60000.
+/// Z-up look-at view + OpenGL-depth (-1..1) perspective, near 50 / far 60000.
 /// `fov_deg` is horizontal (RL convention). Near is 50 (not 5): a 5..50000
 /// ratio wastes depth precision and z-fights at range.
 pub fn view_proj(eye: Vec3, target: Vec3, hfov_deg: f32, aspect: f32) -> (Mat4, Mat4) {
     let view = Mat4::from_scale(Vec3::new(-1.0, 1.0, 1.0)) * look_at_mat4(eye, target, Vec3::Z);
     let vfov = hfov_to_vfov_deg(hfov_deg, aspect);
-    let proj = directx::perspective(vfov.to_radians(), aspect.max(1e-3), 50.0, 60_000.0);
+    let proj = opengl::perspective(vfov.to_radians(), aspect.max(1e-3), 50.0, 60_000.0);
     (view, proj)
 }
 
@@ -109,7 +109,7 @@ mod tests {
                 ndc.x.abs() < 1.0 && ndc.y.abs() < 1.0,
                 "corner {corner:?} outside: {ndc:?}"
             );
-            assert!((0.0..1.0).contains(&ndc.z), "depth outside 0..1: {ndc:?}");
+            assert!((-1.0..1.0).contains(&ndc.z), "depth outside -1..1: {ndc:?}");
         }
     }
 }

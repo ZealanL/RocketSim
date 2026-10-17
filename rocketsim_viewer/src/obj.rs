@@ -22,6 +22,55 @@ pub struct ObjMesh {
 }
 
 impl ObjMesh {
+    /// Creates a procedural Snowday puck with a 91.25uu radius and 36uu height.
+    pub fn puck() -> Self {
+        let sides = 32usize;
+        let half_height = rocketsim::consts::snowday::PUCK_HEIGHT * 0.5;
+        let mut verts = Vec::with_capacity(sides * 6 + 6);
+        let mut uvs = Vec::with_capacity(verts.capacity());
+        let mut indices = Vec::with_capacity(sides * 12);
+        for i in 0..sides {
+            let a0 = std::f32::consts::TAU * i as f32 / sides as f32;
+            let a1 = std::f32::consts::TAU * (i + 1) as f32 / sides as f32;
+            let p0 = Vec3::new(a0.cos() * 91.25, a0.sin() * 91.25, 0.0);
+            let p1 = Vec3::new(a1.cos() * 91.25, a1.sin() * 91.25, 0.0);
+            let base = verts.len() as u32;
+            verts.extend_from_slice(&[
+                Vec3::new(p0.x, p0.y, -half_height),
+                Vec3::new(p1.x, p1.y, -half_height),
+                Vec3::new(p1.x, p1.y, half_height),
+                Vec3::new(p0.x, p0.y, half_height),
+            ]);
+            uvs.extend_from_slice(&[Vec2::ZERO; 4]);
+            indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
+            let top = verts.len() as u32;
+            verts.extend_from_slice(&[
+                Vec3::new(0.0, 0.0, half_height),
+                Vec3::new(p0.x, p0.y, half_height),
+                Vec3::new(p1.x, p1.y, half_height),
+            ]);
+            uvs.extend_from_slice(&[Vec2::ZERO; 3]);
+            indices.extend_from_slice(&[top, top + 1, top + 2]);
+            let bottom = verts.len() as u32;
+            verts.extend_from_slice(&[
+                Vec3::new(0.0, 0.0, -half_height),
+                Vec3::new(p1.x, p1.y, -half_height),
+                Vec3::new(p0.x, p0.y, -half_height),
+            ]);
+            uvs.extend_from_slice(&[Vec2::ZERO; 3]);
+            indices.extend_from_slice(&[bottom, bottom + 1, bottom + 2]);
+        }
+        let normals = smooth_normals(&verts, &indices);
+        let soup_corners = indices.len();
+        Self {
+            verts,
+            uvs,
+            indices,
+            normals,
+            soup_corners,
+        }
+    }
+
     /// Parses + welds + smooths. Panics on malformed input (assets are
     /// fixed at build time: fail fast, never half-load).
     pub fn load(obj_str: &str) -> Self {
@@ -185,6 +234,16 @@ mod tests {
         ] {
             check_sanity(&ObjMesh::load(obj), label);
         }
+    }
+
+    #[test]
+    fn puck_dimensions_match_scene_scale_contract() {
+        let puck = ObjMesh::puck();
+        let min = puck.verts.iter().copied().reduce(Vec3::min).unwrap();
+        let max = puck.verts.iter().copied().reduce(Vec3::max).unwrap();
+        assert!((max.x - min.x - 182.5).abs() < 1e-4);
+        assert!((max.y - min.y - 182.5).abs() < 1e-4);
+        assert!((max.z - min.z - rocketsim::consts::snowday::PUCK_HEIGHT).abs() < 1e-4);
     }
 
     #[test]

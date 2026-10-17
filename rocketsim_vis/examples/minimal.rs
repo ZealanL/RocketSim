@@ -26,9 +26,8 @@ fn parse_mode(s: &str) -> Result<GameMode, String> {
 }
 
 fn main() {
-    init_meshes();
-
     let cli = Cli::parse();
+    init_meshes();
     let mut arena = Arena::new_with_config(ArenaConfig::new(cli.game_mode));
     let car_idx = arena.add_car(Team::Blue, CarBodyConfig::OCTANE);
     arena.reset_to_random_kickoff(None);
@@ -42,7 +41,7 @@ fn main() {
         ..CarControls::default()
     };
 
-    // ~5 seconds at 120 Hz; the viewer keeps the last frame when we exit.
+    // Run for about five seconds. An auto-started viewer closes when the arena drops.
     for _ in 0..600 {
         // Pin boost to full so flames show.
         let mut car = *arena.get_car_state(car_idx);

@@ -1,6 +1,6 @@
 //! Frustum culling for instanced passes.
 //!
-//! Planes fit `[0, 1]`-style depth (near is `row2`, far is `row3 - row2`).
+//! Planes fit OpenGL `[-1, 1]` depth (near is `row3 + row2`).
 //! All planes are normalized; touching counts as visible.
 
 use glam::{Mat4, Vec3, Vec4};
@@ -23,7 +23,7 @@ pub fn frustum_planes(view_proj: Mat4) -> [Vec4; 6] {
         r3 - r0, // right
         r3 + r1, // bottom
         r3 - r1, // top
-        r2,      // near ([0,1] depth)
+        r3 + r2, // near (OpenGL [-1,1] depth)
         r3 - r2, // far
     ];
     for p in &mut planes {
@@ -38,18 +38,32 @@ pub fn frustum_planes(view_proj: Mat4) -> [Vec4; 6] {
 pub fn sphere_visible(planes: &[Vec4; 6], center: Vec3, radius: f32) -> bool {
     planes
         .iter()
-        .all(|p| p.truncate().dot(center) + p.w >= -radius)
+        .all(|p| p.truncate().dot(center) + p.w >= -radius - 1e-4)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::view::view_proj;
-
     /// Camera at origin looking down +X (Z-up), 90° horizontal FOV.
     fn test_planes() -> [Vec4; 6] {
-        let (view, proj) = view_proj(Vec3::ZERO, Vec3::X, 90.0, 16.0 / 9.0);
+        let (view, _) = view_proj(Vec3::ZERO, Vec3::X, 90.0, 16.0 / 9.0);
+        let proj = glam::camera::lh::proj::opengl::perspective(
+            90.0_f32.to_radians(),
+            16.0 / 9.0,
+            50.0,
+            60_000.0,
+        );
         frustum_planes(proj * view)
+    }
+
+    #[test]
+    fn opengl_near_plane_is_row3_plus_row2() {
+        let planes = test_planes();
+        let near = planes[4];
+        assert!((near.truncate().length() - 1.0).abs() < 1e-6);
+        assert!(near.truncate().dot(Vec3::new(50.0, 0.0, 0.0)) + near.w > -1e-4);
+        assert!(near.truncate().dot(Vec3::new(49.0, 0.0, 0.0)) + near.w < 0.0);
     }
 
     #[test]

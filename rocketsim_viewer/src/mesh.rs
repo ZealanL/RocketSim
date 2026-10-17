@@ -184,6 +184,63 @@ pub struct ArenaMesh {
 }
 
 impl ArenaMesh {
+    /// Builds an arena visual from streamed world-space mesh data.
+    pub fn from_meshes(game_mode: GameMode, meshes: &[rocketsim_vis::proto::MeshData]) -> Self {
+        let mut soup = SoupMesh {
+            verts: Vec::new(),
+            uvs: Vec::new(),
+        };
+        for mesh in meshes {
+            assert_eq!(
+                mesh.indices.len() % 3,
+                0,
+                "metadata mesh indices must be triangles"
+            );
+            for &idx in &mesh.indices {
+                let p = mesh.vertices[idx as usize];
+                soup.verts.push(Vec3::from_array(p));
+                soup.uvs.push(Vec2::splat(0.5));
+            }
+        }
+        let part = ArenaPart::from_soup(&soup);
+        let empty = || ArenaPart {
+            verts: Vec::new(),
+            uvs: Vec::new(),
+            normals: Vec::new(),
+            indices: Vec::new(),
+        };
+        Self {
+            mode: game_mode,
+            shell: part,
+            lid: empty(),
+            net: empty(),
+            field: empty(),
+            planes_low: empty(),
+            planes_high: empty(),
+            soup_verts: soup.verts.len(),
+        }
+    }
+
+    /// Builds an empty arena mesh for startup before simulation metadata arrives.
+    pub fn placeholder(mode: GameMode) -> Self {
+        let empty = || ArenaPart {
+            verts: Vec::new(),
+            uvs: Vec::new(),
+            normals: Vec::new(),
+            indices: Vec::new(),
+        };
+        Self {
+            mode,
+            shell: empty(),
+            lid: empty(),
+            net: empty(),
+            field: empty(),
+            planes_low: empty(),
+            planes_high: empty(),
+            soup_verts: 0,
+        }
+    }
+
     /// Ceiling test: face normal mostly vertical AND high up (normal alone
     /// would also grab the flat floor).
     const LID_MIN_Z: f32 = 1500.0;
@@ -256,10 +313,17 @@ impl ArenaMesh {
             }
         };
         let plane = SoupMesh::big_plane();
-        let floor = plane.transformed(
-            Vec3::new(0.0, 0.0, aabb.min.z - gap),
-            Mat3::from_euler(EulerRot::ZYX, 0.0, 0.0, 0.0),
-        );
+        let floor = if game_mode == GameMode::Dropshot {
+            SoupMesh {
+                verts: Vec::new(),
+                uvs: Vec::new(),
+            }
+        } else {
+            plane.transformed(
+                Vec3::new(0.0, 0.0, aabb.min.z - gap),
+                Mat3::from_euler(EulerRot::ZYX, 0.0, 0.0, 0.0),
+            )
+        };
         let ceiling = plane.transformed(
             Vec3::new(0.0, 0.0, mesh_max_z + gap),
             Mat3::from_euler(EulerRot::ZYX, 0.0, 0.0, std::f32::consts::PI),
@@ -273,13 +337,20 @@ impl ArenaMesh {
             Mat3::from_euler(EulerRot::ZYX, 0.0, -std::f32::consts::FRAC_PI_2, 0.0),
         );
         // Cap footprint covers the bowl; edges hide inside the walls.
-        let field_soup = SoupMesh::field_cap(
-            mesh_min_x + gap,
-            mesh_max_x - gap,
-            mesh_min_y + gap,
-            mesh_max_y - gap,
-            0.5,
-        );
+        let field_soup = if game_mode == GameMode::Dropshot {
+            SoupMesh {
+                verts: Vec::new(),
+                uvs: Vec::new(),
+            }
+        } else {
+            SoupMesh::field_cap(
+                mesh_min_x + gap,
+                mesh_max_x - gap,
+                mesh_min_y + gap,
+                mesh_max_y - gap,
+                0.5,
+            )
+        };
         let planes_low_soup = SoupMesh::concat(&[&floor, &wall_neg_x, &wall_pos_x]);
         let planes_high_soup = SoupMesh::concat(&[&ceiling]);
         let soup_verts = shell_soup.verts.len()
@@ -329,6 +400,27 @@ impl ArenaMesh {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn metadata_mesh_builds_without_sim_initialization() {
+        let input = [rocketsim_vis::proto::MeshData {
+            vertices: vec![[1.0, 2.0, 3.0], [4.0, 2.0, 3.0], [1.0, 6.0, 3.0]],
+            indices: vec![0, 1, 2],
+        }];
+        let mesh = ArenaMesh::from_meshes(GameMode::Soccar, &input);
+        assert_eq!(mesh.shell.verts.len(), 3);
+        assert_eq!(mesh.shell.indices, vec![0, 1, 2]);
+        assert_eq!(mesh.shell.verts[1], Vec3::new(4.0, 2.0, 3.0));
+        assert_eq!(mesh.mode, GameMode::Soccar);
+    }
+
+    #[test]
+    fn placeholder_has_no_geometry() {
+        let mesh = ArenaMesh::placeholder(GameMode::Dropshot);
+        assert_eq!(mesh.mode, GameMode::Dropshot);
+        assert_eq!(mesh.index_count(), 0);
+        assert_eq!(mesh.welded_verts(), 0);
+    }
 
     fn check_part(part: &ArenaPart, label: &str) {
         assert_eq!(part.indices.len() % 3, 0, "{label}: index count");

@@ -33,6 +33,7 @@ use rocketsim::{
     consts::{BT_TO_UU, arena::get_aabb},
     shared::{Aabb, QuadRayInfo},
 };
+use rocketsim_vis::proto::MeshData;
 use rustc_hash::FxHashMap;
 
 // ---------------------------------------------------------------------------
@@ -627,8 +628,8 @@ impl ArenaBounds {
         let mut tris = Vec::new();
         for mesh in rocketsim::get_arena_collision_mesh_files(mode) {
             let verts = mesh.get_vertices();
-            for tri in mesh.get_indices().chunks(3) {
-                let [a, b, c] = [tri[0], tri[1], tri[2]];
+            let (triangles, _) = mesh.get_indices().as_chunks::<3>();
+            for &[a, b, c] in triangles {
                 tris.push([
                     verts[a] * BT_TO_UU,
                     verts[b] * BT_TO_UU,
@@ -636,6 +637,32 @@ impl ArenaBounds {
                 ]);
             }
         }
+        Self::add_analytic_planes(mode, &mut tris);
+        Self::from_tris(mode, tris)
+    }
+
+    /// Builds a hull from streamed world-space geometry. This path does not
+    /// require RocketSim mesh initialization.
+    pub fn from_meshes(mode: GameMode, meshes: &[MeshData]) -> Self {
+        let mut tris = Vec::new();
+        for mesh in meshes {
+            let (triangles, _) = mesh.indices.as_chunks::<3>();
+            for tri in triangles {
+                if tri.iter().any(|&i| i as usize >= mesh.vertices.len()) {
+                    continue;
+                }
+                let point = |i: u32| {
+                    let v = mesh.vertices[i as usize];
+                    Vec3A::new(v[0], v[1], v[2])
+                };
+                tris.push([point(tri[0]), point(tri[1]), point(tri[2])]);
+            }
+        }
+        Self::add_analytic_planes(mode, &mut tris);
+        Self::from_tris(mode, tris)
+    }
+
+    fn add_analytic_planes(mode: GameMode, tris: &mut Vec<[Vec3A; 3]>) {
         // Analytic planes as finite quads (mirrors
         // `Arena::setup_arena_collision_shapes`; the mesh alone leaves the
         // flat spans open). Floor doubles as the parity closer; Dropshot's
@@ -646,14 +673,14 @@ impl ArenaBounds {
                 aabb.min.x, aabb.max.x, aabb.min.y, aabb.max.y, aabb.min.z, aabb.max.z,
             );
             push_quad(
-                &mut tris,
+                tris,
                 Vec3A::new(x0, y0, z0),
                 Vec3A::new(x1, y0, z0),
                 Vec3A::new(x1, y1, z0),
                 Vec3A::new(x0, y1, z0),
             );
             push_quad(
-                &mut tris,
+                tris,
                 Vec3A::new(x0, y0, z1),
                 Vec3A::new(x1, y0, z1),
                 Vec3A::new(x1, y1, z1),
@@ -662,7 +689,7 @@ impl ArenaBounds {
             if mode != GameMode::Dropshot {
                 for &x in &[x0, x1] {
                     push_quad(
-                        &mut tris,
+                        tris,
                         Vec3A::new(x, y0, z0),
                         Vec3A::new(x, y1, z0),
                         Vec3A::new(x, y1, z1),
@@ -673,7 +700,7 @@ impl ArenaBounds {
             if mode == GameMode::Hoops {
                 for &y in &[y0, y1] {
                     push_quad(
-                        &mut tris,
+                        tris,
                         Vec3A::new(x0, y, z0),
                         Vec3A::new(x1, y, z0),
                         Vec3A::new(x1, y, z1),
@@ -682,7 +709,6 @@ impl ArenaBounds {
                 }
             }
         }
-        Self::from_tris(mode, tris)
     }
 
     /// Builds from explicit tris (unit tests; no init needed).
@@ -865,10 +891,11 @@ impl ArenaBounds {
 #[derive(Default)]
 pub struct ArenaBoundsCache {
     map: FxHashMap<GameMode, Arc<ArenaBounds>>,
+    mesh_keys: FxHashMap<GameMode, u64>,
 }
 
 impl ArenaBoundsCache {
-    /// Empty cache; hulls build on first [`get`](Self::get).
+    /// Empty cache; hulls build on first lookup.
     pub fn new() -> Self {
         Self::default()
     }
@@ -879,6 +906,43 @@ impl ArenaBoundsCache {
     ///
     /// Panics if RocketSim was not initialized (same as
     /// [`ArenaBounds::build`]).
+    pub fn reset(&mut self) {
+        self.map.clear();
+        self.mesh_keys.clear();
+    }
+
+    pub fn get_for_meshes(
+        &mut self,
+        mode: GameMode,
+        meshes: &[MeshData],
+    ) -> Option<Arc<ArenaBounds>> {
+        if mode == GameMode::TheVoid {
+            return None;
+        }
+        let mut key = 0xcbf29ce484222325u64;
+        for mesh in meshes {
+            key = (key ^ mesh.vertices.len() as u64).wrapping_mul(0x100000001b3);
+            key = (key ^ mesh.indices.len() as u64).wrapping_mul(0x100000001b3);
+            for v in &mesh.vertices {
+                for x in v {
+                    key = (key ^ u64::from(x.to_bits())).wrapping_mul(0x100000001b3);
+                }
+            }
+            for i in &mesh.indices {
+                key = (key ^ u64::from(*i)).wrapping_mul(0x100000001b3);
+            }
+        }
+        if self.mesh_keys.get(&mode) == Some(&key)
+            && let Some(bounds) = self.map.get(&mode)
+        {
+            return Some(bounds.clone());
+        }
+        let bounds = Arc::new(ArenaBounds::from_meshes(mode, meshes));
+        self.mesh_keys.insert(mode, key);
+        self.map.insert(mode, bounds.clone());
+        Some(bounds)
+    }
+
     pub fn get(&mut self, mode: GameMode) -> Option<Arc<ArenaBounds>> {
         if mode == GameMode::TheVoid {
             return None;
@@ -887,6 +951,7 @@ impl ArenaBoundsCache {
             return Some(b.clone());
         }
         let b = Arc::new(ArenaBounds::build(mode));
+        self.mesh_keys.remove(&mode);
         self.map.insert(mode, b.clone());
         Some(b)
     }
@@ -899,6 +964,48 @@ mod tests {
     fn soccar() -> ArenaBounds {
         crate::photo::init_meshes();
         ArenaBounds::build(GameMode::Soccar)
+    }
+
+    #[test]
+    fn streamed_mesh_bounds_and_cache_do_not_require_mesh_init() {
+        let mesh = MeshData {
+            vertices: vec![[0.0, 0.0, 0.0], [100.0, 0.0, 0.0], [0.0, 100.0, 0.0]],
+            indices: vec![0, 1, 2],
+        };
+        let bounds = ArenaBounds::from_meshes(GameMode::Soccar, std::slice::from_ref(&mesh));
+        assert_eq!(bounds.tri_count(), 9);
+        assert!(
+            bounds
+                .segment_hit(Vec3A::new(25.0, 25.0, 10.0), Vec3A::new(25.0, 25.0, -10.0))
+                .is_some()
+        );
+
+        let mut cache = ArenaBoundsCache::new();
+        let first = cache
+            .get_for_meshes(GameMode::Soccar, std::slice::from_ref(&mesh))
+            .unwrap();
+        let same = cache
+            .get_for_meshes(GameMode::Soccar, std::slice::from_ref(&mesh))
+            .unwrap();
+        assert!(Arc::ptr_eq(&first, &same));
+
+        let changed = MeshData {
+            vertices: vec![
+                [0.0, 0.0, 0.0],
+                [100.0, 0.0, 0.0],
+                [0.0, 100.0, 0.0],
+                [100.0, 100.0, 0.0],
+            ],
+            indices: vec![0, 1, 2, 1, 3, 2],
+        };
+        let rebuilt = cache.get_for_meshes(GameMode::Soccar, &[changed]).unwrap();
+        assert!(!Arc::ptr_eq(&first, &rebuilt));
+        assert_eq!(rebuilt.tri_count(), 10);
+        cache.reset();
+        let reset = cache
+            .get_for_meshes(GameMode::Soccar, std::slice::from_ref(&mesh))
+            .unwrap();
+        assert!(!Arc::ptr_eq(&first, &reset));
     }
 
     #[test]

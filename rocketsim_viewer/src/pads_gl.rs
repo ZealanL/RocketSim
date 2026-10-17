@@ -212,8 +212,9 @@ impl PadsGl {
         unsafe {
             gl.disable(glow::CULL_FACE);
             gl.disable(glow::SCISSOR_TEST);
-            gl.disable(glow::BLEND);
-            gl.depth_mask(true);
+            gl.enable(glow::BLEND);
+            gl.blend_func(glow::SRC_ALPHA, glow::ONE_MINUS_SRC_ALPHA);
+            gl.depth_mask(false);
             gl.enable(glow::DEPTH_TEST);
             gl.depth_func(glow::LEQUAL);
             gl.use_program(Some(self.prog));
@@ -234,6 +235,8 @@ impl PadsGl {
                 );
             }
             gl.bind_vertex_array(None);
+            gl.depth_mask(true);
+            gl.disable(glow::BLEND);
             gl.use_program(None);
         }
     }

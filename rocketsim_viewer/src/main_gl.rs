@@ -89,6 +89,8 @@ pub const ARENA_TEXTURE: &str = "white";
 
 /// Model asset names (bundled OBJs).
 pub const BALL_MODEL: &str = "ball";
+/// Procedural Snowday puck model.
+pub const PUCK_MODEL: &str = "puck";
 
 /// Maps a body config to its bundled OBJ. Only four bodies have customs;
 /// the rest fall back to octane (there are no `car_plank`/`car_hybrid`

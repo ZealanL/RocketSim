@@ -77,6 +77,15 @@ impl DirectorState {
         }
     }
 
+    /// Reset target and timing state to a clean overview.
+    pub fn reset(&mut self) {
+        self.current = DirectorTarget::Overview;
+        self.time_on_target = 0.0;
+        self.time_since_force = Self::FORCE_CD;
+        self.last_switch_forced = false;
+        self.blend_age = Self::BLEND_T;
+    }
+
     /// Currently selected target.
     pub fn target(&self) -> DirectorTarget {
         self.current
@@ -99,7 +108,12 @@ impl DirectorState {
     }
 
     /// Graded shot threat (`0`, or alignment `0.70..1.0`) toward `goal`.
-    fn shot_threat(ball_pos: Vec3A, ball_vel: Vec3A, goal: Vec3A) -> f32 {
+    fn shot_threat(
+        mode: rocketsim::GameMode,
+        ball_pos: Vec3A,
+        ball_vel: Vec3A,
+        goal: Vec3A,
+    ) -> f32 {
         let speed = ball_vel.length();
         if speed <= Self::SHOT_MIN_SPEED {
             return 0.0;
@@ -110,11 +124,20 @@ impl DirectorState {
             return 0.0;
         }
         let align = ball_vel.dot(to_goal) / (speed * dist);
-        if align > Self::SHOT_MIN_ALIGN && dist / speed < Self::SHOT_MAX_T_GOAL {
-            align.clamp(0.0, 1.0)
-        } else {
-            0.0
+        let t = (goal.y - ball_pos.y) / ball_vel.y;
+        if align <= Self::SHOT_MIN_ALIGN || t <= 0.0 || t >= Self::SHOT_MAX_T_GOAL {
+            return 0.0;
         }
+        let predicted = ball_pos + ball_vel * t;
+        let scores = match mode {
+            rocketsim::GameMode::Hoops => {
+                let dy = predicted.y.abs() * 0.9 - 2770.0;
+                predicted.z < rocketsim::consts::goal::HOOPS_GOAL_SCORE_THRESHOLD_Z
+                    && predicted.x * predicted.x + dy * dy < 716.0 * 716.0
+            }
+            _ => predicted.x.abs() < 893.0 && (0.0..642.0).contains(&predicted.z),
+        };
+        if scores { align.clamp(0.0, 1.0) } else { 0.0 }
     }
 
     /// Aerial bonus for `activity`-style scoring: an airborne car within
@@ -200,6 +223,7 @@ impl DirectorState {
                 0.0
             } else {
                 Self::shot_threat(
+                    arena_state.game_mode(),
                     arena_state.ball.pos,
                     arena_state.ball.vel,
                     Self::goal_center(arena_state, -info.team.get_y_dir()),
@@ -311,6 +335,25 @@ mod tests {
             target = director.update(&arena, 1.0 / 30.0);
         }
         assert_eq!(target, DirectorTarget::Overview);
+    }
+
+    #[test]
+    fn obvious_goal_misses_are_not_shot_threats() {
+        let goal = Vec3A::new(0.0, get_aabb(GameMode::Soccar).max.y, 0.0);
+        let wide = DirectorState::shot_threat(
+            GameMode::Soccar,
+            Vec3A::new(1500.0, 0.0, 100.0),
+            Vec3A::new(0.0, 3000.0, 0.0),
+            goal,
+        );
+        let over_crossbar = DirectorState::shot_threat(
+            GameMode::Soccar,
+            Vec3A::new(0.0, 0.0, 1000.0),
+            Vec3A::new(0.0, 3000.0, 0.0),
+            goal,
+        );
+        assert_eq!(wide, 0.0);
+        assert_eq!(over_crossbar, 0.0);
     }
 
     #[test]

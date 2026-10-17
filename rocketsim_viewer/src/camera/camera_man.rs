@@ -26,6 +26,7 @@ pub struct CameraMan {
     /// Frozen death pose while the followed car is demoed (position holds,
     /// look re-aims at the ball). Cleared on respawn (view snaps to live).
     demo_frozen_pos: Option<Vec3A>,
+    followed_info_idx: Option<usize>,
 
     view_mode: CameraViewMode,
 }
@@ -41,6 +42,7 @@ impl CameraMan {
             cur_dir: -base.normalize_or_zero(),
             smooth: CarCamSmoothing::new(),
             demo_frozen_pos: None,
+            followed_info_idx: None,
             view_mode: CameraViewMode::BirdsEye,
         }
     }
@@ -101,8 +103,16 @@ impl CameraMan {
         self.config = config;
     }
 
-    /// Advances birds-eye → car 0 → car 1 … → birds-eye.
-    /// No-op when the arena has no cars.
+    /// Selects wide view and clears follow-camera history.
+    pub fn set_wide_view(&mut self) {
+        self.view_mode = CameraViewMode::BirdsEye;
+        self.smooth.reset();
+        self.demo_frozen_pos = None;
+        self.followed_info_idx = None;
+    }
+
+    /// Advances wide view, then each car, then wide view again.
+    /// Does nothing when the arena has no cars.
     pub fn cycle_target(&mut self, arena_state: &ArenaState) {
         if arena_state.num_cars() == 0 {
             return;
@@ -121,6 +131,9 @@ impl CameraMan {
         }
         self.smooth.reset();
         self.demo_frozen_pos = None;
+        self.followed_info_idx = self
+            .car_cam()
+            .and_then(|cam| arena_state.cars.get(cam.car_idx).map(|(info, _)| info.idx));
     }
 
     /// Follows car `i` directly (spectator number-key select). Out-of-range
@@ -132,6 +145,7 @@ impl CameraMan {
         self.view_mode = CameraViewMode::CarCam(CarCam::new(i));
         self.smooth.reset();
         self.demo_frozen_pos = None;
+        self.followed_info_idx = arena_state.cars.get(i).map(|(info, _)| info.idx);
     }
 
     /// Toggles ball-cam while following a car. No-op in birds-eye view.
@@ -143,12 +157,25 @@ impl CameraMan {
 
     /// Recomputes position/direction from the latest arena state.
     ///
-    /// `dt` (seconds, clamped to `[0, 1/30]`) advances follow-view
-    /// smoothing; birds-eye still snaps.
+    /// `dt` (seconds, clamped to `[0, 1]`) advances follow-view smoothing;
+    /// birds-eye still snaps.
     pub fn update(&mut self, arena_state: &ArenaState, dt: f32) {
-        let follow = match &self.view_mode {
+        let follow = match &mut self.view_mode {
             CameraViewMode::BirdsEye => None,
-            CameraViewMode::CarCam(car_cam) => Some((car_cam.car_idx, car_cam.face_ball)),
+            CameraViewMode::CarCam(car_cam) => {
+                let Some(id) = self.followed_info_idx else {
+                    self.set_wide_view();
+                    return;
+                };
+                let Some(slot) = arena_state.cars.iter().position(|(info, _)| info.idx == id)
+                else {
+                    self.set_wide_view();
+                    self.update(arena_state, dt);
+                    return;
+                };
+                car_cam.car_idx = slot;
+                Some((slot, car_cam.face_ball))
+            }
         };
         match follow {
             None => {
@@ -157,10 +184,12 @@ impl CameraMan {
                 self.cur_dir = (arena_state.ball.pos - base).normalize_or_zero();
             }
             Some((car_idx, face_ball)) => {
-                let demoed = arena_state
-                    .cars
-                    .get(car_idx)
-                    .is_some_and(|(_, s)| s.is_demoed);
+                let Some((_, car)) = arena_state.cars.get(car_idx) else {
+                    self.set_wide_view();
+                    self.update(arena_state, dt);
+                    return;
+                };
+                let demoed = car.is_demoed;
                 if demoed {
                     if self.demo_frozen_pos.is_none() {
                         self.demo_frozen_pos = Some(self.cur_pos);
@@ -249,8 +278,10 @@ mod tests {
             || hoops.z > aabb.max.z + m;
         assert!(outside, "hoops wide anchor inside arena: {hoops:?}");
         // ... while an explicit user value always wins, in every mode.
-        let mut custom = CameraConfig::default();
-        custom.birds_eye_pos = Vec3A::new(1.0, 2.0, 3.0);
+        let custom = CameraConfig {
+            birds_eye_pos: Vec3A::new(1.0, 2.0, 3.0),
+            ..CameraConfig::default()
+        };
         assert_eq!(
             CameraMan::birds_base(GameMode::Hoops, &custom),
             custom.birds_eye_pos
@@ -266,7 +297,7 @@ mod tests {
         // Mesh switches must not lose follow state, but the wide anchor
         // follows the new mode on the next update.
         let mut man = CameraMan::new(GameMode::Soccar, CameraConfig::default());
-        let mut state = test_state();
+        let state = test_state();
         man.update(&state, 1.0 / 120.0);
         assert_eq!(man.cur_pos(), D_BIRDS_EYE);
         man.set_game_mode(GameMode::Hoops);
@@ -307,6 +338,39 @@ mod tests {
         assert_eq!(man.car_cam().unwrap().car_idx, 1);
         man.cycle_target(&state);
         assert!(man.car_cam().is_none());
+    }
+
+    #[test]
+    fn follow_tracks_identity_through_reorder_and_falls_back_on_replacement() {
+        let mut state = test_state();
+        let mut man = CameraMan::new(GameMode::Soccar, CameraConfig::default());
+        man.follow_car(&state, 0);
+        state.cars.swap(0, 1);
+        man.update(&state, 0.1);
+        assert_eq!(man.car_cam().unwrap().car_idx, 1);
+
+        state.cars.retain(|(info, _)| info.idx != 0);
+        man.update(&state, 0.1);
+        assert!(man.car_cam().is_none());
+
+        let mut state = test_state();
+        let mut man = CameraMan::new(GameMode::Soccar, CameraConfig::default());
+        man.follow_car(&state, 0);
+        state.cars[0].0.idx = 7;
+        man.update(&state, 0.1);
+        assert!(man.car_cam().is_none());
+    }
+
+    #[test]
+    fn cycle_tracks_selected_identity() {
+        let mut state = test_state();
+        let mut man = CameraMan::new(GameMode::Soccar, CameraConfig::default());
+        man.cycle_target(&state);
+        man.cycle_target(&state);
+        assert_eq!(man.car_cam().unwrap().car_idx, 1);
+        state.cars.swap(0, 1);
+        man.update(&state, 0.1);
+        assert_eq!(man.car_cam().unwrap().car_idx, 0);
     }
 
     #[test]

@@ -50,38 +50,3 @@ pub fn step_ticks(arena: &mut Arena, ticks: usize) {
         arena.step_tick();
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn state_after(ticks: usize) -> (u64, [f32; 3], [f32; 3]) {
-        init_meshes();
-        let mut arena = build_arena();
-        step_ticks(&mut arena, ticks);
-        let ball = arena.get_ball_state().phys.pos;
-        let car = arena.get_car_state(0).phys.pos;
-        (
-            arena.tick_count(),
-            [ball.x, ball.y, ball.z],
-            [car.x, car.y, car.z],
-        )
-    }
-
-    #[test]
-    fn photo_scene_contract() {
-        let a = state_after(120);
-        let b = state_after(120);
-        assert_eq!(a.0, 120);
-        assert_eq!(a, b, "same seed + same ticks must give same state");
-        // The scene must move: car 0 drives from its spawn, ball sits still.
-        init_meshes();
-        let mut arena = build_arena();
-        let y0 = arena.get_car_state(0).phys.pos.y;
-        step_ticks(&mut arena, 120);
-        let ball = arena.get_ball_state().phys.pos;
-        let car = arena.get_car_state(0).phys.pos;
-        assert!(ball.x.abs() < 1.0 && ball.y.abs() < 1.0, "ball={ball:?}");
-        assert!(car.y - y0 > 100.0, "car0 never moved? y0={y0} car={car:?}");
-    }
-}

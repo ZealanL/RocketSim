@@ -4,7 +4,11 @@
 //! (`./settings.toml` fallback). Loading never fails (missing/corrupt
 //! files give defaults); every field has a default so old files parse.
 
-use std::{path::PathBuf, time::Instant};
+use std::{
+    io,
+    path::{Path, PathBuf},
+    time::Instant,
+};
 
 use serde::{Deserialize, Serialize};
 
@@ -95,6 +99,8 @@ pub struct ViewerSettings {
     /// Unsaved changes pending (not persisted).
     #[serde(skip)]
     dirty: bool,
+    #[serde(skip)]
+    explicit_path: Option<PathBuf>,
 }
 
 fn on() -> bool {
@@ -133,6 +139,7 @@ impl Default for ViewerSettings {
             mut_double_jumps: false,
             last_save: None,
             dirty: false,
+            explicit_path: None,
         }
     }
 }
@@ -148,35 +155,91 @@ impl ViewerSettings {
     /// Loads from disk, or defaults (with a stderr note) when missing or
     /// corrupt. Unknown fields are ignored; missing fields use defaults.
     pub fn load() -> Self {
-        let path = Self::path();
-        match std::fs::read_to_string(&path) {
+        Self::load_from_path(&Self::path())
+    }
+
+    pub fn load_from_path(path: &Path) -> Self {
+        match std::fs::read_to_string(path) {
             Ok(text) => match toml::from_str::<Self>(&text) {
-                Ok(settings) => settings,
+                Ok(mut settings) => {
+                    settings.explicit_path = Some(path.to_path_buf());
+                    settings.validate();
+                    settings
+                }
                 Err(e) => {
                     eprintln!(
                         "rocketsim_vis: corrupt {} ({e}), using defaults",
                         path.display()
                     );
-                    Self::default()
+                    preserve_corrupt(path);
+                    Self {
+                        explicit_path: Some(path.to_path_buf()),
+                        ..Self::default()
+                    }
                 }
             },
-            Err(_) => Self::default(),
+            Err(_) => Self {
+                explicit_path: Some(path.to_path_buf()),
+                ..Self::default()
+            },
         }
     }
 
-    /// Writes to disk, creating parent dirs. Errors go to stderr (never fatal).
-    pub fn save(&self) {
-        let path = Self::path();
-        if let Some(parent) = path.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        match toml::to_string(self) {
-            Ok(text) => {
-                if let Err(e) = std::fs::write(&path, text) {
-                    eprintln!("rocketsim_vis: cannot save {} ({e})", path.display());
-                }
+    pub fn save(&self) -> io::Result<()> {
+        let default_path;
+        let path = match self.explicit_path.as_deref() {
+            Some(path) => path,
+            None => {
+                default_path = Self::path();
+                &default_path
             }
-            Err(e) => eprintln!("rocketsim_vis: cannot serialize settings ({e})"),
+        };
+        self.save_to_path(path)
+    }
+
+    pub fn save_to_path(&self, path: &Path) -> io::Result<()> {
+        let text =
+            toml::to_string(self).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+        atomic_write(path, text.as_bytes())
+    }
+
+    fn validate(&mut self) {
+        fn finite_clamp(value: &mut f32, fallback: f32, low: f32, high: f32) {
+            *value = if value.is_finite() {
+                value.clamp(low, high)
+            } else {
+                fallback
+            };
+        }
+        let default = CameraConfig::default();
+        finite_clamp(
+            &mut self.camera.fov_degrees,
+            default.fov_degrees,
+            30.0,
+            170.0,
+        );
+        let pos = self.camera.birds_eye_pos;
+        let mut x = pos.x;
+        let mut y = pos.y;
+        let mut z = pos.z;
+        finite_clamp(&mut x, default.birds_eye_pos.x, -20000.0, 20000.0);
+        finite_clamp(&mut y, default.birds_eye_pos.y, -20000.0, 20000.0);
+        finite_clamp(&mut z, default.birds_eye_pos.z, -20000.0, 20000.0);
+        self.camera.birds_eye_pos = glam::Vec3A::new(x, y, z);
+        let cam = &mut self.camera.car_cam;
+        finite_clamp(&mut cam.distance, default.car_cam.distance, 50.0, 1000.0);
+        finite_clamp(&mut cam.height, default.car_cam.height, 0.0, 500.0);
+        finite_clamp(&mut cam.angle_deg, default.car_cam.angle_deg, -45.0, 45.0);
+        finite_clamp(&mut cam.stiffness, default.car_cam.stiffness, 0.0, 1.0);
+        finite_clamp(
+            &mut cam.transition_speed,
+            default.car_cam.transition_speed,
+            0.1,
+            5.0,
+        );
+        finite_clamp(&mut self.ui_scale, DEFAULT_UI_SCALE, 0.5, 2.0);
+        if !matches!(self.msaa, 0 | 2 | 4 | 8) {
+            self.msaa = DEFAULT_MSAA;
         }
     }
 
@@ -196,10 +259,23 @@ impl ViewerSettings {
             Some(t) => t.elapsed().as_secs_f32() >= SAVE_DEBOUNCE_SECS,
         };
         if due {
-            self.save();
-            self.last_save = Some(Instant::now());
-            self.dirty = false;
+            if let Err(e) = self.save() {
+                eprintln!("rocketsim_vis: cannot save settings ({e})");
+                self.last_save = Some(Instant::now());
+            } else {
+                self.last_save = Some(Instant::now());
+                self.dirty = false;
+            }
         }
+    }
+
+    pub fn flush(&mut self) -> io::Result<()> {
+        if self.dirty {
+            self.save()?;
+            self.dirty = false;
+            self.last_save = Some(Instant::now());
+        }
+        Ok(())
     }
 
     /// Resets camera tuning to RL defaults (preset button).
@@ -210,7 +286,11 @@ impl ViewerSettings {
 
     /// Resets everything to defaults.
     pub fn reset_all(&mut self) {
-        *self = Self::default();
+        let explicit_path = self.explicit_path.take();
+        *self = Self {
+            explicit_path,
+            ..Self::default()
+        };
         self.mark_dirty();
     }
 
@@ -238,6 +318,57 @@ impl ViewerSettings {
     }
 }
 
+fn atomic_write(path: &Path, bytes: &[u8]) -> io::Result<()> {
+    use std::io::Write;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT_TEMP_ID: AtomicU64 = AtomicU64::new(0);
+
+    let (temp, mut file) = (0..100)
+        .find_map(|_| {
+            let id = NEXT_TEMP_ID.fetch_add(1, Ordering::Relaxed);
+            let temp = path.with_extension(format!("tmp-{}-{id}", std::process::id()));
+            match std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&temp)
+            {
+                Ok(file) => Some(Ok((temp, file))),
+                Err(error) if error.kind() == io::ErrorKind::AlreadyExists => None,
+                Err(error) => Some(Err(error)),
+            }
+        })
+        .unwrap_or_else(|| {
+            Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                "could not allocate a unique settings temporary file",
+            ))
+        })?;
+
+    let result = (|| {
+        file.write_all(bytes)?;
+        file.flush()?;
+        file.sync_all()?;
+        std::fs::rename(&temp, path)
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(&temp);
+    }
+    result
+}
+
+fn preserve_corrupt(path: &Path) {
+    if !path.exists() {
+        return;
+    }
+    let backup = path.with_extension("toml.corrupt");
+    if !backup.exists() {
+        let _ = std::fs::copy(path, backup);
+    }
+}
+
 /// OS config dir + `rocketsim-vis`, or `None` when no home resolves.
 fn directories_dir() -> Option<PathBuf> {
     #[cfg(target_os = "macos")]
@@ -255,7 +386,7 @@ fn directories_dir() -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bindings::{Key, MouseButton, PadButton};
+    use crate::bindings::{InputBinding, Key, MouseButton, PadButton};
 
     #[test]
     fn defaults_match_spec() {
@@ -305,7 +436,10 @@ mod tests {
         // Defaults copy today's hardcoded mapping.
         let s = ViewerSettings::default();
         assert_eq!(s.bindings.car.throttle_fwd, Key::W);
-        assert_eq!(s.bindings.car.jump, MouseButton::Primary);
+        assert_eq!(
+            s.bindings.car.jump,
+            InputBinding::Mouse(MouseButton::Primary)
+        );
         assert_eq!(s.bindings.actions.kickoff_reset, Key::Backspace);
         assert_eq!(s.bindings.camera.free, Key::F);
         assert_eq!(s.bindings.ui.menu_toggle, Key::Escape);
@@ -337,7 +471,6 @@ mod tests {
 
     #[test]
     fn camera_config_serde() {
-        // CameraConfig must survive TOML (it lives inside settings).
         let cfg = CameraConfig {
             fov_degrees: 100.0,
             ..CameraConfig::default()
@@ -346,5 +479,77 @@ mod tests {
         let back: CameraConfig = toml::from_str(&text).unwrap();
         assert_eq!(back.fov_degrees, 100.0);
         assert_eq!(back.car_cam.stiffness, 0.45);
+    }
+
+    fn test_path(label: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "rocketsim-settings-{label}-{}-{}.toml",
+            std::process::id(),
+            Instant::now().elapsed().as_nanos()
+        ))
+    }
+
+    #[test]
+    fn explicit_path_flush_replaces_atomically() {
+        let path = test_path("flush");
+        std::fs::write(&path, "old contents").unwrap();
+        let mut settings = ViewerSettings::load_from_path(&path);
+        settings.show_boost = false;
+        settings.mark_dirty();
+        settings.flush().unwrap();
+        assert!(!ViewerSettings::load_from_path(&path).show_boost);
+        assert!(!settings.dirty);
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn failed_save_keeps_dirty_and_retries_after_debounce() {
+        let path = test_path("retry");
+        let blocker = path.with_extension("blocker");
+        std::fs::write(&blocker, "not a directory").unwrap();
+        let nested = blocker.join("settings.toml");
+        let mut settings = ViewerSettings::load_from_path(&nested);
+        settings.mark_dirty();
+        assert!(settings.flush().is_err());
+        assert!(settings.dirty, "failed flush must retain pending changes");
+        settings.save_if_due();
+        assert!(settings.dirty);
+        settings.explicit_path = Some(path.clone());
+        settings.save_if_due();
+        assert!(
+            settings.dirty,
+            "failed writes must wait for the retry debounce"
+        );
+        settings.last_save = Some(Instant::now() - std::time::Duration::from_secs(2));
+        settings.save_if_due();
+        assert!(!settings.dirty);
+        let _ = std::fs::remove_file(blocker);
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn corrupt_settings_are_preserved_before_recovery() {
+        let path = test_path("corrupt");
+        let corrupt = b"not valid TOML = [";
+        std::fs::write(&path, corrupt).unwrap();
+        let settings = ViewerSettings::load_from_path(&path);
+        assert_eq!(settings.fps_limit_hz, DEFAULT_FPS_LIMIT);
+        let backup = path.with_extension("toml.corrupt");
+        assert_eq!(std::fs::read(&backup).unwrap(), corrupt);
+        let _ = std::fs::remove_file(path);
+        let _ = std::fs::remove_file(backup);
+    }
+
+    #[test]
+    fn loaded_values_are_finite_clamped_and_supported() {
+        let path = test_path("validate");
+        std::fs::write(&path, "ui_scale = 99.0\nmsaa = 3\n[camera]\nfov_degrees = inf\n[camera.car_cam]\ndistance = 5000.0\nstiffness = nan\n").unwrap();
+        let loaded = ViewerSettings::load_from_path(&path);
+        assert_eq!(loaded.camera.fov_degrees, 110.0);
+        assert_eq!(loaded.camera.car_cam.distance, 1000.0);
+        assert_eq!(loaded.camera.car_cam.stiffness, 0.45);
+        assert_eq!(loaded.ui_scale, 2.0);
+        assert_eq!(loaded.msaa, DEFAULT_MSAA);
+        let _ = std::fs::remove_file(path);
     }
 }

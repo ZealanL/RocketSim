@@ -21,10 +21,10 @@ pub use car_cam::*;
 pub use director::*;
 pub use freecam::*;
 
-/// Largest timestep the cameras integrate (s); larger `dt` is clamped.
-pub(crate) const MAX_DT: f32 = 1.0 / 30.0;
+/// Largest timestep the cameras integrate (s); longer pauses are ignored beyond 1 s.
+pub(crate) const MAX_DT: f32 = 1.0;
 
-/// Clamps a frame timestep to `[0, MAX_DT]`; non-finite input yields `0`.
+/// Clamps elapsed time to `[0, MAX_DT]`; non-finite input yields `0`.
 pub(crate) fn clamp_dt(dt: f32) -> f32 {
     if dt.is_finite() {
         dt.clamp(0.0, MAX_DT)
@@ -47,6 +47,7 @@ mod tests {
     fn dt_clamp() {
         assert_eq!(clamp_dt(1.0 / 60.0), 1.0 / 60.0);
         assert_eq!(clamp_dt(10.0), MAX_DT);
+        assert_eq!(clamp_dt(0.1), 0.1);
         assert_eq!(clamp_dt(-1.0), 0.0);
         assert_eq!(clamp_dt(f32::NAN), 0.0);
         assert_eq!(clamp_dt(f32::INFINITY), 0.0);

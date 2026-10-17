@@ -14,11 +14,15 @@ dev box. The converter is `tools/xwd2png.py` (TrueColor ZPixmap, vectorized).
 # prove the harness with a trivial client (leaves Xephyr :99 running):
 tools/vis-shot.sh /tmp/probe.png -- xterm -e 'sleep 5'
 
-# capture the viewer (viewer runs its own main loop):
+# build the viewer first, then capture it (the viewer listens on 39201):
+cargo build -p rocketsim_viewer --bin rocketsim-viewer
 tools/vis-shot.sh -w 8 /tmp/shot.png -- ./target/debug/rocketsim-viewer 39201
 
 # flags: -d DISPLAY (default :99), -g GEOM (default 1280x720), -w WAIT secs
 ```
+
+The viewer binds to `127.0.0.1` by default. Do not expose it on an untrusted
+network. Its protocol has no authentication.
 
 The script ensures Xephyr is up, runs the command with `WAYLAND_DISPLAY`
 unset, waits, captures root, converts, then stops the command if still alive.
@@ -27,7 +31,10 @@ unset, waits, captures root, converts, then stops the command if still alive.
 
 `cargo run -p rocketsim_viewer --example photo` steps a fixed seed-0 Soccar
 scene (blue drives, orange idles) 600 ticks and prints ball/car0 positions.
-Same seed + same ticks = same output; screenshot timing may vary, sim must not.
+Build `rocketsim-viewer` first or install it on `PATH` so the example can
+connect. The viewer renders scene mesh metadata from the stream. The simulation
+still initializes its own meshes. Same seed + same ticks = same output;
+screenshot timing may vary.
 
 ## Perf log (running table, CPU submit ms + wall fps)
 

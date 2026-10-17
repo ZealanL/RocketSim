@@ -190,7 +190,8 @@ impl ArenaGl {
     ) {
         unsafe {
             gl.disable(glow::CULL_FACE);
-            gl.disable(glow::SCISSOR_TEST);
+            gl.enable(glow::SCISSOR_TEST);
+            gl.scissor(viewport_px.0, viewport_px.1, viewport_px.2, viewport_px.3);
             gl.disable(glow::BLEND);
             gl.depth_mask(true);
             gl.viewport(viewport_px.0, viewport_px.1, viewport_px.2, viewport_px.3);
@@ -210,19 +211,32 @@ impl ArenaGl {
                 gl.bind_vertex_array(Some(self.roof.vao));
                 gl.draw_elements(glow::TRIANGLES, self.roof.n_indices, glow::UNSIGNED_INT, 0);
             }
-            // Translucent net last: depth-tested against the opaque bowl
-            // so walls in front occlude it, but writes no depth itself so
-            // overlapping net layers blend instead of z-fighting. Empty
-            // outside Hoops (zero-index draw is a no-op).
+
+            gl.bind_vertex_array(None);
+            gl.use_program(None);
+        }
+    }
+
+    /// Draws the transparent Hoops net after actors and pads.
+    pub fn draw_net(&self, gl: &glow::Context, model: &Mat4, view: &Mat4, proj: &Mat4) {
+        unsafe {
+            gl.disable(glow::CULL_FACE);
+            gl.enable(glow::DEPTH_TEST);
+            gl.depth_func(glow::LEQUAL);
             gl.enable(glow::BLEND);
             gl.blend_func(glow::SRC_ALPHA, glow::ONE_MINUS_SRC_ALPHA);
             gl.depth_mask(false);
+            gl.use_program(Some(self.prog));
+            gl.uniform_matrix_4_f32_slice(Some(&self.u_model), false, &model.to_cols_array());
+            gl.uniform_matrix_4_f32_slice(Some(&self.u_view), false, &view.to_cols_array());
+            gl.uniform_matrix_4_f32_slice(Some(&self.u_proj), false, &proj.to_cols_array());
             gl.uniform_1_f32(Some(&self.u_alpha), NET_ALPHA);
+            self.white.bind(gl);
             gl.bind_vertex_array(Some(self.net.vao));
             gl.draw_elements(glow::TRIANGLES, self.net.n_indices, glow::UNSIGNED_INT, 0);
+            gl.bind_vertex_array(None);
             gl.depth_mask(true);
             gl.disable(glow::BLEND);
-            gl.bind_vertex_array(None);
             gl.use_program(None);
         }
     }

@@ -1,25 +1,45 @@
 # rocketsim_viewer
 
-3D visualizer for [RocketSim](https://github.com/ZealanL/RocketSim) games (eframe + egui), run as the `rocketsim-viewer` binary.
+3D visualizer for RocketSim. The `rocketsim-viewer` binary accepts one
+simulation connection. One versioned, bidirectional TCP connection carries
+frames and controls. The default endpoint is `127.0.0.1:39201`. The stock
+viewer does not use a separate `39202` control channel.
 
-Enable it on any `rocketsim::Arena` and a window opens on a background thread,
-following the cars, ball, and boost pads while you keep stepping ticks.
+## Build and run
 
-## Install / run
+Build the viewer before you run lightweight examples, or install it so the
+launcher can find `rocketsim-viewer` on `PATH`:
 
 ```sh
-cargo install rocketsim_viewer
-cargo binstall rocketsim_viewer
-rocketsim-viewer
-# ...or from this repo without installing:
+cargo build -p rocketsim_viewer --bin rocketsim-viewer
+cargo run -p rocketsim_vis --example minimal
+```
+
+To run the viewer directly:
+
+```sh
 cargo run -p rocketsim_viewer --bin rocketsim-viewer
 ```
 
-Prebuilt `cargo binstall` assets are published on GitHub releases when available.
+Install from source with:
 
-## Quick start
+```sh
+cargo install rocketsim_viewer
+```
 
-```rust
+On Linux, a source build with gamepad support needs the `libudev` development
+package. A source install also needs the Rust toolchain and system libraries
+required by the graphics stack. The launcher looks for an installed
+`rocketsim-viewer` on `PATH` or a local build. Set `ROCKETSIM_VIEWER` to an
+executable path to select a specific viewer binary. Do not assume that
+prebuilt release files are available. The viewer and simulation are separate
+crates. Build or install the viewer separately from the simulation.
+
+## Sim integration
+
+Add `rocketsim_vis` to the simulation and use `ArenaVisExt`:
+
+```rust,no_run
 use rocketsim::{Arena, ArenaConfig, CarBodyConfig, GameMode, Team, init_from_default};
 use rocketsim_vis::ArenaVisExt;
 
@@ -35,43 +55,90 @@ for _ in 0..240 {
 }
 ```
 
-Disabling is symmetric: `arena.set_vis_enabled(false)` drops the window.
-Calling it with the current state is a no-op.
+The simulation sends scene mesh metadata with frames. The viewer uses this
+data to render without a local collision-mesh tree. The simulation must still
+initialize its own meshes. When the stream disconnects, the viewer clears the
+frame and resets to its placeholder scene. A later simulation connection can
+send a new frame and scene.
 
-New sim code should depend on the lightweight `rocketsim_vis` crate (as
-above); this crate re-exports its network API (`rocketsim_viewer::ArenaVisExt`,
-`proto`, ...) so existing imports keep compiling unchanged.
+Use separate viewer instances and explicit ports for multiple arenas. Each
+viewer accepts one simulation connection. Two arenas in one process cannot
+attach to the same viewer address; the second attach returns `AddrInUse`.
 
-## Controls
+`set_vis_enabled(true)` launches or attaches to the default viewer endpoint.
+It does not select a custom endpoint. `set_net_vis(Some(address))` connects to
+an explicit endpoint and never launches a viewer. Use the `try_set_*` methods
+to handle startup and address errors. The non-`try` methods report errors to
+stderr.
 
-Viewer window (needs focus; input is read in-window so it works on
-Wayland):
+## CLI and network access
 
-* `C` — cycle camera: wide view, then each car in order
-* `Space` — toggle ball cam while following a car
-* `1-8` — follow a car, `9` director, `0` auto cam, `F` free camera
-* WASD + mouse — drive the car you follow (other views send neutral)
-* `Backspace` or the settings-menu "Reset play" button — reset to kickoff
-* `Esc` — options menu (sliders, camera presets, overlays)
-* Pad: Options/Start toggles the menu · D-pad/left stick moves ·
-  A selects · B backs out · ◀▶ adjust sliders · right stick looks
+`rocketsim-viewer [PORT] [CAM] [-g MODE] [--bind ADDRESS] [--gpushot]` listens
+on port `39201` by default. `ADDRESS` must be a numeric bind address. The
+viewer binds to `127.0.0.1` by default. A non-loopback bind can expose the
+viewer to untrusted peers. The protocol has no authentication. Bind only on a
+trusted network and restrict access with a firewall. Simulation endpoints
+must also use numeric socket addresses; host names are not resolved.
 
-While playing, the mouse is captured by the 3D view; it returns when the
-menu opens or the window loses focus. An unfocused window never drives.
+`CAM` selects the initial camera: birds-eye (`birds`), a followed car
+(`followN`), director, auto camera (`autoN`), or free camera. `N` is a zero-based
+car index. If the car is absent, the viewer uses wide view. Selection takes
+constant time, including for a large index. `-g MODE` selects the initial placeholder mode. Stream
+metadata replaces it when a simulation connects. `--gpushot` enables GPU-stall
+timing.
+
+## Controls and settings
+
+The keyboard camera defaults are `1`-`8` to follow cars, `9` for director,
+`0` for auto camera, `F` for free camera, `C` to cycle, and `Space` to toggle
+ball cam while following. Driving keys use WASD. Mouse movement looks around in free-camera mode. The
+primary mouse button jumps; the secondary mouse button boosts. Rebind keyboard
+and mouse driving actions, including jump and boost, in settings. Controller
+bindings are configurable.
+
+Controller actions require the viewer window to have focus. This includes
+menu navigation. The right stick adjusts look direction while following a car.
+It does not control free-camera movement. Controller navigation can reach all
+menu sections.
+
+Settings use `settings.toml` in the OS config directory under
+`rocketsim-vis`. Linux uses `$XDG_CONFIG_HOME/rocketsim-vis/` or, if unset,
+`~/.config/rocketsim-vis/`. macOS uses
+`~/Library/Application Support/rocketsim-vis/`. Windows uses
+`%APPDATA%/rocketsim-vis/`. If no OS config directory is available, the viewer
+uses `./settings.toml`. The viewer saves changed settings after a short delay
+and flushes them when it exits.
+
+The spectate-only setting sends neutral controls, zero action bits, and a zero
+mutator mask. The viewer sends controls and mutator values; the simulation
+chooses whether to apply them. The `drive` example applies the received
+mutators.
 
 ## Examples
 
+Build the viewer first as shown above, or install it on `PATH` before running
+examples that launch it:
+
 ```sh
-# Smallest streaming sim, no input (launches rocketsim-viewer if needed)
 cargo run -p rocketsim_vis --example minimal
-# Interactive driveable demo (drive from the viewer window)
 cargo run -p rocketsim_vis --example drive
-# Hoops: the viewer follows the sim's mode on its own (its -g only sets
-# the pre-connect mesh)
-cargo run -p rocketsim_vis --example drive -- -g hoops
+cargo run -p rocketsim_viewer --example photo
+cargo run -r -p rocketsim_viewer --example bench_frame
 ```
 
-## Assets
+`drive` is an interactive simulation. `photo` builds a deterministic Soccar
+scene and streams it for visual review. After it prints its 600-tick checksum,
+it deliberately keeps simulating and streaming. Stop it with Ctrl-C.
+`bench_frame` measures viewer frame work without opening a window.
 
-Car/ball/arena models are by ZealanL (see `src/models/MODEL_LICENSE_README.md`):
-credit ZealanL and don't sell them.
+## Migration
+
+Use `rocketsim_vis` for new network code and `rocketsim_viewer` for the
+viewer. The viewer still re-exports network items, so existing
+`rocketsim_viewer::` imports remain supported. This release has a major wire
+protocol compatibility break. Older viewer and simulation versions cannot
+communicate with this version. The old `rocketsim_vis::{backend, camera,
+VisInst}` APIs were removed. Viewer camera code now lives in
+`rocketsim_viewer`, but it is not a drop-in replacement for the old camera API.
+Use `DebugDraw` for lines, text, rectangles, and models. See
+[`rocketsim_vis`](../rocketsim_vis/README.md) for field details.

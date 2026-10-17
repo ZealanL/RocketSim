@@ -21,7 +21,7 @@
 //! so this module builds in the library; the drive example maps
 //! them onto real `gilrs` values.
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// Keyboard input, stored as a short TOML string (`"W"`, `"Space"`).
 ///
@@ -461,6 +461,53 @@ pub fn mouse_down(input: &egui::InputState, button: MouseButton) -> bool {
     }
 }
 
+/// Keyboard or mouse input stored as a compatible TOML string.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum InputBinding {
+    Key(Key),
+    Mouse(MouseButton),
+    Unknown,
+}
+
+impl Serialize for InputBinding {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.name())
+    }
+}
+impl<'de> Deserialize<'de> for InputBinding {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let name = String::deserialize(deserializer)?;
+        if let Some(key) = Key::from_name(&name) {
+            return Ok(Self::Key(key));
+        }
+        match name.as_str() {
+            "Primary" => Ok(Self::Mouse(MouseButton::Primary)),
+            "Secondary" => Ok(Self::Mouse(MouseButton::Secondary)),
+            "Middle" => Ok(Self::Mouse(MouseButton::Middle)),
+            "Unknown" => Ok(Self::Unknown),
+            _ => Err(serde::de::Error::custom(format!(
+                "unknown input binding: {name}"
+            ))),
+        }
+    }
+}
+impl InputBinding {
+    pub fn name(self) -> String {
+        match self {
+            Self::Key(k) => k.name().to_owned(),
+            Self::Mouse(m) => format!("{m:?}"),
+            Self::Unknown => "Unknown".to_owned(),
+        }
+    }
+}
+pub fn input_down(input: &egui::InputState, binding: InputBinding) -> bool {
+    match binding {
+        InputBinding::Key(k) => key_down(input, k),
+        InputBinding::Mouse(m) => mouse_down(input, m),
+        InputBinding::Unknown => false,
+    }
+}
+
 /// Gamepad button, stored as a TOML string.
 ///
 /// Names match `gilrs` 0.11 `Button` exactly, but this enum has no
@@ -575,9 +622,9 @@ pub struct CarBindings {
     #[serde(default = "default_handbrake")]
     pub handbrake: Key,
     #[serde(default = "default_jump")]
-    pub jump: MouseButton,
+    pub jump: InputBinding,
     #[serde(default = "default_boost")]
-    pub boost: MouseButton,
+    pub boost: InputBinding,
 }
 
 fn default_throttle_fwd() -> Key {
@@ -608,12 +655,12 @@ fn default_handbrake() -> Key {
     Key::Shift
 }
 
-fn default_jump() -> MouseButton {
-    MouseButton::Primary
+fn default_jump() -> InputBinding {
+    InputBinding::Mouse(MouseButton::Primary)
 }
 
-fn default_boost() -> MouseButton {
-    MouseButton::Secondary
+fn default_boost() -> InputBinding {
+    InputBinding::Mouse(MouseButton::Secondary)
 }
 
 impl Default for CarBindings {
@@ -1037,6 +1084,85 @@ pub struct Bindings {
     pub pad: PadBindings,
 }
 
+impl Bindings {
+    pub fn conflicts(&self) -> Vec<String> {
+        let mut entries: Vec<(String, InputBinding)> = vec![
+            (
+                "car.throttle_fwd".into(),
+                InputBinding::Key(self.car.throttle_fwd),
+            ),
+            (
+                "car.throttle_back".into(),
+                InputBinding::Key(self.car.throttle_back),
+            ),
+            (
+                "car.steer_left".into(),
+                InputBinding::Key(self.car.steer_left),
+            ),
+            (
+                "car.steer_right".into(),
+                InputBinding::Key(self.car.steer_right),
+            ),
+            (
+                "car.roll_left".into(),
+                InputBinding::Key(self.car.roll_left),
+            ),
+            (
+                "car.roll_right".into(),
+                InputBinding::Key(self.car.roll_right),
+            ),
+            (
+                "car.handbrake".into(),
+                InputBinding::Key(self.car.handbrake),
+            ),
+            ("car.jump".into(), self.car.jump),
+            ("car.boost".into(), self.car.boost),
+            (
+                "actions.kickoff_reset".into(),
+                InputBinding::Key(self.actions.kickoff_reset),
+            ),
+            (
+                "actions.dribble".into(),
+                InputBinding::Key(self.actions.dribble),
+            ),
+            (
+                "actions.launch".into(),
+                InputBinding::Key(self.actions.launch),
+            ),
+            (
+                "camera.director".into(),
+                InputBinding::Key(self.camera.director),
+            ),
+            (
+                "camera.autocam".into(),
+                InputBinding::Key(self.camera.autocam),
+            ),
+            ("camera.free".into(), InputBinding::Key(self.camera.free)),
+            ("camera.cycle".into(), InputBinding::Key(self.camera.cycle)),
+            (
+                "camera.ball_cam".into(),
+                InputBinding::Key(self.camera.ball_cam),
+            ),
+            (
+                "ui.menu_toggle".into(),
+                InputBinding::Key(self.ui.menu_toggle),
+            ),
+        ];
+        for (i, key) in self.camera.follow.iter().enumerate() {
+            entries.push((format!("camera.follow{}", i + 1), InputBinding::Key(*key)));
+        }
+        let mut conflicts = Vec::new();
+        for i in 0..entries.len() {
+            for j in i + 1..entries.len() {
+                if entries[i].1 != InputBinding::Unknown && entries[i].1 == entries[j].1 {
+                    conflicts.push(format!("{} conflicts with {}", entries[i].0, entries[j].0));
+                }
+            }
+        }
+        conflicts
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1052,8 +1178,8 @@ mod tests {
         assert_eq!(b.car.roll_left, Key::Q);
         assert_eq!(b.car.roll_right, Key::E);
         assert_eq!(b.car.handbrake, Key::Shift);
-        assert_eq!(b.car.jump, MouseButton::Primary);
-        assert_eq!(b.car.boost, MouseButton::Secondary);
+        assert_eq!(b.car.jump, InputBinding::Mouse(MouseButton::Primary));
+        assert_eq!(b.car.boost, InputBinding::Mouse(MouseButton::Secondary));
         assert_eq!(b.actions.kickoff_reset, Key::Backspace);
         assert_eq!(b.actions.dribble, Key::F2);
         assert_eq!(b.actions.launch, Key::F4);
@@ -1221,7 +1347,7 @@ mod tests {
         let back: Bindings = toml::from_str(text).unwrap();
         assert_eq!(back.car.throttle_fwd, Key::ArrowUp);
         assert_eq!(back.car.throttle_back, Key::S);
-        assert_eq!(back.car.jump, MouseButton::Primary);
+        assert_eq!(back.car.jump, InputBinding::Mouse(MouseButton::Primary));
         assert_eq!(back.camera.ball_cam, Key::Space);
         assert_eq!(back.ui.menu_toggle, Key::Escape);
         assert_eq!(back.pad.jump, PadButton::South);
@@ -1274,6 +1400,30 @@ mod tests {
         // Analog sources default to distinct triggers.
         assert_ne!(b.pad.throttle_trigger, b.pad.brake_trigger);
         assert_ne!(b.pad.steer_axis, b.pad.pitch_axis);
+    }
+
+    #[test]
+    fn old_mouse_strings_and_keyboard_car_bindings_parse() {
+        let old: Bindings =
+            toml::from_str("[car]\njump = \"Primary\"\nboost = \"Secondary\"").unwrap();
+        assert_eq!(old.car.jump, InputBinding::Mouse(MouseButton::Primary));
+        assert_eq!(old.car.boost, InputBinding::Mouse(MouseButton::Secondary));
+        let keyboard: Bindings = toml::from_str("[car]\njump = \"Space\"").unwrap();
+        assert_eq!(keyboard.car.jump, InputBinding::Key(Key::Space));
+        assert_eq!(keyboard.car.jump.name(), "Space");
+    }
+
+    #[test]
+    fn conflicts_report_cross_context_duplicates_but_ignore_unknown() {
+        let mut bindings = Bindings::default();
+        bindings.actions.dribble = bindings.car.throttle_fwd;
+        let conflicts = bindings.conflicts();
+        assert_eq!(
+            conflicts,
+            vec!["car.throttle_fwd conflicts with actions.dribble"]
+        );
+        bindings.car.jump = InputBinding::Unknown;
+        assert!(!bindings.conflicts().iter().any(|c| c.contains("car.jump")));
     }
 
     #[test]

@@ -43,7 +43,8 @@ pub struct ControlSender {
 
 impl ControlSender {
     /// Starts the background dialer for the sim's control port (e.g.
-    /// `"127.0.0.1:39202"`). Never blocks or fails: with no sim listening
+    /// `"127.0.0.1:39202"`). Use a numeric socket address; DNS lookup cannot be cancelled.
+    /// Never blocks or fails: with no sim listening
     /// the thread retries with backoff and inputs are dropped, never queued.
     pub fn connect(addr: &str) -> Self {
         let slot = Arc::new(Mutex::new(None));
@@ -97,6 +98,22 @@ impl Drop for ControlSender {
 
 /// Dials with backoff until `stop`; on connect pumps newest-first, then
 /// reconnects (mirrors the [`crate::net_vis`] sender loop).
+fn connect_bounded(addr: &str) -> std::io::Result<TcpStream> {
+    let socket_addr: SocketAddr = addr.parse().map_err(|e| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("address must be a numeric socket address: {e}"),
+        )
+    })?;
+    TcpStream::connect_timeout(&socket_addr, Duration::from_millis(250))
+}
+fn sleep_interruptible(stop: &AtomicBool, d: Duration) {
+    let end = std::time::Instant::now() + d;
+    while !stop.load(Ordering::Acquire) && std::time::Instant::now() < end {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
 fn control_sender_loop(
     addr: &str,
     slot: &Mutex<Option<ControlMsg>>,
@@ -109,7 +126,7 @@ fn control_sender_loop(
         if stop.load(Ordering::Relaxed) {
             return;
         }
-        match TcpStream::connect(addr) {
+        match connect_bounded(addr) {
             Ok(stream) => {
                 backoff = Duration::from_millis(500);
                 let _ = stream.set_nodelay(true);
@@ -119,7 +136,7 @@ fn control_sender_loop(
                 // pump returned = connection lost; reconnect with backoff.
             }
             Err(_) => {
-                std::thread::sleep(backoff);
+                sleep_interruptible(stop, backoff);
                 backoff = (backoff * 2).min(max_backoff);
                 continue;
             }
@@ -129,6 +146,7 @@ fn control_sender_loop(
 
 /// Sends newest-first until the connection breaks or `stop` is set.
 fn control_sender_pump(mut stream: TcpStream, slot: &Mutex<Option<ControlMsg>>, stop: &AtomicBool) {
+    let _ = stream.set_write_timeout(Some(Duration::from_millis(200)));
     loop {
         if stop.load(Ordering::Relaxed) {
             return;
@@ -167,9 +185,29 @@ pub enum ConnStatus {
 
 /// Latest-frame receiver. Spawn with [`FrameClient::connect`]; read with
 /// [`FrameClient::latest`] (clones the newest `VisFrame`, if any).
+#[derive(Clone)]
+struct ClientSession {
+    generation: u64,
+    status: ConnStatus,
+    frame: Option<VisFrame>,
+    scene: Option<Arc<crate::proto::SceneMetadata>>,
+    controls: Option<ControlMsg>,
+    pending_buttons: u8,
+}
+
+impl ClientSession {
+    fn reset(&mut self, status: ConnStatus) {
+        self.generation = self.generation.wrapping_add(1);
+        self.status = status;
+        self.frame = None;
+        self.scene = None;
+        self.controls = None;
+        self.pending_buttons = 0;
+    }
+}
+
 pub struct FrameClient {
-    frame: Arc<Mutex<Option<VisFrame>>>,
-    status: Arc<Mutex<ConnStatus>>,
+    session: Arc<Mutex<ClientSession>>,
     /// Total frames decoded (overlay diagnostics).
     received: Arc<Mutex<u64>>,
     local_addr: SocketAddr,
@@ -182,35 +220,86 @@ impl FrameClient {
     /// port is busy (another viewer is already up — connect the sim to it
     /// instead of starting a second viewer).
     pub fn connect(addr: &str) -> Self {
-        let listener = TcpListener::bind(addr)
-            .unwrap_or_else(|e| panic!("rocketsim-viewer: cannot listen on {addr} ({e})"));
-        listener
-            .set_nonblocking(true)
-            .expect("rocketsim-viewer: nonblocking listen failed");
-        let local_addr = listener
-            .local_addr()
-            .expect("rocketsim-viewer: no local addr");
-        let frame = Arc::new(Mutex::new(None));
-        let status = Arc::new(Mutex::new(ConnStatus::Waiting));
+        Self::try_connect(addr)
+            .unwrap_or_else(|e| panic!("rocketsim-viewer: cannot listen on {addr} ({e})"))
+    }
+
+    pub fn try_connect(addr: &str) -> std::io::Result<Self> {
+        let listener = TcpListener::bind(addr)?;
+        listener.set_nonblocking(true)?;
+        let local_addr = listener.local_addr()?;
+        let session = Arc::new(Mutex::new(ClientSession {
+            generation: 0,
+            status: ConnStatus::Waiting,
+            frame: None,
+            scene: None,
+            controls: None,
+            pending_buttons: 0,
+        }));
         let received = Arc::new(Mutex::new(0));
         let stop = Arc::new(AtomicBool::new(false));
         let worker = {
-            let (frame, status, received, stop) = (
-                frame.clone(),
-                status.clone(),
-                received.clone(),
-                stop.clone(),
-            );
-            std::thread::spawn(move || accept_loop(listener, &frame, &status, &received, &stop))
+            let (session, received, stop) = (session.clone(), received.clone(), stop.clone());
+            std::thread::spawn(move || accept_loop(listener, &session, &received, &stop))
         };
-        Self {
-            frame,
-            status,
+        Ok(Self {
+            session,
             received,
             local_addr,
             stop,
             worker: Some(worker),
+        })
+    }
+
+    pub fn send_controls(&self, msg: ControlMsg) {
+        let generation = self.generation();
+        let _ = self.send_controls_for_generation(generation, msg);
+    }
+
+    /// Enqueue controls only if `generation` still names the active sim session.
+    /// Returns false for stale generations or when no sim is connected.
+    pub fn send_controls_for_generation(&self, generation: u64, mut msg: ControlMsg) -> bool {
+        let Ok(mut session) = self.session.lock() else {
+            return false;
+        };
+        if session.generation != generation
+            || !matches!(session.status, ConnStatus::Connected { .. })
+        {
+            return false;
         }
+        session.pending_buttons |= msg.buttons & 7;
+        msg.buttons = 0;
+        msg.generation = generation;
+        session.controls = Some(msg);
+        true
+    }
+
+    /// Return one coherent session generation, frame, and shared scene.
+    /// The frame has no scene field; use the returned `Arc` for metadata.
+    pub fn snapshot(
+        &self,
+    ) -> (
+        u64,
+        Option<VisFrame>,
+        Option<Arc<crate::proto::SceneMetadata>>,
+    ) {
+        self.session
+            .lock()
+            .map(|s| (s.generation, s.frame.clone(), s.scene.clone()))
+            .unwrap_or((0, None, None))
+    }
+
+    pub fn controls_connected(&self) -> bool {
+        self.session
+            .lock()
+            .map(|s| matches!(s.status, ConnStatus::Connected { .. }))
+            .unwrap_or(false)
+    }
+    pub fn generation(&self) -> u64 {
+        self.session.lock().map(|s| s.generation).unwrap_or(0)
+    }
+    pub fn scene(&self) -> Option<Arc<crate::proto::SceneMetadata>> {
+        self.session.lock().ok().and_then(|s| s.scene.clone())
     }
 
     /// Address actually bound (useful with port 0 in tests).
@@ -220,14 +309,14 @@ impl FrameClient {
 
     /// Clones the newest frame, or `None` if no sim has sent one yet.
     pub fn latest(&self) -> Option<VisFrame> {
-        self.frame.lock().ok().and_then(|g| g.clone())
+        self.session.lock().ok().and_then(|s| s.frame.clone())
     }
 
     /// Current connection state (for the overlay).
     pub fn status(&self) -> ConnStatus {
-        self.status
+        self.session
             .lock()
-            .map(|g| g.clone())
+            .map(|s| s.status.clone())
             .unwrap_or(ConnStatus::Waiting)
     }
 
@@ -253,72 +342,169 @@ impl Drop for FrameClient {
 
 fn accept_loop(
     listener: TcpListener,
-    frame: &Mutex<Option<VisFrame>>,
-    status: &Mutex<ConnStatus>,
+    session: &Mutex<ClientSession>,
     received: &Mutex<u64>,
     stop: &AtomicBool,
 ) {
-    while !stop.load(Ordering::Relaxed) {
+    while !stop.load(Ordering::Acquire) {
         match listener.accept() {
             Ok((stream, _)) => {
-                *status.lock().unwrap() = ConnStatus::Connected {
-                    addr: stream
-                        .peer_addr()
-                        .map(|a| a.to_string())
-                        .unwrap_or_default(),
+                let active = Arc::new(AtomicBool::new(true));
+                let extra_active = active.clone();
+                let extra_listener = match listener.try_clone() {
+                    Ok(l) => l,
+                    Err(_) => continue,
                 };
-                pump(stream, frame, received, stop);
-                *status.lock().unwrap() = ConnStatus::Waiting;
+                let extra_worker = std::thread::spawn(move || {
+                    while extra_active.load(Ordering::Acquire) {
+                        match extra_listener.accept() {
+                            Ok((extra, _)) => drop(extra),
+                            Err(_) => std::thread::sleep(Duration::from_millis(10)),
+                        }
+                    }
+                });
+                let peer = stream
+                    .peer_addr()
+                    .map(|a| a.to_string())
+                    .unwrap_or_default();
+                if let Ok(mut current) = session.lock() {
+                    current.reset(ConnStatus::Connected { addr: peer.clone() });
+                }
+                pump(stream, session, received, stop, &peer);
+                active.store(false, Ordering::Release);
+                let _ = extra_worker.join();
+                if let Ok(mut current) = session.lock() {
+                    current.reset(ConnStatus::Waiting);
+                }
             }
             Err(e)
                 if e.kind() == std::io::ErrorKind::WouldBlock
                     || e.kind() == std::io::ErrorKind::TimedOut =>
             {
-                std::thread::sleep(Duration::from_millis(50));
+                std::thread::sleep(Duration::from_millis(20))
             }
-            Err(_) => {
-                std::thread::sleep(Duration::from_millis(200));
-            }
+            Err(_) => std::thread::sleep(Duration::from_millis(50)),
         }
     }
 }
 
-/// Reads length-prefixed frames until EOF/error/stop, keeping the newest.
+#[derive(Default)]
+pub(crate) struct OutgoingBuffer {
+    bytes: Vec<u8>,
+    offset: usize,
+    last_progress: Option<std::time::Instant>,
+}
+impl OutgoingBuffer {
+    pub(crate) fn is_empty(&self) -> bool {
+        self.offset == self.bytes.len()
+    }
+    pub(crate) fn queue(&mut self, bytes: Vec<u8>) {
+        debug_assert!(self.is_empty());
+        self.bytes = bytes;
+        self.offset = 0;
+        self.last_progress = Some(std::time::Instant::now());
+    }
+    pub(crate) fn flush<W: Write>(&mut self, writer: &mut W) -> std::io::Result<bool> {
+        while !self.is_empty() {
+            match writer.write(&self.bytes[self.offset..]) {
+                Ok(0) => return Err(std::io::ErrorKind::WriteZero.into()),
+                Ok(n) => {
+                    self.offset += n;
+                    self.last_progress = Some(std::time::Instant::now());
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => return Ok(false),
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    if self
+                        .last_progress
+                        .is_some_and(|at| at.elapsed() >= Duration::from_millis(250))
+                    {
+                        return Err(std::io::ErrorKind::TimedOut.into());
+                    }
+                    return Ok(false);
+                }
+                Err(e) => return Err(e),
+            }
+        }
+        self.bytes.clear();
+        self.offset = 0;
+        self.last_progress = None;
+        Ok(true)
+    }
+}
+
 fn pump(
     mut stream: TcpStream,
-    frame: &Mutex<Option<VisFrame>>,
+    session: &Mutex<ClientSession>,
     received: &Mutex<u64>,
     stop: &AtomicBool,
+    peer: &str,
 ) {
-    let _ = stream.set_read_timeout(Some(Duration::from_millis(200)));
-    let mut buf = Vec::new();
+    if stream.set_nonblocking(true).is_err() {
+        return;
+    }
+    let mut input = Vec::new();
     let mut chunk = [0u8; 65536];
+    let mut output = OutgoingBuffer::default();
     loop {
-        if stop.load(Ordering::Relaxed) {
+        if stop.load(Ordering::Acquire) {
+            let _ = stream.shutdown(std::net::Shutdown::Both);
             return;
         }
+        if !output.is_empty() && output.flush(&mut stream).is_err() {
+            return;
+        }
+        if output.is_empty() {
+            let next = session.lock().ok().and_then(|mut s| {
+                s.controls.take().map(|mut msg| {
+                    msg.generation = s.generation;
+                    msg.buttons = s.pending_buttons;
+                    s.pending_buttons = 0;
+                    msg
+                })
+            });
+            if let Some(msg) = next {
+                output.queue(crate::proto::encode_control(&msg));
+                continue;
+            }
+        }
         match stream.read(&mut chunk) {
-            Ok(0) => return, // sim closed
+            Ok(0) => return,
             Ok(n) => {
-                buf.extend_from_slice(&chunk[..n]);
-                while let Ok(Some((decoded, consumed))) = decode_frame(&buf) {
-                    if let Ok(mut slot) = frame.lock() {
-                        *slot = Some(decoded);
+                input.extend_from_slice(&chunk[..n]);
+                loop {
+                    match decode_frame(&input) {
+                        Ok(Some((mut frame, consumed))) => {
+                            let metadata = frame.scene.take();
+                            if let Ok(mut s) = session.lock() {
+                                if let Some(metadata) = metadata {
+                                    s.scene = Some(Arc::new(metadata));
+                                }
+                                s.frame = Some(frame);
+                            }
+                            if let Ok(mut count) = received.lock() {
+                                *count += 1;
+                            }
+                            input.drain(..consumed);
+                        }
+                        Ok(None) => break,
+                        Err(error) => {
+                            eprintln!(
+                                "rocketsim-viewer: closing invalid frame stream from {peer}: {error}"
+                            );
+                            return;
+                        }
                     }
-                    if let Ok(mut count) = received.lock() {
-                        *count += 1;
-                    }
-                    buf.drain(..consumed);
+                }
+                if input.len() > crate::proto::MAX_FRAME_BYTES + 4 {
+                    return;
                 }
             }
             Err(e)
-                if e.kind() == std::io::ErrorKind::TimedOut
-                    || e.kind() == std::io::ErrorKind::WouldBlock =>
-            {
-                continue;
-            }
+                if e.kind() == std::io::ErrorKind::WouldBlock
+                    || e.kind() == std::io::ErrorKind::Interrupted => {}
             Err(_) => return,
         }
+        std::thread::sleep(Duration::from_millis(1));
     }
 }
 
@@ -327,7 +513,56 @@ mod tests {
     use std::{io::Write, time::Instant};
 
     use super::*;
-    use crate::proto::encode_frame;
+    use crate::proto::{ControlMsg, decode_control, encode_frame};
+
+    struct ScriptedWriter {
+        steps: Vec<std::io::Result<usize>>,
+        bytes: Vec<u8>,
+    }
+    impl Write for ScriptedWriter {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            let next = self.steps.remove(0)?;
+            if next == 0 {
+                return Ok(0);
+            }
+            let n = next.min(buf.len());
+            self.bytes.extend_from_slice(&buf[..n]);
+            Ok(n)
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn outgoing_buffer_resumes_short_writes_after_would_block() {
+        let mut buffer = OutgoingBuffer::default();
+        buffer.queue(b"complete-frame".to_vec());
+        let mut writer = ScriptedWriter {
+            steps: vec![Ok(3), Err(std::io::ErrorKind::WouldBlock.into()), Ok(4096)],
+            bytes: Vec::new(),
+        };
+        assert!(!buffer.flush(&mut writer).unwrap());
+        assert_eq!(buffer.offset, 3);
+        assert!(buffer.flush(&mut writer).unwrap());
+        assert_eq!(writer.bytes, b"complete-frame");
+        assert!(buffer.is_empty());
+    }
+
+    #[test]
+    fn outgoing_buffer_closes_after_a_stalled_write_deadline() {
+        let mut buffer = OutgoingBuffer::default();
+        buffer.queue(vec![1, 2, 3]);
+        buffer.last_progress = Some(Instant::now() - Duration::from_millis(300));
+        let mut writer = ScriptedWriter {
+            steps: vec![Err(std::io::ErrorKind::WouldBlock.into())],
+            bytes: Vec::new(),
+        };
+        assert_eq!(
+            buffer.flush(&mut writer).unwrap_err().kind(),
+            std::io::ErrorKind::TimedOut
+        );
+    }
 
     #[test]
     fn server_stores_latest_frame() {
@@ -346,9 +581,8 @@ mod tests {
             ));
             stream.write_all(&bytes).unwrap();
         }
-        drop(stream);
 
-        // Tick 3 must arrive (10s budget, polls the lock).
+        // Tick 3 must arrive before disconnect clears this session's frame.
         let deadline = Instant::now() + Duration::from_secs(10);
         let tick = loop {
             if let Some(frame) = client.latest()
@@ -361,6 +595,123 @@ mod tests {
         };
         assert_eq!(tick, 3);
         assert!(client.received() >= 3);
+        drop(stream);
+    }
+
+    #[test]
+    fn controls_share_the_accepted_frame_stream_and_retain_button_pulses() {
+        let client = FrameClient::try_connect("127.0.0.1:0").unwrap();
+        crate::photo::init_meshes();
+        let mut stream = TcpStream::connect(client.local_addr()).unwrap();
+        let arena = crate::photo::build_arena();
+        let mut initial = crate::proto::VisFrame::new(arena.get_arena_state(), 1.0 / 120.0);
+        initial.scene = Some(crate::proto::SceneMetadata::empty(
+            rocketsim::GameMode::Soccar,
+        ));
+        stream.write_all(&encode_frame(&initial)).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !client.controls_connected()
+            || client.snapshot().1.is_none()
+            || client.scene().is_none()
+        {
+            assert!(Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        let (generation, frame, snapshot_scene) = client.snapshot();
+        assert!(frame.is_some());
+        let scene = client.scene().unwrap();
+        assert!(Arc::ptr_eq(&scene, &snapshot_scene.unwrap()));
+        assert!(
+            client.latest().unwrap().scene.is_none(),
+            "scene must not be cloned into each latest frame"
+        );
+        assert!(client.send_controls_for_generation(
+            generation,
+            ControlMsg::new(0, rocketsim::CarControls::default(), 1, 1)
+        ));
+        assert!(client.send_controls_for_generation(
+            generation,
+            ControlMsg::new(0, rocketsim::CarControls::default(), 4, 2)
+        ));
+        stream
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .unwrap();
+        let mut buf = [0u8; 1024];
+        let n = stream.read(&mut buf).unwrap();
+        let (msg, _) = decode_control(&buf[..n]).unwrap().unwrap();
+        assert_eq!(msg.generation, generation);
+        assert_eq!(msg.buttons, 5);
+        drop(stream);
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while client.controls_connected() {
+            assert!(Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        let (disconnected_generation, stale_frame, stale_scene) = client.snapshot();
+        assert!(disconnected_generation > generation);
+        assert!(
+            stale_frame.is_none() && stale_scene.is_none(),
+            "disconnect clears session data atomically"
+        );
+        assert!(!client.send_controls_for_generation(
+            generation,
+            ControlMsg::new(0, rocketsim::CarControls::default(), 7, 3)
+        ));
+        let mut next_sim = TcpStream::connect(client.local_addr()).unwrap();
+        next_sim
+            .write_all(&encode_frame(&crate::proto::VisFrame::new(
+                arena.get_arena_state(),
+                1.0 / 120.0,
+            )))
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while client.generation() <= generation || client.latest().is_none() {
+            assert!(Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        drop(next_sim);
+    }
+
+    #[test]
+    fn competing_sim_connection_is_rejected_without_replacing_active_session() {
+        crate::photo::init_meshes();
+        let client = FrameClient::try_connect("127.0.0.1:0").unwrap();
+        let mut owner = TcpStream::connect(client.local_addr()).unwrap();
+        let arena = crate::photo::build_arena();
+        owner
+            .write_all(&encode_frame(&crate::proto::VisFrame::new(
+                arena.get_arena_state(),
+                1.0 / 120.0,
+            )))
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !client.controls_connected() {
+            assert!(Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        let mut extra = TcpStream::connect(client.local_addr()).unwrap();
+        extra
+            .set_read_timeout(Some(Duration::from_secs(1)))
+            .unwrap();
+        let mut byte = [0u8; 1];
+        match extra.read(&mut byte) {
+            Ok(0) | Err(_) => {}
+            Ok(n) => panic!("competing connection received {n} bytes"),
+        }
+        assert!(client.controls_connected());
+        assert_eq!(client.generation(), 1);
+        drop(owner);
+    }
+
+    #[test]
+    fn dropping_with_a_stalled_peer_is_bounded() {
+        let mut client = FrameClient::try_connect("127.0.0.1:0").unwrap();
+        let mut peer = TcpStream::connect(client.local_addr()).unwrap();
+        peer.write_all(&[0x20, 0x00]).unwrap();
+        std::thread::sleep(Duration::from_millis(20));
+        let start = Instant::now();
+        client.shutdown();
+        assert!(start.elapsed() < Duration::from_secs(1));
     }
 
     #[test]

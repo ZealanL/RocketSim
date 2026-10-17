@@ -28,6 +28,7 @@
 pub mod arena_gl;
 pub mod bindings;
 pub mod camera;
+pub mod dropshot;
 pub mod frustum;
 pub mod fx;
 pub mod gl_util;
@@ -39,6 +40,7 @@ pub mod mesh;
 pub mod obj;
 pub mod pads;
 pub mod pads_gl;
+pub mod scene;
 pub mod settings;
 pub mod spectate;
 pub mod textures;
@@ -68,15 +70,11 @@ mod tests {
     }
 
     #[test]
-    fn old_api_toggles_vis() {
-        // Best-effort spawn (no viewer binary beside the test harness):
-        // either way the arena attach/detach must flip cleanly, never panic.
-        crate::photo::init_meshes();
-        let mut arena = crate::photo::build_arena();
-        assert!(!arena.is_vis_enabled());
-        arena.set_vis_enabled(true);
+    fn network_api_reexport_attaches_without_launching() {
+        let mut arena = rocketsim::Arena::new(rocketsim::GameMode::TheVoid);
+        arena.set_net_vis(Some("127.0.0.1:1"));
         assert!(arena.is_vis_enabled());
-        arena.set_vis_enabled(false);
+        arena.set_net_vis(None);
         assert!(!arena.is_vis_enabled());
     }
 }

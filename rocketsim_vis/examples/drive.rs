@@ -1,143 +1,93 @@
-//! Interactive driveable demo: `rocketsim-viewer` shows it AND drives it.
+//! Drive a simulation from the detached viewer.
 //!
-//! * All inputs come from the VIEWER window (viewer is the single owner):
-//!   WASD + mouse buttons drive, Q/E roll, Shift handbrake, gamepad
-//!   sticks/triggers/buttons blend in vis-side. `Backspace` resets
-//!   kickoff, `F2` dribbles, `F4` launches. The viewer streams
-//!   [`ControlMsg`](rocketsim_vis::proto::ControlMsg) frames to this sim's
-//!   control port (`127.0.0.1:39202`).
-//! * This sim just takes the channel: newest input wins, stale or missing
-//!   channel falls back to neutral (no stuck throttle on disconnect).
-//! * Ticks run at wall-clock 120Hz via
-//!   [`TickPacer`](rocketsim_vis::pace::TickPacer) (catch-up capped,
-//!   excess dropped).
-//! * Live mutators (unlimited boost, regen, flips) toggle in the viewer
-//!   menu and apply per tick; all off = unmodded RL behavior.
+//! Frames and controls use the same connection. Missing or stale controls
+//! produce neutral inputs. Pending reset, dribble, and launch actions are
+//! consumed separately from the latest analog inputs.
 //!
-//! Run with: `cargo run -p rocketsim_vis --example drive -- [-g hoops]`
+//! Run `cargo run -p rocketsim_vis --example drive -- [-g hoops]`.
+//! Use `--viewer IP:PORT` to connect to a viewer started separately.
 
-use std::time::{Duration, Instant};
+use std::net::SocketAddr;
 
 use clap::Parser;
 use glam::Vec3A;
 use rocketsim::{Arena, ArenaConfig, CarBodyConfig, CarControls, GameMode, Team};
 use rocketsim_vis::{
-    ArenaVisExt,
-    mutators::Mutators,
-    net_vis::ControlServer,
-    pace::TickPacer,
-    parse_game_mode,
-    photo::init_meshes,
-    proto::{DEFAULT_CONTROL_PORT, MUT_KNOWN_MASK},
+    ArenaVisExt, mutators::Mutators, pace::TickPacer, parse_game_mode, photo::init_meshes,
+    proto::MUT_KNOWN_MASK,
 };
 
-/// No fresh viewer input for this long → drive neutral (viewer gone/stalled).
-const STALE_AFTER: Duration = Duration::from_millis(250);
-
-/// Driveable demo sim: `drive [-g MODE]` (defaults: soccar).
-#[derive(clap::Parser)]
+#[derive(Parser)]
 #[command(name = "drive", version)]
 struct Cli {
-    /// Arena game mode (the viewer follows automatically).
+    /// Arena game mode.
     #[arg(short, long, default_value = "soccar", value_parser = parse_mode)]
     game_mode: GameMode,
+    /// Connect to an existing viewer at this numeric socket address.
+    #[arg(long)]
+    viewer: Option<SocketAddr>,
 }
 
-/// Clap parser over the shared [`parse_game_mode`] vocabulary.
-fn parse_mode(s: &str) -> Result<GameMode, String> {
-    parse_game_mode(s).ok_or_else(|| {
-        format!("unknown game mode '{s}' (soccar|hoops|heatseeker|snowday|dropshot|thevoid|void)")
-    })
+fn parse_mode(text: &str) -> Result<GameMode, String> {
+    parse_game_mode(text).ok_or_else(|| format!("unknown game mode '{text}'"))
 }
 
-fn main() {
-    init_meshes();
+fn main() -> std::io::Result<()> {
     let cli = Cli::parse();
+    init_meshes();
     let mut arena = Arena::new_with_config(ArenaConfig {
         rng_seed: Some(0),
         ..ArenaConfig::new(cli.game_mode)
     });
-
-    let car_idx = arena.add_car(Team::Blue, CarBodyConfig::OCTANE);
-
-    // Detached-viewer API: launches a viewer if none listens, streams every tick.
-    arena.set_vis_enabled(true);
-
-    // Viewer→sim driving inputs (viewer dials this once its send side lands;
-    // until then latest() is None and the car idles at neutral).
-    let control_addr = format!("127.0.0.1:{DEFAULT_CONTROL_PORT}");
-    let controls_rx = ControlServer::bind(&control_addr);
-    eprintln!("drive: control channel on {control_addr} (input needs viewer focus)");
-
-    println!("Drive from the rocketsim-viewer window (viewer send side pending).");
-    println!("Gamepad works when connected (read vis-side, bindings from settings.toml).");
-    println!("Mutators (unlimited boost etc.) toggle live in the viewer menu.");
+    let default_car = arena.add_car(Team::Blue, CarBodyConfig::OCTANE);
+    arena.reset_to_random_kickoff(None);
+    if let Some(addr) = cli.viewer {
+        arena.try_set_net_vis(Some(&addr.to_string()))?;
+    } else {
+        arena.try_set_vis_enabled(true)?;
+    }
+    println!("Follow a car in the viewer to drive it. Close the settings menu first.");
+    println!("Reset, dribble, and launch use Backspace, F2, and F4 by default.");
 
     let mut pacer = TickPacer::at_120hz();
-    let mut last_seq: Option<u64> = None;
-    let mut channel = CarControls::default();
-    // Mutator level state: frozen at last-received on link loss (controls
-    // above still failsafe to neutral — mutators must not silently switch
-    // off mid-flight on a dropped packet).
-    let mut channel_mutators: u8 = 0;
-    let mut channel_at = Instant::now();
-    let mut prev_buttons: u8 = 0;
-
+    let mut previous_target = default_car;
+    // Keep the last mutator selection on link loss. Driving inputs still become neutral.
+    let mut mutators = 0;
     loop {
-        let steps = pacer.wait();
-        for _ in 0..steps {
-            if arena.tick_count() == 0 {
+        for _ in 0..pacer.wait() {
+            let message = arena.latest_vis_controls();
+            let target = message
+                .map(|message| message.car_index as usize)
+                .filter(|&index| index < arena.num_cars())
+                .unwrap_or(default_car);
+            if previous_target != target {
+                arena.set_car_controls(previous_target, CarControls::default());
+                previous_target = target;
+            }
+            if let Some(message) = message {
+                mutators = message.mutators & MUT_KNOWN_MASK;
+            }
+            let controls = message.map_or_else(CarControls::default, |message| message.controls);
+            let actions = arena.take_vis_actions();
+            if actions & 1 != 0 {
                 arena.reset_to_random_kickoff(None);
             }
-
-            // Newest viewer input wins; stale or missing channel → neutral.
-            let msg = controls_rx.latest();
-            if let Some(m) = msg
-                && last_seq != Some(m.seq)
-            {
-                last_seq = Some(m.seq);
-                channel = m.controls;
-                channel_mutators = m.mutators & MUT_KNOWN_MASK;
-                channel_at = Instant::now();
+            if actions & 2 != 0 {
+                let car = arena.get_car_state(target);
+                let mut ball = *arena.get_ball_state();
+                ball.phys.pos = car.phys.pos + Vec3A::Z * 150.0;
+                ball.phys.vel = car.phys.vel;
+                arena.set_ball_state(ball);
             }
-            let controls = if channel_at.elapsed() > STALE_AFTER {
-                CarControls::default()
-            } else {
-                channel
-            };
-
-            // Honor the viewer's car selection when it names a live car.
-            let target = msg
-                .map(|m| m.car_index as usize)
-                .filter(|&i| i < arena.num_cars())
-                .unwrap_or(car_idx);
-
-            // Viewer buttons fire on the rising edge (level state on wire).
-            let buttons = msg.map(|m| m.buttons).unwrap_or(0);
-            let pressed = buttons & !prev_buttons;
-            prev_buttons = buttons;
-            if pressed & 0b001 != 0 {
-                arena.reset_to_random_kickoff(None);
+            if actions & 4 != 0 {
+                let mut ball = *arena.get_ball_state();
+                ball.phys.vel += Vec3A::Z * 1000.0;
+                arena.set_ball_state(ball);
             }
-            if pressed & 0b010 != 0 {
-                // Dribble: ball over the driven car, matched velocity.
-                let car_state = arena.get_car_state(target);
-                let mut ball_state = *arena.get_ball_state();
-                ball_state.phys.pos = car_state.phys.pos + Vec3A::Z * 150.0;
-                ball_state.phys.vel = car_state.phys.vel;
-                arena.set_ball_state(ball_state);
-            } else if pressed & 0b100 != 0 {
-                // Launch ball upward.
-                let mut ball_state = *arena.get_ball_state();
-                ball_state.phys.vel += Vec3A::Z * 1000.0;
-                arena.set_ball_state(ball_state);
-            }
-            // Live mutators, applied to the driven car before the tick.
-            let mut car_state = *arena.get_car_state(target);
-            Mutators::from_mask(channel_mutators).apply_pre_tick(&mut car_state);
-            arena.set_car_state(target, car_state);
+            let mut car = *arena.get_car_state(target);
+            Mutators::from_mask(mutators).apply_pre_tick(&mut car);
+            arena.set_car_state(target, car);
             arena.set_car_controls(target, controls);
-
             arena.step_tick();
         }
     }

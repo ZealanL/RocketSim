@@ -32,7 +32,7 @@ fn main() {
         car.y,
         car.z
     );
-    // Keep streaming after the checksum (the viewer holds the last frame).
+    // Keep streaming after the checksum so the viewer remains attached.
     loop {
         step_ticks(&mut arena, 1);
         std::thread::sleep(std::time::Duration::from_millis(8));

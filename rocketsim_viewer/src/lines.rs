@@ -323,6 +323,17 @@ impl RibbonEmitter {
         }
     }
 
+    /// Removes all points and resets the emission timer.
+    pub fn reset(&mut self) {
+        self.points.clear();
+        self.time_since_emit = 0.0;
+    }
+
+    /// Removes all points without changing the emission timer.
+    pub fn clear(&mut self) {
+        self.points.clear();
+    }
+
     /// Live point count (diagnostics/tests).
     pub fn len(&self) -> usize {
         self.points.len()

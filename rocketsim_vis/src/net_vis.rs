@@ -4,12 +4,11 @@
 //! dropped frames, never a stalled tick. Wire format: [`crate::proto`].
 
 use std::{
-    io::{Read, Write},
+    io::Read,
     net::{SocketAddr, TcpListener, TcpStream},
-    path::PathBuf,
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU8, Ordering},
     },
     thread::JoinHandle,
     time::Duration,
@@ -17,7 +16,10 @@ use std::{
 
 use rocketsim::{ArenaState, Vis};
 
-use crate::proto::{ControlMsg, VisFrame, decode_control, encode_frame};
+use crate::{
+    net_client::OutgoingBuffer,
+    proto::{ControlMsg, DebugDraw, SceneMetadata, VisFrame, decode_control, encode_frame},
+};
 
 /// [`rocketsim::Vis`] implementation that streams `(ArenaState, dt)` to a
 /// viewer process listening on `addr` (e.g. `"127.0.0.1:39201"`).
@@ -27,25 +29,85 @@ use crate::proto::{ControlMsg, VisFrame, decode_control, encode_frame};
 /// Dropping the instance stops the sender thread and detaches the viewer.
 pub struct NetVis {
     slot: Arc<Mutex<Option<VisFrame>>>,
+    controls: Arc<Mutex<Option<(ControlMsg, std::time::Instant)>>>,
+    actions: Arc<AtomicU8>,
+    debug: Arc<Mutex<DebugDraw>>,
+    scene: Arc<Mutex<Option<SceneMetadata>>>,
+    address: String,
+    connected: Arc<AtomicBool>,
     stop: Arc<AtomicBool>,
     sender: Option<JoinHandle<()>>,
+    pub(crate) lease: Option<crate::launcher::ViewerLease>,
 }
 
 impl NetVis {
-    /// Starts the background sender; never blocks or fails. If no viewer
+    /// Starts the background sender; never blocks or fails. `addr` must be
+    /// a numeric socket address because DNS lookup cannot be cancelled. If no viewer
     /// listens, the sender thread retries with backoff until one appears —
     /// ticks in the meantime are dropped, never queued.
     pub fn connect(addr: &str) -> Self {
         let slot = Arc::new(Mutex::new(None));
         let stop = Arc::new(AtomicBool::new(false));
+        let controls = Arc::new(Mutex::new(None));
+        let actions = Arc::new(AtomicU8::new(0));
+        let connected = Arc::new(AtomicBool::new(false));
+        let debug = Arc::new(Mutex::new(DebugDraw::default()));
+        let scene = Arc::new(Mutex::new(None));
+        let address = addr.to_string();
         let sender = {
-            let (slot, stop, addr) = (slot.clone(), stop.clone(), addr.to_string());
-            std::thread::spawn(move || sender_loop(&addr, &slot, &stop))
+            let addr = address.clone();
+            let shared = SenderState {
+                slot: slot.clone(),
+                stop: stop.clone(),
+                controls: controls.clone(),
+                actions: actions.clone(),
+                connected: connected.clone(),
+                scene: scene.clone(),
+            };
+            std::thread::spawn(move || sender_loop(&addr, shared))
         };
         Self {
             slot,
+            controls,
+            actions,
+            debug,
+            scene,
+            address,
+            connected,
             stop,
             sender: Some(sender),
+            lease: None,
+        }
+    }
+
+    pub fn address(&self) -> &str {
+        &self.address
+    }
+    pub fn connected(&self) -> bool {
+        self.connected.load(Ordering::Acquire)
+    }
+    pub fn latest_controls(&self) -> Option<ControlMsg> {
+        self.controls
+            .lock()
+            .ok()
+            .and_then(|g| *g)
+            .and_then(|(msg, at)| (at.elapsed() <= Duration::from_millis(250)).then_some(msg))
+    }
+    pub fn take_actions(&self) -> u8 {
+        self.actions.swap(0, Ordering::AcqRel)
+    }
+    pub fn set_debug(&self, debug: DebugDraw) {
+        if debug.validate()
+            && let Ok(mut d) = self.debug.lock()
+        {
+            *d = debug;
+        }
+    }
+    pub fn set_scene_metadata(&self, scene: SceneMetadata) {
+        if scene.validate()
+            && let Ok(mut s) = self.scene.lock()
+        {
+            *s = Some(scene);
         }
     }
 }
@@ -64,7 +126,12 @@ impl Vis for NetVis {
         // Latest-only overwrite via try_lock: drops the tick rather than
         // stalling the sim when the sender holds the slot.
         if let Ok(mut slot) = self.slot.try_lock() {
-            *slot = Some(VisFrame::new(arena_state.clone(), dt));
+            let mut frame = VisFrame::new(arena_state.clone(), dt);
+            if let Ok(d) = self.debug.lock() {
+                frame.debug = d.clone();
+            }
+
+            *slot = Some(frame);
         }
     }
 }
@@ -226,7 +293,7 @@ fn control_accept_loop(
                 *local_addr.lock().unwrap() = None;
             }
             Err(_) => {
-                std::thread::sleep(backoff);
+                sleep_interruptible(stop, backoff);
                 backoff = (backoff * 2).min(max_backoff);
                 continue;
             }
@@ -244,7 +311,12 @@ fn control_serve(
 ) {
     while !stop.load(Ordering::Relaxed) {
         match listener.accept() {
-            Ok((stream, _)) => control_pump(stream, slot, received, stop),
+            Ok((stream, _)) => {
+                control_pump(stream, slot, received, stop);
+                if let Ok(mut latest) = slot.lock() {
+                    *latest = None;
+                }
+            }
             Err(e)
                 if e.kind() == std::io::ErrorKind::WouldBlock
                     || e.kind() == std::io::ErrorKind::TimedOut =>
@@ -296,6 +368,9 @@ fn control_pump(
                         Ok(None) => break,
                     }
                 }
+                if buf.len() > crate::proto::MAX_CONTROL_BYTES + 4 {
+                    return;
+                }
             }
             Err(e)
                 if e.kind() == std::io::ErrorKind::TimedOut
@@ -307,136 +382,38 @@ fn control_pump(
         }
     }
 }
-/// Resolves the `rocketsim-viewer` binary via `PATH` first, then the
-/// sibling dev-layout exe next to the current executable (i.e.
-/// `target/{debug,release}/`), spawns it, and waits for the port to accept.
-/// Prints what it is doing; never fails (worst case the sim streams to a
-/// viewer started later — [`NetVis`] connects lazily).
-/// Makes `cargo run --example …` Just Work: if nothing listens on `addr`,
-pub fn ensure_viewer_running(addr: &str) {
-    if std::net::TcpStream::connect(addr).is_ok() {
-        eprintln!("rocketsim_vis: viewer already listening on {addr}");
-        return;
-    }
-    let name = bin_name("rocketsim-viewer");
-    let viewer = find_on_path(&[name.as_str()]).or_else(find_sibling_viewer);
-    match viewer {
-        Some(path) if path.exists() => {
-            eprintln!("rocketsim_vis: starting viewer {path:?} ...");
-            match std::process::Command::new(&path)
-                .arg(port_of(addr).to_string())
-                .spawn()
-            {
-                Ok(child) => {
-                    // Remember OUR viewer (not a pre-existing one) so
-                    // `set_vis_enabled(false)` can close what it opened.
-                    *spawned_viewer().lock().unwrap() = Some(child);
-                }
-                Err(e) => {
-                    eprintln!(
-                        "rocketsim_vis: could not spawn viewer ({e}); start it manually: rocketsim-viewer"
-                    );
-                    return;
-                }
-            }
-            for _ in 0..100 {
-                if std::net::TcpStream::connect(addr).is_ok() {
-                    eprintln!("rocketsim_vis: viewer up on {addr}");
-                    return;
-                }
-                std::thread::sleep(Duration::from_millis(100));
-            }
-            eprintln!("rocketsim_vis: viewer did not accept {addr} in time");
-        }
-        _ => eprintln!(
-            "rocketsim_vis: no viewer on {addr} — start one: rocketsim-viewer or cargo run -p rocketsim_viewer --bin rocketsim-viewer"
-        ),
-    }
+
+struct SenderState {
+    slot: Arc<Mutex<Option<VisFrame>>>,
+    stop: Arc<AtomicBool>,
+    controls: Arc<Mutex<Option<(ControlMsg, std::time::Instant)>>>,
+    actions: Arc<AtomicU8>,
+    connected: Arc<AtomicBool>,
+    scene: Arc<Mutex<Option<SceneMetadata>>>,
 }
 
-/// Viewer process WE spawned via [`ensure_viewer_running`] (never a
-/// pre-existing one). `set_vis_enabled(false)` closes what it opened.
-fn spawned_viewer() -> &'static Mutex<Option<std::process::Child>> {
-    static SPAWNED: std::sync::OnceLock<Mutex<Option<std::process::Child>>> =
-        std::sync::OnceLock::new();
-    SPAWNED.get_or_init(|| Mutex::new(None))
-}
-
-/// Stops the auto-spawned viewer, if it is still alive. Never touches a
-/// viewer the user started themselves (no handle = not ours).
-pub(crate) fn stop_spawned_viewer() {
-    let mut guard = spawned_viewer().lock().unwrap();
-    if let Some(mut child) = guard.take() {
-        // Already exited (or never really started): ignore the status.
-        let _ = child.try_wait();
-        let _ = child.kill();
-    }
-}
-
-fn bin_name(base: &str) -> String {
-    if cfg!(windows) {
-        format!("{base}.exe")
-    } else {
-        base.to_string()
-    }
-}
-
-/// Searches `PATH` for the first matching binary name (ordered preference).
-/// Existence is enough on all platforms; directories are skipped.
-fn find_on_path(names: &[&str]) -> Option<PathBuf> {
-    let path_var = std::env::var_os("PATH")?;
-    for dir in std::env::split_paths(&path_var) {
-        if dir.as_os_str().is_empty() {
-            continue;
-        }
-        for name in names {
-            let candidate = dir.join(name);
-            if candidate.is_file() {
-                return Some(candidate);
-            }
-        }
-    }
-    None
-}
-
-/// Dev-layout fallback: `target/{debug,release}/rocketsim-viewer` next to
-/// the current executable, so `cargo run --example …` works without
-/// installing the viewer.
-fn find_sibling_viewer() -> Option<PathBuf> {
-    let dir = std::env::current_exe()
-        .ok()?
-        .parent()?
-        .parent()?
-        .to_path_buf();
-    ["rocketsim-viewer"]
-        .iter()
-        .map(|base| dir.join(bin_name(base)))
-        .find(|candidate| candidate.is_file())
-}
-
-fn port_of(addr: &str) -> u16 {
-    addr.rsplit(':')
-        .next()
-        .and_then(|port| port.parse().ok())
-        .unwrap_or(crate::proto::DEFAULT_PORT)
-}
-
-fn sender_loop(addr: &str, slot: &Mutex<Option<VisFrame>>, stop: &AtomicBool) {
+fn sender_loop(addr: &str, shared: SenderState) {
     let mut backoff = Duration::from_millis(500);
     let max_backoff = Duration::from_secs(5);
     loop {
-        if stop.load(Ordering::Relaxed) {
+        if shared.stop.load(Ordering::Relaxed) {
             return;
         }
-        match TcpStream::connect(addr) {
+        match connect_bounded(addr) {
             Ok(stream) => {
                 backoff = Duration::from_millis(500);
                 let _ = stream.set_nodelay(true);
-                pump(stream, slot, stop);
+                shared.connected.store(true, Ordering::Release);
+                pump(stream, &shared);
+                shared.connected.store(false, Ordering::Release);
+                if let Ok(mut c) = shared.controls.lock() {
+                    *c = None;
+                }
+                shared.actions.store(0, Ordering::Release);
                 // pump returned = connection lost; reconnect with backoff.
             }
             Err(_) => {
-                std::thread::sleep(backoff);
+                sleep_interruptible(&shared.stop, backoff);
                 backoff = (backoff * 2).min(max_backoff);
                 continue;
             }
@@ -444,38 +421,120 @@ fn sender_loop(addr: &str, slot: &Mutex<Option<VisFrame>>, stop: &AtomicBool) {
     }
 }
 
-/// Sends newest-first until the connection breaks or `stop` is set.
-fn pump(mut stream: TcpStream, slot: &Mutex<Option<VisFrame>>, stop: &AtomicBool) {
+fn connect_bounded(addr: &str) -> std::io::Result<TcpStream> {
+    let socket_addr: SocketAddr = addr.parse().map_err(|e| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("address must be a numeric socket address: {e}"),
+        )
+    })?;
+    TcpStream::connect_timeout(&socket_addr, Duration::from_millis(250))
+}
+fn sleep_interruptible(stop: &AtomicBool, d: Duration) {
+    let end = std::time::Instant::now() + d;
+    while !stop.load(Ordering::Acquire) && std::time::Instant::now() < end {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+/// Sends latest frame and receives controls on the same accepted stream.
+fn pump(mut stream: TcpStream, shared: &SenderState) {
+    if stream.set_nonblocking(true).is_err() {
+        return;
+    }
+    let _ = stream.set_write_timeout(Some(Duration::from_millis(250)));
+    let peer = stream
+        .peer_addr()
+        .map(|a| a.to_string())
+        .unwrap_or_default();
+    let mut input = Vec::new();
+    let mut chunk = [0u8; 2048];
+    let mut metadata_sent = false;
+    let mut queued_scene = false;
+    let mut output = OutgoingBuffer::default();
     loop {
-        if stop.load(Ordering::Relaxed) {
+        if shared.stop.load(Ordering::Acquire) {
+            let _ = stream.shutdown(std::net::Shutdown::Both);
             return;
         }
-        let frame = slot.lock().map(|mut s| s.take()).unwrap_or(None);
-        match frame {
-            Some(frame) => {
-                let bytes = encode_frame(&frame);
-                if stream.write_all(&bytes).is_err() {
-                    // Put the frame back only if nothing newer arrived;
-                    // never overwrite a newer frame with an older one.
-                    if let Ok(mut s) = slot.lock()
-                        && s.is_none()
-                    {
-                        *s = Some(frame);
+        if !output.is_empty() {
+            match output.flush(&mut stream) {
+                Ok(true) => {
+                    metadata_sent |= queued_scene;
+                    queued_scene = false;
+                }
+                Ok(false) => {}
+                Err(_) => return,
+            }
+        }
+        match stream.read(&mut chunk) {
+            Ok(0) => return,
+            Ok(n) => {
+                input.extend_from_slice(&chunk[..n]);
+                loop {
+                    match decode_control(&input) {
+                        Ok(Some((mut msg, used))) => {
+                            shared.actions.fetch_or(msg.buttons & 7, Ordering::AcqRel);
+                            msg.buttons = 0;
+                            if let Ok(mut c) = shared.controls.lock() {
+                                *c = Some((msg, std::time::Instant::now()));
+                            }
+                            input.drain(..used);
+                        }
+                        Ok(None) => break,
+                        Err(error) => {
+                            eprintln!(
+                                "rocketsim_vis: closing invalid control stream from {peer}: {error}"
+                            );
+                            return;
+                        }
                     }
+                }
+                if input.len() > crate::proto::MAX_CONTROL_BYTES + 4 {
                     return;
                 }
             }
-            None => std::thread::sleep(Duration::from_millis(2)),
+            Err(e)
+                if e.kind() == std::io::ErrorKind::WouldBlock
+                    || e.kind() == std::io::ErrorKind::Interrupted => {}
+            Err(_) => return,
+        }
+        let frame = if output.is_empty() {
+            shared.slot.lock().map(|mut s| s.take()).unwrap_or(None)
+        } else {
+            None
+        };
+        match frame {
+            Some(mut frame) => {
+                if metadata_sent {
+                    frame.scene = None;
+                } else if let Ok(s) = shared.scene.lock()
+                    && let Some(meta) = s.as_ref()
+                {
+                    frame.scene = Some(meta.clone());
+                }
+                queued_scene = frame.scene.is_some();
+                let bytes = encode_frame(&frame);
+                if bytes.len() > crate::proto::MAX_FRAME_BYTES + 4 {
+                    return;
+                }
+                output.queue(bytes);
+            }
+            None => std::thread::sleep(Duration::from_millis(1)),
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::{io::Read, net::TcpListener, time::Instant};
+    use std::{
+        io::{Read, Write},
+        net::TcpListener,
+        time::Instant,
+    };
 
     use super::*;
-    use crate::proto::decode_frame;
+    use crate::proto::{ControlMsg, decode_frame, encode_control};
 
     /// Reads chunks until a frame with `want_tick` arrives or `deadline`
     /// passes. Returns the newest tick seen (proves latest-only convergence).
@@ -511,6 +570,72 @@ mod tests {
                 Err(_) => return last,
             }
         }
+    }
+
+    #[test]
+    fn same_stream_controls_preserve_action_pulses() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap().to_string();
+        let vis = NetVis::connect(&addr);
+        let (mut stream, _) = listener.accept().unwrap();
+        let first = encode_control(&ControlMsg::new(0, rocketsim::CarControls::default(), 1, 1));
+        let second = encode_control(&ControlMsg::new(0, rocketsim::CarControls::default(), 4, 2));
+        stream.write_all(&first).unwrap();
+        stream.write_all(&second).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while vis.latest_controls().is_none_or(|m| m.seq < 2) {
+            assert!(Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert_eq!(vis.take_actions(), 5);
+        assert_eq!(vis.take_actions(), 0);
+        assert!(vis.connected());
+        drop(listener);
+        drop(stream);
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while vis.connected() {
+            assert!(Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert!(vis.latest_controls().is_none());
+        assert_eq!(vis.take_actions(), 0);
+    }
+
+    #[test]
+    fn two_netvis_sessions_keep_controls_and_actions_isolated() {
+        let listener_a = TcpListener::bind("127.0.0.1:0").unwrap();
+        let listener_b = TcpListener::bind("127.0.0.1:0").unwrap();
+        let vis_a = NetVis::connect(&listener_a.local_addr().unwrap().to_string());
+        let vis_b = NetVis::connect(&listener_b.local_addr().unwrap().to_string());
+        let (mut stream_a, _) = listener_a.accept().unwrap();
+        let (mut stream_b, _) = listener_b.accept().unwrap();
+        stream_a
+            .write_all(&encode_control(&ControlMsg::new(
+                0,
+                rocketsim::CarControls::default(),
+                1,
+                11,
+            )))
+            .unwrap();
+        stream_b
+            .write_all(&encode_control(&ControlMsg::new(
+                0,
+                rocketsim::CarControls::default(),
+                4,
+                22,
+            )))
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while vis_a.latest_controls().is_none_or(|m| m.seq != 11)
+            || vis_b.latest_controls().is_none_or(|m| m.seq != 22)
+        {
+            assert!(Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert_eq!(vis_a.take_actions(), 1);
+        assert_eq!(vis_b.take_actions(), 4);
+        assert_eq!(vis_a.latest_controls().unwrap().seq, 11);
+        assert_eq!(vis_b.latest_controls().unwrap().seq, 22);
     }
 
     #[test]
@@ -601,10 +726,9 @@ mod tests {
                 .write_all(&crate::proto::encode_control(&msg))
                 .unwrap();
         }
-        drop(stream);
-
         let last = wait_for_seq(&server, 50, Instant::now() + Duration::from_secs(10));
         assert_eq!(last, Some(50), "must converge to newest control");
+        drop(stream);
         assert!(server.received() >= 50);
         let msg = server.latest().unwrap();
         assert!((msg.controls.throttle - 1.0).abs() < 1e-6);

@@ -377,12 +377,14 @@ mod tests {
     }
 
     #[test]
-    fn huge_dt_stays_finite_and_bounded() {
+    fn elapsed_dt_is_applied_with_one_second_pause_limit() {
         let mut cam = FreeCam::new();
         let p0 = cam.pos();
-        cam.fly(1.0, 1.0, 1.0, 10.0);
-        // One clamped step only: travel <= MOVE_SPEED * MAX_DT (+fp slack).
-        assert!((cam.pos() - p0).length() <= MOVE_SPEED * (1.0 / 30.0) + 1e-2);
+        cam.fly(1.0, 0.0, 0.0, 0.1);
+        assert!(((cam.pos() - p0).length() - MOVE_SPEED * 0.1).abs() < 1e-2);
+        let before_pause = cam.pos();
+        cam.fly(1.0, 0.0, 0.0, 10.0);
+        assert!(((cam.pos() - before_pause).length() - MOVE_SPEED).abs() < 1e-2);
         let (pos, dir) = cam.pos_dir();
         assert!(pos.is_finite() && dir.is_finite());
         assert!((dir.length() - 1.0).abs() < 1e-4);

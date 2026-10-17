@@ -16,6 +16,9 @@ What you get:
 
 Built for bots, RL training, and large-scale simulation where you need thousands of arenas ticking in parallel.
 
+For the detached visualizer, see [`rocketsim_viewer`](rocketsim_viewer/README.md)
+and its lightweight simulation interface, [`rocketsim_vis`](rocketsim_vis/README.md).
+
 ## Why v3?
 
 v3 is the faster, more accurate RocketSim.
