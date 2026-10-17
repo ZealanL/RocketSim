@@ -460,13 +460,14 @@ impl CarState {
         self
     }
 
-    /// True on ground or airborne with a flip or double-jump available.
+    /// True on ground or airborne with a flip or double-jump available next tick.
     #[must_use]
     pub const fn has_flip_or_jump(&self) -> bool {
         self.cache.is_on_ground
             || (!self.has_flipped
                 && !self.has_double_jumped
-                && self.air_time_since_jump < consts::car::jump::DOUBLEJUMP_MAX_DELAY)
+                && self.air_time_since_jump + consts::TICK_TIME
+                    < consts::car::jump::DOUBLEJUMP_MAX_DELAY)
     }
 
     /// True when a wheel contact gave a fresh flip reset.

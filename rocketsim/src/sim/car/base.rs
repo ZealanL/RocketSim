@@ -660,6 +660,7 @@ impl Car {
         mutator_config: &MutatorConfig,
         jump_pressed: bool,
         forward_speed_uu: f32,
+        was_is_jumping: bool,
     ) -> bool {
         if self.state.cache.is_on_ground {
             self.state.has_double_jumped = false;
@@ -673,7 +674,7 @@ impl Car {
 
         self.state.air_time += TICK_TIME;
 
-        if self.state.has_jumped && !self.state.is_jumping {
+        if self.state.has_jumped && !was_is_jumping && !self.state.is_jumping {
             self.state.air_time_since_jump += TICK_TIME;
         } else {
             self.state.air_time_since_jump = 0.0;
@@ -977,12 +978,18 @@ impl Car {
             self.state.is_flipping = false;
         }
 
+        let was_is_jumping = self.state.is_jumping;
         self.update_jump(rb, mutator_config, jump_pressed);
         self.update_auto_flip(rb, jump_pressed);
         let prev_is_flipping = self.state.is_flipping;
         let prev_flip_time = self.state.flip_time;
-        let flip_ended =
-            self.update_double_jump_or_flip(rb, mutator_config, jump_pressed, forward_speed_uu);
+        let flip_ended = self.update_double_jump_or_flip(
+            rb,
+            mutator_config,
+            jump_pressed,
+            forward_speed_uu,
+            was_is_jumping,
+        );
 
         if !self.state.cache.is_on_ground {
             self.update_air_torque(rb, num_wheels_in_contact, prev_is_flipping, prev_flip_time);
