@@ -69,7 +69,9 @@ the child processes when it exits.
 The `input-control-probe` runs a real Soccar or TheVoid arena. It receives
 `ControlMsg` values from the viewer over the normal sim connection. It applies
 the controls and writes JSON Lines records for controls, actions, mutators, and
-car state. This verifies the viewer-to-simulation path.
+car state. This verifies the viewer-to-simulation path. Build the probe and
+viewer from the same checkout. Version 0.3 uses wire protocol 3; older viewer
+binaries cannot read its car snapshots.
 
 Build after the viewer source is stable. The probe manifest and source are tracked
 in `tools/Cargo.toml` and `tools/input-control-probe.rs`. Cargo keeps the probe's

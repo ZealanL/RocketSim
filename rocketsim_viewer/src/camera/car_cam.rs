@@ -199,9 +199,9 @@ impl CarCamSmoothing {
             } else {
                 self.yaw_dir
             };
-            if !self.initialized || (car_state.is_on_ground && stiffness >= 0.999) {
+            if !self.initialized || (car_state.is_on_ground() && stiffness >= 0.999) {
                 self.yaw_dir = target;
-            } else if car_state.is_on_ground {
+            } else if car_state.is_on_ground() {
                 let k = 2.0 + 18.0 * stiffness;
                 let mixed = self.yaw_dir.lerp(target, 1.0 - (-k * dt).exp());
                 self.yaw_dir = if mixed.length_squared() > 1e-8 {
@@ -380,7 +380,7 @@ mod tests {
 
         // Launch: yaw the body 90° flat, then pitch the nose straight up.
         // The boom must NOT follow either tumble — it holds liftoff yaw.
-        state.cars[0].1.is_on_ground = false;
+        state.cars[0].1.set_contact_flags(false, [false; 4]);
         state.cars[0].1.rot_mat = Mat3A::from_euler(EulerRot::ZYX, FRAC_PI_2, 0.0, 0.0);
         for _ in 0..60 {
             smooth.update(0, false, &state, &config, &mut pos, &mut dir, 1.0 / 120.0);
@@ -400,7 +400,7 @@ mod tests {
         assert!(pos.is_finite() && dir.is_finite());
 
         // Touch down sideways: yaw resumes tracking (boom swings to -Y).
-        state.cars[0].1.is_on_ground = true;
+        state.cars[0].1.set_contact_flags(true, [true; 4]);
         state.cars[0].1.rot_mat = Mat3A::from_euler(EulerRot::ZYX, FRAC_PI_2, 0.0, 0.0);
         for _ in 0..240 {
             smooth.update(0, false, &state, &config, &mut pos, &mut dir, 1.0 / 120.0);

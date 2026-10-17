@@ -19,6 +19,17 @@ Built for bots, RL training, and large-scale simulation where you need thousands
 For the detached visualizer, see [`rocketsim_viewer`](rocketsim_viewer/README.md)
 and its lightweight simulation interface, [`rocketsim_vis`](rocketsim_vis/README.md).
 
+### Version 0.3 state APIs
+
+Use `CarCore` with `Arena::set_car_state` for normal car placement. This resets
+contacts and derives tuning from velocity. Use `set_car_state_full` only to
+restore an exact replay or clone snapshot. Use `set_car_boost` for boost-only
+updates and `edit_ball_state` for targeted ball changes.
+
+Read contact observations with `CarState::is_on_ground`, `wheels_with_contact`,
+and `prev_controls`. Keep the viewer and simulation on matching versions. The
+version 0.3 viewer uses wire protocol 3 and rejects protocol 2 peers.
+
 ## Why v3?
 
 v3 is the faster, more accurate RocketSim.

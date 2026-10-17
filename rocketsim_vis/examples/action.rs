@@ -40,9 +40,7 @@ fn main() {
     for _ in 0..ACTION_TICKS {
         let tick = arena.tick_count();
         if tick == LAUNCH_TICK {
-            let mut ball = *arena.get_ball_state();
-            ball.phys.vel = Vec3A::new(0.0, 2500.0, 900.0);
-            arena.set_ball_state(ball);
+            arena.edit_ball_state(|ball| ball.phys.vel = Vec3A::new(0.0, 2500.0, 900.0));
         }
         // Single-tick jump presses (edges, not holds).
         drive.jump = tick == JUMP_TICK || tick == DOUBLE_JUMP_TICK;
@@ -52,15 +50,14 @@ fn main() {
             // live heading. No world contact, airborne.
             let car = *arena.get_car_state(car_idx);
             let fwd2d = car.phys.get_forward_dir().truncate().normalize_or_zero();
-            let mut ball = *arena.get_ball_state();
-            ball.phys.pos = car.phys.pos + Vec3A::new(fwd2d.x * 51.0, fwd2d.y * 51.0, -105.0);
-            ball.phys.vel = Vec3A::ZERO;
-            arena.set_ball_state(ball);
+            let pos = car.phys.pos + Vec3A::new(fwd2d.x * 51.0, fwd2d.y * 51.0, -105.0);
+            arena.edit_ball_state(|ball| {
+                ball.phys.pos = pos;
+                ball.phys.vel = Vec3A::ZERO;
+            });
         }
         // Demo boost: pin to full so flames show.
-        let mut car = *arena.get_car_state(car_idx);
-        car.boost = 100.0;
-        arena.set_car_state(car_idx, car);
+        arena.set_car_boost(car_idx, 100.0);
 
         arena.set_car_controls(car_idx, drive);
         arena.step_tick();

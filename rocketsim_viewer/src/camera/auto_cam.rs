@@ -271,7 +271,7 @@ impl AutoCam {
 
         // R1 dribble: ball pinned close and low while grounded.
         self.rules[0].hold.step(
-            d < 270.0 && dz < 150.0 && car.is_on_ground,
+            d < 270.0 && dz < 150.0 && car.is_on_ground(),
             d > 380.0,
             0.8,
             dt,
@@ -344,7 +344,7 @@ impl AutoCam {
         // grounded: airborne plays keep ball-cam (RL "focus on aerials" —
         // retreating through the air is still a play worth watching).
         self.rules[6].hold.step(
-            dot < -0.2 && d > 1500.0 && speed > 500.0 && car.is_on_ground,
+            dot < -0.2 && d > 1500.0 && speed > 500.0 && car.is_on_ground(),
             dot > 0.0 || d < 1200.0,
             Self::OFF_MIN_HOLD,
             dt,
@@ -451,7 +451,7 @@ mod tests {
         // (RL "focus on aerials") — no other rule fires here either.
         let mut arena = arena_with(Vec3A::new(-3000.0, 0.0, 93.0));
         arena.cars[0].1.vel = Vec3A::new(1000.0, 0.0, 0.0);
-        arena.cars[0].1.is_on_ground = false;
+        arena.cars[0].1.set_contact_flags(false, [false; 4]);
         let mut auto = AutoCam::new(0);
         for _ in 0..30 {
             auto.update(&arena, 1.0 / 30.0);

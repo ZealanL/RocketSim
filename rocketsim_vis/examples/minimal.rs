@@ -44,9 +44,7 @@ fn main() {
     // Run for about five seconds. An auto-started viewer closes when the arena drops.
     for _ in 0..600 {
         // Pin boost to full so flames show.
-        let mut car = *arena.get_car_state(car_idx);
-        car.boost = 100.0;
-        arena.set_car_state(car_idx, car);
+        arena.set_car_boost(car_idx, 100.0);
 
         arena.set_car_controls(car_idx, controls);
         arena.step_tick();

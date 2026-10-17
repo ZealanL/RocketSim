@@ -95,8 +95,8 @@ Debug data is sent as part of subsequent streamed frames.
 
 ## Wire compatibility and migration
 
-This release has a major wire protocol compatibility break. Older viewer and
-simulation versions cannot communicate with this version. The old backend,
+Protocol version 3 has a wire compatibility break. Version 2 viewers and
+simulations cannot communicate with this version. The old backend,
 camera, and `VisInst` interfaces were removed. Use `DebugDraw` for lines,
 text, rectangles, and models.
 

@@ -12,7 +12,9 @@
 use std::{hint::black_box, time::Instant};
 
 use glam::{Mat3, Vec3, Vec3A};
-use rocketsim::{Arena, ArenaConfig, CarBodyConfig, CarControls, GameMode, Team};
+use rocketsim::{
+    Arena, ArenaConfig, CarBodyConfig, CarControls, CarCore, CarState, GameMode, Team,
+};
 use rocketsim_viewer::{
     camera::{CameraConfig, CarCamSmoothing},
     frustum::frustum_planes,
@@ -189,28 +191,33 @@ fn frame_work(
     (acc, pos)
 }
 
-/// Forces visible effects edges into a cloned frame (jump/dodge/latch),
-/// so the fx-heavy phase exercises dust, rings, and the latched glow.
+/// Forces jump and dodge edges while retaining captured simulation contacts.
+/// Reset effects use real contacts from the captured snapshots when present.
 fn force_fx_edges(frame: &mut VisFrame, k: usize) {
-    use rocketsim::{RaycastHitInfo, UserInfoType};
     let n = frame.state.cars.len();
     if n == 0 {
         return;
     }
-    // Car 0: jump edge every 30 iters (dust burst).
-    frame.state.cars[0].1.is_jumping = k % 30 < 15;
-    // Car 1: dodge edge every 60 iters (orange ring).
+    // Build valid active states. Snapshot cache fields are read-only.
+    let car = &mut frame.state.cars[0].1;
+    let tuning = car.tuning();
+    let phys = car.phys;
+    let core = if k % 30 < 15 {
+        CarCore::jumping(phys, 1)
+    } else {
+        CarCore::grounded(phys, car.boost)
+    };
+    *car = CarState::from(core).with_tuning(tuning);
     if n > 1 {
-        frame.state.cars[1].1.is_flipping = k % 60 < 30;
-    }
-    // Car 2: latched reset glow every 120 iters (4 wheel rings + flash).
-    if n > 2 {
-        let touch = k % 120 < 60;
-        let hit = touch.then_some(RaycastHitInfo {
-            user_info: UserInfoType::Ball,
-            ..Default::default()
-        });
-        frame.state.cars[2].1.wheels_with_contact = [hit; 4];
+        let car = &mut frame.state.cars[1].1;
+        let tuning = car.tuning();
+        let phys = car.phys;
+        let core = if k % 60 < 30 {
+            CarCore::flipping(phys, Vec3A::Y)
+        } else {
+            CarCore::aerial(phys)
+        };
+        *car = CarState::from(core).with_tuning(tuning);
     }
 }
 
@@ -323,7 +330,7 @@ fn main() {
         &mut eye,
     );
     run_phase(
-        "fxheavy",
+        "jump-dodge",
         &frames,
         iters.max(3000) / 3,
         true,

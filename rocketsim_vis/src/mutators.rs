@@ -4,8 +4,9 @@
 //! [`Arena`](rocketsim::Arena) keeps it in a private field with only a
 //! shared-reference getter, so the drive demo emulates the live-capable
 //! subset per tick instead. Before each [`step_tick`](rocketsim::Arena::step_tick),
-//! call [`Mutators::apply_pre_tick`] on the driven car state, then write it
-//! back with [`set_car_state`](rocketsim::Arena::set_car_state).
+//! call [`Mutators::apply_pre_tick`] before [`Arena::step_tick`]. Boost uses
+//! the targeted setter. Flip flags use the full-state editor to preserve tuning
+//! and contact history.
 //!
 //! Live-capable set (each verified against the sim source):
 //!
@@ -34,7 +35,7 @@
 //! * boost-pad amounts/cooldowns — baked into `BoostPadGrid` at build.
 //! * `GameMode`/arena geometry — meshes and goals built once at construction.
 
-use rocketsim::{CarState, consts};
+use rocketsim::consts;
 
 use crate::proto::{
     MUT_BOOST_RECHARGE, MUT_KNOWN_MASK, MUT_UNLIMITED_BOOST, MUT_UNLIMITED_DOUBLE_JUMPS,
@@ -140,28 +141,166 @@ impl Mutators {
         mask & !MUT_KNOWN_MASK == 0
     }
 
-    /// Applies active mutators to `car` before the tick. Write back with
-    /// `set_car_state`, then `step_tick`. No-op when all flags are off.
-    pub fn apply_pre_tick(&self, car: &mut CarState) {
+    /// Applies active mutators to one car before the tick, then call `step_tick`.
+    /// Uses targeted boost updates and preserves tuning and contact history.
+    pub fn apply_pre_tick(&self, arena: &mut rocketsim::Arena, car_idx: usize) {
+        let car = arena.get_car_state(car_idx);
+        let mut boost = car.boost;
+        let should_rearm_flips = !car.is_flipping && self.unlimited_flips && car.has_flipped;
+        let should_rearm_double_jumps = !car.is_flipping
+            && self.unlimited_double_jumps
+            && (car.has_double_jumped || car.air_time_since_jump != 0.0);
         if self.unlimited_boost {
-            car.boost = MAX_BOOST;
+            boost = MAX_BOOST;
         } else if self.boost_recharge
             && car.time_since_boosted >= RECHARGE_DELAY
             && car.boost < MAX_BOOST
         {
             let rate = self.recharge_per_second.clamp(0.0, MAX_RECHARGE_PER_SECOND);
-            car.boost = (car.boost + rate * consts::TICK_TIME).min(MAX_BOOST);
+            boost = (boost + rate * consts::TICK_TIME).min(MAX_BOOST);
         }
-        // Skip mid-flip: clearing `has_flipped` early would cut the flip
-        // torque phase short. The sim re-arms both flags on landing anyway.
-        if !car.is_flipping {
-            if self.unlimited_flips {
-                car.has_flipped = false;
-            }
-            if self.unlimited_double_jumps {
-                car.has_double_jumped = false;
-                car.air_time_since_jump = 0.0;
-            }
+        if boost != car.boost {
+            arena.set_car_boost(car_idx, boost);
         }
+        if should_rearm_flips || should_rearm_double_jumps {
+            arena.edit_car_state_full(car_idx, |state| {
+                if should_rearm_flips {
+                    state.has_flipped = false;
+                }
+                if should_rearm_double_jumps {
+                    state.has_double_jumped = false;
+                    state.air_time_since_jump = 0.0;
+                }
+            });
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rocketsim::{Arena, CarBodyConfig, CarControls, CarState, GameMode, Team};
+
+    use super::*;
+
+    fn arena_with_car() -> (Arena, usize) {
+        let mut arena = Arena::new(GameMode::TheVoid);
+        let car_idx = arena.add_car(Team::Blue, CarBodyConfig::OCTANE);
+        (arena, car_idx)
+    }
+
+    fn state_with_history() -> CarState {
+        let mut state = CarState::DEFAULT;
+        state.handbrake_val = 0.37;
+        state.is_supersonic = true;
+        state.supersonic_grace_timer = 0.12;
+        state.time_since_boosted = 2.5;
+        state.boosting_time = 0.4;
+        state.is_boosting = true;
+        state.air_time = 1.25;
+        state.set_contact_flags(true, [true, false, true, false]);
+        state.set_prev_controls(CarControls {
+            jump: true,
+            throttle: 0.5,
+            ..CarControls::default()
+        });
+        state
+    }
+
+    #[test]
+    fn boost_refill_preserves_tuning_contact_cache_and_core() {
+        let (mut arena, car_idx) = arena_with_car();
+        let mut state = state_with_history();
+        state.boost = 12.0;
+        arena.set_car_state_full(car_idx, state);
+
+        Mutators {
+            unlimited_boost: true,
+            ..Mutators::default()
+        }
+        .apply_pre_tick(&mut arena, car_idx);
+
+        let after = arena.get_car_state(car_idx);
+        assert_eq!(after.boost, MAX_BOOST);
+        assert_eq!(after.handbrake_val, state.handbrake_val);
+        assert_eq!(after.time_since_boosted, state.time_since_boosted);
+        assert_eq!(after.is_supersonic, state.is_supersonic);
+        assert_eq!(after.core().has_jumped, state.core().has_jumped);
+        assert_eq!(after.is_on_ground(), state.is_on_ground());
+        assert_eq!(after.wheels_with_contact(), state.wheels_with_contact());
+        assert_eq!(after.prev_controls(), state.prev_controls());
+    }
+
+    #[test]
+    fn flip_rearm_preserves_tuning_and_contact_cache() {
+        let (mut arena, car_idx) = arena_with_car();
+        let mut state = state_with_history();
+        state.has_flipped = true;
+        state.has_double_jumped = true;
+        state.air_time_since_jump = 0.8;
+        arena.set_car_state_full(car_idx, state);
+
+        Mutators {
+            unlimited_flips: true,
+            unlimited_double_jumps: true,
+            ..Mutators::default()
+        }
+        .apply_pre_tick(&mut arena, car_idx);
+
+        let after = arena.get_car_state(car_idx);
+        assert!(!after.has_flipped);
+        assert!(!after.has_double_jumped);
+        assert_eq!(after.air_time_since_jump, 0.0);
+        assert_eq!(after.handbrake_val, state.handbrake_val);
+        assert_eq!(after.time_since_boosted, state.time_since_boosted);
+        assert_eq!(after.is_supersonic, state.is_supersonic);
+        assert_eq!(after.is_on_ground(), state.is_on_ground());
+        assert_eq!(after.wheels_with_contact(), state.wheels_with_contact());
+        assert_eq!(after.prev_controls(), state.prev_controls());
+    }
+
+    #[test]
+    fn unlimited_double_jump_reopens_an_expired_jump_window() {
+        let (mut arena, car_idx) = arena_with_car();
+        let mut state = state_with_history();
+        state.has_jumped = true;
+        state.air_time_since_jump = consts::car::jump::DOUBLEJUMP_MAX_DELAY;
+        state.set_contact_flags(false, [false; 4]);
+        arena.set_car_state_full(car_idx, state);
+        assert!(!arena.get_car_state(car_idx).has_flip_or_jump());
+
+        Mutators {
+            unlimited_double_jumps: true,
+            ..Mutators::default()
+        }
+        .apply_pre_tick(&mut arena, car_idx);
+
+        let after = arena.get_car_state(car_idx);
+        assert!(after.has_flip_or_jump());
+        assert_eq!(after.air_time_since_jump, 0.0);
+        assert_eq!(after.tuning().air_time, state.tuning().air_time);
+        assert_eq!(after.prev_controls(), state.prev_controls());
+        assert_eq!(after.wheels_with_contact(), state.wheels_with_contact());
+    }
+
+    #[test]
+    fn spent_flip_flags_do_not_edit_state_when_nothing_needs_rearming() {
+        let (mut arena, car_idx) = arena_with_car();
+        let state = state_with_history();
+        arena.set_car_state_full(car_idx, state);
+
+        Mutators {
+            unlimited_flips: true,
+            unlimited_double_jumps: true,
+            ..Mutators::default()
+        }
+        .apply_pre_tick(&mut arena, car_idx);
+
+        let after = arena.get_car_state(car_idx);
+        assert_eq!(after.handbrake_val, state.handbrake_val);
+        assert_eq!(after.time_since_boosted, state.time_since_boosted);
+        assert_eq!(after.is_supersonic, state.is_supersonic);
+        assert_eq!(after.is_on_ground(), state.is_on_ground());
+        assert_eq!(after.wheels_with_contact(), state.wheels_with_contact());
+        assert_eq!(after.prev_controls(), state.prev_controls());
     }
 }

@@ -187,9 +187,9 @@ it deliberately keeps simulating and streaming. Stop it with Ctrl-C.
 
 Use `rocketsim_vis` for new network code and `rocketsim_viewer` for the
 viewer. The viewer still re-exports network items, so existing
-`rocketsim_viewer::` imports remain supported. This release has a major wire
-protocol compatibility break. Older viewer and simulation versions cannot
-communicate with this version. The old `rocketsim_vis::{backend, camera,
+`rocketsim_viewer::` imports remain supported. Version 0.3 uses wire protocol 3
+because the serialized `CarState` layout changed. Protocol 2 viewers and
+simulations cannot communicate with this version. Build both crates together. The old `rocketsim_vis::{backend, camera,
 VisInst}` APIs were removed. Viewer camera code now lives in
 `rocketsim_viewer`, but it is not a drop-in replacement for the old camera API.
 Use `DebugDraw` for lines, text, rectangles, and models. See

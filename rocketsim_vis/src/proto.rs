@@ -7,7 +7,7 @@
 use rocketsim::{ArenaState, CarControls};
 
 /// Wire protocol version. Bump on every incompatible wire change.
-pub const PROTOCOL_VERSION: u32 = 2;
+pub const PROTOCOL_VERSION: u32 = 3;
 
 /// Default TCP port. Deliberately different from rlviser's 34254.
 pub const DEFAULT_PORT: u16 = 39201;
@@ -490,7 +490,7 @@ pub fn decode_frame(buf: &[u8]) -> Result<Option<(VisFrame, usize)>, ProtocolErr
         || frame.state.cars.iter().any(|(_, car)| {
             !valid_phys(&car.phys)
                 || !valid_controls(&car.controls)
-                || !valid_controls(&car.prev_controls)
+                || !valid_controls(car.prev_controls())
         })
         || frame.state.boost_pads.len() > 4096
         || frame
@@ -572,6 +572,34 @@ mod tests {
     }
 
     #[test]
+    fn protocol_v3_round_trips_car_tuning_and_contact_cache() {
+        let mut frame = frame_with_cars(1, 0);
+        let car = &mut frame.state.cars[0].1;
+        car.handbrake_val = 0.375;
+        car.time_since_boosted = 1.75;
+        car.set_contact_flags(true, [true, false, true, false]);
+        car.set_prev_controls(CarControls {
+            jump: true,
+            throttle: 0.25,
+            ..CarControls::default()
+        });
+
+        let encoded = encode_frame(&frame);
+        assert_eq!(
+            u32::from_le_bytes(encoded[4..8].try_into().unwrap()),
+            PROTOCOL_VERSION
+        );
+        let (decoded, _) = decode_frame(&encoded).unwrap().unwrap();
+        let car = &decoded.state.cars[0].1;
+        assert_eq!(car.handbrake_val, 0.375);
+        assert_eq!(car.time_since_boosted, 1.75);
+        assert!(car.is_on_ground());
+        assert_eq!(car.num_wheels_in_contact(), 2);
+        assert!(car.prev_controls().jump);
+        assert_eq!(car.prev_controls().throttle, 0.25);
+    }
+
+    #[test]
     fn frame_rejects_nonfinite_positions_and_rotations() {
         let mut frame = frame_with_cars(1, 0);
         frame.state.ball.phys.pos.x = f32::NAN;
@@ -624,6 +652,14 @@ mod tests {
     #[test]
     fn wire_errors_distinguish_version_length_and_numeric_data() {
         let mut frame = encode_frame(&frame_with_cars(0, 0));
+        frame[4..8].copy_from_slice(&2u32.to_le_bytes());
+        assert!(matches!(
+            decode_frame(&frame),
+            Err(ProtocolError::VersionMismatch {
+                received: 2,
+                expected: 3
+            })
+        ));
         frame[4] = (PROTOCOL_VERSION as u8).wrapping_add(1);
         assert!(matches!(
             decode_frame(&frame),

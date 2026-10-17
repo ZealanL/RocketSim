@@ -38,6 +38,8 @@ const DODGE_ORANGE: Color = Color::new(1.0, 0.6, 0.2, 1.0);
 /// Jump dust / landing ring gray.
 const DUST_GRAY: Color = Color::new(0.75, 0.75, 0.75, 1.0);
 
+/// Minimum ball/car wheel contacts that grant the reset cue.
+const RESET_WHEEL_THRESHOLD: u8 = 3;
 /// Seconds between reset flashes per car (stops contact flicker strobing).
 const FLASH_COOLDOWN: f32 = 1.0;
 
@@ -46,7 +48,7 @@ struct CarBits {
     seen: bool,
     jumping: bool,
     flipping: bool,
-    jump_ticks: u32,
+    jump_time: f32,
     double_jumped: bool,
     /// Wheels currently touching the ball or another car.
     touch_count: u8,
@@ -62,7 +64,7 @@ impl Default for CarBits {
             seen: false,
             jumping: false,
             flipping: false,
-            jump_ticks: 0,
+            jump_time: 0.0,
             double_jumped: false,
             touch_count: 0,
             reset_latched: false,
@@ -171,6 +173,15 @@ impl CarFx {
     /// Advances effects by `dt` (clamped to `[0, 1/30]`) and returns fresh
     /// line segments.
     pub fn update(&mut self, state: &ArenaState, dt: f32) -> Vec<Segment> {
+        self.update_with_contacts(state, dt, |_, car| *car.wheels_with_contact())
+    }
+
+    fn update_with_contacts(
+        &mut self,
+        state: &ArenaState,
+        dt: f32,
+        mut contacts_for: impl FnMut(usize, &rocketsim::CarState) -> [Option<RaycastHitInfo>; 4],
+    ) -> Vec<Segment> {
         let dt = dt.clamp(0.0, 1.0 / 30.0);
         // One segment per live particle plus a full ring per live ring;
         // latched wheel-glows grow past this (capacity only, never output).
@@ -182,11 +193,11 @@ impl CarFx {
             }
             let prev = self.prev[idx];
             let first_tick = !prev.seen;
-            let touch = reset_touch_count(car.wheels_with_contact);
+            let contacts = contacts_for(idx, car);
+            let touch = reset_touch_count(contacts);
             // Resets need ball/car surfaces only: any world wheel vetoes,
             // so grounded dribbling and landings stay quiet.
-            let world_touch = car
-                .wheels_with_contact
+            let world_touch = contacts
                 .into_iter()
                 .flatten()
                 .any(|hit| !matches!(hit.user_info, UserInfoType::Ball | UserInfoType::Car));
@@ -196,8 +207,8 @@ impl CarFx {
             // the trigger dead; the world veto + latch rules keep play quiet).
             let touch_edge = !first_tick
                 && !world_touch
-                && prev.touch_count < 3
-                && touch >= 3
+                && prev.touch_count < RESET_WHEEL_THRESHOLD
+                && touch >= RESET_WHEEL_THRESHOLD
                 && flash_cd <= 0.0;
             if touch_edge {
                 latched = true;
@@ -214,7 +225,7 @@ impl CarFx {
                 seen: true,
                 jumping: car.is_jumping,
                 flipping: car.is_flipping,
-                jump_ticks: car.jump_ticks,
+                jump_time: car.jump_time(),
                 double_jumped: car.has_double_jumped,
                 touch_count: touch,
                 reset_latched: latched,
@@ -222,8 +233,7 @@ impl CarFx {
             };
 
             if !car.is_demoed {
-                let wheels =
-                    wheel_world(car.pos, car.rot_mat, info.config, car.wheels_with_contact);
+                let wheels = wheel_world(car.pos, car.rot_mat, info.config, contacts);
 
                 // Reset flash at the car's underside, car-oriented. Quick
                 // burst like RL's own cue: tight, short, warm white.
@@ -257,7 +267,7 @@ impl CarFx {
 
                 // Jump dust at the wheels: 4 × 6 streaks.
                 let jumped = !first_tick
-                    && ((cur.jump_ticks == 0 && prev.jump_ticks != 0)
+                    && ((cur.jump_time == 0.0 && prev.jump_time != 0.0)
                         || (cur.jumping && !prev.jumping));
                 if jumped {
                     for w in wheels {
@@ -387,15 +397,14 @@ impl CarFx {
 
 #[cfg(test)]
 mod tests {
-    use rocketsim::{CarBodyConfig, CarInfo, CarState, GameMode, Team};
+    use rocketsim::{CarBodyConfig, CarCore, CarInfo, CarState, GameMode, Team};
 
     use super::*;
 
     fn state_with_car() -> ArenaState {
-        let mut s = ArenaState::new_empty(GameMode::Soccar);
-        let mut car = CarState::DEFAULT;
-        car.pos = Vec3A::new(0.0, 0.0, 100.0);
-        s.cars.push((
+        let mut state = ArenaState::new_empty(GameMode::Soccar);
+        let car = CarState::from(CarCore::DEFAULT.with_pos(Vec3A::new(0.0, 0.0, 100.0)));
+        state.cars.push((
             CarInfo {
                 idx: 0,
                 team: Team::Blue,
@@ -403,234 +412,267 @@ mod tests {
             },
             car,
         ));
-        s
+        state
     }
 
-    /// Flash ring (24 segs) + 4 wheel rings (4×24): the latched look.
-    const LATCHED_SEGS: usize = 24 + 4 * 24;
+    fn set_core(state: &mut ArenaState, core: CarCore) {
+        let car = &mut state.cars[0].1;
+        *car = CarState::from(core).with_tuning(car.tuning());
+    }
+
+    fn update_with_hits(
+        fx: &mut CarFx,
+        state: &ArenaState,
+        hits: [Option<RaycastHitInfo>; 4],
+    ) -> Vec<Segment> {
+        fx.update_with_contacts(state, 1.0 / 120.0, |_, _| hits)
+    }
+
+    fn ball_hit() -> Option<RaycastHitInfo> {
+        Some(RaycastHitInfo {
+            user_info: UserInfoType::Ball,
+            ..Default::default()
+        })
+    }
+
+    fn world_hit() -> Option<RaycastHitInfo> {
+        Some(RaycastHitInfo {
+            user_info: UserInfoType::None,
+            ..Default::default()
+        })
+    }
+
+    fn is_reset_color(color: Color) -> bool {
+        color.r > 0.95 && color.g > 0.9
+    }
+
+    const LATCHED_SEGS: usize = RING_SEGS * 5;
 
     #[test]
     fn quiet_when_parked() {
-        let s = state_with_car();
+        let state = state_with_car();
         let mut fx = CarFx::default();
-        assert!(fx.update(&s, 1.0 / 120.0).is_empty());
+        assert!(fx.update(&state, 1.0 / 120.0).is_empty());
     }
 
     #[test]
     fn jump_edge_emits_dust() {
-        let mut s = state_with_car();
+        let mut state = state_with_car();
         let mut fx = CarFx::default();
-        assert!(fx.update(&s, 1.0 / 120.0).is_empty());
+        assert!(fx.update(&state, 1.0 / 120.0).is_empty());
 
-        s.cars[0].1.is_jumping = true;
-        s.cars[0].1.is_on_ground = false;
-        let segs = fx.update(&s, 1.0 / 120.0);
-        assert!(!segs.is_empty(), "jump edge must emit dust");
-        // 4 wheels x 6 particles, each a 2-point streak.
-        assert_eq!(segs.len(), 24);
+        let phys = state.cars[0].1.phys;
+        set_core(&mut state, CarCore::jumping(phys, 1));
+        state.cars[0].1.set_contact_flags(false, [false; 4]);
+        assert_eq!(fx.update(&state, 1.0 / 120.0).len(), 24);
     }
 
     #[test]
-    fn reset_fires_on_three_wheel_ball_touch() {
-        let mut s = state_with_car();
-        s.cars[0].1.is_on_ground = false;
+    fn reset_fires_at_three_ball_or_car_wheels_and_latches() {
+        let state = state_with_car();
         let mut fx = CarFx::default();
-        // First sight: no edges even with contacts present.
-        assert!(fx.update(&s, 1.0 / 120.0).is_empty());
+        let none = [None; 4];
+        assert!(update_with_hits(&mut fx, &state, none).is_empty());
 
-        // Two wheels on the ball: below threshold, still quiet.
-        let ball_hit = RaycastHitInfo {
-            user_info: UserInfoType::Ball,
-            ..Default::default()
-        };
-        s.cars[0].1.wheels_with_contact[0] = Some(ball_hit);
-        s.cars[0].1.wheels_with_contact[1] = Some(ball_hit);
-        assert!(fx.update(&s, 1.0 / 120.0).is_empty());
+        let two = [ball_hit(), ball_hit(), None, None];
+        assert!(update_with_hits(&mut fx, &state, two).is_empty());
 
-        // Third wheel (on a car — also counts): flash + 4 wheel rings.
-        let car_hit = RaycastHitInfo {
-            user_info: UserInfoType::Car,
-            ..Default::default()
-        };
-        s.cars[0].1.wheels_with_contact[2] = Some(car_hit);
-        assert_eq!(fx.update(&s, 1.0 / 120.0).len(), LATCHED_SEGS);
-
-        // Wheels leave: latched glow persists without new edges.
-        s.cars[0].1.wheels_with_contact = [None; 4];
-        assert_eq!(fx.update(&s, 1.0 / 120.0).len(), LATCHED_SEGS);
-
-        // Landing spends the reset: flash aged out, glow gone.
-        // Real field contacts report `UserInfoType::None` (ground probe),
-        // so the touchdown carries world wheels — that world touch is what
-        // unlatches the glow. Touchdowns emit no ring of their own.
-        let world_hit = RaycastHitInfo {
-            user_info: UserInfoType::None,
-            ..Default::default()
-        };
-        s.cars[0].1.wheels_with_contact = [Some(world_hit); 4];
-        s.cars[0].1.is_on_ground = true;
-        // The touchdown tick itself: glow unlatched same-tick, so only the
-        // aging pickup flash (24) remains — no new ring of any kind.
-        assert_eq!(fx.update(&s, 1.0 / 120.0).len(), RING_SEGS);
-        for _ in 0..120 {
-            fx.update(&s, 1.0 / 120.0);
-        }
-        // Flash lifetime (0.35s) expired over the full second. Glow
-        // unlatched on touchdown.
-        assert!(fx.update(&s, 1.0 / 120.0).is_empty());
-    }
-
-    #[test]
-    fn world_touch_vetoes_reset() {
-        // Airborne, 3 wheels on the ball, but the 4th scrapes the world:
-        // no reset flash, no glow.
-        let mut s = state_with_car();
-        s.cars[0].1.is_on_ground = false;
-        let ball_hit = RaycastHitInfo {
-            user_info: UserInfoType::Ball,
-            ..Default::default()
-        };
-        let world_hit = RaycastHitInfo {
-            user_info: UserInfoType::None,
-            ..Default::default()
-        };
-        s.cars[0].1.wheels_with_contact = [
-            Some(ball_hit),
-            Some(ball_hit),
-            Some(ball_hit),
-            Some(world_hit),
+        let ball_and_car = [
+            ball_hit(),
+            ball_hit(),
+            Some(RaycastHitInfo {
+                user_info: UserInfoType::Car,
+                ..Default::default()
+            }),
+            None,
         ];
+        assert_eq!(
+            update_with_hits(&mut fx, &state, ball_and_car).len(),
+            LATCHED_SEGS
+        );
+        assert_eq!(update_with_hits(&mut fx, &state, none).len(), LATCHED_SEGS);
+    }
+
+    #[test]
+    fn world_touch_vetoes_reset_acquisition() {
+        let state = state_with_car();
         let mut fx = CarFx::default();
+        let hits = [ball_hit(), ball_hit(), ball_hit(), world_hit()];
+        assert!(update_with_hits(&mut fx, &state, [None; 4]).is_empty());
         for _ in 0..5 {
-            assert!(fx.update(&s, 1.0 / 120.0).is_empty());
+            assert!(update_with_hits(&mut fx, &state, hits).is_empty());
         }
     }
 
     #[test]
-    fn grounded_pickup_flashes_once_then_quiet() {
-        // Grounded acquisition still flashes (the airborne clause would make
-        // this dead); sustained contact stays quiet; cooldown flicker adds
-        // no second ring (would read 144).
-        let mut s = state_with_car();
-        let ball_hit = RaycastHitInfo {
-            user_info: UserInfoType::Ball,
-            ..Default::default()
-        };
+    fn grounded_pickup_flashes_once_and_glow_survives_flash_expiry() {
+        let state = state_with_car();
         let mut fx = CarFx::default();
-        assert!(fx.update(&s, 1.0 / 120.0).is_empty());
+        assert!(update_with_hits(&mut fx, &state, [None; 4]).is_empty());
+        assert_eq!(
+            update_with_hits(&mut fx, &state, [ball_hit(); 4]).len(),
+            LATCHED_SEGS
+        );
 
-        // 0 -> 4 grounded: flash (24) + glow (96).
-        s.cars[0].1.wheels_with_contact = [Some(ball_hit); 4];
-        assert_eq!(fx.update(&s, 1.0 / 120.0).len(), LATCHED_SEGS);
-
-        // Flicker 4 -> 2 -> 4 inside the cooldown: still exactly one ring.
-        s.cars[0].1.wheels_with_contact = [Some(ball_hit), Some(ball_hit), None, None];
-        assert_eq!(fx.update(&s, 1.0 / 120.0).len(), LATCHED_SEGS);
-        s.cars[0].1.wheels_with_contact = [Some(ball_hit); 4];
-        assert_eq!(fx.update(&s, 1.0 / 120.0).len(), LATCHED_SEGS);
-
-        // Sustain past flash expiry (0.35s): glow alone remains.
+        let two = [ball_hit(), ball_hit(), None, None];
+        assert_eq!(update_with_hits(&mut fx, &state, two).len(), LATCHED_SEGS);
+        assert_eq!(
+            update_with_hits(&mut fx, &state, [ball_hit(); 4]).len(),
+            LATCHED_SEGS
+        );
         for _ in 0..150 {
-            fx.update(&s, 1.0 / 120.0);
+            update_with_hits(&mut fx, &state, [ball_hit(); 4]);
         }
-        assert_eq!(fx.update(&s, 1.0 / 120.0).len(), LATCHED_SEGS - RING_SEGS);
+        assert_eq!(
+            update_with_hits(&mut fx, &state, [ball_hit(); 4]).len(),
+            4 * RING_SEGS
+        );
+    }
+
+    #[test]
+    fn reset_rearms_after_cooldown_and_a_new_threshold_crossing() {
+        let state = state_with_car();
+        let mut fx = CarFx::default();
+        update_with_hits(&mut fx, &state, [None; 4]);
+        assert_eq!(
+            update_with_hits(&mut fx, &state, [ball_hit(); 4]).len(),
+            LATCHED_SEGS
+        );
+        update_with_hits(&mut fx, &state, [None; 4]);
+        for _ in 0..125 {
+            update_with_hits(&mut fx, &state, [None; 4]);
+        }
+        assert_eq!(
+            update_with_hits(&mut fx, &state, [ball_hit(); 4]).len(),
+            LATCHED_SEGS
+        );
+    }
+
+    #[test]
+    fn demo_suppresses_reset_effects() {
+        let mut state = state_with_car();
+        let core = state.cars[0].1.core();
+        let mut demoed = core;
+        demoed.is_demoed = true;
+        set_core(&mut state, demoed);
+        let mut fx = CarFx::default();
+        assert!(update_with_hits(&mut fx, &state, [None; 4]).is_empty());
+        assert!(update_with_hits(&mut fx, &state, [ball_hit(); 4]).is_empty());
+
+        let mut active = state.cars[0].1.core();
+        active.is_demoed = false;
+        set_core(&mut state, active);
+        assert_eq!(
+            update_with_hits(&mut fx, &state, [ball_hit(); 4]).len(),
+            4 * RING_SEGS,
+            "the demoed acquisition latches glow but does not add a flash"
+        );
     }
 
     #[test]
     fn air_tricks_share_one_ring() {
-        // Double jump and dodge share the orange shockwave (24 segs).
         for flip in [false, true] {
-            let mut s = state_with_car();
-            s.cars[0].1.is_on_ground = false;
+            let mut state = state_with_car();
+            let phys = state.cars[0].1.phys;
+            set_core(&mut state, CarCore::aerial(phys));
+            state.cars[0].1.set_contact_flags(false, [false; 4]);
             let mut fx = CarFx::default();
-            assert!(fx.update(&s, 1.0 / 120.0).is_empty());
-            if flip {
-                s.cars[0].1.is_flipping = true;
+            assert!(update_with_hits(&mut fx, &state, [None; 4]).is_empty());
+
+            let core = if flip {
+                CarCore::flipping(phys, Vec3A::Y)
             } else {
-                s.cars[0].1.has_double_jumped = true;
-            }
-            assert_eq!(fx.update(&s, 1.0 / 120.0).len(), RING_SEGS);
+                let mut core = state.cars[0].1.core();
+                core.has_double_jumped = true;
+                core
+            };
+            set_core(&mut state, core);
+            state.cars[0].1.set_contact_flags(false, [false; 4]);
+            assert_eq!(
+                update_with_hits(&mut fx, &state, [None; 4]).len(),
+                RING_SEGS
+            );
         }
     }
 
     #[test]
-    fn touchdown_clears_and_stays_quiet() {
-        // Plain landing (field contacts report `UserInfoType::None`) emits
-        // nothing: no floor ring, no reset colors.
-        let mut s = state_with_car();
-        s.cars[0].1.is_on_ground = false;
+    fn world_landing_clears_latch_and_emits_no_reset_color() {
+        let mut state = state_with_car();
         let mut fx = CarFx::default();
-        assert!(fx.update(&s, 1.0 / 120.0).is_empty());
-        let world_hit = RaycastHitInfo {
-            user_info: UserInfoType::None,
-            ..Default::default()
-        };
-        s.cars[0].1.wheels_with_contact = [Some(world_hit); 4];
-        s.cars[0].1.is_on_ground = true;
-        assert!(fx.update(&s, 1.0 / 120.0).is_empty());
+        update_with_hits(&mut fx, &state, [None; 4]);
+        assert_eq!(
+            update_with_hits(&mut fx, &state, [ball_hit(); 4]).len(),
+            LATCHED_SEGS
+        );
         for _ in 0..60 {
-            assert!(fx.update(&s, 1.0 / 120.0).is_empty());
-        }
-
-        // Latch the glow via a ball touch, let the flash (0.35s) expire
-        // mid-air, then touch down: that tick emits nothing, the glow
-        // clears the same tick, and no reset color ever returns.
-        let mut s = state_with_car();
-        s.cars[0].1.is_on_ground = false;
-        let mut fx = CarFx::default();
-        assert!(fx.update(&s, 1.0 / 120.0).is_empty());
-        let ball_hit = RaycastHitInfo {
-            user_info: UserInfoType::Ball,
-            ..Default::default()
-        };
-        s.cars[0].1.wheels_with_contact = [Some(ball_hit); 4];
-        assert_eq!(fx.update(&s, 1.0 / 120.0).len(), LATCHED_SEGS);
-        s.cars[0].1.wheels_with_contact = [None; 4];
-        for _ in 0..60 {
-            fx.update(&s, 1.0 / 120.0);
+            update_with_hits(&mut fx, &state, [None; 4]);
         }
         assert_eq!(
-            fx.update(&s, 1.0 / 120.0).len(),
-            LATCHED_SEGS - RING_SEGS,
-            "latched glow outlives the flash mid-air"
+            update_with_hits(&mut fx, &state, [None; 4]).len(),
+            4 * RING_SEGS
         );
-        s.cars[0].1.wheels_with_contact = [Some(world_hit); 4];
-        s.cars[0].1.is_on_ground = true;
-        assert!(fx.update(&s, 1.0 / 120.0).is_empty());
+
+        state.cars[0].1.set_contact_flags(true, [true; 4]);
+        let segments = update_with_hits(&mut fx, &state, [world_hit(); 4]);
+        assert!(
+            segments
+                .iter()
+                .all(|segment| !is_reset_color(segment.color_a))
+        );
         for _ in 0..60 {
-            let segs = fx.update(&s, 1.0 / 120.0);
-            assert!(segs.iter().all(|sg| !is_reset_color(sg.color_a)));
+            let segments = update_with_hits(&mut fx, &state, [world_hit(); 4]);
+            assert!(
+                segments
+                    .iter()
+                    .all(|segment| !is_reset_color(segment.color_a))
+            );
         }
     }
 
-    /// Warm-white reset channels; tells the reset flash/glow apart from
-    /// jump dust gray (0.75) and the orange dodge ring (g = 0.6).
-    fn is_reset_color(c: Color) -> bool {
-        c.r > 0.95 && c.g > 0.9
+    #[test]
+    fn ball_landing_emits_flash_and_glow_only() {
+        let mut state = state_with_car();
+        let mut fx = CarFx::default();
+        update_with_hits(&mut fx, &state, [None; 4]);
+        state.cars[0].1.set_contact_flags(true, [true; 4]);
+        let segments = update_with_hits(&mut fx, &state, [ball_hit(); 4]);
+        assert_eq!(segments.len(), LATCHED_SEGS);
+        assert!(
+            segments
+                .iter()
+                .all(|segment| is_reset_color(segment.color_a))
+        );
     }
 
     #[test]
-    fn ball_touchdown_emits_flash_and_glow_only() {
-        // Landing on the BALL also sets `is_on_ground` (3+ contacts of any
-        // kind ground the car — real-sim probe); acquisition emits flash +
-        // glow only, nothing else.
-        let mut s = state_with_car();
-        s.cars[0].1.is_on_ground = false;
-        let mut fx = CarFx::default();
-        assert!(fx.update(&s, 1.0 / 120.0).is_empty());
+    fn flip_or_jump_availability_uses_next_tick_boundary() {
+        let mut core = CarCore::aerial(CarCore::DEFAULT.phys);
+        let mut state = CarState::from(core);
+        state.set_contact_flags(false, [false; 4]);
+        assert!(state.has_flip_or_jump());
+        assert!(state.has_flip_reset());
+        assert!(state.got_flip_reset());
 
-        let ball_hit = RaycastHitInfo {
-            user_info: UserInfoType::Ball,
-            ..Default::default()
-        };
-        s.cars[0].1.wheels_with_contact = [Some(ball_hit); 4];
-        s.cars[0].1.is_on_ground = true;
-        let segs = fx.update(&s, 1.0 / 120.0);
-        // Flash ring (24) + 4 wheel-glow rings (96).
-        assert_eq!(segs.len(), LATCHED_SEGS);
-        assert!(
-            segs.iter().all(|sg| is_reset_color(sg.color_a)),
-            "ball touchdown must be reset colors only"
-        );
+        core.air_time_since_jump =
+            rocketsim::consts::car::jump::DOUBLEJUMP_MAX_DELAY - rocketsim::consts::TICK_TIME * 1.5;
+        let mut state = CarState::from(core);
+        state.set_contact_flags(false, [false; 4]);
+        assert!(state.has_flip_or_jump());
+        core.air_time_since_jump =
+            rocketsim::consts::car::jump::DOUBLEJUMP_MAX_DELAY - rocketsim::consts::TICK_TIME;
+        let mut state = CarState::from(core);
+        state.set_contact_flags(false, [false; 4]);
+        assert!(!state.has_flip_or_jump());
+    }
+
+    #[test]
+    fn jump_availability_ends_after_jump() {
+        let mut core = CarCore::jumping(CarCore::DEFAULT.phys, 1);
+        core.air_time_since_jump = rocketsim::consts::car::jump::DOUBLEJUMP_MAX_DELAY;
+        let mut state = CarState::from(core);
+        state.set_contact_flags(false, [false; 4]);
+        assert!(!state.has_flip_or_jump());
+        assert!(!state.has_flip_reset());
+        assert!(!state.got_flip_reset());
     }
 }

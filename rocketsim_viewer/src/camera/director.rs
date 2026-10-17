@@ -214,7 +214,7 @@ impl DirectorState {
     /// or `0.0`.
     fn aerial_bonus(arena_state: &ArenaState, idx: usize, dist: f32) -> f32 {
         let car = &arena_state.cars[idx].1;
-        if !car.is_on_ground
+        if !car.is_on_ground()
             && arena_state.ball.pos.z > Self::AERIAL_BALL_Z
             && dist < Self::AERIAL_MAX_DIST
         {
@@ -580,7 +580,10 @@ mod tests {
         let mut shooter = car_at(3, Team::Blue, 0.0, 2600.0);
         shooter.1.vel = Vec3A::new(0.0, 1000.0, 0.0);
         let mut booster = car_at(8, Team::Blue, 3000.0, -3500.0);
-        booster.1.is_boosting = true;
+        booster.1 = booster.1.with_tuning(rocketsim::CarTuning {
+            is_boosting: true,
+            ..booster.1.tuning()
+        });
         arena.cars.extend([shooter, booster]);
         arena.ball.pos = Vec3A::new(0.0, 3000.0, 500.0);
         arena.ball.vel = Vec3A::new(0.0, 3000.0, 0.0);
@@ -660,7 +663,7 @@ mod tests {
         arena.cars.push(car_at(0, Team::Blue, 0.0, -1000.0));
         arena.cars.push(car_at(1, Team::Orange, 0.0, 300.0));
         arena.cars[1].1.pos.z = 200.0;
-        arena.cars[1].1.is_on_ground = false;
+        arena.cars[1].1.set_contact_flags(false, [false; 4]);
         arena.ball.pos = Vec3A::new(0.0, 0.0, 700.0);
         arena.ball.vel = Vec3A::ZERO;
 

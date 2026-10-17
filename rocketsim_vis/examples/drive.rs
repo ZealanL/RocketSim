@@ -74,19 +74,17 @@ fn main() -> std::io::Result<()> {
             }
             if actions & 2 != 0 {
                 let car = arena.get_car_state(target);
-                let mut ball = *arena.get_ball_state();
-                ball.phys.pos = car.phys.pos + Vec3A::Z * 150.0;
-                ball.phys.vel = car.phys.vel;
-                arena.set_ball_state(ball);
+                let pos = car.phys.pos + Vec3A::Z * 150.0;
+                let vel = car.phys.vel;
+                arena.edit_ball_state(|ball| {
+                    ball.phys.pos = pos;
+                    ball.phys.vel = vel;
+                });
             }
             if actions & 4 != 0 {
-                let mut ball = *arena.get_ball_state();
-                ball.phys.vel += Vec3A::Z * 1000.0;
-                arena.set_ball_state(ball);
+                arena.edit_ball_state(|ball| ball.phys.vel += Vec3A::Z * 1000.0);
             }
-            let mut car = *arena.get_car_state(target);
-            Mutators::from_mask(mutators).apply_pre_tick(&mut car);
-            arena.set_car_state(target, car);
+            Mutators::from_mask(mutators).apply_pre_tick(&mut arena, target);
             arena.set_car_controls(target, controls);
             arena.step_tick();
         }

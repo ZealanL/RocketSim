@@ -153,7 +153,7 @@ dependencies = [
 
 [[package]]
 name = "rocketsim"
-version = "0.2.10"
+version = "0.3.0"
 dependencies = [
  "arrayvec",
  "byteorder",
@@ -167,7 +167,7 @@ dependencies = [
 
 [[package]]
 name = "rocketsim_vis"
-version = "0.2.10"
+version = "0.3.0"
 dependencies = [
  "glam",
  "postcard",

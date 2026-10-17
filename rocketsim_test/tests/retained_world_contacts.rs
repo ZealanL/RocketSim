@@ -71,9 +71,9 @@ fn pose_2997() -> CarState {
         Vec3A::new(-0.141264, 0.144080, -0.979431),
     );
     let mut state = CarState::from(CarCore::aerial(CarState::DEFAULT.core().phys));
-    state.pos = Vec3A::new(1550.600830, 5071.119141, 772.524719);
+    state.pos = Vec3A::new(1_550.600_8, 5_071.119, 772.524_7);
     state.rot_mat = rot_mat;
-    state.vel = Vec3A::new(249.703308, 543.539124, 313.766296);
+    state.vel = Vec3A::new(249.703_31, 543.539_1, 313.766_3);
     state.ang_vel = Vec3A::new(-4.736583, -1.521454, -3.436491);
     state.has_jumped = true;
     state.has_double_jumped = true;
@@ -99,9 +99,9 @@ fn pose_2998() -> CarState {
         Vec3A::new(-0.139626, 0.053113, -0.988779),
     );
     let mut state = CarState::from(CarCore::aerial(CarState::DEFAULT.core().phys));
-    state.pos = Vec3A::new(1553.067871, 5072.542480, 775.086670);
+    state.pos = Vec3A::new(1_553.067_9, 5_072.542_5, 775.086_7);
     state.rot_mat = rot_mat;
-    state.vel = Vec3A::new(296.154144, 245.674637, 308.010040);
+    state.vel = Vec3A::new(296.154_14, 245.674_64, 308.010_04);
     state.ang_vel = Vec3A::new(-9.909379, -0.863449, 6.000502);
     state.has_jumped = true;
     state.has_double_jumped = true;
@@ -125,9 +125,9 @@ fn pose_2999() -> CarState {
         Vec3A::new(-0.136873, 0.003355, -0.990583),
     );
     let mut state = CarState::from(CarCore::aerial(CarState::DEFAULT.core().phys));
-    state.pos = Vec3A::new(1555.501465, 5074.479492, 777.599121);
+    state.pos = Vec3A::new(1_555.501_5, 5_074.479_5, 777.599_1);
     state.rot_mat = rot_mat;
-    state.vel = Vec3A::new(291.794250, 232.792191, 301.104340);
+    state.vel = Vec3A::new(291.794_25, 232.792_19, 301.104_34);
     state.ang_vel = Vec3A::new(-5.582328, -0.425622, 3.218727);
     state.has_jumped = true;
     state.has_double_jumped = true;
@@ -151,9 +151,9 @@ fn pose_3000() -> CarState {
         Vec3A::new(-0.132612, -0.040175, -0.990354),
     );
     let mut state = CarState::from(CarCore::aerial(CarState::DEFAULT.core().phys));
-    state.pos = Vec3A::new(1557.927002, 5076.427246, 780.064636);
+    state.pos = Vec3A::new(1_557.927, 5_076.427_2, 780.064_64);
     state.rot_mat = rot_mat;
-    state.vel = Vec3A::new(291.240692, 233.625076, 295.760406);
+    state.vel = Vec3A::new(291.240_7, 233.625_08, 295.760_4);
     state.ang_vel = Vec3A::new(-4.907515, -0.465823, 2.685506);
     state.has_jumped = true;
     state.has_double_jumped = true;
@@ -177,9 +177,9 @@ fn pose_3001() -> CarState {
         Vec3A::new(-0.137048, -0.119275, -0.983357),
     );
     let mut state = CarState::from(CarCore::aerial(CarState::DEFAULT.core().phys));
-    state.pos = Vec3A::new(1559.802246, 5076.241211, 782.210388);
+    state.pos = Vec3A::new(1_559.802_2, 5_076.241, 782.210_4);
     state.rot_mat = rot_mat;
-    state.vel = Vec3A::new(224.687531, -11.776859, 258.051025);
+    state.vel = Vec3A::new(224.687_53, -11.776859, 258.051_03);
     state.ang_vel = Vec3A::new(-9.476849, 0.613153, 0.932627);
     state.has_jumped = true;
     state.has_double_jumped = true;
@@ -203,10 +203,10 @@ fn pose_3002() -> CarState {
         Vec3A::new(-0.138262, -0.170149, -0.975670),
     );
     let mut state = CarState::from(CarCore::aerial(CarState::DEFAULT.core().phys));
-    state.pos = Vec3A::new(1561.667603, 5076.148438, 784.315857);
+    state.pos = Vec3A::new(1_561.667_6, 5_076.148_4, 784.315_86);
     state.rot_mat = rot_mat;
-    state.vel = Vec3A::new(224.130920, -10.944331, 252.711792);
-    state.ang_vel = Vec3A::new(-6.150740, 0.233085, 0.570879);
+    state.vel = Vec3A::new(224.130_92, -10.944331, 252.711_79);
+    state.ang_vel = Vec3A::new(-6.150_74, 0.233085, 0.570879);
     state.has_jumped = true;
     state.has_double_jumped = true;
     state.has_flipped = false;
@@ -364,7 +364,7 @@ fn retained_world_report_repairs_primary_chain() {
     arena.step_tick();
     let after = *arena.get_car_state(car);
     assert!(
-        (after.vel.y - 233.625076).abs() < 0.25,
+        (after.vel.y - 233.625_08).abs() < 0.25,
         "auto-roll linear must apply (vel.y near 233.63), got {}",
         after.vel.y
     );
@@ -421,7 +421,7 @@ fn retained_world_report_repairs_heldout_chain() {
     arena.step_tick();
     let after = *arena.get_car_state(car);
     assert!(
-        (after.vel.y + 10.112940).abs() < 0.25,
+        (after.vel.y + 10.112_94).abs() < 0.25,
         "auto-roll linear must apply (vel.y near -10.11), got {}",
         after.vel.y
     );
