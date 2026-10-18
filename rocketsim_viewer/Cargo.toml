@@ -11,10 +11,24 @@ license.workspace = true
 keywords.workspace = true
 categories.workspace = true
 default-run = "rocketsim-viewer"
+autobins = false
+
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/{ name }-{ version }-{ target }{ archive-suffix }"
+bin-dir = "{ bin }{ binary-ext }"
+pkg-fmt = "tgz"
+disabled-strategies = ["quick-install"]
+
+[package.metadata.binstall.overrides.x86_64-pc-windows-msvc]
+pkg-fmt = "zip"
 
 [[bin]]
 name = "rocketsim-viewer"
 path = "src/main.rs"
+
+[[bin]]
+name = "mesh_stats"
+path = "src/bin/mesh_stats.rs"
 
 [dependencies]
 clap = { version = "4.6.0", features = ["derive"] }

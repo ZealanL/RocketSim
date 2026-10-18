@@ -1,5 +1,7 @@
 /target
-/Cargo.lock
+/dist
+__pycache__/
+
 /collision_meshes
 planus_flat.rs
 *.data*

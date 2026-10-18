@@ -25,19 +25,35 @@ To run the viewer directly:
 cargo run -p rocketsim_viewer --bin rocketsim-viewer
 ```
 
+Install a published prebuilt release with:
+
+```sh
+cargo binstall rocketsim_viewer
+```
+
+Prebuilt archives support Linux x86-64, Windows x86-64, and macOS on Intel
+and Apple Silicon. They include `rocketsim-viewer` and the `mesh_stats`
+diagnostic tool. Other targets can fall back to a source build. Linux
+binaries require glibc 2.35 or later and the desktop graphics libraries.
+macOS binaries target macOS 11 or later.
+
+The GitHub Actions release workflow creates draft releases for `v0.*` tags.
+Prebuilt archives become available after the maintainer publishes the draft.
+The matching crate version must also be on crates.io. See the
+[release instructions](../tools/ci/README.md).
+
 Install from source with:
 
 ```sh
-cargo install rocketsim_viewer
+cargo install --locked rocketsim_viewer
 ```
 
 On Linux, a source build with gamepad support needs the `libudev` development
 package. A source install also needs the Rust toolchain and system libraries
 required by the graphics stack. The launcher looks for a local build of
 `rocketsim-viewer` before it searches `PATH`. Set `ROCKETSIM_VIEWER` to an
-executable path to select a specific viewer binary. Do not assume that
-prebuilt release files are available. The viewer and simulation are separate
-crates. Applications other than the workspace examples must build or install
+executable path to select a specific viewer binary. The viewer and simulation
+are separate crates. Applications other than the workspace examples must build or install
 the viewer separately from the simulation.
 
 ## Sim integration

@@ -1,0 +1,121 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+
+jobs:
+  quality:
+    name: Formatting, Clippy, and release metadata
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          components: rustfmt, clippy
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends libudev-dev libxkbcommon-dev libegl1-mesa-dev
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          shared-key: quality
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+      - run: python -m unittest discover -s tools/ci -v
+      - run: python tools/ci/release.py check
+      - name: Verify the core source package
+        run: cargo package --locked -p rocketsim
+
+  msrv:
+    name: Rust 1.95 minimum version
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: "1.95.0"
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends libudev-dev libxkbcommon-dev libegl1-mesa-dev
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          shared-key: msrv
+      - run: cargo check --locked --workspace --all-targets --all-features
+      - run: cargo check --locked -p rocketsim --no-default-features
+
+  test:
+    name: Tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            features: --all-features
+            test-args: --test-threads=1
+          - os: windows-2022
+            features: ""
+            test-args: ""
+          - os: macos-14
+            features: ""
+            test-args: ""
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends libudev-dev libxkbcommon-dev libegl1-mesa-dev
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          shared-key: test-${{ matrix.os }}
+      - name: Fetch pinned collision mesh fixtures
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: RLGym/rlgym
+          ref: 34c0d2a388d5ae50466cbeb02b4c4ff367e7a054
+          path: target/ci-fixtures
+          sparse-checkout: rlgym/rocket_league/sim/collision_meshes
+          persist-credentials: false
+      - name: Prepare collision mesh fixtures
+        run: python tools/ci/prepare_meshes.py target/ci-fixtures/rlgym/rocket_league/sim/collision_meshes
+      # The optional C++ comparison backend uses process-global state.
+      - run: cargo test --locked --workspace --all-targets ${{ matrix.features }} -- ${{ matrix.test-args }}
+      - run: cargo test --locked --workspace --doc ${{ matrix.features }}
+      - run: cargo run --locked -p rocketsim_viewer --bin rocketsim-viewer -- --help
+      - run: python -m unittest discover -s tools/ci -v
