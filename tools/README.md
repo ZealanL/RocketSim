@@ -1,99 +1,99 @@
-# vis screenshot harness
+# Viewer review tools
 
-`tools/vis-shot.sh` captures a nested Xephyr display to PNG for human review.
-Every visual change is verified with a screenshot — nothing lands without eyes on it.
+Use these tools to review viewer screenshots and test input integration.
+The standalone `input-control-probe` crate receives viewer controls and
+applies them to a test simulation. These tools are for maintainers.
+Applications do not need them to run the viewer.
 
-## Prerequisites
+## Requirements
 
-Xephyr, xwd (`x11-apps`), Python 3 + PIL + numpy. All already present on the
-dev box. The converter is `tools/xwd2png.py` (TrueColor ZPixmap, vectorized).
+Run the commands from the workspace root. First
+[prepare the collision meshes](../README.md#prepare-the-collision-meshes)
+for the test simulation.
 
-## Usage
+Screenshot and input review require:
 
-```sh
-# prove the harness with a trivial client (leaves Xephyr :99 running):
-tools/vis-shot.sh /tmp/probe.png -- xterm -e 'sleep 5'
+- Linux and access to a desktop display for Xephyr.
+- `Xephyr`, `xwininfo`, and `xwd`. Distribution packages include
+  `xserver-xephyr`, `x11-utils`, and `x11-apps` on Debian or Ubuntu.
+- Python 3.12 or later, Pillow (`PIL`), and NumPy.
+- The X11 and XTest shared libraries: `libX11.so.6` and `libXtst.so.6`.
 
-# build the viewer first, then capture it (the viewer listens on 39201):
-cargo build -p rocketsim_viewer --bin rocketsim-viewer
-tools/vis-shot.sh -w 8 /tmp/shot.png -- ./target/debug/rocketsim-viewer 39201
+Virtual controller tests also need the Python `evdev` package and permission
+to create a uinput device. Configure uinput access before you use
+`--controller`. Do not change permissions on host input devices or take
+exclusive control of those devices.
 
-# flags: -d DISPLAY (default :99), -g GEOM (default 1280x720), -w WAIT secs
-```
+Build the probe and viewer from the same checkout. Version 0.3 uses protocol
+3. The viewer listens on loopback by default. Its protocol has no
+authentication. Keep test connections on a trusted machine.
 
-The viewer binds to `127.0.0.1` by default. Do not expose it on an untrusted
-network. Its protocol has no authentication.
+## Capture a viewer screenshot
 
-The script ensures Xephyr is up, runs the command with `WAYLAND_DISPLAY`
-unset, waits, captures root, converts, then stops the command if still alive.
-
-## Deterministic scene
-
-`cargo run -p rocketsim_viewer --example photo` steps a fixed seed-0 Soccar
-scene (blue drives, orange idles) 600 ticks and prints ball/car0 positions.
-Build `rocketsim-viewer` first or install it on `PATH` so the example can
-connect. The viewer renders scene mesh metadata from the stream. The simulation
-still initializes its own meshes. Same seed + same ticks = same output;
-screenshot timing may vary.
-
-## Perf log (running table, CPU submit ms + wall fps)
-
-| scene | cpu ms | wall fps | notes |
-|-------|--------|----------|-------|
-| harness probe (xterm) | n/a | n/a | pipeline proof (xclock shot) |
-| empty window + overlay | ~0 (idle, repaint-on-demand; 4 frames/5s) | n/a (no loop) | — |
-| wire protocol (headless) | update ~1µs mean (gate <100µs); encode ~50µs @6car (gate <200µs) | n/a | payloads: 0car 676B / 1car 942B / 2car 1208B / 6car 2272B |
-| triangle smoke test | draw 0.03ms CPU; 61fps wall (cap 60) | 61 | — |
-| arena mesh | draw 0.87ms CPU; 62fps wall (cap 60) | 62 | weld 5.27x soccar (24090→4570), 5.60x hoops, 5.41x dropshot |
-| textured ball + cars | scene draw ~1.9ms CPU (llvmpipe; watch); 62fps wall | 62 | white ball + blue/orange customs + team grid, live tick 1163 |
-| pads, instanced | scene draw ~1.9ms CPU (llvmpipe); 62fps wall | 62 | 4 instanced draws, 29/34 + 5 culled live, pill close-up verified |
-| lines and trails | scene draw ~2.2ms CPU (llvmpipe); 62fps wall | 62 | 37 segs, ground line crisp, trail + boost via action sim, zero rainbow |
-| camera math | headless (camera-math suite) | n/a | rigid yaw, freezes, swing, FOV, director holds, auto rules |
-| birds-eye + car-cam | scene draw ~2.0ms CPU (llvmpipe); 62fps wall | 62 | RL ball-cam verified, frustum follows (16/18 culled in follow) |
-| director + auto | scene draw ~1.5-1.7ms CPU (llvmpipe); 62fps wall | 62 | threat cut to car + boost flame, auto ball-cam chase; retreat rule also observed live |
-| menus + settings | scene draw ~1.8ms CPU (llvmpipe); 60fps wall | 60 | Escape menu live, TOML persist + toggle proof (pads off/FOV 90 loaded) |
-| effects | scene draw ~2ms CPU (llvmpipe); 60fps wall | 60 | dust/ring/flash/landing shot, glow unit-pinned; trigger is acquisition+cooldown |
-| HW | real-GPU numbers (:0, 1280x720) | cpu ~0.08ms, submit ~0.01ms, gpu-work ~1.0ms (stall), present/egui ~0.5ms; ~1500fps uncapped, 167fps vsync-locked | — | vsync=false proven live; no code action justified (26x headroom @60fps/1440p) |
-| HW2 | A/B attribution (follow0, uncapped) | lines 0.30→0.02ms via tight quads; MSAA4 = 0.20ms (28%); pads ~0.3ms | — | tight-quad optimization landed (10x line-cost cut, vis-diff clean); MSAA is now the top lever (user knob: try 0/2) |
-| HW3 | draw-call batching | 17→10 draws/frame (instanced cars, merged arena, empty skips); ~20 fewer driver calls, single-digit µs real-HW est. | — | pixel-identical (0.000% vs pre-batch binary); llvmpipe can't resolve the delta |
-
-Budget: <1ms CPU submit/frame, 60fps cap. Numbers recorded here.
-
-## Input review harness
-
-Run the input review against a stable viewer build. The harness uses the isolated
-`target/input-review` tree. It does not use the user's normal config. It starts
-Xephyr on `:99`, launches each child with its own `XDG_CONFIG_HOME`, and stops
-the child processes when it exits.
-
-The `input-control-probe` runs a real Soccar or TheVoid arena. It receives
-`ControlMsg` values from the viewer over the normal sim connection. It applies
-the controls and writes JSON Lines records for controls, actions, mutators, and
-car state. This verifies the viewer-to-simulation path. Build the probe and
-viewer from the same checkout. Version 0.3 uses wire protocol 3; older viewer
-binaries cannot read its car snapshots.
-
-Build after the viewer source is stable. The probe manifest and source are tracked
-in `tools/Cargo.toml` and `tools/input-control-probe.rs`. Cargo keeps the probe's
-dependency lockfile in `tools/Cargo.lock`. Use a target directory under ignored
-`target/input-review` for build files.
+Use `input-review.py --drive` to capture a scene and stop the test processes
+afterward. Build the viewer and drive example first:
 
 ```sh
 cargo build -p rocketsim_viewer --bin rocketsim-viewer
 cargo build -p rocketsim_vis --example drive
-cargo build --offline --manifest-path tools/Cargo.toml --target-dir target/input-review/control-probe/target
+python3 tools/input-review.py --profile drive --drive \
+  --output target/input-review/drive.png --wait 8
+```
+
+Open `target/input-review/drive.png` to inspect the result. The helper starts
+Xephyr on `:99`, starts the viewer and drive example, then captures the
+display. It stops its test processes when it exits.
+
+The helper refuses to use an active X display. Pass `--display` with an unused
+display if `:99` is busy. Pass `--port` with an unused port if another viewer
+uses the default port, `39201`.
+
+### Capture another X11 application
+
+Use `vis-shot.sh` for a lower-level capture of an empty viewer or another X11
+application. This example uses display `:100` to keep `:99` available for the
+input-review helper:
+
+```sh
+tools/vis-shot.sh -d :100 -w 4 target/empty-viewer.png -- ./target/debug/rocketsim-viewer 39201
+```
+
+The script starts the command after `--` on Xephyr, waits, and captures the
+display. It does not start a simulation. Use `-d DISPLAY`, `-g GEOMETRY`, and
+`-w SECONDS` to change the display, image size, and capture delay.
+
+Unlike `input-review.py`, this script can reuse an active display and leaves
+Xephyr running. It stops only the command process it launched. It does not
+stop that command's child processes or isolate its settings. Use the
+input-review helper for isolated tests with a simulation.
+
+## Build the input test probe
+
+The probe runs a Soccar simulation, receives controls, and writes JSON Lines
+records for controls, actions, mutators, and car state. Build it from its
+standalone manifest, then generate the sample input profiles:
+
+```sh
+cargo build -p rocketsim_viewer --bin rocketsim-viewer
+cargo build --manifest-path tools/Cargo.toml \
+  --target-dir target/input-review/control-probe/target
 python3 tools/input-review-profiles.py
 ```
 
-Create source-specific profiles under the ignored target tree. Start one run per
-profile so each run has a clean simulator log. Example: test the keyboard throttle
-binding and save before/active/after screenshots:
+The harness expects the probe at
+`target/input-review/control-probe/target/debug/input-control-probe`.
+Pass `--control-probe` to start it. Use `--mode thevoid` to test TheVoid instead
+of Soccar. `--probe-seconds` limits the probe's lifetime to 1–120 seconds.
+The harness can stop it sooner when capture finishes.
+
+## Verify a keyboard binding
+
+Run this test after you build the probe and generate the profiles:
 
 ```sh
 python3 tools/input-review.py --profile keyboard \
   --settings target/input-review/profiles/keyboard.toml \
   --window 'rocketsim viewer' --control-probe --probe-seconds 30 \
-  --control-log target/input-review/keyboard-controls.jsonl \
   --action key:Escape --action key:1 \
   --action capture:target/input-review/keyboard-before.png \
   --action key:Up:down --action wait:1 \
@@ -104,9 +104,14 @@ python3 tools/verify-input-review.py \
   --transition throttle --require 'throttle>=0.8' --state-moved
 ```
 
-Use `--controller` to create the uinput pad before the viewer starts. The helper
-supports buttons, signed sticks, triggers, and hats. Example: verify that a pad
-stick reaches the sim as steering:
+The profile binds the Up key to throttle. The helper selects the first car,
+then holds and releases the key. The checker requires neutral and active
+throttle values and a change in car position. Inspect the screenshots as well
+as the checker result.
+
+## Verify a controller axis
+
+Prepare uinput access, then request a virtual controller with `--controller`:
 
 ```sh
 python3 tools/input-review.py --profile pad-axis \
@@ -124,82 +129,73 @@ python3 tools/verify-input-review.py \
   --transition steer --require 'steer>=0.8'
 ```
 
-The profile stores the follow binding as `Num1`. Send X11 keysym `1` with the
-harness to select Follow 1. Use `--mode thevoid` to run the probe in TheVoid.
-The default mode is Soccar.
-The `--drive` option starts the stock drive example instead of the JSON probe.
-Do not pass `--drive` and `--control-probe` in the same run.
+The profile binds the left stick X axis to steering. The checker requires a
+change from neutral steering to active steering. The simulation log records
+controls and car state, not camera position. Inspect screenshots to check
+camera movement, menus, and binding capture.
 
-The helper accepts these action types:
+## Settings, logs, and screenshots
 
-- `key:KEY`, `key:KEY:down`, and `key:KEY:up` send key events. A short key press
-  stays down for 150 ms.
-- `mouse:N:down` and `mouse:N:up` hold or release an X11 mouse button.
-- `move:X:Y` moves the mouse to an X11 screen coordinate. Use it to test mouse
-  look. Capture before and after images in free-camera mode.
-- `drag:X1:Y1:X2:Y2` holds mouse button 1 while it moves between the points.
-  Use it to resize the settings window.
-- `wheel:UP` and `wheel:DOWN` send one scroll event.
-- `pad:BTN_SOUTH[:0|1]` presses or releases an evdev button.
-- `axis:ABS_X:VALUE` sends an evdev axis value. Other registered `ABS_*` axis
-  names work in the same form.
-- `focus:out` moves focus away from the viewer. `focus:in` restores it.
-- `wait:SECONDS` waits for up to 5 seconds. Use this for control and save debounce.
-- `capture:FILE` writes a screenshot at that point in the action list.
+`input-review.py` stores test artifacts under `target/input-review`. It gives
+each profile a separate configuration directory. It does not use your normal
+viewer settings. The viewer, scene, and Xephyr logs retain earlier runs. Each
+probe run replaces its JSON Lines log. Use a different `--control-log` path
+when you need to keep earlier records.
 
-The harness writes each profile to `target/input-review/<profile>-controls.jsonl`
-by default. Set `--control-log` to choose another path under `target/input-review`.
-Pass that path as the first argument to the checker.
+Use `--settings` to copy a TOML file into a profile's configuration directory.
+To test saved bindings on a later run, use the same `--profile` without
+`--settings`. This keeps the saved settings instead of replacing them.
 
-The JSON checker accepts dotted control names. For example, use
-`--require 'jump=true'`, `--action-bit 0`, `--button-bit 0`, or
-`--mutator-bit 1` to check jump, reset, a control pulse, or a mutator. Use
-`--neutral` to require a neutral control sample. Use `--transition throttle`
-to require both neutral and active throttle values. Use `--state-moved` to require a car position change.
+Screenshots and control logs must stay under `target/input-review`. Use one
+profile per input test. The generated profiles cover keyboard, mouse buttons,
+mouse motion, wheel, controller buttons, axes, triggers, raw codes, and shared
+bindings.
 
-The current viewer has 56 actions and seven input source types: key, mouse
-button, mouse axis, wheel, pad button, pad axis, and raw pad code. The unit test
-`exhaustive_sources_actions_and_slots_roundtrip_and_evaluate_edges` checks every
-concrete source in both binding slots for every action. This includes at least
-392 action/source-type combinations. The test also checks the source variants
-for keys, buttons, axes, and raw codes. Run it after the source is stable:
+## Input actions
 
-```sh
-cargo test -p rocketsim_viewer input::tests::exhaustive_sources_actions_and_slots_roundtrip_and_evaluate_edges
-```
+Pass actions with repeated `--action` options:
 
-The real-window review uses representative end-to-end profiles for each source
-type:
+| Action | Result |
+| --- | --- |
+| `key:KEY` | Press and release an X11 key. |
+| `key:KEY:down` / `key:KEY:up` | Hold or release a key. |
+| `mouse:N:down` / `mouse:N:up` | Hold or release an X11 mouse button. |
+| `click:X:Y[:button]` | Click at a screen position. |
+| `move:X:Y` | Move the pointer. |
+| `drag:X1:Y1:X2:Y2` | Drag with the primary button. |
+| `wheel:UP` / `wheel:DOWN` | Send a scroll event. |
+| `pad:BTN_SOUTH[:0|1]` | Release or press a virtual controller button. |
+| `axis:ABS_X:VALUE` | Set a virtual controller axis value. |
+| `focus:out` / `focus:in` | Remove or restore viewer focus. |
+| `wait:SECONDS` | Wait for up to five seconds. |
+| `capture:FILE` | Save a screenshot at this point. |
 
-| Profile | Input | Required evidence |
-|---|---|---|
-| `keyboard` | Up/Down keys | throttle changes in the sim control log |
-| `mouse-button` | primary/secondary buttons | jump or boost changes in the sim control log |
-| `mouse-axis` | signed mouse motion | free-camera screenshot changes in the expected direction |
-| `wheel` | scroll up/down | throttle changes in the sim control log |
-| `pad-button` | South/East buttons | jump or boost changes in the sim control log |
-| `pad-axis` | left-stick X | steer changes in the sim control log |
-| `pad-trigger` | trigger axes | free-camera height changes in the screenshot |
-| `pad-raw` | raw ABS_X code (`196608`) | throttle changes in the sim log |
-| `shared-key` | one key bound to throttle and jump | both control fields change in one run |
+Controller actions require `--controller`. Key names use X11 keysyms, such as
+`1` or `Escape`. Controller names use `evdev` codes. Use `--window` with a title
+fragment to focus the viewer before sending input.
 
-Capture the single Bindings section. Rebind one action. Capture the armed state
-and the resulting binding. Then check the TOML file in
-`target/input-review/config/<profile>/rocketsim-vis/settings.toml`. On the
-restart run, pass `--profile <profile>` but do not pass `--settings` again. This
-keeps the saved file. Repeat the input and check the control log. Also capture
-free-camera before and after keyboard movement, mouse motion, and pad-stick
-motion. Use screenshots for view actions; the sim log does not contain camera
-poses.
+The checker supports `--neutral`, `--transition FIELD`, `--state-moved`, and
+conditions such as `--require 'jump=true'`. Use screenshots for visual results;
+the checker does not inspect images.
 
-The viewer selects the Xbox-style virtual pad for these runs. Require matching
-control records from `input-control-probe` for pad driving tests. Do not disable
-or grab the host input devices.
+The helper can start the drive example instead of the probe with `--drive`.
+Build the drive example first. Do not combine `--drive` and `--control-probe`.
 
-For focus-loss review, hold a bound input, use `focus:out`, wait, and capture.
-Restore focus while the input is still held. Confirm that the sim receives
-neutral controls until the input is released. Repeat with a pad axis and a pad
-button. For shared bindings, assign the same source to two actions and assert
-both outputs. Require a control or action record from `input-control-probe` for
-driving and simulation actions. Require a camera or menu screenshot change for
-view-only actions.
+## Troubleshooting
+
+- **Xephyr does not start:** Check your desktop connection and the selected
+  display. Input-review errors appear in `target/input-review/xephyr.log`.
+  For `vis-shot.sh -d :100`, check `/tmp/xephyr-100.log`.
+- **The port is in use:** Pass `--port` with an unused port. Do not stop another
+  user's viewer to free the port.
+- **The scene is empty:** Check the simulation's mesh setup and connection.
+  Screenshot helpers do not provide collision meshes.
+- **Input has no effect:** Use `--window` to focus the viewer. Close settings
+  and select a car. Confirm that the profile contains the expected binding.
+- **The virtual controller cannot start:** Install Python `evdev` and configure
+  permission to create a uinput device. Do not disable host input devices.
+- **A connection reports a version mismatch:** Rebuild the viewer and probe
+  from the same checkout.
+
+See `python3 tools/input-review.py --help` and
+`python3 tools/verify-input-review.py --help` for all command options.

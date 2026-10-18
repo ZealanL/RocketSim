@@ -26,11 +26,8 @@ update the corresponding actions.
 
 ## Collision mesh fixtures
 
-The repository does not track the arena collision meshes. Test jobs check out
-[RLGym/rlgym](https://github.com/RLGym/rlgym) at commit
-`34c0d2a388d5ae50466cbeb02b4c4ff367e7a054`. They copy its
-`rlgym/rocket_league/sim/collision_meshes` directory with
-`tools/ci/prepare_meshes.py`.
+The repository does not track the arena collision meshes. Test jobs prepare
+collision mesh fixtures with `tools/ci/prepare_meshes.py`.
 
 The helper requires 16 Soccar, 12 Hoops, and 2 Dropshot files. The engine also
 validates the component hashes during initialization. The helper does not

@@ -1,83 +1,161 @@
 # rocketsim_vis
 
-Lightweight interface between RocketSim and the detached viewer. It streams
-simulation frames and viewer controls over one versioned, bidirectional TCP
-connection. It has no window or renderer. Simulation crates use this crate,
-not `rocketsim_viewer`.
+Use `rocketsim_vis` to connect your RocketSim simulation to the separate
+`rocketsim-viewer` application. You can send simulation frames and debug
+drawing. You can also receive driving controls and action requests.
 
-## Quick start
+This crate does not open a window or include a renderer. Your simulation
+does not need the viewer's graphics dependencies. See the
+[viewer guide](../rocketsim_viewer/README.md) if you only want to view or drive
+an existing simulation.
 
-```rust,no_run
-use rocketsim::{Arena, CarBodyConfig, GameMode, Team, init_from_default};
-use rocketsim_vis::ArenaVisExt;
+## Try the workspace example
 
-init_from_default(true).unwrap();
-let mut arena = Arena::new(GameMode::Soccar);
-arena.add_car(Team::Blue, CarBodyConfig::OCTANE);
-arena.reset_to_random_kickoff(None);
-arena.set_vis_enabled(true);
+From a source checkout, [prepare the collision meshes](../README.md#prepare-the-collision-meshes),
+then run:
 
-for _ in 0..240 {
-    arena.step_tick();
-    std::thread::sleep(std::time::Duration::from_millis(8));
-}
-arena.set_vis_enabled(false);
+```sh
+cargo run -p rocketsim_vis --example minimal
 ```
 
-The default viewer endpoint is `127.0.0.1:39201`. The simulation dials the
-viewer. The viewer sends controls on the same connection. The stock viewer
-does not use a separate port `39202` control connection.
-
-`set_vis_enabled(true)` launches or attaches to the default endpoint.
-`set_net_vis(Some(address))` connects to an explicit endpoint and never
-launches a viewer. Use `try_set_vis_enabled` and `try_set_net_vis` to handle
-errors. The non-`try` methods report errors to stderr. Each viewer accepts one
-arena. A second arena in one process cannot attach to an address already in
-use; it gets `AddrInUse`. Use separate viewer instances and explicit ports.
-
-The launcher searches local build locations before `PATH` for
-`rocketsim-viewer`. Set `ROCKETSIM_VIEWER` to choose an executable path. The
-viewer is a separate crate. Applications must build or install it separately.
-
-The workspace examples build the viewer before they launch it. For example:
+This builds the matching viewer and shows a car driving for about five
+seconds. To drive the car yourself, use the `drive` example instead:
 
 ```sh
 cargo run --release --example drive
 ```
 
-This also updates an old viewer build. The examples use the executable path
-reported by Cargo. `ROCKETSIM_VIEWER` skips this build. The `drive --viewer`
-option connects to an existing viewer and also skips the build.
+Select the first car with `1`. Close settings with `Escape` before driving.
+Stop the drive example with Ctrl-C in its terminal.
 
-Addresses must be numeric socket addresses. Host names are not resolved. The
-viewer binds to loopback by default. Use `--bind` to listen on another address.
-A non-loopback bind can expose the viewer to untrusted peers. The protocol has
-no authentication. Bind only on a trusted network and restrict access with
-your network firewall.
+## Add viewing to your application
 
-The simulation sends scene mesh metadata with its frames. This lets an
-installed viewer render without a local collision-mesh tree. The simulation
-must still initialize its own meshes before it steps the arena.
+Add matching simulation and connection crates to your `Cargo.toml`:
 
-## Controls and debug drawing
+```toml
+[dependencies]
+rocketsim = "0.3.0"
+rocketsim_vis = "0.3.0"
+```
 
-The `ArenaVisExt` network API provides `latest_vis_controls(&self) ->
-Option<ControlMsg>`, `take_vis_actions(&mut self) -> u8`, and
-`set_vis_debug(&mut self, DebugDraw)`. `FrameClient::send_controls` sends
-controls over its accepted frame connection. The older `ControlServer` API
-may remain for compatibility. The stock viewer does not need that separate
-server.
+This guide uses the 0.3 API. Keep the crates on matching versions.
 
-`DebugDraw` has `lines`, `text`, `rects`, and `models` lists. Lines use 3D
-world-space endpoints, RGBA color values, and a width. Text uses normalized
-screen coordinates from 0 to 1 and an RGBA color. Rectangles use normalized
-screen-space `min` and `max` points and an RGBA color. Models use a model name,
-a texture name, a 3D position, a 3-by-3 rotation matrix, and a 3D scale. Names
-must match assets in the viewer scene. For example, add a line, screen text,
-and a stock Octane model like this:
+Before you run your application:
+
+1. [Prepare the collision meshes](../README.md#prepare-the-collision-meshes)
+   for the simulation. `init_from_default` reads `./collision_meshes/` relative
+   to the process's working directory.
+2. [Install or build the viewer](../rocketsim_viewer/README.md#install-the-viewer-separately).
+   Adding `rocketsim_vis` to an external application does not install it.
+3. Make `rocketsim-viewer` available on `PATH`, or set `ROCKETSIM_VIEWER` to
+   its executable path.
+
+### Send your first frames
+
+This complete program loads the meshes, starts or connects to the default
+viewer, and drives a car for about two seconds:
+
+```rust,no_run
+use std::{thread, time::Duration};
+
+use rocketsim::{
+    Arena, CarBodyConfig, CarControls, GameMode, Team, init_from_default,
+};
+use rocketsim_vis::ArenaVisExt;
+
+fn main() -> std::io::Result<()> {
+    init_from_default(true)?;
+
+    let mut arena = Arena::new(GameMode::Soccar);
+    let car = arena.add_car(Team::Blue, CarBodyConfig::OCTANE);
+    arena.reset_to_random_kickoff(None);
+    arena.try_set_vis_enabled(true)?;
+    arena.set_car_controls(car, CarControls::default().with_throttle(1.0));
+
+    for _ in 0..240 {
+        arena.step_tick();
+        thread::sleep(Duration::from_micros(8_333));
+    }
+
+    arena.try_set_vis_enabled(false)?;
+    Ok(())
+}
+```
+
+Each `step_tick` advances the simulation by `1/120` second. The sleep makes
+this small example run near real time. For interactive applications, use
+[`TickPacer`](https://docs.rs/rocketsim_vis/latest/rocketsim_vis/pace/struct.TickPacer.html)
+to pace the simulation and limit catch-up work. For batch simulation, omit
+wall-clock sleeps and run the required number of ticks.
+
+`try_set_vis_enabled(true)` uses `127.0.0.1:39201`. It starts a viewer if none
+is listening there. A viewer started by the crate closes when its last
+attachment or viewer handle is released. A viewer you start yourself stays
+open after the simulation disconnects.
+
+Use the `try_set_*` methods when your application needs to handle errors.
+The methods without `try_` report errors to standard error instead.
+
+## Connect to a viewer you start yourself
+
+Start an installed viewer on a separate port:
+
+```sh
+rocketsim-viewer 39202
+```
+
+In the program above, replace `arena.try_set_vis_enabled(true)?` with:
 
 ```rust
-use rocketsim_vis::proto::{DebugDraw, DebugLine, DebugModel, DebugText};
+arena.try_set_net_vis(Some("127.0.0.1:39202"))?;
+```
+
+`try_set_net_vis` never starts a viewer. Pass `None` to disconnect:
+
+```rust
+arena.try_set_net_vis(None)?;
+```
+
+Each viewer accepts one arena. Use a separate viewer process and port for each
+arena. A second arena in the same process gets `AddrInUse` if it tries to use
+an address already attached to another arena.
+
+Addresses must be numeric IP-and-port addresses. Host names are not resolved.
+The viewer binds to loopback by default. The protocol has no authentication.
+Use non-loopback addresses only on trusted networks, and restrict access with
+a firewall.
+
+## Apply viewer controls
+
+Sending frames does not let the viewer change your simulation. Your
+application decides whether to apply controls, actions, and mutators.
+
+To let the viewer drive the single car in the program above, remove the fixed
+throttle assignment. Put this code before `arena.step_tick()` in the loop:
+
+```rust
+let controls = arena.latest_vis_controls()
+    .map_or_else(CarControls::default, |message| message.controls);
+arena.set_car_controls(car, controls);
+```
+
+`latest_vis_controls` returns `None` when input is absent, disconnected, or
+more than 250 ms old. The example sends neutral controls in that case.
+For several cars, use the message's `car_index` to select the target. Release
+the previous car's controls when the target changes.
+
+`take_vis_actions` consumes pending requests: bit 0 requests a reset, bit 1
+a dribble, and bit 2 a ball launch. Your application must implement those
+requests. See [`examples/drive.rs`](examples/drive.rs) for a complete loop that
+handles controls, actions, mutators, and timing.
+
+## Add debug drawing
+
+Insert this code after enabling the viewer and before the stepping loop in
+the program above. It adds a world-space line and screen-space text:
+
+```rust
+use rocketsim_vis::proto::{DebugDraw, DebugLine, DebugText};
 
 let mut debug = DebugDraw::default();
 debug.lines.push(DebugLine {
@@ -87,30 +165,46 @@ debug.lines.push(DebugLine {
     width: 2.0,
 });
 debug.text.push(DebugText {
-    text: "Example".into(),
+    text: "Ball target".into(),
     position: [0.05, 0.05],
     color: [1.0, 1.0, 1.0, 1.0],
-});
-debug.models.push(DebugModel {
-    model: "car_octane".into(),
-    texture: "car_blue".into(),
-    position: [0.0, 0.0, 100.0],
-    rotation: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
-    scale: [1.0, 1.0, 1.0],
 });
 arena.set_vis_debug(debug);
 ```
 
-Debug data is sent as part of subsequent streamed frames.
+The next streamed frames include the drawing. `set_vis_debug` replaces the
+previous drawing. Pass `DebugDraw::default()` to clear it.
 
-## Wire compatibility and migration
+Line endpoints use world coordinates in Unreal units. Text positions use
+normalized screen coordinates from 0 to 1. Colors use red, green, blue, and
+alpha values from 0 to 1. `DebugDraw` also supports screen-space rectangles and
+named models. Model and texture names must match the viewer's assets.
 
-Protocol version 3 has a wire compatibility break. Version 2 viewers and
-simulations cannot communicate with this version. The old backend,
-camera, and `VisInst` interfaces were removed. Use `DebugDraw` for lines,
-text, rectangles, and models.
+## Troubleshooting
 
-Use `rocketsim_vis` for new network code and `rocketsim_viewer` for the
-viewer. The viewer still re-exports network items, so existing
-`rocketsim_viewer::` imports remain supported. This release has a major wire
-protocol compatibility break. Keep both crates on matching versions.
+- **Mesh loading fails:** Check the process's working directory. Use
+  `rocketsim::init` with an explicit mesh directory if necessary. Handle
+  initialization errors before you create an arena.
+- **The viewer executable is not found:** Install it, build it, or set
+  `ROCKETSIM_VIEWER` to its executable path. A workspace build alone does not
+  add the binary to `PATH`. The launcher also checks local build locations
+  beside the current executable before it searches `PATH`.
+- **No scene appears:** Check the viewer address and confirm that your
+  application calls `step_tick`. A connection alone does not send new frames.
+- **Viewer input has no effect:** Apply the received controls in your loop.
+  In the viewer, select a car, close settings, and disable spectate-only mode.
+- **A second arena gets `AddrInUse`:** Use another viewer process and port.
+
+## Compatibility
+
+Keep `rocketsim`, `rocketsim_vis`, and `rocketsim_viewer` on matching versions.
+Version 0.3 uses protocol 3. Protocol 2 viewers and simulations cannot
+communicate with it. The installed viewer does not need collision meshes
+because the simulation sends scene geometry.
+
+The old `backend`, `camera`, and `VisInst` interfaces are no longer available.
+Use `ArenaVisExt` for simulation connections and `DebugDraw` for drawing.
+Viewer camera code now belongs to `rocketsim_viewer`.
+
+See the [API reference](https://docs.rs/rocketsim_vis) for the connection and
+drawing types.

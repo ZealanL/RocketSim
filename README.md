@@ -1,116 +1,191 @@
-![A logo saying RocketSim](https://user-images.githubusercontent.com/36944229/219303954-7267bce1-b7c5-4f15-881c-b9545512e65b.png)
+![RocketSim](https://user-images.githubusercontent.com/36944229/219303954-7267bce1-b7c5-4f15-881c-b9545512e65b.png)
 
-**A Rust library for simulating Rocket League games at maximum efficiency**
+# RocketSim
 
-## What is this?
+RocketSim simulates Rocket League car and ball physics in Rust. Use it to
+test bots, train agents, predict ball motion, or run many independent arenas.
+The simulation does not start Rocket League or open a window.
 
-RocketSim v3 — a Rust library for simulating Rocket League games at maximum efficiency.
+It supports Soccar, Hoops, Dropshot, Snowday, and Heatseeker. `TheVoid` provides
+an arena without a collision-mesh hull for tests. You can change mutators,
+car bodies, boost pads, and random seeds.
 
-What you get:
+## Choose a crate
 
-- Full car + ball physics: driving, jumping/flips, boost, demos/bumps, world + car-ball collisions
-- All game modes: Soccar, Hoops, Dropshot, Snowday, Heatseeker, plus `TheVoid` for testing
-- Configurable mutators, arenas, boost pads, ball options, and deterministic RNG seeds
-- Tunable memory/performance tradeoff via `ArenaMemWeightMode` (`Heavy`/`Balanced`/`Light`)
-- Validated by replay: segment accuracy metric and throughput benchmarks on a bundled 3v3 recording
+| Task | Crate |
+| --- | --- |
+| Run a simulation without a window | [`rocketsim`](rocketsim/README.md) |
+| Connect your simulation to a viewer | [`rocketsim_vis`](rocketsim_vis/README.md) |
+| View an arena or drive a car | [`rocketsim_viewer`](rocketsim_viewer/README.md) |
 
-Built for bots, RL training, and large-scale simulation where you need thousands of arenas ticking in parallel.
+The viewer is optional. Simulation applications do not need the viewer's
+graphics dependencies.
 
-For the detached visualizer, see [`rocketsim_viewer`](rocketsim_viewer/README.md)
-and its lightweight simulation interface, [`rocketsim_vis`](rocketsim_vis/README.md).
+## Add RocketSim to your application
 
-[GitHub Actions and release instructions](tools/ci/README.md) describe the
-release checks and prebuilt viewer archives for `cargo binstall`.
+The core simulation does not need a C++ compiler.
 
-## Why v3?
+Add this dependency to your `Cargo.toml`:
 
-v3 is the faster, more accurate RocketSim.
-
-- ~4-5x faster than v2 in both random-bot and real-replay throughput.
-- More accurate than v2 on real Rocket League play — both over full open-loop segments and on isolated single-tick error.
-- Pure Rust, simpler to build and embed, no C++ dependency.
-- Tunable memory: `Heavy` for max speed, `Balanced` for much less memory at near-`Heavy` speed, `Light` for minimal footprint.
-- Deterministic and configurable: seeded RNG, custom arenas/boost pads/mutators, all game modes.
-
-## Benchmarks
-
-Numbers move as development continues, so only the rough gap is stated. Run these yourself:
-
-### Arena memory modes
-
-`ArenaConfig::mem_weight_mode` controls the broadphase memory/performance tradeoff. In the `stress_v3` benchmark:
-
-| Mode              | 1v1 memory per arena | 1v1 performance | 3v3 memory per arena | 3v3 performance |
-| ----------------- | -------------------: | --------------: | -------------------: | --------------: |
-| `Heavy` (default) |             ~915 KiB |        Baseline |             ~946 KiB |        Baseline |
-| `Balanced`        |             ~108 KiB |    ~1–2% slower |             ~123 KiB |      ~3% slower |
-| `Light`           |              ~66 KiB |      ~9% slower |              ~91 KiB |     ~12% slower |
-
-Balanced reduces marginal memory while retaining most of Heavy's performance. Light uses one broadphase cell to reduce memory use. Results can differ by platform and workload.
-
-### Accuracy and throughput
-
-Run the v3 metric:
-
-```sh
-cargo run --example rlpr_metric
+```toml
+[dependencies]
+rocketsim = "0.3.0"
 ```
 
-Use motion-only resets to inspect state-transition errors:
+The optional `serde` feature adds serialization support to simulation types:
 
-```sh
-cargo run --release --example rlpr_metric -- --reset-motion-each-tick --per-recording
+```toml
+[dependencies]
+rocketsim = { version = "0.3.0", features = ["serde"] }
 ```
 
-This mode restores recorded position, linear velocity, and angular velocity
-for every car and the ball before each step. Orientation, flags, timers,
-boost, and other logical state continue from the simulation. Each segment
-starts with a recorded-state seed. Use `--segment-ticks` to set its length.
-The default length is 120 ticks. The mode uses the existing one-tick tolerances.
+Use one dependency entry, not both.
 
-The state setters still clear transient accumulators and the car impulse
-cache. The mode does not explicitly clear wheel or manifold caches. Recording
-formats can omit state, such as boost-pad cooldowns. Thus, a failure can come
-from orientation drift or missing recorded state, not only a physics defect.
+## Prepare the collision meshes
 
-Use `--reset-each-tick` for the existing recorded-state reset mode. The two
-reset flags cannot be used together. With neither flag, the metric uses the
-existing segmented mode. Scoring rules and tolerances for those modes do not
-change.
+The simulation needs arena collision meshes before you create an arena.
+The crates do not include these files. `init_from_default` reads
+`collision_meshes/` relative to your process's working directory:
 
-Enable `v2` to compare v3 with the original C++ RocketSim bindings:
-
-```sh
-cargo run --features v2 --example rlpr_metric
+```text
+collision_meshes/
+  soccar/     16 .cmf files
+  hoops/      12 .cmf files
+  dropshot/    2 .cmf files
 ```
 
-Run the comparable stress benchmarks with these commands:
+Provide the complete mesh set for each mode you need. Snowday and Heatseeker
+use the Soccar mesh set. `TheVoid` does not need collision meshes.
 
-```sh
-cargo run --release --example stress_v3
-cargo run --release --features v2 --example stress_v2
+Mesh files are external assets. Review their source and license before you
+redistribute them.
+
+For another mesh location, call `rocketsim::init` with that directory instead
+of `init_from_default`. Use `init_from_mem` to load `.cmf` byte buffers.
+Initialization succeeds once per process. You can retry a failed
+initialization. After initialization succeeds, later calls do not replace
+the loaded meshes. Load all required modes on the first successful call.
+
+## Run your first simulation
+
+Put this code in `src/main.rs`. Run the application from the directory that
+contains `collision_meshes/`.
+
+```rust,no_run
+use rocketsim::{
+    Arena, CarBodyConfig, CarControls, GameMode, Team, init_from_default,
+};
+
+fn main() -> std::io::Result<()> {
+    init_from_default(true)?;
+
+    let mut arena = Arena::new(GameMode::Soccar);
+    let car = arena.add_car(Team::Blue, CarBodyConfig::OCTANE);
+    arena.reset_to_random_kickoff(Some(0));
+    arena.set_car_controls(car, CarControls::default().with_throttle(1.0));
+
+    for _ in 0..120 {
+        arena.step_tick();
+    }
+
+    println!("Car position: {}", arena.get_car_state(car).phys.pos);
+    println!("Ball position: {}", arena.get_ball_state().phys.pos);
+    Ok(())
+}
 ```
 
-For a ball-only workload (no cars), pass `-n 0`. Ball-only runs use five times
-as many episodes as the normal stress workload:
+This prints the car and ball positions after one simulated second. It does
+not open a window. Each `step_tick` advances the simulation by `1/120` second.
+The application controls how many ticks run. Do not add a sleep when you need
+the simulation to run as fast as possible.
+
+Controls remain active until you replace them. Send `CarControls::default()`
+to release all controls. Release `jump` before you press it again for another
+jump or flip. Read collision and boost-pickup events from the slice returned
+by `step_tick`.
+
+Positions and linear velocities use Unreal units. There are 50 Unreal units
+per meter. `+Z` points up. Blue defends the `-Y` goal; Orange defends the `+Y`
+goal. Angular velocities use radians per second.
+
+## See the simulation
+
+From a source checkout with collision meshes prepared, run:
 
 ```sh
-cargo run --release --example stress_v3 -- --num-cars 0
-cargo run --release --features v2 --example stress_v2 -- --num-cars 0
+cargo run --release --example drive
 ```
 
-Replay mode takes precedence: `--rlpr-file` always runs replay validation.
+This builds the matching viewer, starts a simulation, and opens the viewer.
+Select a car with `1` through `8` to drive it. Press `Escape` to open settings.
+See the [viewer guide](rocketsim_viewer/README.md) for controls and installation.
+See the [simulation connection guide](rocketsim_vis/README.md) to add viewing
+to your own application.
 
-Replay the bundled 3v3 recording for a deterministic throughput comparison:
+## Configure an arena
 
-```sh
-cargo run --release --example stress_v3 -- \\
-  --rlpr-file rocketsim_test/recordings/wisp_3v3_300s.rlpr.zst
-cargo run --release --features v2 --example stress_v2 -- \\
-  --rlpr-file rocketsim_test/recordings/wisp_3v3_300s.rlpr.zst
+Use `ArenaConfig` to set mutators, memory use, and the random seed before you
+create an arena:
+
+```rust
+use rocketsim::{Arena, ArenaConfig, ArenaMemWeightMode, GameMode};
+
+let config = ArenaConfig::new(GameMode::Soccar)
+    .with_rng_seed(42)
+    .with_mem_weight_mode(ArenaMemWeightMode::Balanced);
+let arena = Arena::new_with_config(config);
 ```
 
-Replay mode requires six cars and Soccar. It decodes the recording and
-prepares all controls before timing starts. The timed loop applies controls,
-steps the simulation, and restores state only at discontinuities such as
-kickoff or demo respawn. It does not collect metrics or inspect events.
+Load the collision meshes before this code. Use the same initial state,
+random seed, and inputs when you need repeatable runs.
+
+### Choose a memory mode
+
+`Heavy` is the default. Try `Balanced` when you need many arenas. Use `Light`
+when memory use is more important than simulation speed.
+
+The following approximate measurements come from `stress_v3`. They are
+examples, not memory or speed guarantees. Results depend on the platform and
+workload.
+
+| Mode | 1v1 memory per arena | 1v1 speed | 3v3 memory per arena | 3v3 speed |
+| --- | ---: | ---: | ---: | ---: |
+| `Heavy` | 915 KiB | Baseline | 946 KiB | Baseline |
+| `Balanced` | 108 KiB | 1–2% slower | 123 KiB | 3% slower |
+| `Light` | 66 KiB | 9% slower | 91 KiB | 12% slower |
+
+Use the [benchmark guide](rocketsim_test/README.md#measure-simulation-speed)
+to compare memory modes on your workload.
+
+## More examples and checks
+
+Run these examples from the workspace root after you prepare the meshes:
+
+| Task | Command |
+| --- | --- |
+| Run a 1v1 simulation and read events | `cargo run -p rocketsim --example basic_match` |
+| Change mutators, pads, and memory mode | `cargo run -p rocketsim --example custom_mutators` |
+| Try the supported game modes | `cargo run -p rocketsim --example game_modes` |
+| Read state and cast rays | `cargo run -p rocketsim --example snapshot_raycast` |
+
+- [API reference](https://docs.rs/rocketsim). For this checkout, run `cargo doc -p rocketsim --no-deps --open`.
+- [Tests, recording comparisons, and benchmarks](rocketsim_test/README.md).
+- [Viewer screenshot and input review tools](tools/README.md).
+- [GitHub Actions and release instructions](tools/ci/README.md).
+- [Issue tracker](https://github.com/ZealanL/RocketSim/issues).
+
+## Troubleshooting
+
+- **The mesh directory is missing:** Check the process's working directory.
+  Use `rocketsim::init` with an explicit path if necessary.
+- **Initialization rejects a mesh set:** Check for missing, duplicate, or
+  incompatible `.cmf` components. Do not create the arena until initialization
+  returns `Ok(())`.
+- **Arena creation fails after initialization:** Confirm that you loaded the
+  mesh set for that mode. An omitted mode stays unloaded.
+- **No window appears:** This is expected for the core library. Use the viewer
+  example or add `rocketsim_vis` to your application.
+- **An older example does not compile:** Check its crate version. This README
+  uses the 0.3 API. Do not mix 0.2 code with 0.3 dependencies.
+
+The viewer models have [separate credit and use requirements](rocketsim_viewer/src/models/MODEL_LICENSE_README.md).
