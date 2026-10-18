@@ -161,8 +161,8 @@ impl ArenaPart {
 
 /// Indexed arena visual for a game mode: open bowl (shell), ceiling lid,
 /// playing-surface cap, and backdrop planes weld (and draw) separately.
-/// Backdrop planes sit 5uu outside the mesh extent (the hull curves bulge
-/// past the logic AABB; AABB-placed walls ended up inside the hull).
+/// Side and roof backdrops sit 5uu outside the mesh extent. Hoops end walls
+/// sit just outside the physics bounds so the rim does not move the walls.
 pub struct ArenaMesh {
     /// Mode this mesh was built for (drives scene rebuilds on switches).
     pub mode: GameMode,
@@ -175,8 +175,10 @@ pub struct ArenaMesh {
     pub net: ArenaPart,
     /// Procedural field cap (the visible playing surface).
     pub field: ArenaPart,
-    /// Backdrop floor + side walls.
+    /// Backdrop floor and side walls. Dropshot has no backdrop floor.
     pub planes_low: ArenaPart,
+    /// Opaque Hoops end walls. Outside faces are hidden for cutaway views.
+    pub planes_end: ArenaPart,
     /// Backdrop ceiling (interior views only).
     pub planes_high: ArenaPart,
     /// Pre-weld soup vertex count (weld-win denominator).
@@ -186,7 +188,11 @@ pub struct ArenaMesh {
 impl ArenaMesh {
     /// Builds an arena visual from streamed world-space mesh data.
     pub fn from_meshes(game_mode: GameMode, meshes: &[rocketsim_vis::proto::MeshData]) -> Self {
-        let mut soup = SoupMesh {
+        let mut hull_soup = SoupMesh {
+            verts: Vec::new(),
+            uvs: Vec::new(),
+        };
+        let mut net_soup = SoupMesh {
             verts: Vec::new(),
             uvs: Vec::new(),
         };
@@ -196,20 +202,20 @@ impl ArenaMesh {
                 0,
                 "metadata mesh indices must be triangles"
             );
+            let dest = if game_mode == GameMode::Hoops
+                && mesh.indices.len() / 3 == Arena::HOOPS_NET_FACE_COUNT
+            {
+                &mut net_soup
+            } else {
+                &mut hull_soup
+            };
             for &idx in &mesh.indices {
                 let p = mesh.vertices[idx as usize];
-                soup.verts.push(Vec3::from_array(p));
-                soup.uvs.push(Vec2::splat(0.5));
+                dest.verts.push(Vec3::from_array(p));
+                dest.uvs.push(Vec2::splat(0.5));
             }
         }
-        Self::from_hull_soups(
-            game_mode,
-            soup,
-            SoupMesh {
-                verts: Vec::new(),
-                uvs: Vec::new(),
-            },
-        )
+        Self::from_hull_soups(game_mode, hull_soup, net_soup)
     }
 
     /// Builds an empty arena mesh for startup before simulation metadata arrives.
@@ -227,6 +233,7 @@ impl ArenaMesh {
             net: empty(),
             field: empty(),
             planes_low: empty(),
+            planes_end: empty(),
             planes_high: empty(),
             soup_verts: 0,
         }
@@ -236,7 +243,7 @@ impl ArenaMesh {
     /// would also grab the flat floor).
     const LID_MIN_Z: f32 = 1500.0;
 
-    /// Builds hull soup, splits ceiling, adds 4 backdrop planes, welds each
+    /// Builds hull soup, splits the ceiling, adds backdrop planes, and welds each
     /// part. Needs [`crate::photo::init_meshes`] first (same as the sim).
     /// TheVoid has no hull — shell/lid stay empty, planes still build.
     pub fn build(game_mode: GameMode) -> Self {
@@ -288,7 +295,7 @@ impl ArenaMesh {
             dest.uvs.extend_from_slice(uvs);
         }
         let aabb = rocketsim::consts::arena::get_aabb(game_mode);
-        // Backdrop planes sit 5uu outside the mesh extent (see struct docs).
+        // Side and roof backdrops sit outside the curved collision mesh.
         let gap = 5.0;
         let (mesh_min_x, mesh_max_x, mesh_min_y, mesh_max_y, mesh_max_z) = {
             let (mut mnx, mut mxx, mut mny, mut mxy, mut mxz) =
@@ -347,12 +354,32 @@ impl ArenaMesh {
             )
         };
         let planes_low_soup = SoupMesh::concat(&[&floor, &wall_neg_x, &wall_pos_x]);
+        let planes_end_soup = if game_mode == GameMode::Hoops {
+            // The rim extends behind the physics end walls. Use the physics
+            // bounds to hide those parts and meet the curved wall mesh.
+            let end_gap = 0.5;
+            let wall_neg_y = plane.transformed(
+                Vec3::new(0.0, aabb.min.y - end_gap, aabb.center().z),
+                Mat3::from_rotation_x(-std::f32::consts::FRAC_PI_2),
+            );
+            let wall_pos_y = plane.transformed(
+                Vec3::new(0.0, aabb.max.y + end_gap, aabb.center().z),
+                Mat3::from_rotation_x(std::f32::consts::FRAC_PI_2),
+            );
+            SoupMesh::concat(&[&wall_neg_y, &wall_pos_y])
+        } else {
+            SoupMesh {
+                verts: Vec::new(),
+                uvs: Vec::new(),
+            }
+        };
         let planes_high_soup = SoupMesh::concat(&[&ceiling]);
         let soup_verts = shell_soup.verts.len()
             + lid_soup.verts.len()
             + net_soup.verts.len()
             + field_soup.verts.len()
             + planes_low_soup.verts.len()
+            + planes_end_soup.verts.len()
             + planes_high_soup.verts.len();
         Self {
             mode: game_mode,
@@ -361,6 +388,7 @@ impl ArenaMesh {
             net: ArenaPart::from_soup(&net_soup),
             field: ArenaPart::from_soup(&field_soup),
             planes_low: ArenaPart::from_soup(&planes_low_soup),
+            planes_end: ArenaPart::from_soup(&planes_end_soup),
             planes_high: ArenaPart::from_soup(&planes_high_soup),
             soup_verts,
         }
@@ -373,6 +401,7 @@ impl ArenaMesh {
             + self.net.verts.len()
             + self.field.verts.len()
             + self.planes_low.verts.len()
+            + self.planes_end.verts.len()
             + self.planes_high.verts.len()
     }
 
@@ -383,6 +412,7 @@ impl ArenaMesh {
             + self.net.indices.len()
             + self.field.indices.len()
             + self.planes_low.indices.len()
+            + self.planes_end.indices.len()
             + self.planes_high.indices.len()
     }
 
@@ -481,6 +511,11 @@ mod tests {
                 "{mode:?}"
             );
             assert_eq!(mesh.planes_high.indices.len(), 6, "{mode:?}");
+            assert_eq!(
+                mesh.planes_end.indices.len(),
+                if mode == GameMode::Hoops { 12 } else { 0 },
+                "{mode:?}"
+            );
         }
     }
 
@@ -536,6 +571,7 @@ mod tests {
         check_part(&mesh.net, &format!("{label} net"));
         check_part(&mesh.field, &format!("{label} field"));
         check_part(&mesh.planes_low, &format!("{label} planes-low"));
+        check_part(&mesh.planes_end, &format!("{label} planes-end"));
         check_part(&mesh.planes_high, &format!("{label} planes-high"));
         // Partition accounting (every hull soup tri lands in shell xor lid)
         // is structural: weld preserves tri counts, and `lid_is_only_roof`
@@ -565,6 +601,137 @@ mod tests {
         let ratio = mesh.soup_verts as f64 / mesh.welded_verts() as f64;
         // Measured ~5.4x; 4x is generous headroom against hull changes.
         assert!(ratio >= 4.0, "weld win collapsed: {ratio:.2}x");
+    }
+
+    #[test]
+    fn streamed_hoops_splits_only_net_components() {
+        let net = rocketsim_vis::proto::MeshData {
+            vertices: vec![
+                [-50.0, -500.0, 500.0],
+                [50.0, -500.0, 500.0],
+                [0.0, -400.0, 600.0],
+            ],
+            indices: [0, 1, 2].repeat(Arena::HOOPS_NET_FACE_COUNT),
+        };
+        let mut other_net = net.clone();
+        for vertex in &mut other_net.vertices {
+            vertex[1] = -vertex[1];
+        }
+        let wall = rocketsim_vis::proto::MeshData {
+            vertices: vec![
+                [-100.0, 20.0, 0.0],
+                [100.0, 20.0, 0.0],
+                [-100.0, 100.0, 100.0],
+            ],
+            indices: vec![0, 1, 2],
+        };
+        let input = [net, other_net, wall];
+        let hoops = ArenaMesh::from_meshes(GameMode::Hoops, &input);
+        assert_eq!(hoops.net.indices.len(), 2 * Arena::HOOPS_NET_FACE_COUNT * 3);
+        assert_eq!(hoops.shell.indices.len(), 3);
+        assert!(hoops.shell.verts.iter().all(|vertex| vertex.y >= 20.0));
+        assert!(hoops.net.verts.iter().any(|vertex| vertex.y < 0.0));
+        assert!(hoops.net.verts.iter().any(|vertex| vertex.y > 0.0));
+        for mode in [
+            GameMode::Soccar,
+            GameMode::Heatseeker,
+            GameMode::Snowday,
+            GameMode::Dropshot,
+            GameMode::TheVoid,
+        ] {
+            let mesh = ArenaMesh::from_meshes(mode, &input);
+            assert!(mesh.net.indices.is_empty(), "{mode:?} must stay opaque");
+            assert_eq!(
+                mesh.shell.indices.len(),
+                2 * Arena::HOOPS_NET_FACE_COUNT * 3 + 3
+            );
+        }
+    }
+
+    #[test]
+    fn streamed_hoops_matches_local_mesh_partitions() {
+        crate::photo::init_meshes();
+        let arena = Arena::new(GameMode::Hoops);
+        let scene = rocketsim_vis::proto::SceneMetadata::from_arena(&arena);
+        let streamed = ArenaMesh::from_meshes(scene.game_mode, &scene.meshes);
+        let local = ArenaMesh::build(GameMode::Hoops);
+        assert_eq!(
+            streamed.net.indices.len(),
+            2 * Arena::HOOPS_NET_FACE_COUNT * 3
+        );
+        for (streamed, local) in [
+            (&streamed.shell, &local.shell),
+            (&streamed.lid, &local.lid),
+            (&streamed.net, &local.net),
+            (&streamed.field, &local.field),
+            (&streamed.planes_low, &local.planes_low),
+            (&streamed.planes_end, &local.planes_end),
+            (&streamed.planes_high, &local.planes_high),
+        ] {
+            assert_eq!(streamed.verts, local.verts);
+            assert_eq!(streamed.normals, local.normals);
+            assert_eq!(streamed.uvs, local.uvs);
+            assert_eq!(streamed.indices, local.indices);
+        }
+    }
+
+    #[test]
+    fn hoops_end_wall_planes_face_inward() {
+        let hoops = ArenaMesh::from_meshes(GameMode::Hoops, &[]);
+        let bounds = rocketsim::consts::arena::get_aabb(GameMode::Hoops);
+        assert!(hoops.net.indices.is_empty());
+        assert_eq!(hoops.planes_end.indices.len(), 12);
+        for (y, normal) in [
+            (bounds.min.y - 0.5, Vec3::Y),
+            (bounds.max.y + 0.5, Vec3::NEG_Y),
+        ] {
+            let faces: Vec<_> = hoops
+                .planes_end
+                .indices
+                .as_chunks::<3>()
+                .0
+                .iter()
+                .filter(|indices| {
+                    indices
+                        .iter()
+                        .all(|&index| (hoops.planes_end.verts[index as usize].y - y).abs() < 0.01)
+                })
+                .collect();
+            assert_eq!(faces.len(), 2, "missing opaque end wall at y={y}");
+            for indices in faces {
+                assert!(
+                    indices
+                        .iter()
+                        .all(|&index| hoops.planes_end.normals[index as usize].dot(normal) > 0.999)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn hoops_end_walls_follow_physics_not_rim_extent() {
+        crate::photo::init_meshes();
+        let hoops = ArenaMesh::build(GameMode::Hoops);
+        let bounds = rocketsim::consts::arena::get_aabb(GameMode::Hoops);
+        assert_eq!(hoops.planes_end.indices.len(), 12);
+        for (y, sign) in [(bounds.min.y - 0.5, -1.0), (bounds.max.y + 0.5, 1.0)] {
+            let wall: Vec<_> = hoops
+                .planes_end
+                .verts
+                .iter()
+                .filter(|vertex| vertex.y * sign > 0.0)
+                .collect();
+            assert_eq!(wall.len(), 4);
+            assert!(wall.iter().all(|vertex| (vertex.y - y).abs() < 0.01));
+            assert!(
+                hoops
+                    .shell
+                    .verts
+                    .iter()
+                    .any(|vertex| (vertex.y - y) * sign > 100.0),
+                "rim geometry must not push the end-wall backdrop away from the physics plane"
+            );
+        }
     }
 
     #[test]

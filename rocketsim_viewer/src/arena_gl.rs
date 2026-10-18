@@ -106,10 +106,9 @@ fn merge_two(a: &ArenaPart, b: &ArenaPart) -> (Vec<Vec3>, Vec<Vec3>, Vec<Vec2>, 
     (verts, normals, uvs, indices)
 }
 
-/// Owned GL objects for the arena: the cutaway bowl (always drawn), the
-/// roof (enclosed/interior views only), and the translucent Hoops net
-/// (drawn last, never occludes). Shell + field + low planes merge at init
-/// (1 draw); roof adds 1 more when enclosed; net adds 1 more in Hoops.
+/// Owned GL objects for the arena. Shell, field, and low planes share one
+/// opaque draw. The roof draws for interior views. Hoops end walls hide their
+/// outside faces for cutaway views. The Hoops net has a separate alpha pass.
 pub struct ArenaGl {
     prog: glow::Program,
     u_model: glow::UniformLocation,
@@ -119,6 +118,7 @@ pub struct ArenaGl {
     white: TextureGl,
     cut: PartGl,
     roof: PartGl,
+    end_walls: PartGl,
     net: PartGl,
 }
 
@@ -153,6 +153,13 @@ impl ArenaGl {
         let cut = PartGl::new(gl, &v, &n, &u, &i);
         let (v, n, u, i) = merge_two(&mesh.lid, &mesh.planes_high);
         let roof = PartGl::new(gl, &v, &n, &u, &i);
+        let end_walls = PartGl::new(
+            gl,
+            &mesh.planes_end.verts,
+            &mesh.planes_end.normals,
+            &mesh.planes_end.uvs,
+            &mesh.planes_end.indices,
+        );
         // Net draws unmerged (its own alpha pass below).
         let net = PartGl::new(
             gl,
@@ -170,13 +177,13 @@ impl ArenaGl {
             white,
             cut,
             roof,
+            end_walls,
             net,
         }
     }
 
-    /// Draws the cutaway in ONE draw, plus the roof in ONE draw when
-    /// `enclosed`, plus the translucent net in ONE draw when the mesh has
-    /// one (Hoops only; empty VAOs draw nothing). Viewport in GL pixels.
+    /// Draws the opaque cutaway, the roof when `enclosed`, and Hoops end walls.
+    /// Call [`Self::draw_net`] after actors and pads. Viewport uses GL pixels.
     /// Resets all shared GL state first (egui painter state leaks: every
     /// draw owns its state).
     pub fn draw(
@@ -210,6 +217,21 @@ impl ArenaGl {
             if enclosed {
                 gl.bind_vertex_array(Some(self.roof.vao));
                 gl.draw_elements(glow::TRIANGLES, self.roof.n_indices, glow::UNSIGNED_INT, 0);
+            }
+            if self.end_walls.n_indices != 0 {
+                // Keep the exterior wide view open. From inside, both end walls
+                // are opaque and write depth just like the rest of the arena.
+                gl.enable(glow::CULL_FACE);
+                gl.front_face(glow::CCW);
+                gl.cull_face(glow::BACK);
+                gl.bind_vertex_array(Some(self.end_walls.vao));
+                gl.draw_elements(
+                    glow::TRIANGLES,
+                    self.end_walls.n_indices,
+                    glow::UNSIGNED_INT,
+                    0,
+                );
+                gl.disable(glow::CULL_FACE);
             }
 
             gl.bind_vertex_array(None);
@@ -246,6 +268,7 @@ impl ArenaGl {
         unsafe {
             self.cut.destroy(gl);
             self.roof.destroy(gl);
+            self.end_walls.destroy(gl);
             self.net.destroy(gl);
             self.white.destroy(gl);
             gl.delete_program(self.prog);
