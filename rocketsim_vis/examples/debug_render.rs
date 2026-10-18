@@ -545,7 +545,7 @@ fn showcase(
         [-180.0, 40.0, 260.0],
         palette::ORANGE,
         Width::pixels(3.0),
-        DepthMode::Always,
+        DepthMode::Test,
     );
     let spiral: Vec<[f32; 3]> = (0..1800)
         .map(|i| {
@@ -558,7 +558,7 @@ fn showcase(
         spiral,
         palette::MAGENTA,
         Width::pixels(2.0),
-        DepthMode::Always,
+        DepthMode::Test,
         false,
     );
     let mut rng = 0x12345678u32;
@@ -571,7 +571,7 @@ fn showcase(
             [x, y, 20.0 + (i % 9) as f32 * 16.0],
             palette::rainbow(i as f32 / 1400.0),
             Width::pixels(3.0),
-            DepthMode::Always,
+            DepthMode::Test,
         );
     }
     scene.label_world(
