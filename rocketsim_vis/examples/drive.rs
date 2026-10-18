@@ -7,6 +7,8 @@
 //! Run `cargo run -p rocketsim_vis --example drive -- [-g hoops]`.
 //! Use `--viewer IP:PORT` to connect to a viewer started separately.
 
+mod support;
+
 use std::net::SocketAddr;
 
 use clap::Parser;
@@ -34,6 +36,11 @@ fn parse_mode(text: &str) -> Result<GameMode, String> {
 
 fn main() -> std::io::Result<()> {
     let cli = Cli::parse();
+    let _viewer = if cli.viewer.is_none() {
+        support::prepare_viewer()?
+    } else {
+        None
+    };
     init_meshes();
     let mut arena = Arena::new_with_config(ArenaConfig {
         rng_seed: Some(0),

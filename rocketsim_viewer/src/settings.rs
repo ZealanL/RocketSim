@@ -12,7 +12,98 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::{bindings::Bindings, camera::CameraConfig};
+use crate::{
+    bindings::Bindings,
+    camera::CameraConfig,
+    input::{Action, ActionMap, InputSource},
+};
+
+/// Device view for the universal action binding table.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BindingDevice {
+    #[default]
+    All,
+    KeyboardMouse,
+    Controller,
+}
+
+impl BindingDevice {
+    /// Return the original action slots visible in this device view.
+    pub fn visible_slots(self, sources: [InputSource; 2]) -> Vec<usize> {
+        sources
+            .iter()
+            .enumerate()
+            .filter_map(|(slot, source)| {
+                let visible = match self {
+                    Self::All => true,
+                    Self::KeyboardMouse => matches!(
+                        source,
+                        InputSource::Key(_)
+                            | InputSource::Mouse(_)
+                            | InputSource::MouseAxis { .. }
+                            | InputSource::Wheel { .. }
+                            | InputSource::Unbound
+                    ),
+                    Self::Controller => matches!(
+                        source,
+                        InputSource::PadButton(_)
+                            | InputSource::PadAxis { .. }
+                            | InputSource::PadRaw { .. }
+                            | InputSource::Unbound
+                    ),
+                };
+                visible.then_some(slot)
+            })
+            .collect()
+    }
+
+    /// Reset only slots shown in this device view. Hidden-device bindings stay unchanged.
+    pub fn reset_action(self, map: &mut ActionMap, action: Action) {
+        let defaults = ActionMap::default();
+        let visible = self.visible_slots(*map.sources(action));
+        if self == Self::All {
+            for slot in visible {
+                map.set(action, slot, defaults.sources(action)[slot]);
+            }
+            return;
+        }
+
+        for &slot in &visible {
+            map.set(action, slot, InputSource::Unbound);
+        }
+        let mut assigned = [false; 2];
+        for (default_slot, source) in defaults.sources(action).iter().copied().enumerate() {
+            let matches_device = match self {
+                Self::All => true,
+                Self::KeyboardMouse => matches!(
+                    source,
+                    InputSource::Key(_)
+                        | InputSource::Mouse(_)
+                        | InputSource::MouseAxis { .. }
+                        | InputSource::Wheel { .. }
+                ),
+                Self::Controller => matches!(
+                    source,
+                    InputSource::PadButton(_)
+                        | InputSource::PadAxis { .. }
+                        | InputSource::PadRaw { .. }
+                ),
+            };
+            if !matches_device || source == InputSource::Unbound {
+                continue;
+            }
+            let target = if visible.contains(&default_slot) && !assigned[default_slot] {
+                Some(default_slot)
+            } else {
+                visible.iter().copied().find(|slot| !assigned[*slot])
+            };
+            if let Some(target) = target {
+                map.set(action, target, source);
+                assigned[target] = true;
+            }
+        }
+    }
+}
 
 /// Frame-rate limiter (Hz, 0 = uncapped). Default 60.
 pub const DEFAULT_FPS_LIMIT: u32 = 60;
@@ -397,6 +488,81 @@ fn directories_dir() -> Option<PathBuf> {
 mod tests {
     use super::*;
     use crate::bindings::{InputBinding, Key, MouseButton, PadButton};
+
+    #[test]
+    fn binding_device_views_keep_original_slots_and_hide_other_devices() {
+        use crate::{
+            bindings::{Key, MouseButton, PadButton},
+            input::InputSource,
+        };
+
+        let sources = [
+            InputSource::Key(Key::W),
+            InputSource::PadButton(PadButton::South),
+        ];
+        assert_eq!(BindingDevice::All.visible_slots(sources), vec![0, 1]);
+        assert_eq!(BindingDevice::KeyboardMouse.visible_slots(sources), vec![0]);
+        assert_eq!(BindingDevice::Controller.visible_slots(sources), vec![1]);
+
+        let unbound = [
+            InputSource::Unbound,
+            InputSource::Mouse(MouseButton::Primary),
+        ];
+        assert_eq!(BindingDevice::Controller.visible_slots(unbound), vec![0]);
+    }
+
+    #[test]
+    fn device_reset_preserves_hidden_assignment() {
+        use crate::{
+            bindings::{Key, PadButton},
+            input::InputSource,
+        };
+
+        let mut map = ActionMap::default();
+        map.set(Action::Jump, 0, InputSource::PadButton(PadButton::West));
+        map.set(Action::Jump, 1, InputSource::Key(Key::Q));
+        BindingDevice::KeyboardMouse.reset_action(&mut map, Action::Jump);
+        assert_eq!(
+            map.sources(Action::Jump)[0],
+            InputSource::PadButton(PadButton::West)
+        );
+        assert_eq!(
+            map.sources(Action::Jump)[1],
+            ActionMap::default().sources(Action::Jump)[0]
+        );
+    }
+
+    #[test]
+    fn device_reset_keeps_empty_visible_slot_unbound() {
+        use crate::{bindings::Key, input::InputSource};
+
+        let mut map = ActionMap::default();
+        map.set(Action::Jump, 0, InputSource::Key(Key::K));
+        map.set(Action::Jump, 1, InputSource::Unbound);
+        BindingDevice::KeyboardMouse.reset_action(&mut map, Action::Jump);
+        let defaults = ActionMap::default();
+        assert_eq!(
+            map.sources(Action::Jump)[0],
+            defaults.sources(Action::Jump)[0]
+        );
+        assert_eq!(map.sources(Action::Jump)[1], InputSource::Unbound);
+    }
+
+    #[test]
+    fn device_reset_assigns_one_default_for_two_visible_slots() {
+        use crate::{bindings::PadButton, input::InputSource};
+
+        let mut map = ActionMap::default();
+        map.set(Action::Jump, 0, InputSource::PadButton(PadButton::West));
+        map.set(Action::Jump, 1, InputSource::PadButton(PadButton::East));
+        BindingDevice::Controller.reset_action(&mut map, Action::Jump);
+        let defaults = ActionMap::default();
+        assert_eq!(map.sources(Action::Jump)[0], InputSource::Unbound);
+        assert_eq!(
+            map.sources(Action::Jump)[1],
+            defaults.sources(Action::Jump)[1]
+        );
+    }
 
     #[test]
     fn defaults_match_spec() {

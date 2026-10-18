@@ -281,7 +281,7 @@ def main():
                     ecodes.ABS_HAT0X: AbsInfo(0, -1, 1, 0, 0, 0),
                     ecodes.ABS_HAT0Y: AbsInfo(0, -1, 1, 0, 0, 0)}
             buttons = [ecodes.BTN_SOUTH, ecodes.BTN_EAST, ecodes.BTN_NORTH, ecodes.BTN_WEST,
-                       ecodes.BTN_TL, ecodes.BTN_TR, ecodes.BTN_TL2, ecodes.BTN_TR2,
+                       ecodes.BTN_TL, ecodes.BTN_TR,
                        ecodes.BTN_SELECT, ecodes.BTN_START, ecodes.BTN_MODE, ecodes.BTN_THUMBL,
                        ecodes.BTN_THUMBR]
             pad = UInput({ecodes.EV_KEY: buttons, ecodes.EV_ABS: axes},

@@ -7,13 +7,17 @@ viewer does not use a separate `39202` control channel.
 
 ## Build and run
 
-Build the viewer before you run lightweight examples, or install it so the
-launcher can find `rocketsim-viewer` on `PATH`:
+The workspace examples build and launch the matching viewer:
 
 ```sh
-cargo build -p rocketsim_viewer --bin rocketsim-viewer
+cargo run --release --example drive
 cargo run -p rocketsim_vis --example minimal
 ```
+
+The first run also compiles the graphics dependencies. Later runs update the
+viewer only when needed. `ROCKETSIM_VIEWER` selects an executable and skips
+this build. `drive --viewer IP:PORT` connects without building or launching a
+viewer.
 
 To run the viewer directly:
 
@@ -29,11 +33,12 @@ cargo install rocketsim_viewer
 
 On Linux, a source build with gamepad support needs the `libudev` development
 package. A source install also needs the Rust toolchain and system libraries
-required by the graphics stack. The launcher looks for an installed
-`rocketsim-viewer` on `PATH` or a local build. Set `ROCKETSIM_VIEWER` to an
+required by the graphics stack. The launcher looks for a local build of
+`rocketsim-viewer` before it searches `PATH`. Set `ROCKETSIM_VIEWER` to an
 executable path to select a specific viewer binary. Do not assume that
 prebuilt release files are available. The viewer and simulation are separate
-crates. Build or install the viewer separately from the simulation.
+crates. Applications other than the workspace examples must build or install
+the viewer separately from the simulation.
 
 ## Sim integration
 
@@ -91,8 +96,15 @@ timing.
 
 All controls use one action map. It has 56 actions, with two input slots for
 each action. Each slot can use a keyboard key, mouse input, or controller input.
-The settings menu groups actions and lets you search. Duplicate bindings show a
-warning; they are allowed. Clear a slot or reset an action to its defaults.
+The settings menu has Camera, Bindings, Display, and Simulation tabs. The
+Bindings tab has Keyboard & Mouse, Controller, and All views. These views
+filter the same two slots. They do not add slots or restrict input capture.
+Use All when both slots have assignments on another device.
+
+Search for an action or select an action group. Clear a slot or reset the
+visible device assignments. A device reset preserves hidden assignments.
+Duplicate bindings show a warning; they are allowed. Reset all settings
+requires confirmation.
 
 Supported inputs include egui keyboard keys and modifiers, five mouse buttons,
 signed X/Y mouse motion and wheel input, controller buttons and triggers,
@@ -168,8 +180,7 @@ mutators.
 
 ## Examples
 
-Build the viewer first as shown above, or install it on `PATH` before running
-examples that launch it:
+These workspace examples build the viewer before they launch it:
 
 ```sh
 cargo run -p rocketsim_vis --example minimal

@@ -89,7 +89,7 @@ fn reserve(addr: SocketAddr, attached: bool) -> io::Result<ViewerLease> {
 pub(crate) fn attach(addr: SocketAddr, launch: bool) -> io::Result<ViewerLease> {
     let lease = reserve(addr, true)?;
     if launch {
-        start_and_wait(addr)?;
+        start_and_wait(addr, None)?;
     }
     Ok(lease)
 }
@@ -101,7 +101,18 @@ pub(crate) fn attach(addr: SocketAddr, launch: bool) -> io::Result<ViewerLease> 
 pub fn try_ensure_viewer_running(addr: &str) -> io::Result<ViewerHandle> {
     let addr = parse(addr)?;
     let lease = reserve(addr, false)?;
-    start_and_wait(addr)?;
+    start_and_wait(addr, None)?;
+    Ok(ViewerHandle { _lease: lease })
+}
+
+/// Ensure a viewer is available. Use `path` if a new process is needed.
+///
+/// This does not search `PATH` or use `ROCKETSIM_VIEWER`. A viewer that already
+/// listens at `addr` is reused. Keep the returned handle while the viewer is needed.
+pub fn try_ensure_viewer_running_with_path(addr: &str, path: &Path) -> io::Result<ViewerHandle> {
+    let addr = parse(addr)?;
+    let lease = reserve(addr, false)?;
+    start_and_wait(addr, Some(path))?;
     Ok(ViewerHandle { _lease: lease })
 }
 
@@ -127,7 +138,7 @@ pub fn ensure_viewer_running(addr: &str) {
     }
 }
 
-fn start_and_wait(addr: SocketAddr) -> io::Result<()> {
+fn start_and_wait(addr: SocketAddr, viewer_path: Option<&Path>) -> io::Result<()> {
     {
         let mut entries = registry()
             .lock()
@@ -150,18 +161,24 @@ fn start_and_wait(addr: SocketAddr) -> io::Result<()> {
             ));
         }
         if entry.child.is_none() {
-            let path = find_viewer().ok_or_else(|| {
+            let path = viewer_path.map(Path::to_path_buf).or_else(find_viewer).ok_or_else(|| {
                 io::Error::new(
                     io::ErrorKind::NotFound,
                     "rocketsim-viewer was not found; install it on PATH or run `cargo build -p rocketsim_viewer --bin rocketsim-viewer`",
                 )
             })?;
             entry.child = Some(
-                Command::new(path)
+                Command::new(&path)
                     .arg(addr.port().to_string())
                     .arg("--bind")
                     .arg(addr.ip().to_string())
-                    .spawn()?,
+                    .spawn()
+                    .map_err(|error| {
+                        io::Error::new(
+                            error.kind(),
+                            format!("cannot start {}: {error}", path.display()),
+                        )
+                    })?,
             );
         }
     }
@@ -239,17 +256,24 @@ fn find_viewer() -> Option<PathBuf> {
     if let Some(path) = std::env::var_os("ROCKETSIM_VIEWER") {
         return executable(Path::new(&path)).then(|| PathBuf::from(path));
     }
-    if let Some(paths) = std::env::var_os("PATH")
-        && let Some(path) = std::env::split_paths(&paths)
-            .filter(|path| !path.as_os_str().is_empty())
-            .map(|path| path.join(binary_name()))
-            .find(|path| executable(path))
-    {
-        return Some(path);
+    viewer_candidates(
+        std::env::current_exe().ok().as_deref(),
+        std::env::var_os("PATH").as_deref(),
+    )
+    .into_iter()
+    .find(|path| executable(path))
+}
+
+fn viewer_candidates(exe: Option<&Path>, search_path: Option<&std::ffi::OsStr>) -> Vec<PathBuf> {
+    let mut candidates = exe.map(sibling_candidates).unwrap_or_default();
+    if let Some(paths) = search_path {
+        candidates.extend(
+            std::env::split_paths(paths)
+                .filter(|path| !path.as_os_str().is_empty())
+                .map(|path| path.join(binary_name())),
+        );
     }
-    sibling_candidates(&std::env::current_exe().ok()?)
-        .into_iter()
-        .find(|path| executable(path))
+    candidates
 }
 
 #[cfg(test)]
@@ -269,6 +293,38 @@ mod tests {
             let exe = Path::new("target/debug").join(dir).join("sim");
             assert!(sibling_candidates(&exe).contains(&Path::new("target/debug").join(name)));
         }
+    }
+
+    #[test]
+    fn local_viewers_precede_path_candidates() {
+        let search_path = std::env::join_paths(["installed/bin", "other/bin"]).unwrap();
+        let local = Path::new("target/release").join(binary_name());
+        let installed = Path::new("installed/bin").join(binary_name());
+        let candidates = viewer_candidates(
+            Some(Path::new("target/release/examples/drive")),
+            Some(&search_path),
+        );
+        let local_index = candidates.iter().position(|path| path == &local).unwrap();
+        let installed_index = candidates
+            .iter()
+            .position(|path| path == &installed)
+            .unwrap();
+        assert!(local_index < installed_index);
+        assert_eq!(viewer_candidates(None, Some(&search_path))[0], installed);
+    }
+
+    #[test]
+    fn explicit_viewer_path_is_used_and_failed_launch_releases_lease() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        drop(listener);
+        let path = Path::new("missing-viewer-directory/rocketsim-viewer");
+        let error = try_ensure_viewer_running_with_path(&addr.to_string(), path)
+            .err()
+            .unwrap();
+        assert_eq!(error.kind(), io::ErrorKind::NotFound);
+        assert!(error.to_string().contains(&path.display().to_string()));
+        assert!(!registry().lock().unwrap().contains_key(&addr));
     }
 
     #[test]

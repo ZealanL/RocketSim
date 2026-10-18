@@ -6,6 +6,8 @@
 //!
 //! Run with: `cargo run -p rocketsim_vis --example action`
 
+mod support;
+
 use glam::Vec3A;
 use rocketsim::{Arena, ArenaConfig, CarBodyConfig, CarControls, GameMode, Team};
 use rocketsim_vis::{ArenaVisExt, photo::init_meshes};
@@ -22,7 +24,8 @@ pub const RESET_TICK: u64 = 250;
 /// Total streamed ticks (~10s at 8ms pacing).
 pub const ACTION_TICKS: u64 = 1200;
 
-fn main() {
+fn main() -> std::io::Result<()> {
+    let _viewer = support::prepare_viewer()?;
     init_meshes();
     let mut arena = Arena::new_with_config(ArenaConfig {
         rng_seed: Some(0),
@@ -30,7 +33,7 @@ fn main() {
     });
     let car_idx = arena.add_car(Team::Blue, CarBodyConfig::OCTANE);
     arena.reset_to_random_kickoff(Some(0));
-    arena.set_vis_enabled(true);
+    arena.try_set_vis_enabled(true)?;
 
     let mut drive = CarControls {
         throttle: 1.0,
@@ -67,4 +70,5 @@ fn main() {
         }
         std::thread::sleep(std::time::Duration::from_millis(8));
     }
+    Ok(())
 }

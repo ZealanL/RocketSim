@@ -202,23 +202,14 @@ impl ArenaMesh {
                 soup.uvs.push(Vec2::splat(0.5));
             }
         }
-        let part = ArenaPart::from_soup(&soup);
-        let empty = || ArenaPart {
-            verts: Vec::new(),
-            uvs: Vec::new(),
-            normals: Vec::new(),
-            indices: Vec::new(),
-        };
-        Self {
-            mode: game_mode,
-            shell: part,
-            lid: empty(),
-            net: empty(),
-            field: empty(),
-            planes_low: empty(),
-            planes_high: empty(),
-            soup_verts: soup.verts.len(),
-        }
+        Self::from_hull_soups(
+            game_mode,
+            soup,
+            SoupMesh {
+                verts: Vec::new(),
+                uvs: Vec::new(),
+            },
+        )
     }
 
     /// Builds an empty arena mesh for startup before simulation metadata arrives.
@@ -264,15 +255,19 @@ impl ArenaMesh {
         for mesh in &rocketsim::get_arena_collision_mesh_files(game_mode) {
             let is_net = game_mode == GameMode::Hoops
                 && mesh.get_indices().len() / 3 == Arena::HOOPS_NET_FACE_COUNT;
-            let soup = SoupMesh::from_mesh(mesh);
+            let source = SoupMesh::from_mesh(mesh);
             let dest = if is_net {
                 &mut net_soup
             } else {
                 &mut hull_soup
             };
-            dest.verts.extend_from_slice(&soup.verts);
-            dest.uvs.extend_from_slice(&soup.uvs);
+            dest.verts.extend_from_slice(&source.verts);
+            dest.uvs.extend_from_slice(&source.uvs);
         }
+        Self::from_hull_soups(game_mode, hull_soup, net_soup)
+    }
+
+    fn from_hull_soups(game_mode: GameMode, hull_soup: SoupMesh, net_soup: SoupMesh) -> Self {
         let mut shell_soup = SoupMesh {
             verts: Vec::new(),
             uvs: Vec::new(),
@@ -412,6 +407,11 @@ mod tests {
         assert_eq!(mesh.shell.indices, vec![0, 1, 2]);
         assert_eq!(mesh.shell.verts[1], Vec3::new(4.0, 2.0, 3.0));
         assert_eq!(mesh.mode, GameMode::Soccar);
+        assert_eq!(mesh.field.indices.len(), 6);
+        assert_eq!(mesh.planes_low.indices.len(), 18);
+        assert_eq!(mesh.planes_high.indices.len(), 6);
+        assert_eq!(mesh.index_count(), 33);
+        assert!(mesh.field.uvs.iter().all(|uv| *uv != Vec2::splat(0.5)));
     }
 
     #[test]
@@ -432,12 +432,55 @@ mod tests {
         }];
         let dropshot = ArenaMesh::from_meshes(GameMode::Dropshot, &input);
         assert_eq!(dropshot.shell.indices.len(), 6);
+        assert!(dropshot.field.indices.is_empty());
+        assert_eq!(
+            dropshot.planes_low.indices.len(),
+            12,
+            "only backdrop walls remain"
+        );
+        assert_eq!(
+            dropshot.planes_high.indices.len(),
+            6,
+            "backdrop ceiling remains"
+        );
         assert!(dropshot.shell.verts.iter().any(|p| p.x == -4892.0));
         assert!(dropshot.shell.verts.iter().any(|p| p.z == 500.0));
 
         for mode in [GameMode::Soccar, GameMode::Hoops] {
             let mesh = ArenaMesh::from_meshes(mode, &input);
             assert_eq!(mesh.shell.indices.len(), 6, "{mode:?} stream changed");
+        }
+    }
+
+    #[test]
+    fn streamed_empty_void_builds_backdrop_without_sim_initialization() {
+        let mesh = ArenaMesh::from_meshes(GameMode::TheVoid, &[]);
+        assert!(mesh.shell.indices.is_empty());
+        assert!(mesh.lid.indices.is_empty());
+        assert_eq!(mesh.field.indices.len(), 6);
+        assert_eq!(mesh.planes_low.indices.len(), 18);
+        assert_eq!(mesh.planes_high.indices.len(), 6);
+    }
+
+    #[test]
+    fn only_dropshot_omits_procedural_floor_surfaces() {
+        for mode in [
+            GameMode::Soccar,
+            GameMode::Hoops,
+            GameMode::Snowday,
+            GameMode::Heatseeker,
+            GameMode::Dropshot,
+            GameMode::TheVoid,
+        ] {
+            let mesh = ArenaMesh::from_meshes(mode, &[]);
+            let dropshot = mode == GameMode::Dropshot;
+            assert_eq!(mesh.field.indices.is_empty(), dropshot, "{mode:?}");
+            assert_eq!(
+                mesh.planes_low.indices.len(),
+                if dropshot { 12 } else { 18 },
+                "{mode:?}"
+            );
+            assert_eq!(mesh.planes_high.indices.len(), 6, "{mode:?}");
         }
     }
 

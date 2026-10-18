@@ -5,6 +5,8 @@
 //!
 //! Run with: `cargo run -p rocketsim_vis --example minimal -- [-g hoops]`
 
+mod support;
+
 use clap::Parser;
 use rocketsim::{Arena, ArenaConfig, CarBodyConfig, CarControls, GameMode, Team};
 use rocketsim_vis::{ArenaVisExt, parse_game_mode, photo::init_meshes};
@@ -25,15 +27,16 @@ fn parse_mode(s: &str) -> Result<GameMode, String> {
     })
 }
 
-fn main() {
+fn main() -> std::io::Result<()> {
     let cli = Cli::parse();
+    let _viewer = support::prepare_viewer()?;
     init_meshes();
     let mut arena = Arena::new_with_config(ArenaConfig::new(cli.game_mode));
     let car_idx = arena.add_car(Team::Blue, CarBodyConfig::OCTANE);
     arena.reset_to_random_kickoff(None);
 
     // Detached-viewer API: launches a viewer if none listens, streams every tick.
-    arena.set_vis_enabled(true);
+    arena.try_set_vis_enabled(true)?;
 
     let controls = CarControls {
         throttle: 1.0,
@@ -50,4 +53,5 @@ fn main() {
         arena.step_tick();
         std::thread::sleep(std::time::Duration::from_millis(8));
     }
+    Ok(())
 }

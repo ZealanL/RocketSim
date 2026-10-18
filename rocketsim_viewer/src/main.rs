@@ -33,7 +33,7 @@ use rocketsim_viewer::{
     mesh::ArenaMesh,
     pads::build_instances,
     scene::SceneGl,
-    settings::ViewerSettings,
+    settings::{BindingDevice, ViewerSettings},
     spectate, view,
 };
 use rocketsim_vis::{
@@ -115,11 +115,15 @@ struct ViewerApp {
     action_values: HashMap<Action, rocketsim_viewer::input::ActionValue>,
     binding_filter: String,
     binding_group: Option<String>,
+    binding_device: BindingDevice,
+    settings_tab: usize,
+    reset_all_confirm: bool,
 
-    headers_open: [bool; 6],
     binding_warning: Option<String>,
     /// Selected local gamepad for viewer actions and rebinding.
     gilrs: Option<gilrs::Gilrs>,
+    /// Named button state from gilrs events for the active pad.
+    pad_buttons: HashMap<PadButton, f32>,
     /// Raw ev-code state for unmapped inputs on the active pad.
     raw_pad: HashMap<u32, f32>,
     /// One selected controller owns all controller input.
@@ -233,32 +237,6 @@ fn draw_boost_gauge(ui: &egui::Ui, rect: egui::Rect, fraction: f32, label: &str,
     );
 }
 
-fn to_gilrs_button(b: PadButton) -> gilrs::Button {
-    use gilrs::Button as G;
-    match b {
-        PadButton::South => G::South,
-        PadButton::East => G::East,
-        PadButton::North => G::North,
-        PadButton::West => G::West,
-        PadButton::C => G::C,
-        PadButton::Z => G::Z,
-        PadButton::LeftTrigger => G::LeftTrigger,
-        PadButton::LeftTrigger2 => G::LeftTrigger2,
-        PadButton::RightTrigger => G::RightTrigger,
-        PadButton::RightTrigger2 => G::RightTrigger2,
-        PadButton::Select => G::Select,
-        PadButton::Start => G::Start,
-        PadButton::Mode => G::Mode,
-        PadButton::LeftThumb => G::LeftThumb,
-        PadButton::RightThumb => G::RightThumb,
-        PadButton::DPadUp => G::DPadUp,
-        PadButton::DPadDown => G::DPadDown,
-        PadButton::DPadLeft => G::DPadLeft,
-        PadButton::DPadRight => G::DPadRight,
-        PadButton::Unknown => G::Unknown,
-    }
-}
-
 fn to_gilrs_axis(a: PadAxis) -> gilrs::Axis {
     use gilrs::Axis as G;
     match a {
@@ -284,6 +262,9 @@ fn nav_row(
     active: bool,
     moved: bool,
 ) {
+    if !resp.enabled() {
+        return;
+    }
     let idx = ids.len();
     if active && idx == focus {
         ui.painter().rect_stroke(
@@ -514,6 +495,55 @@ fn from_gilrs_button(button: gilrs::Button) -> PadButton {
     }
 }
 
+fn update_pad_button_state(
+    buttons: &mut HashMap<PadButton, f32>,
+    button: gilrs::Button,
+    value: f32,
+) {
+    let button = from_gilrs_button(button);
+    if button != PadButton::Unknown {
+        buttons.insert(button, value);
+    }
+}
+
+fn update_pad_buttons(buttons: &mut HashMap<PadButton, f32>, event: gilrs::EventType) {
+    match event {
+        gilrs::EventType::ButtonPressed(button, _) => {
+            update_pad_button_state(buttons, button, 1.0);
+        }
+        gilrs::EventType::ButtonReleased(button, _) => {
+            update_pad_button_state(buttons, button, 0.0);
+        }
+        gilrs::EventType::ButtonChanged(button, value, _) => {
+            update_pad_button_state(buttons, button, value);
+        }
+        _ => {}
+    }
+}
+
+fn menu_nav_step(
+    nav_edge: [bool; 4],
+    nav_held: [bool; 4],
+    dt: f32,
+    repeat_cd: &mut f32,
+) -> (i32, i32) {
+    let mut dy = i32::from(nav_edge[1]) - i32::from(nav_edge[0]);
+    let mut dx = i32::from(nav_edge[3]) - i32::from(nav_edge[2]);
+    if nav_edge.iter().any(|&edge| edge) {
+        *repeat_cd = 0.35;
+    } else if nav_held.iter().any(|&held| held) {
+        *repeat_cd -= dt;
+        if *repeat_cd <= 0.0 {
+            *repeat_cd = 0.08;
+            dy = i32::from(nav_held[1]) - i32::from(nav_held[0]);
+            dx = i32::from(nav_held[3]) - i32::from(nav_held[2]);
+        }
+    } else {
+        *repeat_cd = 0.0;
+    }
+    (dy, dx)
+}
+
 fn update_raw_pad(raw: &mut HashMap<u32, f32>, event: gilrs::EventType) {
     match event {
         gilrs::EventType::ButtonPressed(_, code) | gilrs::EventType::ButtonRepeated(_, code) => {
@@ -536,7 +566,7 @@ fn action_input_snapshot(
     active_pad: Option<gilrs::GamepadId>,
     raw: &HashMap<u32, f32>,
     pulses: &PadFramePulses,
-    _map: &ActionMap,
+    pad_buttons: &HashMap<PadButton, f32>,
     focused: bool,
 ) -> InputSnapshot {
     let mut snapshot = InputSnapshot::new();
@@ -606,9 +636,7 @@ fn action_input_snapshot(
             PadButton::DPadLeft,
             PadButton::DPadRight,
         ] {
-            let value = pad
-                .button_data(to_gilrs_button(button))
-                .map_or(0.0, |data| data.value());
+            let value = pad_buttons.get(&button).copied().unwrap_or(0.0);
             let value = pad_frame_value(value, pulses.buttons.get(&button).copied().unwrap_or(0.0));
             snapshot.set(InputSource::PadButton(button), value);
         }
@@ -736,11 +764,14 @@ struct MenuPadCtx<'a> {
     auto_cam: &'a mut Option<AutoCam>,
 
     reset_requested: &'a mut bool,
-    headers_open: &'a mut [bool; 6],
+
     rebind_action: &'a mut Option<(Action, usize)>,
     rebind_capture: &'a mut Option<Capture>,
     input_snapshot: &'a InputSnapshot,
     binding_group: &'a mut Option<String>,
+    binding_device: &'a mut BindingDevice,
+    settings_tab: &'a mut usize,
+    reset_all_confirm: &'a mut bool,
     binding_filter: &'a mut String,
     capture_start_back: &'a mut Option<InputSource>,
     capture_cancel_hold: &'a mut f32,
@@ -751,6 +782,7 @@ struct MenuPadCtx<'a> {
     suppress_pad_on_next_frame: &'a mut bool,
     gilrs: Option<&'a gilrs::Gilrs>,
     raw_pad: &'a mut HashMap<u32, f32>,
+    pad_buttons: &'a mut HashMap<PadButton, f32>,
 }
 
 fn menu_pad_action(id: String, dx: i32, a: bool, cx: &mut MenuPadCtx) {
@@ -766,12 +798,6 @@ fn menu_pad_action(id: String, dx: i32, a: bool, cx: &mut MenuPadCtx) {
         }};
     }
     match id.as_str() {
-        "header.camera" if a => cx.headers_open[0] = !cx.headers_open[0],
-        "header.input" if a => cx.headers_open[1] = !cx.headers_open[1],
-        "header.mutators" if a => cx.headers_open[2] = !cx.headers_open[2],
-        "header.overlays" if a => cx.headers_open[3] = !cx.headers_open[3],
-        "header.display" if a => cx.headers_open[4] = !cx.headers_open[4],
-        "header.bindings" if a => cx.headers_open[5] = !cx.headers_open[5],
         "bind.capture.cancel" if a => {
             *cx.rebind_action = None;
             *cx.rebind_capture = None;
@@ -793,6 +819,7 @@ fn menu_pad_action(id: String, dx: i32, a: bool, cx: &mut MenuPadCtx) {
                         Some(pads[(index + direction).rem_euclid(pads.len() as i32) as usize]);
                     *cx.pad_selection_manual = true;
                     cx.raw_pad.clear();
+                    cx.pad_buttons.clear();
                     *cx.suppress_pad_on_next_frame = true;
                 }
             }
@@ -813,6 +840,41 @@ fn menu_pad_action(id: String, dx: i32, a: bool, cx: &mut MenuPadCtx) {
             *cx.binding_group =
                 groups[(index + dx.signum()).rem_euclid(groups.len() as i32) as usize].clone();
         }
+        id if id.starts_with("settings.tab.") && (dx != 0 || a) => {
+            if dx != 0 {
+                *cx.settings_tab = (*cx.settings_tab as i32 + dx.signum()).rem_euclid(4) as usize;
+            } else if let Some(index) = id
+                .rsplit('.')
+                .next()
+                .and_then(|value| value.parse::<usize>().ok())
+                .filter(|index| *index < 4)
+            {
+                *cx.settings_tab = index;
+            }
+        }
+        id if id.starts_with("bind.show_all.") && a => *cx.binding_device = BindingDevice::All,
+        id if id.starts_with("bind.device.") && (dx != 0 || a) => {
+            let devices = [
+                BindingDevice::All,
+                BindingDevice::KeyboardMouse,
+                BindingDevice::Controller,
+            ];
+            if dx != 0 {
+                let index = devices
+                    .iter()
+                    .position(|device| device == cx.binding_device)
+                    .unwrap_or(0) as i32;
+                *cx.binding_device =
+                    devices[(index + dx.signum()).rem_euclid(devices.len() as i32) as usize];
+            } else if let Some(device) = id
+                .rsplit('.')
+                .next()
+                .and_then(|value| value.parse::<usize>().ok())
+                .and_then(|index| devices.get(index))
+            {
+                *cx.binding_device = *device;
+            }
+        }
         "bind.filter.clear" if a => cx.binding_filter.clear(),
         "cam.wide" if a => {
             *cx.cam_mode = CamMode::Man;
@@ -831,8 +893,11 @@ fn menu_pad_action(id: String, dx: i32, a: bool, cx: &mut MenuPadCtx) {
         "cam.reset_camera" if a => {
             cx.settings.reset_camera();
         }
-        "menu.reset_all" if a => {
+        "settings.reset_all" if a => *cx.reset_all_confirm = true,
+        "reset.confirm.cancel" if a => *cx.reset_all_confirm = false,
+        "reset.confirm.apply" if a => {
             cx.settings.reset_all();
+            *cx.reset_all_confirm = false;
         }
         "input.spectate" if a || dx != 0 => {
             cx.settings.spectate_only = !cx.settings.spectate_only;
@@ -954,11 +1019,8 @@ fn menu_pad_action(id: String, dx: i32, a: bool, cx: &mut MenuPadCtx) {
                     .and_then(|x| x.parse::<usize>().ok())
                 {
                     if let Some(action) = ACTIONS.get(index).copied() {
-                        let defaults = ActionMap::default();
                         let mut map = cx.settings.input_bindings();
-                        for slot in 0..2 {
-                            map.set(action, slot, defaults.sources(action)[slot]);
-                        }
+                        cx.binding_device.reset_action(&mut map, action);
                         cx.settings.action_bindings = Some(map);
                         cx.settings.mark_dirty();
                     }
@@ -1075,10 +1137,13 @@ impl ViewerApp {
             action_values: HashMap::new(),
             binding_filter: String::new(),
             binding_group: None,
+            binding_device: BindingDevice::KeyboardMouse,
+            settings_tab: 0,
+            reset_all_confirm: false,
 
-            headers_open: [true, true, false, false, true, false],
             binding_warning: None,
             gilrs: gilrs::Gilrs::new().ok(),
+            pad_buttons: HashMap::new(),
             raw_pad: HashMap::new(),
             active_pad: None,
             pad_selection_manual: false,
@@ -1188,6 +1253,7 @@ impl eframe::App for ViewerApp {
             pad_device_changed = old_active != self.active_pad;
             if pad_device_changed {
                 self.raw_pad.clear();
+                self.pad_buttons.clear();
                 self.suppress_pad_on_next_frame = true;
             }
         }
@@ -1201,6 +1267,7 @@ impl eframe::App for ViewerApp {
             }
             match event.event {
                 gilrs::EventType::ButtonPressed(button, code) => {
+                    update_pad_buttons(&mut self.pad_buttons, event.event);
                     update_raw_pad(&mut self.raw_pad, event.event);
                     if !suppress_pad_pulses {
                         pad_pulses.record_press(button, code.into_u32());
@@ -1210,6 +1277,7 @@ impl eframe::App for ViewerApp {
                 | gilrs::EventType::ButtonRepeated(_, _)
                 | gilrs::EventType::ButtonChanged(_, _, _)
                 | gilrs::EventType::AxisChanged(_, _, _) => {
+                    update_pad_buttons(&mut self.pad_buttons, event.event);
                     update_raw_pad(&mut self.raw_pad, event.event);
                 }
                 _ => {}
@@ -1222,7 +1290,7 @@ impl eframe::App for ViewerApp {
             self.active_pad,
             &self.raw_pad,
             &pad_pulses,
-            &action_map,
+            &self.pad_buttons,
             focused,
         );
         if self.suppress_pad_on_next_frame {
@@ -1342,7 +1410,11 @@ impl eframe::App for ViewerApp {
             .is_some_and(|v| v.just_pressed)
             && !rebinding
         {
-            self.menu_open = !self.menu_open;
+            if self.reset_all_confirm {
+                self.reset_all_confirm = false;
+            } else {
+                self.menu_open = !self.menu_open;
+            }
             menu_toggled = true;
             self.action_evaluator
                 .suppress_until_release(&input_snapshot);
@@ -2089,11 +2161,12 @@ impl eframe::App for ViewerApp {
                     .collect()
             })
             .unwrap_or_default();
-        if self.menu_open && !rebinding {
+        if self.menu_open && !rebinding && !self.reset_all_confirm {
             let mut ui_action_map = self.settings.input_bindings();
             let mut bindings_dirty = false;
             let binding_group = &mut self.binding_group;
             let binding_filter = &mut self.binding_filter;
+            let binding_device = &mut self.binding_device;
             let rebind_action = &mut self.rebind_action;
             let rebind_capture = &mut self.rebind_capture;
 
@@ -2109,14 +2182,30 @@ impl eframe::App for ViewerApp {
             let moved = self.nav_moved;
 
             self.nav_ids.clear();
-            egui::Window::new("settings")
-                .scroll([false, true])
+            egui::Window::new("Settings")
+                .resizable(true)
+                .default_size([760.0, 680.0])
+                .min_size([540.0, 400.0])
+                .max_size([1100.0, 900.0])
+                .scroll([false, false])
                 .show(ctx, |ui| {
                 let (ids, focus, active, moved) = (&mut self.nav_ids, focus, active, moved);
-                let header = egui::CollapsingHeader::new("Camera")
-                    .id_salt("viewer.header.camera")
-                    .open(Some(self.headers_open[0]))
+                ui.horizontal_wrapped(|ui| {
+                    for (index, label) in ["Camera", "Bindings", "Display", "Simulation"].into_iter().enumerate() {
+                        let response = ui.selectable_label(self.settings_tab == index, label);
+                        if response.clicked() { self.settings_tab = index; }
+                        nav_row(ui, &response, ids, format!("settings.tab.{index}"), focus, active, moved);
+                    }
+                });
+                ui.separator();
+                let content_height = (ui.available_height() - 36.0).max(100.0);
+                egui::ScrollArea::vertical()
+                    .id_salt(("settings-content", self.settings_tab))
+                    .max_height(content_height)
+                    .auto_shrink([false, false])
                     .show(ui, |ui| {
+                if self.settings_tab == 0 {
+                ui.scope(|ui| {
                         ui.horizontal(|ui| {
                             let r = ui.button("Wide view");
                             if r.clicked() {
@@ -2146,11 +2235,6 @@ impl eframe::App for ViewerApp {
                         ));
                         ui.label(format!("You drive car {}.", self.driven_car));
                         ui.label(drive_line.clone());
-                        let r = ui.button("Reset play");
-                        if r.clicked() {
-                            self.reset_requested = true;
-                        }
-                        nav_row(ui, &r, ids, "cam.reset_play".to_string(), focus, active, moved);
                         // One focus stop per slider (pad ◀▶ adjusts).
                         let r = ui.add(
                             egui::Slider::new(&mut settings.camera.fov_degrees, 60.0..=130.0)
@@ -2232,37 +2316,20 @@ impl eframe::App for ViewerApp {
                             }
                         });
                     });
-                if header.header_response.clicked() { self.headers_open[0] = !self.headers_open[0]; }
-                nav_row(ui, &header.header_response, ids, "header.camera".into(), focus, active, moved);
-                let header = egui::CollapsingHeader::new("Input")
-                    .id_salt("viewer.header.input")
-                    .open(Some(self.headers_open[1]))
-                    .show(ui, |ui| {
-                        let r = ui.checkbox(&mut settings.spectate_only, "Spectate only (no inputs)");
-                        if r.changed() {
-                            settings.mark_dirty();
-                        }
-                        nav_row(ui, &r, ids, "input.spectate".to_string(), focus, active, moved);
-                        let r = ui.add(
-                            egui::Slider::new(
-                                &mut settings.bindings.pad.stick_deadzone,
-                                0.0..=0.5,
-                            )
-                            .text("Controller stick deadzone"),
-                        );
-                        if r.changed() {
-                            settings.bindings.pad.stick_deadzone =
-                                clamp_deadzone(settings.bindings.pad.stick_deadzone).min(0.5);
-                            settings.mark_dirty();
-                        }
-                        nav_row(ui, &r, ids, "input.deadzone".to_string(), focus, active, moved);
-                    });
-                if header.header_response.clicked() { self.headers_open[1] = !self.headers_open[1]; }
-                nav_row(ui, &header.header_response, ids, "header.input".into(), focus, active, moved);
-                let header = egui::CollapsingHeader::new("Mutators (drive demo)")
-                    .id_salt("viewer.header.mutators")
-                    .open(Some(self.headers_open[2]))
-                    .show(ui, |ui| {
+
+                }
+
+                if self.settings_tab == 3 {
+                ui.scope(|ui| {
+                        ui.label("The simulation must apply controls and mutators. The drive example does this.");
+                        let spectate = ui.checkbox(&mut settings.spectate_only, "Spectate only (no inputs)");
+                        if spectate.changed() { settings.mark_dirty(); }
+                        nav_row(ui, &spectate, ids, "input.spectate".into(), focus, active, moved);
+                        ui.separator();
+                        let reset_play = ui.button("Reset play");
+                        if reset_play.clicked() { self.reset_requested = true; }
+                        nav_row(ui, &reset_play, ids, "cam.reset_play".into(), focus, active, moved);
+                        ui.separator();
                         // Live toggles: sent every frame, applied per tick.
                         for (id, label) in [
                             ("mut.boost", "Unlimited boost"),
@@ -2288,12 +2355,11 @@ impl eframe::App for ViewerApp {
                             nav_row(ui, &r, ids, id.to_string(), focus, active, moved);
                         }
                     });
-                if header.header_response.clicked() { self.headers_open[2] = !self.headers_open[2]; }
-                nav_row(ui, &header.header_response, ids, "header.mutators".into(), focus, active, moved);
-                let header = egui::CollapsingHeader::new("Overlays")
-                    .id_salt("viewer.header.overlays")
-                    .open(Some(self.headers_open[3]))
-                    .show(ui, |ui| {
+
+                }
+                if self.settings_tab == 2 {
+                ui.strong("Overlays");
+                ui.scope(|ui| {
                         for (id, label) in [
                             ("ov.trail", "Ball trail"),
                             ("ov.boost", "Boost flames"),
@@ -2314,12 +2380,9 @@ impl eframe::App for ViewerApp {
                             nav_row(ui, &r, ids, id.to_string(), focus, active, moved);
                         }
                     });
-                if header.header_response.clicked() { self.headers_open[3] = !self.headers_open[3]; }
-                nav_row(ui, &header.header_response, ids, "header.overlays".into(), focus, active, moved);
-                let header = egui::CollapsingHeader::new("Display")
-                    .id_salt("viewer.header.display")
-                    .open(Some(self.headers_open[4]))
-                    .show(ui, |ui| {
+                ui.separator();
+                ui.strong("Rendering");
+                ui.scope(|ui| {
                         let r = ui.add(
                             egui::Slider::new(&mut settings.fps_limit_hz, 0..=240)
                                 .text("FPS cap (0=off)"),
@@ -2360,30 +2423,49 @@ impl eframe::App for ViewerApp {
                         });
                         ui.label("(VSync/MSAA apply on relaunch)");
                     });
-                if header.header_response.clicked() { self.headers_open[4] = !self.headers_open[4]; }
-                nav_row(ui, &header.header_response, ids, "header.display".into(), focus, active, moved);
-                let header = egui::CollapsingHeader::new("Bindings")
-                    .id_salt("viewer.header.bindings")
-                    .open(Some(self.headers_open[5]))
-                    .show(ui, |ui| {
-                        ui.label("Bind any input to any action. Shared bindings are allowed. Escape is a normal bind; use Cancel to stop capture.");
-                        let selected_pad_name = (*active_pad)
-                            .and_then(|id| connected_pads.iter().find(|(pad_id, _)| *pad_id == id))
-                            .map(|(_, name)| name.as_str())
-                            .unwrap_or("No controller");
-                        ui.label(format!("Active controller: {selected_pad_name}"));
-                        let pad_cycle = ui.button("Change controller");
-                        if pad_cycle.clicked() && !connected_pads.is_empty() {
-                            let index = connected_pads
-                                .iter()
-                                .position(|(id, _)| Some(*id) == *active_pad)
-                                .unwrap_or(0);
-                            *active_pad = Some(connected_pads[(index + 1) % connected_pads.len()].0);
-                            self.pad_selection_manual = true;
-                            raw_pad.clear();
-                            self.suppress_pad_on_next_frame = true;
+
+                }
+                if self.settings_tab == 1 {
+                ui.scope(|ui| {
+                        ui.horizontal(|ui| {
+                            for (index, (device, label)) in [
+                                (BindingDevice::All, "All"),
+                                (BindingDevice::KeyboardMouse, "Keyboard & Mouse"),
+                                (BindingDevice::Controller, "Controller"),
+                            ]
+                            .into_iter()
+                            .enumerate()
+                            {
+                                let response = ui.selectable_label(*binding_device == device, label);
+                                if response.clicked() {
+                                    *binding_device = device;
+                                }
+                                nav_row(ui, &response, ids, format!("bind.device.{index}"), focus, active, moved);
+                            }
+                        });
+                        if *binding_device == BindingDevice::Controller {
+                            let selected_pad_name = (*active_pad)
+                                .and_then(|id| connected_pads.iter().find(|(pad_id, _)| *pad_id == id))
+                                .map(|(_, name)| name.as_str())
+                                .unwrap_or("No controller");
+                            ui.horizontal(|ui| {
+                                ui.label(format!("Controller: {selected_pad_name}"));
+                                let pad_cycle = ui.button("Change");
+                                if pad_cycle.clicked() && !connected_pads.is_empty() {
+                                    let index = connected_pads.iter().position(|(id, _)| Some(*id) == *active_pad).unwrap_or(0);
+                                    *active_pad = Some(connected_pads[(index + 1) % connected_pads.len()].0);
+                                    self.pad_selection_manual = true;
+                                    raw_pad.clear();
+                                    self.pad_buttons.clear();
+                                    self.suppress_pad_on_next_frame = true;
+                                }
+                                nav_row(ui, &pad_cycle, ids, "pad.select".into(), focus, active, moved);
+                            });
+                            let deadzone = ui.add(egui::Slider::new(&mut settings.bindings.pad.stick_deadzone, 0.0..=0.5).text("Stick deadzone"));
+                            if deadzone.changed() { settings.bindings.pad.stick_deadzone = clamp_deadzone(settings.bindings.pad.stick_deadzone).min(0.5); settings.mark_dirty(); }
+                            nav_row(ui, &deadzone, ids, "input.deadzone".into(), focus, active, moved);
                         }
-                        nav_row(ui, &pad_cycle, ids, "pad.select".into(), focus, active, moved);
+                        ui.label("Two shared slots per action; capture accepts any input type.");
                         let groups = ["Driving", "Simulation", "Camera", "Free camera", "Menu"];
                         let group_picker = egui::ComboBox::from_id_salt("binding-group")
                             .selected_text(binding_group.as_deref().unwrap_or("All actions"))
@@ -2392,56 +2474,84 @@ impl eframe::App for ViewerApp {
                                 for group in groups { ui.selectable_value(binding_group, Some(group.to_string()), group); }
                             });
                         nav_row(ui, &group_picker.response, ids, "bind.group".into(), focus, active, moved);
-                        let filter_response = ui.add(
-                            egui::TextEdit::singleline(binding_filter)
-                                .id(egui::Id::unique("viewer.binding-filter")),
-                        );
-                        nav_row(ui, &filter_response, ids, "bind.filter".into(), focus, active, moved);
-                        let clear_filter = ui.small_button("Clear filter");
-                        if clear_filter.clicked() { binding_filter.clear(); }
-                        nav_row(ui, &clear_filter, ids, "bind.filter.clear".into(), focus, active, moved);
+                        ui.horizontal(|ui| {
+                            let filter_response = ui.add_sized([240.0, 24.0], egui::TextEdit::singleline(binding_filter).hint_text("Search actions…").id(egui::Id::unique("viewer.binding-filter")));
+                            nav_row(ui, &filter_response, ids, "bind.filter".into(), focus, active, moved);
+                            let clear_filter = ui.small_button("Clear");
+                            if clear_filter.clicked() { binding_filter.clear(); }
+                            nav_row(ui, &clear_filter, ids, "bind.filter.clear".into(), focus, active, moved);
+                        });
                         let action_map = &mut ui_action_map;
-                        for (action_index, action) in ACTIONS.into_iter().enumerate() {
-                            if binding_group.as_ref().is_some_and(|g| g.as_str() != action.group()) || (!binding_filter.is_empty() && !action.label().to_lowercase().contains(&binding_filter.to_lowercase())) { continue; }
-                            ui.horizontal(|ui| {
-                                ui.label(action.label());
-                                for slot in 0..2 {
-                                    let source = action_map.sources(action)[slot];
-                                    let text = if *rebind_action == Some((action, slot)) { "Press input…".to_string() } else { source.name() };
-                                    let bind = ui.button(text);
-                                    if bind.clicked() {
-                                        *rebind_action = Some((action, slot));
-                                        *rebind_capture = Some(Capture::begin(&input_snapshot));
-
-                                        *capture_start_back = action_map.sources(Action::MenuBack).iter().copied().find(|source| *source != InputSource::Unbound && input_snapshot.value(*source).abs() >= 0.5);
-                                        self.capture_pending_back = None;
-                                        self.capture_cancel_hold = 0.0;
-                                        action_evaluator.suppress_until_release(&input_snapshot);
-                                    }
-                                    nav_row(ui, &bind, ids, format!("bind.action.{action_index}.{slot}"), focus, active, moved);
-                                    let clear = ui.small_button("Clear");
-                                    if clear.clicked() { action_map.set(action, slot, InputSource::Unbound); bindings_dirty = true; }
-                                    nav_row(ui, &clear, ids, format!("bind.clear.{action_index}.{slot}"), focus, active, moved);
+                        let mut last_group = "";
+                        egui::Grid::new("viewer.binding-grid").striped(true).num_columns(3).show(ui, |ui| {
+                            ui.strong("Action");
+                            ui.strong("Bindings");
+                            ui.strong("Reset");
+                            ui.end_row();
+                            for (action_index, action) in ACTIONS.into_iter().enumerate() {
+                                if binding_group.as_ref().is_some_and(|g| g.as_str() != action.group()) || (!binding_filter.is_empty() && !action.label().to_lowercase().contains(&binding_filter.to_lowercase())) { continue; }
+                                if last_group != action.group() {
+                                    last_group = action.group();
+                                    ui.label(egui::RichText::new(last_group).strong());
+                                    ui.label("");
+                                    ui.label("");
+                                    ui.end_row();
                                 }
-                                let reset = ui.small_button("Reset");
-                                if reset.clicked() { let defaults = ActionMap::default(); for slot in 0..2 { action_map.set(action, slot, defaults.sources(action)[slot]); } bindings_dirty = true; }
+                                ui.add_sized([150.0, 24.0], egui::Label::new(action.label()));
+                                let visible = binding_device.visible_slots(*action_map.sources(action));
+                                let can_reset = !visible.is_empty();
+                                let hidden = match binding_device {
+                                    BindingDevice::KeyboardMouse => action_map.sources(action).iter().any(|source| matches!(source, InputSource::PadButton(_) | InputSource::PadAxis { .. } | InputSource::PadRaw { .. })),
+                                    BindingDevice::Controller => action_map.sources(action).iter().any(|source| matches!(source, InputSource::Key(_) | InputSource::Mouse(_) | InputSource::MouseAxis { .. } | InputSource::Wheel { .. })),
+                                    BindingDevice::All => false,
+                                };
+                                ui.horizontal(|ui| {
+                                    if visible.is_empty() && hidden {
+                                        let hint = if *binding_device == BindingDevice::Controller { "Assigned on Keyboard & Mouse" } else { "Assigned on Controller" };
+                                        ui.colored_label(egui::Color32::GRAY, hint);
+                                        let show_all = ui.small_button("Show All");
+                                        if show_all.clicked() { *binding_device = BindingDevice::All; }
+                                        nav_row(ui, &show_all, ids, format!("bind.show_all.{action_index}"), focus, active, moved);
+                                    } else {
+                                        for slot in visible {
+                                            let source = action_map.sources(action)[slot];
+                                            let text = if *rebind_action == Some((action, slot)) { "Press input…".to_string() } else { source.name() };
+                                            let bind = ui.add_sized([132.0, 24.0], egui::Button::new(text));
+                                            if bind.clicked() {
+                                                *rebind_action = Some((action, slot));
+                                                *rebind_capture = Some(Capture::begin(&input_snapshot));
+                                                *capture_start_back = action_map.sources(Action::MenuBack).iter().copied().find(|source| *source != InputSource::Unbound && input_snapshot.value(*source).abs() >= 0.5);
+                                                self.capture_pending_back = None;
+                                                self.capture_cancel_hold = 0.0;
+                                                action_evaluator.suppress_until_release(&input_snapshot);
+                                            }
+                                            nav_row(ui, &bind, ids, format!("bind.action.{action_index}.{slot}"), focus, active, moved);
+                                            let clear = ui.add_enabled(source != InputSource::Unbound, egui::Button::new("×").small()).on_hover_text("Clear this slot");
+                                            if clear.clicked() { action_map.set(action, slot, InputSource::Unbound); bindings_dirty = true; }
+                                            nav_row(ui, &clear, ids, format!("bind.clear.{action_index}.{slot}"), focus, active, moved);
+                                        }
+                                    }
+                                });
+                                let reset = ui.add_enabled(can_reset, egui::Button::new("Reset").small()).on_hover_text("Restore default bindings in this device view");
+                                if reset.clicked() { binding_device.reset_action(action_map, action); bindings_dirty = true; }
                                 nav_row(ui, &reset, ids, format!("bind.reset.{action_index}"), focus, active, moved);
-                            });
-
-                        }
+                                ui.end_row();
+                            }
+                        });
 
                         if let Some(warning) = &*binding_warning { ui.colored_label(egui::Color32::YELLOW, warning); }
                         let conflicts = action_map.conflicts();
                         if !conflicts.is_empty() { ui.colored_label(egui::Color32::YELLOW, format!("{} shared binding conflict(s); actions may trigger together", conflicts.len())); }
                     });
-                if header.header_response.clicked() { self.headers_open[5] = !self.headers_open[5]; }
-                nav_row(ui, &header.header_response, ids, "header.bindings".into(), focus, active, moved);
-                ui.label("Use the Bindings section to configure keyboard, mouse, and controller input.");
-                let r = ui.button("Reset everything");
-                if r.clicked() {
-                    settings.reset_all();
                 }
-                nav_row(ui, &r, ids, "menu.reset_all".to_string(), focus, active, moved);
+                });
+                ui.separator();
+                let reset_all = ui.button("Reset all settings…");
+                if reset_all.clicked() {
+                    self.reset_all_confirm = true;
+                    self.menu_focus = 0;
+                }
+                nav_row(ui, &reset_all, ids, "settings.reset_all".into(), focus, active, moved);
                 self.nav_moved = false;
             });
             if bindings_dirty {
@@ -2479,6 +2589,44 @@ impl eframe::App for ViewerApp {
             self.capture_cancel_rect = None;
         }
 
+        if self.reset_all_confirm {
+            self.nav_ids.clear();
+            egui::Modal::new(egui::Id::unique("reset-all-confirm")).show(ctx, |ui| {
+                ui.set_min_width(320.0);
+                ui.heading("Reset all settings?");
+                ui.label("This restores all viewer and binding defaults.");
+                ui.horizontal(|ui| {
+                    let cancel = ui.button("Cancel");
+                    if cancel.clicked() {
+                        self.reset_all_confirm = false;
+                    }
+                    nav_row(
+                        ui,
+                        &cancel,
+                        &mut self.nav_ids,
+                        "reset.confirm.cancel".into(),
+                        self.menu_focus,
+                        self.menu_nav_active,
+                        self.nav_moved,
+                    );
+                    let confirm = ui.button("Reset all");
+                    if confirm.clicked() {
+                        self.settings.reset_all();
+                        self.reset_all_confirm = false;
+                    }
+                    nav_row(
+                        ui,
+                        &confirm,
+                        &mut self.nav_ids,
+                        "reset.confirm.apply".into(),
+                        self.menu_focus,
+                        self.menu_nav_active,
+                        self.nav_moved,
+                    );
+                });
+            });
+        }
+
         // Pad menu navigation (needs the fresh id list from the draw).
         // Up/down move with press + hold-repeat; left/right adjust the
         // focused slider or flip the focused toggle; A activates; B closes.
@@ -2489,54 +2637,24 @@ impl eframe::App for ViewerApp {
         // instead of activating the focused row).
         if focused && self.menu_open && !action_suppressed && !self.nav_ids.is_empty() {
             let n = self.nav_ids.len() as i32;
-            let mut dy = 0i32;
-            let mut dx = 0i32;
-            if nav_edge[0] {
-                dy -= 1;
-            }
-            if nav_edge[1] {
-                dy += 1;
-            }
-            if nav_edge[2] {
-                dx -= 1;
-            }
-            if nav_edge[3] {
-                dx += 1;
-            }
-            if dy != 0 || dx != 0 {
-                self.nav_repeat_cd = 0.35;
-            } else if nav_held.iter().any(|&h| h) {
-                self.nav_repeat_cd -= dt;
-                if self.nav_repeat_cd <= 0.0 {
-                    self.nav_repeat_cd = 0.08;
-                    if nav_held[0] {
-                        dy -= 1;
-                    }
-                    if nav_held[1] {
-                        dy += 1;
-                    }
-                    if nav_held[2] {
-                        dx -= 1;
-                    }
-                    if nav_held[3] {
-                        dx += 1;
-                    }
-                }
-            } else {
-                self.nav_repeat_cd = 0.0;
-            }
+            let (dy, dx) = menu_nav_step(nav_edge, nav_held, dt, &mut self.nav_repeat_cd);
             if dy != 0 {
                 self.menu_focus = (self.menu_focus as i32 + dy).rem_euclid(n) as usize;
                 self.nav_moved = true;
                 self.menu_nav_active = true;
             }
             if nav_b_edge {
-                self.menu_open = false;
-                ctx.memory_mut(|memory| {
-                    memory.surrender_focus(egui::Id::unique("viewer.binding-filter"));
-                });
+                if self.reset_all_confirm {
+                    self.reset_all_confirm = false;
+                } else {
+                    self.menu_open = false;
+                    ctx.memory_mut(|memory| {
+                        memory.surrender_focus(egui::Id::unique("viewer.binding-filter"));
+                    });
+                }
             } else if dx != 0 || nav_a_edge {
                 self.menu_nav_active = true;
+                let confirming_reset = self.reset_all_confirm;
                 menu_pad_action(
                     self.nav_ids
                         .get(self.menu_focus)
@@ -2552,11 +2670,13 @@ impl eframe::App for ViewerApp {
 
                         reset_requested: &mut self.reset_requested,
 
-                        headers_open: &mut self.headers_open,
                         rebind_action: &mut self.rebind_action,
                         rebind_capture: &mut self.rebind_capture,
                         input_snapshot: &input_snapshot,
                         binding_group: &mut self.binding_group,
+                        binding_device: &mut self.binding_device,
+                        settings_tab: &mut self.settings_tab,
+                        reset_all_confirm: &mut self.reset_all_confirm,
                         binding_filter: &mut self.binding_filter,
                         capture_start_back: &mut self.capture_start_back,
                         capture_cancel_hold: &mut self.capture_cancel_hold,
@@ -2567,8 +2687,13 @@ impl eframe::App for ViewerApp {
                         suppress_pad_on_next_frame: &mut self.suppress_pad_on_next_frame,
                         gilrs: self.gilrs.as_ref(),
                         raw_pad: &mut self.raw_pad,
+                        pad_buttons: &mut self.pad_buttons,
                     },
                 );
+                if !confirming_reset && self.reset_all_confirm {
+                    self.menu_focus = 0;
+                    self.nav_moved = true;
+                }
             }
         }
 
@@ -3063,14 +3188,54 @@ mod tests {
     }
 
     #[test]
+    fn mapped_dpad_buttons_keep_independent_event_state_and_release() {
+        let mut buttons = HashMap::new();
+        update_pad_button_state(&mut buttons, gilrs::Button::DPadUp, 1.0);
+        assert_eq!(buttons.get(&PadButton::DPadUp), Some(&1.0));
+        assert_eq!(buttons.get(&PadButton::DPadDown), None);
+
+        update_pad_button_state(&mut buttons, gilrs::Button::DPadUp, 0.0);
+        assert_eq!(buttons.get(&PadButton::DPadUp), Some(&0.0));
+        assert_eq!(buttons.get(&PadButton::DPadDown), None);
+    }
+
+    #[test]
+    fn mapped_analog_button_changed_values_are_preserved() {
+        let mut buttons = HashMap::new();
+        update_pad_button_state(&mut buttons, gilrs::Button::LeftTrigger, 0.37);
+        assert_eq!(buttons.get(&PadButton::LeftTrigger), Some(&0.37));
+    }
+
+    #[test]
+    fn opposing_navigation_edges_start_the_repeat_delay() {
+        let mut repeat_cd = 0.0;
+        let edges = [true, true, false, false];
+        let held = [true, true, false, false];
+        assert_eq!(menu_nav_step(edges, held, 0.018, &mut repeat_cd), (0, 0));
+        assert!((repeat_cd - 0.35).abs() < f32::EPSILON);
+        assert_eq!(menu_nav_step([false; 4], held, 0.1, &mut repeat_cd), (0, 0));
+        assert!((repeat_cd - 0.25).abs() < 1e-6);
+    }
+
+    #[test]
     fn pad_press_release_pulses_survive_one_frame_for_mapped_and_raw_inputs() {
         let code = 196_608;
         let mut pulses = PadFramePulses::default();
         let mut raw = HashMap::new();
+        let mut buttons = HashMap::new();
+        update_pad_button_state(&mut buttons, gilrs::Button::South, 1.0);
         pulses.record_press(gilrs::Button::South, code);
+        update_pad_button_state(&mut buttons, gilrs::Button::South, 0.0);
         update_raw_button_value(&mut raw, code, 0.0);
 
-        assert_eq!(pad_frame_value(0.0, pulses.buttons[&PadButton::South]), 1.0);
+        assert_eq!(buttons.get(&PadButton::South), Some(&0.0));
+        assert_eq!(
+            pad_frame_value(
+                buttons.get(&PadButton::South).copied().unwrap_or(0.0),
+                pulses.buttons[&PadButton::South]
+            ),
+            1.0
+        );
         assert_eq!(pad_frame_value(raw[&code], pulses.raw[&code]), 1.0);
 
         let next_frame = PadFramePulses::default();
@@ -3105,11 +3270,14 @@ mod tests {
         let mut cam_man = None;
         let mut auto_cam = None;
         let mut reset_requested = false;
-        let mut headers_open = [true; 6];
+
         let mut rebind_action = None;
         let mut rebind_capture = None;
         let input_snapshot = InputSnapshot::new();
         let mut binding_group = None;
+        let mut binding_device = BindingDevice::All;
+        let mut settings_tab = 0;
+        let mut reset_all_confirm = false;
         let mut binding_filter = String::new();
         let mut capture_start_back = None;
         let mut capture_cancel_hold = 0.0;
@@ -3119,17 +3287,21 @@ mod tests {
         let mut pad_selection_manual = false;
         let mut suppress_pad_on_next_frame = false;
         let mut raw_pad = HashMap::new();
+        let mut pad_buttons = HashMap::new();
         let mut cx = MenuPadCtx {
             settings: &mut settings,
             cam_mode: &mut cam_mode,
             cam_man: &mut cam_man,
             auto_cam: &mut auto_cam,
             reset_requested: &mut reset_requested,
-            headers_open: &mut headers_open,
+
             rebind_action: &mut rebind_action,
             rebind_capture: &mut rebind_capture,
             input_snapshot: &input_snapshot,
             binding_group: &mut binding_group,
+            binding_device: &mut binding_device,
+            settings_tab: &mut settings_tab,
+            reset_all_confirm: &mut reset_all_confirm,
             binding_filter: &mut binding_filter,
             capture_start_back: &mut capture_start_back,
             capture_cancel_hold: &mut capture_cancel_hold,
@@ -3140,6 +3312,7 @@ mod tests {
             suppress_pad_on_next_frame: &mut suppress_pad_on_next_frame,
             gilrs: None,
             raw_pad: &mut raw_pad,
+            pad_buttons: &mut pad_buttons,
         };
 
         menu_pad_action("input.deadzone".into(), 1, false, &mut cx);
@@ -3149,12 +3322,24 @@ mod tests {
         menu_pad_action("input.deadzone".into(), -1, false, &mut cx);
         assert!((cx.settings.bindings.pad.stick_deadzone - 0.49).abs() < 1e-6);
 
-        menu_pad_action("header.input".into(), 0, true, &mut cx);
-        assert!(!cx.headers_open[1]);
         menu_pad_action("bind.group".into(), 1, false, &mut cx);
         assert_eq!(cx.binding_group.as_deref(), Some("Driving"));
+        menu_pad_action("settings.tab.3".into(), 0, true, &mut cx);
+        assert_eq!(*cx.settings_tab, 3);
+        menu_pad_action("bind.device.2".into(), 0, true, &mut cx);
+        assert_eq!(*cx.binding_device, BindingDevice::Controller);
+        menu_pad_action("bind.show_all.17".into(), 0, true, &mut cx);
+        assert_eq!(*cx.binding_device, BindingDevice::All);
         cx.settings.show_trail = false;
-        menu_pad_action("menu.reset_all".into(), 0, true, &mut cx);
+        menu_pad_action("settings.reset_all".into(), 0, true, &mut cx);
+        assert!(*cx.reset_all_confirm);
+        assert!(!cx.settings.show_trail);
+        menu_pad_action("reset.confirm.cancel".into(), 0, true, &mut cx);
+        assert!(!*cx.reset_all_confirm);
+        assert!(!cx.settings.show_trail);
+        menu_pad_action("settings.reset_all".into(), 0, true, &mut cx);
+        menu_pad_action("reset.confirm.apply".into(), 0, true, &mut cx);
+        assert!(!*cx.reset_all_confirm);
         assert!(cx.settings.show_trail);
         assert_eq!(cx.settings.bindings.pad.stick_deadzone, 0.1);
     }

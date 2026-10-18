@@ -35,9 +35,19 @@ errors. The non-`try` methods report errors to stderr. Each viewer accepts one
 arena. A second arena in one process cannot attach to an address already in
 use; it gets `AddrInUse`. Use separate viewer instances and explicit ports.
 
-The launcher searches `PATH` and local build locations for
+The launcher searches local build locations before `PATH` for
 `rocketsim-viewer`. Set `ROCKETSIM_VIEWER` to choose an executable path. The
-viewer is a separate crate. Build or install it separately from the simulation.
+viewer is a separate crate. Applications must build or install it separately.
+
+The workspace examples build the viewer before they launch it. For example:
+
+```sh
+cargo run --release --example drive
+```
+
+This also updates an old viewer build. The examples use the executable path
+reported by Cargo. `ROCKETSIM_VIEWER` skips this build. The `drive --viewer`
+option connects to an existing viewer and also skips the build.
 
 Addresses must be numeric socket addresses. Host names are not resolved. The
 viewer binds to loopback by default. Use `--bind` to listen on another address.
