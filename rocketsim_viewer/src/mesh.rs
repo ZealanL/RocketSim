@@ -415,6 +415,33 @@ mod tests {
     }
 
     #[test]
+    fn streamed_dropshot_preserves_neutral_center_strip() {
+        let strip = [
+            [-4892.0, -128.0, 0.0],
+            [4876.0, -128.0, 0.0],
+            [4876.0, 128.0, 0.0],
+        ];
+        let wall = [
+            [100.0, 200.0, 300.0],
+            [100.0, 200.0, 500.0],
+            [100.0, 400.0, 500.0],
+        ];
+        let input = [rocketsim_vis::proto::MeshData {
+            vertices: strip.into_iter().chain(wall).collect(),
+            indices: vec![0, 1, 2, 3, 4, 5],
+        }];
+        let dropshot = ArenaMesh::from_meshes(GameMode::Dropshot, &input);
+        assert_eq!(dropshot.shell.indices.len(), 6);
+        assert!(dropshot.shell.verts.iter().any(|p| p.x == -4892.0));
+        assert!(dropshot.shell.verts.iter().any(|p| p.z == 500.0));
+
+        for mode in [GameMode::Soccar, GameMode::Hoops] {
+            let mesh = ArenaMesh::from_meshes(mode, &input);
+            assert_eq!(mesh.shell.indices.len(), 6, "{mode:?} stream changed");
+        }
+    }
+
+    #[test]
     fn placeholder_has_no_geometry() {
         let mesh = ArenaMesh::placeholder(GameMode::Dropshot);
         assert_eq!(mesh.mode, GameMode::Dropshot);
@@ -528,6 +555,16 @@ mod tests {
                 "{mode:?} must have no net part"
             );
         }
+    }
+
+    #[test]
+    fn dropshot_has_no_default_field_or_backdrop_floor() {
+        crate::photo::init_meshes();
+        let mesh = ArenaMesh::build(GameMode::Dropshot);
+        assert!(mesh.field.indices.is_empty());
+        // Only the two vertical backdrop walls remain.
+        assert_eq!(mesh.planes_low.indices.len(), 12);
+        assert!(mesh.planes_low.normals.iter().all(|n| n.z.abs() < 0.01));
     }
 
     #[test]

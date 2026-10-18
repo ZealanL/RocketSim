@@ -20,7 +20,7 @@ use rocketsim_viewer::{
         ArenaBoundsCache, AutoCam, CameraConfig, CameraMan, CameraPreset, CarCamSmoothing,
         DirectorState, DirectorTarget, FreeCam,
     },
-    dropshot::DropshotTileMesh,
+    dropshot::DropshotTileCache,
     frustum::frustum_planes,
     fx::CarFx,
     hud::{boost_meter, spectated_boost},
@@ -64,6 +64,7 @@ struct ViewerApp {
     boost_ribbons: Vec<RibbonEmitter>,
     /// Effect state (jump/dodge/reset, replayed in sim time).
     car_fx: CarFx,
+    dropshot_tiles: DropshotTileCache,
     /// Last sim tick consumed (missed ticks replay into the ribbons).
     last_tick: Option<u64>,
     last_generation: Option<u64>,
@@ -1043,6 +1044,7 @@ impl ViewerApp {
             ball_ribbon: RibbonEmitter::new(RibbonConfig::ball_trail()),
             boost_ribbons: Vec::new(),
             car_fx: CarFx::default(),
+            dropshot_tiles: DropshotTileCache::default(),
             last_tick: None,
             last_generation: None,
             last_ball_pos: None,
@@ -1524,10 +1526,11 @@ impl eframe::App for ViewerApp {
         let ball_radius_scale = scene_metadata
             .as_ref()
             .map_or(1.0, |m| (m.ball_radius / 91.25).max(0.01));
-        let dropshot_mesh = client_frame
-            .as_ref()
-            .and_then(|frame| dropshot_tile_mesh(&frame.state))
-            .unwrap_or_default();
+        let dropshot_mesh = self.dropshot_tiles.get(
+            client_frame
+                .as_ref()
+                .and_then(|frame| dropshot_tile_states(&frame.state)),
+        );
 
         // Advance trails in sim time: replay missed ticks (clamped, so a
         // reset jump cannot spiral the emitters).
@@ -2742,7 +2745,7 @@ impl eframe::App for ViewerApp {
                         };
                         scene.pads.upload(gl, &instances);
                         scene.pads.draw(gl, &view_mat, &proj_mat);
-                        scene.dropshot.upload(gl, &dropshot_mesh);
+                        scene.dropshot.upload_shared(gl, &dropshot_mesh);
                         scene.dropshot.draw(gl, &view_mat, &proj_mat);
                         scene
                             .arena
@@ -2872,11 +2875,12 @@ struct Cli {
     gpushot: bool,
 }
 
-fn dropshot_tile_mesh(state: &rocketsim::ArenaState) -> Option<DropshotTileMesh> {
-    state
-        .tile_states
-        .as_ref()
-        .map(|states| DropshotTileMesh::from_states(states, 0.5))
+fn dropshot_tile_states(state: &rocketsim::ArenaState) -> Option<&rocketsim::TileStates> {
+    if state.game_mode() == GameMode::Dropshot {
+        state.tile_states.as_ref()
+    } else {
+        None
+    }
 }
 
 fn parse_mode(s: &str) -> Result<GameMode, String> {
@@ -2954,6 +2958,17 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_dropshot_frames_supply_tile_geometry() {
+        let mut state = rocketsim::ArenaState::new_empty(GameMode::Soccar);
+        state.tile_states = Some(rocketsim::TileStates::DEFAULT);
+        assert!(dropshot_tile_states(&state).is_none());
+        let mut state = rocketsim::ArenaState::new_empty(GameMode::Dropshot);
+        assert!(dropshot_tile_states(&state).is_none());
+        state.tile_states = Some(rocketsim::TileStates::DEFAULT);
+        assert_eq!(dropshot_tile_states(&state), state.tile_states.as_ref());
+    }
 
     #[test]
     fn msaa_changes_use_supported_sample_counts() {
