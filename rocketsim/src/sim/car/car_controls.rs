@@ -6,7 +6,7 @@ use glam::Vec3A;
 /// edge- or level-triggered per field. `jump` only fires on the rising edge
 /// (hold to charge, release or 24 ticks to end); `boost`/`handbrake` are level.
 /// `steer` doubles as ground yaw; in air use `yaw/pitch/roll` (-1..1).
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CarControls {
     pub throttle: f32,
@@ -18,50 +18,6 @@ pub struct CarControls {
     pub boost: bool,
     pub handbrake: bool,
 }
-
-impl Ord for CarControls {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        // TODO: Surely there is a better way to do this
-        macro_rules! cmp_field {
-            ($field:ident) => {{
-                // Explicitly copying because otherwise Rust yells at me
-                let a = self.$field;
-                let b = other.$field;
-                a.total_cmp(&b)
-            }};
-        }
-
-        cmp_field!(throttle)
-            .then_with(|| cmp_field!(steer))
-            .then_with(|| cmp_field!(pitch))
-            .then_with(|| cmp_field!(yaw))
-            .then_with(|| cmp_field!(roll))
-            .then_with(|| self.jump.cmp(&other.jump))
-            .then_with(|| self.boost.cmp(&other.boost))
-            .then_with(|| self.handbrake.cmp(&other.handbrake))
-    }
-}
-
-impl PartialOrd for CarControls {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl PartialEq for CarControls {
-    fn eq(&self, other: &Self) -> bool {
-        self.throttle == other.throttle
-            && self.steer == other.steer
-            && self.pitch == other.pitch
-            && self.yaw == other.yaw
-            && self.roll == other.roll
-            && self.jump == other.jump
-            && self.boost == other.boost
-            && self.handbrake == other.handbrake
-    }
-}
-
-impl Eq for CarControls {}
 
 impl Default for CarControls {
     fn default() -> Self {
@@ -192,5 +148,79 @@ impl CarControls {
     pub const fn with_handbrake(mut self, val: bool) -> Self {
         self.handbrake = val;
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cmp::Ordering;
+
+    use super::CarControls;
+
+    #[test]
+    fn signed_zero_is_equal_and_compares_equal_on_every_axis() {
+        let cases = [
+            (
+                CarControls::DEFAULT.with_throttle(0.0),
+                CarControls::DEFAULT.with_throttle(-0.0),
+            ),
+            (
+                CarControls::DEFAULT.with_steer(0.0),
+                CarControls::DEFAULT.with_steer(-0.0),
+            ),
+            (
+                CarControls::DEFAULT.with_pitch(0.0),
+                CarControls::DEFAULT.with_pitch(-0.0),
+            ),
+            (
+                CarControls::DEFAULT.with_yaw(0.0),
+                CarControls::DEFAULT.with_yaw(-0.0),
+            ),
+            (
+                CarControls::DEFAULT.with_roll(0.0),
+                CarControls::DEFAULT.with_roll(-0.0),
+            ),
+        ];
+
+        for (positive, negative) in cases {
+            assert_eq!(positive, negative);
+            assert_eq!(positive.partial_cmp(&negative), Some(Ordering::Equal));
+        }
+    }
+
+    #[test]
+    fn nan_is_unordered_and_not_equal_even_with_equal_prefix() {
+        let controls = CarControls::DEFAULT.with_steer(f32::NAN);
+        let other = CarControls::DEFAULT.with_steer(f32::NAN);
+
+        assert_ne!(controls, controls);
+        assert_ne!(controls, other);
+        assert_eq!(controls.partial_cmp(&other), None);
+    }
+
+    #[test]
+    fn ordering_is_lexicographic_across_axes_and_boolean_controls() {
+        let lower_axis = CarControls::DEFAULT.with_throttle(-0.5);
+        let higher_axis = CarControls::DEFAULT.with_throttle(0.5);
+        assert!(lower_axis < higher_axis);
+
+        let no_jump = CarControls::DEFAULT;
+        let jump = CarControls::DEFAULT.with_jump(true);
+        assert!(no_jump < jump);
+
+        let no_boost = CarControls::DEFAULT.with_jump(true);
+        let boost = no_boost.with_boost(true);
+        assert!(no_boost < boost);
+
+        let no_handbrake = CarControls::DEFAULT.with_boost(true);
+        let handbrake = no_handbrake.with_handbrake(true);
+        assert!(no_handbrake < handbrake);
+
+        let earlier_difference = CarControls::DEFAULT.with_steer(1.0).with_jump(true);
+        let later_difference = CarControls::DEFAULT
+            .with_steer(1.0)
+            .with_jump(true)
+            .with_boost(true);
+        assert!(earlier_difference < later_difference);
     }
 }

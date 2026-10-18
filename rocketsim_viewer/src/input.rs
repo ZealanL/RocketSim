@@ -1,7 +1,9 @@
 //! Unified action bindings and device-independent input evaluation.
-use crate::bindings::{Bindings, InputBinding, Key, PadAnalog, PadAxis, PadButton};
-use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
+
+use serde::{Deserialize, Serialize};
+
+use crate::bindings::{Bindings, InputBinding, Key, PadAnalog, PadAxis, PadButton};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Axis2 {

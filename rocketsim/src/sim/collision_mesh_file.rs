@@ -53,8 +53,8 @@ pub struct CollisionMeshFile {
 impl CollisionMeshFile {
     /// Hash identifying which known arena component this is.
     ///
-    /// [`crate::init`] matches it against the expected per-mode hashes and
-    /// warns/skips unknown or duplicate meshes.
+    /// [`crate::init`] matches it against the expected per-mode hashes.
+    /// It skips unknown components and rejects duplicate or missing components.
     #[inline]
     pub const fn get_hash(&self) -> u32 {
         self.hash

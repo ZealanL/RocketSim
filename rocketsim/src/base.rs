@@ -7,7 +7,7 @@ use std::{
 };
 
 use glam::Vec3A;
-use log::{error, info, warn};
+use log::{info, warn};
 use rustc_hash::FxHashMap;
 
 use crate::{
@@ -81,7 +81,8 @@ pub fn get_arena_collision_mesh_files(game_mode: GameMode) -> Vec<CollisionMeshF
 /// # Errors
 ///
 /// Returns an [`std::io::Error`] if the folder is missing, is not a
-/// directory, or a mesh file cannot be read/parsed.
+/// directory, or a mesh file cannot be read/parsed. Returns `InvalidData` if
+/// a supplied mode has duplicate or missing collision mesh components.
 ///
 /// # Example
 ///
@@ -100,8 +101,9 @@ pub fn init_from_default(silent: bool) -> IoResult<()> {
 /// files inside. Unknown hashes are skipped with a warning; see
 /// [`CollisionMeshFile::read_from_bytes`].
 ///
-/// Initialization runs at most once per process: later calls log a warning
-/// and return `Ok(())` without replacing the loaded meshes.
+/// Successful initialization runs at most once per process. Later calls log a
+/// warning and return `Ok(())` without replacing the loaded meshes. Failed
+/// initialization does not publish meshes and can be retried.
 ///
 /// # Arguments
 ///
@@ -152,8 +154,8 @@ fn init_from_path(collision_meshes_folder: &Path, silent: bool) -> IoResult<()> 
 
         let mut files = Vec::new();
 
-        for entry in fs::read_dir(folder)?.flatten() {
-            let p = entry.path();
+        for entry in fs::read_dir(folder)? {
+            let p = entry?.path();
 
             if !p.is_file()
                 || p.extension()
@@ -175,11 +177,20 @@ fn init_from_path(collision_meshes_folder: &Path, silent: bool) -> IoResult<()> 
 ///
 /// Useful for embedding meshes (e.g. with `include_bytes!`) or for WASM
 /// targets without filesystem access. Keys are game modes; values are the
-/// raw contents of each `.cmf` file for that mode. Modes with no entry (or
-/// an empty list) are skipped.
+/// raw contents of each `.cmf` file for that mode. Each supplied arena mode
+/// must contain all its known components exactly once. Unknown components
+/// are skipped. `Heatseeker` and `Snowday` use the `Soccar` mesh set.
+/// `TheVoid` does not load meshes.
 ///
-/// An empty mesh list for a mode simply leaves that mode unloaded — creating
-/// an [`crate::Arena`] for it later will panic. `TheVoid` never needs meshes.
+/// Modes with no entry remain unloaded. Creating an [`crate::Arena`] for an
+/// unloaded mode will panic. Initialization publishes no meshes on failure,
+/// so callers can correct the input and retry.
+///
+/// # Errors
+///
+/// Returns an I/O error on truncated data. Returns `InvalidData` for duplicate
+/// or missing components, including an empty list for a supplied arena mode.
+/// Returns `InvalidInput` if the same mesh mode is supplied more than once.
 ///
 /// See [`init`] for the once-only semantics and the `silent` flag.
 pub fn init_from_mem<I, V, B>(byte_mesh_file_map: I, silent: bool) -> IoResult<()>
@@ -192,11 +203,13 @@ where
         let _ = logging::try_init();
     }
 
-    let _initializing_lock = INITIALIZING_MUTEX.lock();
+    // A parser or caller-supplied iterator can panic before publication. Its
+    // local data is discarded, so a poisoned initialization lock is retryable.
+    let _initializing_lock = INITIALIZING_MUTEX
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
 
-    if HAS_INITIALIZED_LOCK.set(()).is_ok() {
-        // Initialization locked successfully
-    } else {
+    if is_initialized() {
         warn!("RocketSim initialized again, ignoring...");
         return Ok(());
     }
@@ -207,24 +220,26 @@ where
 
     // TODO: DropshotTiles::Init();
 
-    let mut arena_collision_shapes = FxHashMap::default();
     let mut arena_collision_mesh_files = FxHashMap::default();
 
     for (game_mode, byte_mesh_files) in byte_mesh_file_map {
+        let game_mode = match game_mode {
+            GameMode::Heatseeker | GameMode::Snowday => GameMode::Soccar,
+            GameMode::TheVoid => continue,
+            mode => mode,
+        };
+        if arena_collision_mesh_files.contains_key(&game_mode) {
+            return Err(IoError::new(
+                ErrorKind::InvalidInput,
+                format!("{} mesh set was supplied more than once", game_mode.name()),
+            ));
+        }
         info!("Loading arena meshes for {}...", game_mode.name());
 
-        let mut byte_mesh_files = byte_mesh_files.into_iter().peekable();
-
-        if byte_mesh_files.peek().is_none() {
-            info!("\tNo meshes, skipping");
-            continue;
-        }
-
-        let mut meshes = Vec::new();
         let mut mesh_files = Vec::new();
         let mut target_hashes = game_mode.get_hashes();
 
-        for (i, entry) in byte_mesh_files.enumerate() {
+        for (i, entry) in byte_mesh_files.into_iter().enumerate() {
             let mesh_file = CollisionMeshFile::read_from_bytes(entry.as_ref())?;
             let hash = mesh_file.get_hash();
             let Some(hash_count) = target_hashes.get_mut(&hash) else {
@@ -238,25 +253,55 @@ where
             };
 
             if *hash_count > 0 {
-                error!(
-                    "Collision mesh [{i}] is a duplicate ({hash:#x}), already loaded a mesh with the same hash."
-                );
+                return Err(IoError::new(
+                    ErrorKind::InvalidData,
+                    format!(
+                        "duplicate {} collision mesh component at index {i} ({hash:#010x})",
+                        game_mode.name()
+                    ),
+                ));
             }
 
             *hash_count += 1;
-
-            let translation = mesh_file.component_translation();
-            let tri_mesh = mesh_file.make_bullet_mesh_local();
-            let bvt_mesh = BvhTriangleMeshShape::new(tri_mesh);
-            meshes.push(ArenaCollisionMesh {
-                shape: Arc::new(bvt_mesh),
-                translation,
-            });
             mesh_files.push(mesh_file);
         }
 
-        arena_collision_shapes.insert(game_mode, meshes);
+        let mut missing: Vec<_> = target_hashes
+            .into_iter()
+            .filter_map(|(hash, count)| (count == 0).then_some(hash))
+            .collect();
+        if !missing.is_empty() {
+            missing.sort_unstable();
+            let hashes = missing
+                .iter()
+                .map(|hash| format!("{hash:#010x}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            return Err(IoError::new(
+                ErrorKind::InvalidData,
+                format!(
+                    "incomplete {} collision mesh set: missing {} component(s): {hashes}",
+                    game_mode.name(),
+                    missing.len()
+                ),
+            ));
+        }
+
         arena_collision_mesh_files.insert(game_mode, mesh_files);
+    }
+
+    let mut arena_collision_shapes = FxHashMap::default();
+    for (&game_mode, mesh_files) in &arena_collision_mesh_files {
+        let meshes = mesh_files
+            .iter()
+            .map(|mesh_file| ArenaCollisionMesh {
+                shape: Arc::new(BvhTriangleMeshShape::new(
+                    mesh_file.make_bullet_mesh_local(),
+                )),
+                translation: mesh_file.component_translation(),
+            })
+            .collect();
+        arena_collision_shapes.insert(game_mode, meshes);
     }
 
     {
@@ -297,6 +342,9 @@ where
         *arena_collision_shapes_lock = Some(arena_collision_shapes);
         *arena_collision_mesh_files_lock = Some(arena_collision_mesh_files);
     }
+    HAS_INITIALIZED_LOCK
+        .set(())
+        .expect("RocketSim readiness was already published");
 
     Ok(())
 }
