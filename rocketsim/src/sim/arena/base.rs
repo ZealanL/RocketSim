@@ -530,7 +530,7 @@ impl Arena {
             GameMode::Heatseeker => {
                 let next_rand = self.rng.bool();
                 let y_sign = f32::from(i8::from(next_rand) * 2 - 1);
-                let scale = Vec3A::new(1.0, y_sign, 1.0);
+                let scale = Vec3A::new(-y_sign, y_sign, 1.0);
                 ball_state.phys.pos = consts::heatseeker::BALL_START_POS * scale;
                 ball_state.phys.vel = consts::heatseeker::BALL_START_VEL * scale;
             }
