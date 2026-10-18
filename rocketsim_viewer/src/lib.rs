@@ -28,6 +28,10 @@
 pub mod arena_gl;
 pub mod bindings;
 pub mod camera;
+pub mod debug_gl;
+pub mod debug_lines_gl;
+mod debug_order;
+pub mod debug_overlay;
 pub mod dropshot;
 pub mod frustum;
 pub mod fx;

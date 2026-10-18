@@ -15,7 +15,7 @@ use std::{
     time::Duration,
 };
 
-use crate::proto::{ControlMsg, VisFrame, decode_frame, encode_control};
+use crate::proto::{ControlMsg, VisFrame, decode_sim, encode_control};
 
 /// Viewer→sim control sender, viewer side.
 /// Dials the sim's control port lazily and streams [`ControlMsg`] frames.
@@ -184,13 +184,19 @@ pub enum ConnStatus {
 }
 
 /// Latest-frame receiver. Spawn with [`FrameClient::connect`]; read with
-/// [`FrameClient::latest`] (clones the newest `VisFrame`, if any).
+/// [`FrameClient::latest`] (clones the newest `VisFrame`, if any) and
+/// [`FrameClient::debug_scene`] (cheap `Arc` of retained groups + assets,
+/// independent of the overwritten physics slot).
 #[derive(Clone)]
 struct ClientSession {
     generation: u64,
     status: ConnStatus,
     frame: Option<VisFrame>,
     scene: Option<Arc<crate::proto::SceneMetadata>>,
+    debug: Arc<crate::debug::DebugScene>,
+
+    /// Debug transfers applied this session (diagnostics).
+    debug_transfers: u64,
     controls: Option<ControlMsg>,
     pending_buttons: u8,
 }
@@ -201,9 +207,47 @@ impl ClientSession {
         self.status = status;
         self.frame = None;
         self.scene = None;
+        self.debug = Arc::new(crate::debug::DebugScene::empty());
+        self.debug_transfers = 0;
         self.controls = None;
         self.pending_buttons = 0;
     }
+}
+
+fn display_debug_scene(session: &ClientSession) -> Arc<crate::debug::DebugScene> {
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+    let clock = session.frame.as_ref().map_or(0, |frame| frame.debug_tick);
+    let has_snapshot = session.frame.is_some();
+    let groups = session
+        .debug
+        .groups
+        .iter()
+        .filter(|(_, group)| match group.lifetime {
+            crate::debug::Lifetime::Persistent => true,
+            crate::debug::Lifetime::Frame => {
+                has_snapshot
+                    && group.expires_tick.is_some_and(|deadline| {
+                        clock >= deadline.saturating_sub(1) && clock < deadline
+                    })
+            }
+            crate::debug::Lifetime::Ticks(_) => {
+                group.expires_tick.is_none_or(|deadline| clock < deadline)
+            }
+            crate::debug::Lifetime::Seconds(_) => {
+                group.expires_at_ms.is_none_or(|deadline| now_ms < deadline)
+            }
+        })
+        .map(|(name, group)| (name.clone(), group.clone()))
+        .collect();
+    Arc::new(crate::debug::DebugScene {
+        groups,
+        meshes: session.debug.meshes.clone(),
+        textures: session.debug.textures.clone(),
+        revision: session.debug.revision,
+    })
 }
 
 pub struct FrameClient {
@@ -233,6 +277,9 @@ impl FrameClient {
             status: ConnStatus::Waiting,
             frame: None,
             scene: None,
+            debug: Arc::new(crate::debug::DebugScene::empty()),
+
+            debug_transfers: 0,
             controls: None,
             pending_buttons: 0,
         }));
@@ -300,6 +347,30 @@ impl FrameClient {
     }
     pub fn scene(&self) -> Option<Arc<crate::proto::SceneMetadata>> {
         self.session.lock().ok().and_then(|s| s.scene.clone())
+    }
+    /// Shared retained scene filtered for the latest displayed simulation snapshot.
+    /// Canonical sender state remains unchanged by lifetime filtering.
+    pub fn debug_scene(&self) -> Arc<crate::debug::DebugScene> {
+        self.session
+            .lock()
+            .map(|s| display_debug_scene(&s))
+            .unwrap_or_else(|_| Arc::new(crate::debug::DebugScene::empty()))
+    }
+    /// Generation plus display-filtered retained scene.
+    pub fn debug_snapshot(&self) -> (u64, Arc<crate::debug::DebugScene>) {
+        self.session
+            .lock()
+            .map(|s| (s.generation, display_debug_scene(&s)))
+            .unwrap_or_else(|_| (0, Arc::new(crate::debug::DebugScene::empty())))
+    }
+    /// Current retained-debug revision (sender-global; changes on any
+    /// publication). Useful for GPU cache invalidation.
+    pub fn debug_revision(&self) -> u64 {
+        self.session.lock().map(|s| s.debug.revision).unwrap_or(0)
+    }
+    /// Debug transfers applied this session (diagnostics).
+    pub fn debug_transfers(&self) -> u64 {
+        self.session.lock().map(|s| s.debug_transfers).unwrap_or(0)
     }
 
     /// Address actually bound (useful with port 0 in tests).
@@ -432,6 +503,98 @@ impl OutgoingBuffer {
     }
 }
 
+/// One in-progress debug transfer (per connection; frames interleave).
+struct DebugReassembly {
+    transfer_id: u64,
+    total: usize,
+    parts: Vec<Option<Vec<u8>>>,
+    received: usize,
+}
+
+/// Apply a validated `Full` atomically (fresh session state).
+fn apply_debug_full(session: &Mutex<ClientSession>, full: crate::proto::DebugFull) -> bool {
+    if let Ok(mut s) = session.lock() {
+        let scene = crate::debug::DebugScene {
+            groups: full
+                .groups
+                .into_iter()
+                .map(|g| (g.name.clone(), Arc::new(g)))
+                .collect(),
+            meshes: full
+                .meshes
+                .into_iter()
+                .map(|m| (m.id.clone(), Arc::new(m)))
+                .collect(),
+            textures: full
+                .textures
+                .into_iter()
+                .map(|t| (t.id.clone(), Arc::new(t)))
+                .collect(),
+            revision: full.rev.max(1),
+        };
+        if scene.validate().is_err() {
+            return false;
+        }
+
+        s.debug = Arc::new(scene);
+        s.debug_transfers = s.debug_transfers.wrapping_add(1);
+        true
+    } else {
+        false
+    }
+}
+
+/// Apply a validated `Delta` atomically (ordered stream). Invalid results
+/// (over budget after merge) are dropped without publishing.
+fn apply_debug_delta(session: &Mutex<ClientSession>, delta: crate::proto::DebugDelta) -> bool {
+    if let Ok(mut s) = session.lock() {
+        let mut next = (*s.debug).clone();
+        for g in delta.upsert_groups {
+            next.groups.insert(g.name.clone(), Arc::new(g));
+        }
+        for patch in delta.group_patches {
+            let Some(existing) = next.groups.get(&patch.name) else {
+                return false;
+            };
+            let mut group = (**existing).clone();
+            group.visible = patch.visible;
+            group.anchor = patch.anchor;
+            group.transform = patch.transform;
+            group.lifetime = patch.lifetime;
+            group.expires_tick = patch.expires_tick;
+            group.expires_at_ms = patch.expires_at_ms;
+            group.revision = patch.revision;
+            next.groups.insert(patch.name, Arc::new(group));
+        }
+        for name in delta.removed_groups {
+            next.groups.remove(&name);
+        }
+        for m in delta.upsert_meshes {
+            next.meshes.insert(m.id.clone(), Arc::new(m));
+        }
+        for id in delta.removed_meshes {
+            next.meshes.remove(&id);
+        }
+        for t in delta.upsert_textures {
+            next.textures.insert(t.id.clone(), Arc::new(t));
+        }
+        for id in delta.removed_textures {
+            next.textures.remove(&id);
+        }
+        next.revision = delta.rev.max(1);
+        if next.validate().is_ok() {
+            s.debug = Arc::new(next);
+            s.debug_transfers = s.debug_transfers.wrapping_add(1);
+            true
+        } else {
+            false
+        }
+        // Do not accept later deltas against a state that missed this one.
+    } else {
+        false
+    }
+}
+
 fn pump(
     mut stream: TcpStream,
     session: &Mutex<ClientSession>,
@@ -445,6 +608,7 @@ fn pump(
     let mut input = Vec::new();
     let mut chunk = [0u8; 65536];
     let mut output = OutgoingBuffer::default();
+    let mut reassembly: Option<DebugReassembly> = None;
     loop {
         if stop.load(Ordering::Acquire) {
             let _ = stream.shutdown(std::net::Shutdown::Both);
@@ -472,17 +636,84 @@ fn pump(
             Ok(n) => {
                 input.extend_from_slice(&chunk[..n]);
                 loop {
-                    match decode_frame(&input) {
-                        Ok(Some((mut frame, consumed))) => {
-                            let metadata = frame.scene.take();
-                            if let Ok(mut s) = session.lock() {
-                                if let Some(metadata) = metadata {
-                                    s.scene = Some(Arc::new(metadata));
+                    match decode_sim(&input) {
+                        Ok(Some((msg, consumed))) => {
+                            match msg {
+                                crate::proto::SimMsg::Frame(mut frame) => {
+                                    let metadata = frame.scene.take();
+                                    if let Ok(mut s) = session.lock() {
+                                        if let Some(metadata) = metadata {
+                                            s.scene = Some(Arc::new(metadata));
+                                        }
+                                        s.frame = Some(frame);
+                                    }
+                                    if let Ok(mut count) = received.lock() {
+                                        *count += 1;
+                                    }
                                 }
-                                s.frame = Some(frame);
-                            }
-                            if let Ok(mut count) = received.lock() {
-                                *count += 1;
+                                crate::proto::SimMsg::DebugChunk(c) => {
+                                    let total = c.total as usize;
+                                    let index = c.index as usize;
+                                    let fresh = reassembly
+                                        .as_ref()
+                                        .is_none_or(|r| r.transfer_id != c.transfer_id);
+                                    if fresh {
+                                        if total == 0
+                                            || total > crate::proto::MAX_CHUNKS_PER_TRANSFER
+                                        {
+                                            eprintln!(
+                                                "rocketsim-viewer: closing invalid debug stream from {peer}: bad total"
+                                            );
+                                            return;
+                                        }
+                                        reassembly = Some(DebugReassembly {
+                                            transfer_id: c.transfer_id,
+                                            total,
+                                            parts: (0..total).map(|_| None).collect(),
+                                            received: 0,
+                                        });
+                                    }
+                                    let done = if let Some(r) = reassembly.as_mut() {
+                                        if r.total != total || index >= r.total {
+                                            eprintln!(
+                                                "rocketsim-viewer: closing invalid debug stream from {peer}: bad index"
+                                            );
+                                            return;
+                                        }
+                                        if r.parts[index].is_none() {
+                                            r.parts[index] = Some(c.bytes);
+                                            r.received += 1;
+                                        }
+                                        r.received == r.total
+                                    } else {
+                                        false
+                                    };
+                                    if done {
+                                        let r = reassembly.take().unwrap();
+                                        let mut bytes = Vec::new();
+                                        for part in r.parts.into_iter().flatten() {
+                                            bytes.extend_from_slice(&part);
+                                        }
+                                        match crate::proto::decode_debug_sync(&bytes) {
+                                            Ok(crate::proto::DebugSyncMsg::Full(full)) => {
+                                                if !apply_debug_full(session, full) {
+                                                    return;
+                                                }
+                                            }
+                                            Ok(crate::proto::DebugSyncMsg::Delta(delta)) => {
+                                                if !apply_debug_delta(session, delta) {
+                                                    return;
+                                                }
+                                            }
+                                            Err(error) => {
+                                                eprintln!(
+                                                    "rocketsim-viewer: closing invalid debug stream from {peer}: {error}"
+                                                );
+                                                return;
+                                            }
+                                        }
+                                    }
+                                }
                             }
                             input.drain(..consumed);
                         }
@@ -495,7 +726,7 @@ fn pump(
                         }
                     }
                 }
-                if input.len() > crate::proto::MAX_FRAME_BYTES + 4 {
+                if input.len() > crate::proto::MAX_SIM_MSG_BYTES + 4 {
                     return;
                 }
             }
@@ -513,7 +744,7 @@ mod tests {
     use std::{io::Write, time::Instant};
 
     use super::*;
-    use crate::proto::{ControlMsg, decode_control, encode_frame};
+    use crate::proto::{ControlMsg, SimMsg, decode_control, encode_sim};
 
     struct ScriptedWriter {
         steps: Vec<std::io::Result<usize>>,
@@ -532,6 +763,100 @@ mod tests {
         fn flush(&mut self) -> std::io::Result<()> {
             Ok(())
         }
+    }
+
+    #[test]
+    fn display_expiry_does_not_remove_canonical_groups_or_block_late_patches() {
+        use crate::debug::{DebugGroup, DrawList, GroupOptions, Lifetime};
+        crate::photo::init_meshes();
+        let arena = crate::photo::build_arena();
+        let state = arena.get_arena_state();
+        let mut group = DebugGroup::new(
+            "frame",
+            DrawList::new(),
+            GroupOptions::default().lifetime(Lifetime::Frame),
+        )
+        .unwrap();
+        group.expires_tick = Some(12);
+        let mut scene = crate::debug::DebugScene::empty();
+        scene.groups.insert("frame".into(), Arc::new(group));
+        let session = Mutex::new(ClientSession {
+            generation: 1,
+            status: ConnStatus::Connected {
+                addr: "local".into(),
+            },
+            frame: None,
+            scene: None,
+            debug: Arc::new(scene),
+            debug_transfers: 0,
+            controls: None,
+            pending_buttons: 0,
+        });
+        assert!(
+            display_debug_scene(&session.lock().unwrap())
+                .groups
+                .is_empty()
+        );
+        {
+            let mut s = session.lock().unwrap();
+            let mut frame = VisFrame::new(state, 1.0 / 120.0);
+            frame.debug_tick = 11;
+            s.frame = Some(frame);
+        }
+        assert!(
+            display_debug_scene(&session.lock().unwrap())
+                .groups
+                .contains_key("frame")
+        );
+        std::thread::sleep(Duration::from_millis(275));
+        assert!(
+            display_debug_scene(&session.lock().unwrap())
+                .groups
+                .contains_key("frame")
+        );
+        {
+            let mut s = session.lock().unwrap();
+            s.frame.as_mut().unwrap().debug_tick = 12;
+        }
+        assert!(
+            display_debug_scene(&session.lock().unwrap())
+                .groups
+                .is_empty()
+        );
+        assert!(session.lock().unwrap().debug.groups.contains_key("frame"));
+        let patch = crate::proto::DebugGroupPatch {
+            name: "frame".into(),
+            visible: true,
+            anchor: crate::debug::Anchor::World,
+            transform: crate::debug::GroupTransform::identity(),
+            lifetime: Lifetime::Frame,
+            expires_tick: Some(12),
+            expires_at_ms: None,
+            revision: 2,
+        };
+        let delta = crate::proto::DebugDelta {
+            group_patches: vec![patch],
+            rev: 2,
+            ..Default::default()
+        };
+        assert!(apply_debug_delta(&session, delta));
+        let before = session.lock().unwrap().debug.revision;
+        let bad = crate::proto::DebugDelta {
+            group_patches: vec![crate::proto::DebugGroupPatch {
+                name: "missing".into(),
+                visible: true,
+                anchor: crate::debug::Anchor::World,
+                transform: crate::debug::GroupTransform::identity(),
+                lifetime: Lifetime::Frame,
+                expires_tick: Some(2),
+                expires_at_ms: None,
+                revision: 3,
+            }],
+            rev: 3,
+            ..Default::default()
+        };
+        assert!(!apply_debug_delta(&session, bad));
+        assert_eq!(session.lock().unwrap().debug.revision, before);
     }
 
     #[test]
@@ -575,10 +900,10 @@ mod tests {
         let mut arena = crate::photo::build_arena();
         for _ in 0..3 {
             arena.step_tick();
-            let bytes = encode_frame(&crate::proto::VisFrame::new(
+            let bytes = encode_sim(&SimMsg::Frame(crate::proto::VisFrame::new(
                 arena.get_arena_state(),
                 1.0 / 120.0,
-            ));
+            )));
             stream.write_all(&bytes).unwrap();
         }
 
@@ -608,7 +933,9 @@ mod tests {
         initial.scene = Some(crate::proto::SceneMetadata::empty(
             rocketsim::GameMode::Soccar,
         ));
-        stream.write_all(&encode_frame(&initial)).unwrap();
+        stream
+            .write_all(&encode_sim(&SimMsg::Frame(initial)))
+            .unwrap();
         let deadline = Instant::now() + Duration::from_secs(2);
         while !client.controls_connected()
             || client.snapshot().1.is_none()
@@ -659,10 +986,10 @@ mod tests {
         ));
         let mut next_sim = TcpStream::connect(client.local_addr()).unwrap();
         next_sim
-            .write_all(&encode_frame(&crate::proto::VisFrame::new(
+            .write_all(&encode_sim(&SimMsg::Frame(crate::proto::VisFrame::new(
                 arena.get_arena_state(),
                 1.0 / 120.0,
-            )))
+            ))))
             .unwrap();
         let deadline = Instant::now() + Duration::from_secs(2);
         while client.generation() <= generation || client.latest().is_none() {
@@ -679,10 +1006,10 @@ mod tests {
         let mut owner = TcpStream::connect(client.local_addr()).unwrap();
         let arena = crate::photo::build_arena();
         owner
-            .write_all(&encode_frame(&crate::proto::VisFrame::new(
+            .write_all(&encode_sim(&SimMsg::Frame(crate::proto::VisFrame::new(
                 arena.get_arena_state(),
                 1.0 / 120.0,
-            )))
+            ))))
             .unwrap();
         let deadline = Instant::now() + Duration::from_secs(2);
         while !client.controls_connected() {

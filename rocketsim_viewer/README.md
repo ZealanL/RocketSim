@@ -211,6 +211,19 @@ on a trusted network, and restrict access with a firewall.
 Run `rocketsim-viewer --help` for all command options, including the initial
 camera and game mode. Streamed scene data replaces the initial game mode.
 
+## Debug rendering review
+
+The `debug_render` example shows the retained drawing API. Build and run it
+with a viewer from the same checkout. See
+[`rocketsim_vis/DEBUG_RENDERING.md`](../rocketsim_vis/DEBUG_RENDERING.md) for
+its modes, local OBJ input, API limits, and review tool.
+
+Pass `--debug-stats PATH` to write CPU timing and asynchronous GPU query
+statistics to a file. Pass `--no-menu` to start with the menu closed. Pass
+`--hide-ball` to hide the simulation ball mesh without changing physics or
+camera tracking. Use this for debug-only model scenes. The viewer accepts
+these options with its normal port and camera arguments.
+
 ## Troubleshooting
 
 - **No scene appears:** The viewer is waiting for frames. Start a simulation
@@ -222,9 +235,8 @@ camera and game mode. Streamed scene data replaces the initial game mode.
 - **Controls have no effect:** Focus the window, close settings, select a car,
   and disable spectate-only mode. Confirm that the simulation applies input.
 - **A second arena cannot connect:** Start another viewer on a different port.
-- **The connection reports a version mismatch:** Use matching `rocketsim`,
-  `rocketsim_vis`, and `rocketsim_viewer` versions. Version 0.3 uses protocol 3.
-  Protocol 2 viewers and simulations are incompatible.
+- **The connection reports a version mismatch:** Use matching builds of
+  `rocketsim_vis` and `rocketsim_viewer`. Version 0.3 uses protocol version 1.
 - **The scene disappears after a disconnect:** This is expected. The viewer
   clears the old scene and waits for a new simulation connection.
 

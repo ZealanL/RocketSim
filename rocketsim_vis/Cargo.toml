@@ -15,7 +15,7 @@ categories.workspace = true
 glam.workspace = true
 postcard = { version = "1", features = ["alloc"] }
 rocketsim = { path = "../rocketsim", version = "0.3.0", features = ["serde"] }
-serde = { version = "1", features = ["derive"] }
+serde = { version = "1", features = ["derive", "rc"] }
 
 [dev-dependencies]
 clap = { version = "4.6.0", features = ["derive"] }

@@ -6,6 +6,7 @@ use rocketsim::GameMode;
 
 use crate::{
     arena_gl::ArenaGl,
+    debug_gl::DebugGl,
     dropshot::DropshotTilesGl,
     lines_gl::LinesGl,
     main_gl::{InstancedModelGl, MainInstProgram, MainProgram, ModelGl},
@@ -34,6 +35,8 @@ pub struct SceneGl {
     pub pad_radii: [f32; 4],
     /// Debug-line renderer.
     pub lines: LinesGl,
+    /// Retained debug scene renderer and GPU cache.
+    pub debug: DebugGl,
     /// Uploaded static models.
     pub models: HashMap<String, ModelGl>,
     /// Uploaded instanced actor models.
@@ -45,6 +48,14 @@ pub struct SceneGl {
 impl SceneGl {
     /// Creates a complete scene from prebuilt arena geometry.
     pub fn new(gl: &glow::Context, mesh: &ArenaMesh) -> Self {
+        use glow::HasContext;
+        unsafe {
+            eprintln!(
+                "rocketsim-viewer: GPU {} / {}",
+                gl.get_parameter_string(glow::RENDERER),
+                gl.get_parameter_string(glow::VERSION)
+            );
+        }
         let pad_meshes = load_pad_meshes();
         let pad_radii = [
             variant_radius(&pad_meshes[0]),
@@ -103,6 +114,7 @@ impl SceneGl {
             dropshot: DropshotTilesGl::new(gl),
             pad_radii,
             lines: LinesGl::new(gl),
+            debug: DebugGl::new(gl),
             models,
             car_models,
             textures,
@@ -124,6 +136,7 @@ impl SceneGl {
         self.pads.destroy(gl);
         self.dropshot.destroy(gl);
         self.lines.destroy(gl);
+        self.debug.destroy(gl);
         for model in self.models.values() {
             model.destroy(gl);
         }

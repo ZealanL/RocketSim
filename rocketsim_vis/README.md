@@ -149,36 +149,51 @@ a dribble, and bit 2 a ball launch. Your application must implement those
 requests. See [`examples/drive.rs`](examples/drive.rs) for a complete loop that
 handles controls, actions, mutators, and timing.
 
-## Add debug drawing
+## Retained debug rendering
 
-Insert this code after enabling the viewer and before the stepping loop in
-the program above. It adds a world-space line and screen-space text:
+After attaching a viewer, get a cloneable renderer with
+`arena.debug_renderer()`. It returns `None` when the arena is not attached.
+`arena.try_set_net_vis(Some(address))?` connects to an existing viewer and
+returns address or connection setup errors. This method does not launch a
+viewer.
+
+This example replaces a named group, then changes only its transform. It
+assumes `arena` is mutable and the connection is attached:
 
 ```rust
-use rocketsim_vis::proto::{DebugDraw, DebugLine, DebugText};
+use rocketsim_vis::debug::{
+    Color, DebugRenderer, DepthMode, DrawList, GroupOptions, GroupTransform,
+    Lifetime, Width,
+};
 
-let mut debug = DebugDraw::default();
-debug.lines.push(DebugLine {
-    start: [0.0, 0.0, 0.0],
-    end: [100.0, 0.0, 0.0],
-    color: [1.0, 0.0, 0.0, 1.0],
-    width: 2.0,
-});
-debug.text.push(DebugText {
-    text: "Ball target".into(),
-    position: [0.05, 0.05],
-    color: [1.0, 1.0, 1.0, 1.0],
-});
-arena.set_vis_debug(debug);
+let renderer: DebugRenderer = arena.debug_renderer().ok_or("not attached")?;
+let mut drawing = DrawList::new();
+drawing.line(
+    [0.0, 0.0, 0.0],
+    [100.0, 0.0, 0.0],
+    Color::RED,
+    Width::pixels(2.0),
+    DepthMode::Test,
+);
+renderer.replace_group(
+    "target",
+    drawing,
+    GroupOptions::new().lifetime(Lifetime::Persistent),
+)?;
+
+renderer.set_group_transform(
+    "target",
+    GroupTransform::from_position([0.0, 100.0, 0.0]),
+)?;
 ```
 
-The next streamed frames include the drawing. `set_vis_debug` replaces the
-previous drawing. Pass `DebugDraw::default()` to clear it.
+`DrawList` supports explicit lines, polylines, points, meshes, mesh instances,
+labels, rectangles, and helpers for boxes, circles, spheres, arrows, grids, and
+axes. See [the retained rendering guide](DEBUG_RENDERING.md) for group updates,
+anchors, resources, limits, and current rendering limits.
 
-Line endpoints use world coordinates in Unreal units. Text positions use
-normalized screen coordinates from 0 to 1. Colors use red, green, blue, and
-alpha values from 0 to 1. `DebugDraw` also supports screen-space rectangles and
-named models. Model and texture names must match the viewer's assets.
+`set_vis_debug` remains available for small latest-only frame drawings. It is
+separate from retained groups.
 
 ## Troubleshooting
 
@@ -198,8 +213,8 @@ named models. Model and texture names must match the viewer's assets.
 ## Compatibility
 
 Keep `rocketsim`, `rocketsim_vis`, and `rocketsim_viewer` on matching versions.
-Version 0.3 uses protocol 3. Protocol 2 viewers and simulations cannot
-communicate with it. The installed viewer does not need collision meshes
+Version 0.3 uses protocol version 1. Use matching builds of `rocketsim_vis`
+and `rocketsim_viewer`. The installed viewer does not need collision meshes
 because the simulation sends scene geometry.
 
 The old `backend`, `camera`, and `VisInst` interfaces are no longer available.

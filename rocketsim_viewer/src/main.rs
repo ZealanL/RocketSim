@@ -1,3 +1,4 @@
+mod debug_metrics;
 /// Viewer for live 3D simulation frames streamed over TCP.
 ///
 /// Usage: `rocketsim-viewer [PORT] [CAM] [-g MODE] [--bind ADDRESS] [--gpushot]`.
@@ -20,6 +21,8 @@ use rocketsim_viewer::{
         ArenaBoundsCache, AutoCam, CameraConfig, CameraMan, CameraPreset, CarCamSmoothing,
         DirectorState, DirectorTarget, FreeCam,
     },
+    debug_gl::DebugStats,
+    debug_overlay::OverlayCache,
     dropshot::DropshotTileCache,
     frustum::frustum_planes,
     fx::CarFx,
@@ -45,6 +48,10 @@ use rocketsim_vis::{
 
 struct ViewerApp {
     frames: u64,
+    debug_info: Arc<Mutex<DebugStats>>,
+    debug_overlay: OverlayCache,
+    debug_metrics: Option<debug_metrics::DebugMetrics>,
+    hide_ball: bool,
     mesh: Arc<ArenaMesh>,
     scene: Arc<Mutex<Option<SceneGl>>>,
     client: FrameClient,
@@ -1091,6 +1098,10 @@ impl ViewerApp {
         };
         Self {
             frames: 0,
+            debug_info: Arc::new(Mutex::new(DebugStats::default())),
+            debug_overlay: OverlayCache::new(),
+            debug_metrics: None,
+            hide_ball: false,
             mesh,
             scene: Arc::new(Mutex::new(None)),
             client,
@@ -1594,7 +1605,15 @@ impl eframe::App for ViewerApp {
         let (status, received) = (self.client.status(), self.client.received());
         let tick = client_frame.as_ref().map(|f| f.state.tick_count);
         let debug_draw = client_frame.as_ref().map(|f| f.debug.clone());
+        if generation_changed {
+            self.debug_overlay = OverlayCache::new();
+        }
+        let retained_debug = self.client.debug_scene();
+        let callback_debug = retained_debug.clone();
+        let debug_info = self.debug_info.clone();
+        let profile_debug = self.debug_metrics.is_some();
         let show_pads = self.settings.show_pads;
+        let show_ball = !self.hide_ball;
         let ball_radius_scale = scene_metadata
             .as_ref()
             .map_or(1.0, |m| (m.ball_radius / 91.25).max(0.01));
@@ -2702,6 +2721,17 @@ impl eframe::App for ViewerApp {
             ui.label(format!("Camera: {cam_line}"));
             ui.label(drive_line);
             ui.label(format!("{fps:.0} fps"));
+            if !retained_debug.is_empty() {
+                let stats = self.debug_info.lock().map(|s| *s).unwrap_or_default();
+                ui.monospace(format!(
+                    "Debug: {} groups / {} draws / {} lines / {} points / {} triangles",
+                    retained_debug.group_count(),
+                    stats.draw_calls,
+                    stats.segments,
+                    stats.points,
+                    stats.primitives
+                ));
+            }
             if cfg!(debug_assertions) {
                 ui.monospace(format!("mesh soup={soup} welded={welded} idx={indices}"));
                 ui.monospace(format!(
@@ -2762,6 +2792,10 @@ impl eframe::App for ViewerApp {
                             *guard = Some(SceneGl::new(gl, &mesh));
                         } else if rebuild_arena && let Some(scene) = guard.as_mut() {
                             scene.rebuild_arena(gl, &mesh);
+                            if generation_changed {
+                                scene.debug.destroy(gl);
+                                scene.debug = rocketsim_viewer::debug_gl::DebugGl::new(gl);
+                            }
                         }
                         let scene: &mut SceneGl = guard.as_mut().expect("viewer scene built");
                         scene.arena.draw(
@@ -2772,33 +2806,37 @@ impl eframe::App for ViewerApp {
                             &proj_mat,
                             enclosed,
                         );
+                        scene.dropshot.upload_shared(gl, &dropshot_mesh);
+                        scene.dropshot.draw(gl, &view_mat, &proj_mat);
                         scene.prog_main.set_view_proj(gl, &view_mat, &proj_mat);
                         if let Some(frame) = &client_frame {
-                            // Ball: textured, pos + rot.
-                            let ball = &frame.state.ball.phys;
-                            let ball_model = if frame.state.game_mode() == GameMode::Snowday {
-                                PUCK_MODEL
-                            } else {
-                                BALL_MODEL
-                            };
-                            let ball_model = scene
-                                .models
-                                .get(ball_model)
-                                .or_else(|| scene.models.get(BALL_MODEL))
-                                .expect("scene has a ball or puck model");
-                            scene.prog_main.draw(
-                                gl,
-                                ball_model,
-                                &scene.textures[BALL_TEXTURE],
-                                &(model_matrix(Vec3::from(ball.pos), Mat3::from(ball.rot_mat))
-                                    * glam::Mat4::from_scale(
-                                        if frame.state.game_mode() == GameMode::Snowday {
-                                            Vec3::new(ball_radius_scale, ball_radius_scale, 1.0)
-                                        } else {
-                                            Vec3::splat(ball_radius_scale)
-                                        },
-                                    )),
-                            );
+                            // Ball visibility does not change the camera target or simulation state.
+                            if show_ball {
+                                let ball = &frame.state.ball.phys;
+                                let ball_model = if frame.state.game_mode() == GameMode::Snowday {
+                                    PUCK_MODEL
+                                } else {
+                                    BALL_MODEL
+                                };
+                                let ball_model = scene
+                                    .models
+                                    .get(ball_model)
+                                    .or_else(|| scene.models.get(BALL_MODEL))
+                                    .expect("scene has a ball or puck model");
+                                scene.prog_main.draw(
+                                    gl,
+                                    ball_model,
+                                    &scene.textures[BALL_TEXTURE],
+                                    &(model_matrix(Vec3::from(ball.pos), Mat3::from(ball.rot_mat))
+                                        * glam::Mat4::from_scale(
+                                            if frame.state.game_mode() == GameMode::Snowday {
+                                                Vec3::new(ball_radius_scale, ball_radius_scale, 1.0)
+                                            } else {
+                                                Vec3::splat(ball_radius_scale)
+                                            },
+                                        )),
+                                );
+                            }
                             for debug_model in &frame.debug.models {
                                 let rotation = Mat3::from_cols_array_2d(&debug_model.rotation);
                                 let transform =
@@ -2859,6 +2897,17 @@ impl eframe::App for ViewerApp {
                             scene.prog_cars.unbind(gl);
                         }
                         scene.prog_main.unbind(gl);
+                        scene.debug.sync(gl, &callback_debug);
+                        scene.debug.set_profiling(profile_debug);
+                        scene.debug.begin_frame(
+                            gl,
+                            &callback_debug,
+                            client_frame.as_ref().map(|f| &f.state),
+                            &view_mat,
+                            &proj_mat,
+                            [w_px as f32, h_px as f32],
+                        );
+                        scene.debug.draw_opaque(gl);
                         // Pads: frustum-filtered instances (skipped if hidden).
                         let planes = frustum_planes(proj_mat * view_mat);
                         let empty: [Vec<glam::Mat4>; 4] = Default::default();
@@ -2870,11 +2919,10 @@ impl eframe::App for ViewerApp {
                         };
                         scene.pads.upload(gl, &instances);
                         scene.pads.draw(gl, &view_mat, &proj_mat);
-                        scene.dropshot.upload_shared(gl, &dropshot_mesh);
-                        scene.dropshot.draw(gl, &view_mat, &proj_mat);
                         scene
                             .arena
                             .draw_net(gl, &glam::Mat4::IDENTITY, &view_mat, &proj_mat);
+                        scene.debug.draw_transparent(gl);
                         if let Ok(mut info) = pads_info.lock() {
                             *info = (instances.iter().map(|v| v.len()).sum(), culled);
                         }
@@ -2897,6 +2945,11 @@ impl eframe::App for ViewerApp {
                         if let Ok(mut info) = lines_info.lock() {
                             *info = (scene.lines.drawn(), scene.lines.truncated);
                         }
+                        scene.debug.draw_overlay(gl);
+                        scene.debug.end_frame(gl);
+                        if let Ok(mut info) = debug_info.lock() {
+                            *info = scene.debug.stats();
+                        }
                         // GPU-stall timing (profiling only: serializes the
                         // pipeline, never enable outside measurements).
                         if measure_gpu {
@@ -2915,6 +2968,20 @@ impl eframe::App for ViewerApp {
                     })),
                 };
                 ui.painter().add(cb);
+                let (debug_view, debug_proj) = view::view_proj(
+                    glam::Vec3::from(cam_pos),
+                    glam::Vec3::from(cam_pos + cam_dir),
+                    cam_fov,
+                    rect.aspect_ratio(),
+                );
+                self.debug_overlay.paint(
+                    ui,
+                    rect,
+                    &retained_debug,
+                    self.client.latest().as_ref().map(|f| &f.state),
+                    &debug_view,
+                    &debug_proj,
+                );
                 if let Some(debug) = &debug_draw {
                     let painter = ui.painter();
                     for debug_rect in &debug.rects {
@@ -2964,6 +3031,18 @@ impl eframe::App for ViewerApp {
             }
         });
         self.cpu_ms = cpu_t0.elapsed().as_secs_f64() * 1000.0;
+        if let Some(metrics) = self.debug_metrics.as_mut() {
+            let stats = self.debug_info.lock().map(|s| *s).unwrap_or_default();
+            let draw_ms = self.last_draw_ms.lock().map(|s| *s).unwrap_or_default();
+            metrics.record(
+                self.cpu_ms,
+                draw_ms,
+                fps as f64,
+                stats,
+                retained_debug.group_count(),
+                self.client.debug_transfers(),
+            );
+        }
         // Repaint follows the frame limiter so idle frames are not pinned
         // to 60Hz: uncapped repaints immediately (busy loop), capped waits
         // out the rest of this frame's budget (the limiter sleep above
@@ -2998,6 +3077,15 @@ struct Cli {
     /// GPU-stall timing for profiling.
     #[arg(long)]
     gpushot: bool,
+    /// Write debug-render timing and upload counters as JSON. Enables GPU timer queries.
+    #[arg(long)]
+    debug_stats: Option<std::path::PathBuf>,
+    /// Start with the settings menu closed.
+    #[arg(long)]
+    no_menu: bool,
+    /// Hide the ball mesh without changing physics or camera tracking.
+    #[arg(long)]
+    hide_ball: bool,
 }
 
 fn dropshot_tile_states(state: &rocketsim::ArenaState) -> Option<&rocketsim::TileStates> {
@@ -3035,7 +3123,7 @@ fn main() {
     // The `CAM` option sets the start camera. Runtime camera and driving
     // inputs use the remappable action map. The options menu starts open.
     let init_mode = cli.cam;
-    let menu_open = true;
+    let menu_open = !cli.no_menu;
     // `gpushot` also accepted bare (pre-clap usage) anywhere in argv.
     let measure_gpu = cli.gpushot || measure_gpu_compat;
     let settings = ViewerSettings::load();
@@ -3064,7 +3152,7 @@ fn main() {
         "rocketsim viewer",
         options,
         Box::new(move |_cc| {
-            let app = ViewerApp::new(
+            let mut app = ViewerApp::new(
                 mesh.clone(),
                 client,
                 init_mode,
@@ -3072,6 +3160,10 @@ fn main() {
                 menu_open,
                 measure_gpu,
             );
+            app.hide_ball = cli.hide_ball;
+            if let Some(path) = cli.debug_stats {
+                app.debug_metrics = Some(debug_metrics::DebugMetrics::new(path));
+            }
             Ok(Box::new(app) as _)
         }),
     ) {
@@ -3093,6 +3185,16 @@ mod tests {
         assert!(dropshot_tile_states(&state).is_none());
         state.tile_states = Some(rocketsim::TileStates::DEFAULT);
         assert_eq!(dropshot_tile_states(&state), state.tile_states.as_ref());
+    }
+
+    #[test]
+    fn ball_visibility_is_opt_in_and_does_not_change_camera_options() {
+        let normal = Cli::try_parse_from(["rocketsim-viewer"]).unwrap();
+        let debug = Cli::try_parse_from(["rocketsim-viewer", "--hide-ball", "--no-menu"]).unwrap();
+        assert!(!normal.hide_ball);
+        assert!(debug.hide_ball && debug.no_menu);
+        assert_eq!(normal.port, debug.port);
+        assert!(matches!(debug.cam, StartMode::Birds));
     }
 
     #[test]

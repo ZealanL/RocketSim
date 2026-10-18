@@ -7,17 +7,17 @@
 //! Run `cargo run -p rocketsim_vis --example drive -- [-g hoops]`.
 //! Use `--viewer IP:PORT` to connect to a viewer started separately.
 
+#[path = "support/drive.rs"]
+mod drive_controls;
 mod support;
 
 use std::net::SocketAddr;
 
 use clap::Parser;
-use glam::Vec3A;
-use rocketsim::{Arena, ArenaConfig, CarBodyConfig, CarControls, GameMode, Team};
-use rocketsim_vis::{
-    ArenaVisExt, mutators::Mutators, pace::TickPacer, parse_game_mode, photo::init_meshes,
-    proto::MUT_KNOWN_MASK,
-};
+use rocketsim::{Arena, ArenaConfig, CarBodyConfig, GameMode, Team};
+use rocketsim_vis::{ArenaVisExt, pace::TickPacer, parse_game_mode, photo::init_meshes};
+
+use drive_controls::Driver;
 
 #[derive(Parser)]
 #[command(name = "drive", version)]
@@ -57,43 +57,10 @@ fn main() -> std::io::Result<()> {
     println!("Reset, dribble, and launch use Backspace, F2, and F4 by default.");
 
     let mut pacer = TickPacer::at_120hz();
-    let mut previous_target = default_car;
-    // Keep the last mutator selection on link loss. Driving inputs still become neutral.
-    let mut mutators = 0;
+    let mut driver = Driver::new(default_car);
     loop {
         for _ in 0..pacer.wait() {
-            let message = arena.latest_vis_controls();
-            let target = message
-                .map(|message| message.car_index as usize)
-                .filter(|&index| index < arena.num_cars())
-                .unwrap_or(default_car);
-            if previous_target != target {
-                arena.set_car_controls(previous_target, CarControls::default());
-                previous_target = target;
-            }
-            if let Some(message) = message {
-                mutators = message.mutators & MUT_KNOWN_MASK;
-            }
-            let controls = message.map_or_else(CarControls::default, |message| message.controls);
-            let actions = arena.take_vis_actions();
-            if actions & 1 != 0 {
-                arena.reset_to_random_kickoff(None);
-            }
-            if actions & 2 != 0 {
-                let car = arena.get_car_state(target);
-                let pos = car.phys.pos + Vec3A::Z * 150.0;
-                let vel = car.phys.vel;
-                arena.edit_ball_state(|ball| {
-                    ball.phys.pos = pos;
-                    ball.phys.vel = vel;
-                });
-            }
-            if actions & 4 != 0 {
-                arena.edit_ball_state(|ball| ball.phys.vel += Vec3A::Z * 1000.0);
-            }
-            Mutators::from_mask(mutators).apply_pre_tick(&mut arena, target);
-            arena.set_car_controls(target, controls);
-            arena.step_tick();
+            driver.tick(&mut arena);
         }
     }
 }

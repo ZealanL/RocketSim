@@ -25,8 +25,123 @@ to create a uinput device. Configure uinput access before you use
 exclusive control of those devices.
 
 Build the probe and viewer from the same checkout. Version 0.3 uses protocol
-3. The viewer listens on loopback by default. Its protocol has no
+version 1. The viewer listens on loopback by default. Its protocol has no
 authentication. Keep test connections on a trusted machine.
+
+## Review retained debug rendering
+
+Build the viewer and the debug example from the workspace root:
+
+```sh
+cargo build --release -p rocketsim_viewer --bin rocketsim-viewer
+cargo build --release -p rocketsim_vis --example debug_render
+```
+
+Run the review harness in showcase and stress modes:
+
+```sh
+python3 tools/debug-render-review.py --only showcase --only stress \
+  --viewer-arg=--no-menu
+```
+
+The harness runs `wire`, `solid`, `showcase`, or `stress` mode. `--only MODE`
+can be repeated. The wire and solid modes require `--obj PATH` with a local
+ZeroTwo model file:
+
+```sh
+python3 tools/debug-render-review.py --obj /path/to/ZeroTwo.obj \
+  --only wire --only solid --static --viewer-arg=--no-menu
+```
+
+The ZeroTwo model is user-local input. The repository does not include the
+model or a derived asset because its license is unknown. The procedural
+showcase uses original code and no third-party assets. Use `--static` to keep
+the selected scene static. Use `--viewer-arg=ARG` to pass a viewer option;
+for example, `--viewer-arg=--no-menu` starts with the menu closed. The harness
+also requests `--debug-stats PATH` and saves captures and logs under
+`target/input-review/debug-render`. It hides the simulation ball by default
+so that the ball does not intersect the debug model. Pass `--show-ball` to
+include the ball in a capture.
+
+Pass `--drive` to capture debug geometry in a Soccar arena with a drivable
+Octane. This mode keeps the ball visible and requires Soccar collision
+meshes:
+
+```sh
+python3 tools/debug-render-review.py --only showcase --drive --static
+```
+
+For interactive driving, run the example directly. Omit `--seconds` to keep
+it running. Press `1` to drive or `F` for free camera:
+
+```sh
+cargo run --locked --release -p rocketsim_vis --example debug_render -- \
+  --drive --mode showcase
+```
+
+## Run the headless debug-render benchmark
+
+This optional Linux benchmark measures the retained `DebugGl` renderer with a
+surfaceless EGL pbuffer. The normal viewer build does not need EGL development
+libraries. Install EGL development libraries only if you build this optional
+`debug-bench` feature.
+
+Build and run the cached-geometry benchmark:
+
+```sh
+cargo run --locked --release -p rocketsim_viewer \
+  --features debug-bench --bin debug-render-bench -- \
+  --lines 100000 --points 10000 --instances 5000 \
+  --frames 240 --warmup 60 \
+  --output target/input-review/debug-render/native-cached.png \
+  --json target/input-review/debug-render/native-cached.json
+```
+
+Run the same workload with geometry rebuilt each frame. Use different output
+paths:
+
+```sh
+cargo run --locked --release -p rocketsim_viewer \
+  --features debug-bench --bin debug-render-bench -- \
+  --lines 100000 --points 10000 --instances 5000 \
+  --frames 240 --warmup 60 --rebuild \
+  --output target/input-review/debug-render/native-rebuild.png \
+  --json target/input-review/debug-render/native-rebuild.json
+```
+
+The benchmark uses `gl.finish()` for controlled timing. It is a renderer-only
+test. It is not full-viewer FPS or a comparison with RLBot. Both modes use the
+same geometry and produce the same pixels. The benchmark checks that all
+readback alpha values are 255. A Xephyr capture with llvmpipe does not give
+native GPU timings.
+
+One observed run used an AMD Radeon 780M with radeonsi, Mesa 25.2.8, OpenGL
+4.6, a 1280x720 pbuffer, and no MSAA. It used 60 warmup frames and 240 measured
+frames. The workload contained 100,000 line segments, 10,000 points, 5,000
+instances, and 30 draw calls.
+
+| Mode | CPU mean | GPU mean | Completion wall mean | Upload after warmup |
+| --- | ---: | ---: | ---: | ---: |
+| Cached geometry | 0.026 ms | 0.349 ms | 0.734 ms | 0 bytes |
+| Rebuild geometry | 1.474 ms | 0.723 ms | 3.400 ms | 1,468,800,000 bytes total (6.12 MB/frame) |
+
+These values are one machine's result. They are not a performance guarantee.
+A separate readback comparison confirmed identical pixels for cached and
+rebuilt geometry.
+
+### Check debug depth and transparency
+
+Run the small GPU regression scenes on a surfaceless EGL driver:
+
+```sh
+cargo run --locked --release -p rocketsim_viewer \
+  --features debug-bench --bin debug-render-bench -- \
+  --check-ordering --output target/input-review/debug-render/ordering.png
+```
+
+The checks cover mixed opaque and translucent instances, translucent source
+order, camera reversal, and depth-tested versus always-visible lines. They
+also check framebuffer alpha and OpenGL errors.
 
 ## Capture a viewer screenshot
 

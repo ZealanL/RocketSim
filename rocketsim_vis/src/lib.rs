@@ -25,6 +25,7 @@
 //! # Ok::<(), std::io::Error>(())
 //! ```
 
+pub mod debug;
 pub mod launcher;
 pub mod mutators;
 pub mod net_client;
@@ -113,7 +114,18 @@ pub trait ArenaVisExt {
     fn take_vis_actions(&mut self) -> u8;
 
     /// Replace the debug drawing included in subsequent frames.
+    ///
+    /// Legacy per-tick frame drawings (small, latest-only). Retained scene
+    /// drawings use [`debug_renderer`](Self::debug_renderer) instead and are
+    /// never cloned into ticks.
     fn set_vis_debug(&mut self, debug: proto::DebugDraw);
+
+    /// Cloneable retained-scene handle, or `None` when no viewer is attached.
+    ///
+    /// Accepted updates coalesce in bounded tables even while disconnected
+    /// or while the sim is paused; the sender thread serializes off the sim
+    /// tick. Short API locks only; the network path stays nonblocking.
+    fn debug_renderer(&self) -> Option<debug::DebugRenderer>;
 
     /// Return whether the sender currently has a viewer connection.
     fn vis_connected(&self) -> bool;
@@ -183,6 +195,10 @@ impl ArenaVisExt for Arena {
         }
     }
 
+    fn debug_renderer(&self) -> Option<debug::DebugRenderer> {
+        net_vis(self).map(NetVis::debug_renderer)
+    }
+
     fn vis_connected(&self) -> bool {
         net_vis(self).is_some_and(NetVis::connected)
     }
@@ -224,6 +240,193 @@ mod tests {
         other.try_set_net_vis(Some(&first_addr)).unwrap();
         arena.set_vis_enabled(false);
         assert!(other.is_vis_enabled());
+    }
+
+    fn wait_for_debug(
+        viewer: &FrameClient,
+        deadline: Instant,
+        mut pred: impl FnMut(&crate::debug::DebugScene) -> bool,
+    ) {
+        loop {
+            if pred(&viewer.debug_scene()) {
+                return;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "retained debug condition never met"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    fn point_list(x: f32) -> crate::debug::DrawList {
+        use crate::debug::{Color, DepthMode, Width};
+        let mut list = crate::debug::DrawList::new();
+        list.point(
+            [x, 0.0, 0.0],
+            Color::RED,
+            Width::pixels(3.0),
+            DepthMode::Test,
+        );
+        list
+    }
+
+    #[test]
+    fn retained_delete_survives_skipped_physics_frames() {
+        use crate::debug::GroupOptions;
+        let viewer = FrameClient::try_connect("127.0.0.1:0").unwrap();
+        let addr = viewer.local_addr().to_string();
+        let mut arena = Arena::new(GameMode::TheVoid);
+        arena.try_set_net_vis(Some(&addr)).unwrap();
+        let renderer = arena.debug_renderer().expect("attached");
+        // Publish several groups, then drive many rapid ticks (frame slot
+        // overwrites/drops) while deleting everything.
+        for i in 0..5 {
+            renderer
+                .replace_group(
+                    &format!("g{i}"),
+                    point_list(i as f32),
+                    GroupOptions::default(),
+                )
+                .unwrap();
+        }
+        let deadline = Instant::now() + Duration::from_secs(10);
+        // Wait for the first Full so the sender's `sent` set is populated;
+        // later deletes then travel as reliable deltas, not dropped frames.
+        loop {
+            arena.step_tick();
+            if viewer.debug_scene().group_count() >= 5 {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "initial debug Full never arrived"
+            );
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        for i in 0..5 {
+            renderer.clear_group(&format!("g{i}")).unwrap();
+        }
+        // Burst ticks: latest-only frames drop, debug deletes must not.
+        for _ in 0..30 {
+            arena.step_tick();
+        }
+        wait_for_debug(&viewer, Instant::now() + Duration::from_secs(10), |s| {
+            s.is_empty()
+        });
+        // Physics still flows independently.
+        assert!(viewer.latest().is_some());
+    }
+
+    #[test]
+    fn retained_updates_arrive_while_sim_paused() {
+        use crate::debug::GroupOptions;
+        let viewer = FrameClient::try_connect("127.0.0.1:0").unwrap();
+        let addr = viewer.local_addr().to_string();
+        let mut arena = Arena::new(GameMode::TheVoid);
+        arena.try_set_net_vis(Some(&addr)).unwrap();
+        let renderer = arena.debug_renderer().expect("attached");
+        // No `step_tick` at all: the sender thread still syncs accepted
+        // retained updates (paused sim).
+        renderer
+            .replace_group("paused", point_list(1.0), GroupOptions::default())
+            .unwrap();
+        wait_for_debug(&viewer, Instant::now() + Duration::from_secs(10), |s| {
+            s.get_group("paused").is_some()
+        });
+        // Visibility-only update also arrives while paused (no TTL restart).
+        renderer.set_group_visible("paused", false).unwrap();
+        wait_for_debug(&viewer, Instant::now() + Duration::from_secs(10), |s| {
+            s.get_group("paused").is_some_and(|g| !g.visible)
+        });
+    }
+
+    #[test]
+    fn reconnect_resyncs_clean_without_replaying_old_deletes() {
+        use crate::debug::GroupOptions;
+        let viewer = FrameClient::try_connect("127.0.0.1:0").unwrap();
+        let addr = viewer.local_addr().to_string();
+        let mut arena = Arena::new(GameMode::TheVoid);
+        arena.try_set_net_vis(Some(&addr)).unwrap();
+        let renderer = arena.debug_renderer().expect("attached");
+        renderer
+            .replace_group("stale", point_list(0.0), GroupOptions::default())
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            arena.step_tick();
+            if viewer.debug_scene().get_group("stale").is_some() {
+                break;
+            }
+            assert!(Instant::now() < deadline, "stale group never arrived");
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        let gen0 = viewer.generation();
+        // Detach: TCP closes, receiver resets to a clean empty scene.
+        arena.set_net_vis(None);
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            if viewer.generation() > gen0 && viewer.debug_scene().is_empty() {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "receiver never reset on disconnect"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        // Reattach with only the new group: Full resync carries `fresh`,
+        // never replays the old `stale` delete tombstone.
+        arena.try_set_net_vis(Some(&addr)).unwrap();
+        let renderer = arena.debug_renderer().expect("reattached");
+        renderer
+            .replace_group("fresh", point_list(9.0), GroupOptions::default())
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            arena.step_tick();
+            let scene = viewer.debug_scene();
+            if scene.get_group("fresh").is_some() {
+                assert!(
+                    scene.get_group("stale").is_none(),
+                    "stale group must not return"
+                );
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "fresh group never arrived after reconnect"
+            );
+            std::thread::sleep(Duration::from_millis(2));
+        }
+    }
+
+    #[test]
+    fn retained_rejections_are_typed_and_bounded() {
+        use crate::debug::{DebugError, GroupOptions, TextureResource};
+        let viewer = FrameClient::try_connect("127.0.0.1:0").unwrap();
+        let addr = viewer.local_addr().to_string();
+        let mut arena = Arena::new(GameMode::TheVoid);
+        arena.try_set_net_vis(Some(&addr)).unwrap();
+        let renderer = arena.debug_renderer().expect("attached");
+        // Rejected submissions return explicit errors (never silent).
+        assert!(matches!(
+            renderer.replace_group("bad name!", point_list(0.0), GroupOptions::default()),
+            Err(DebugError::InvalidName(_))
+        ));
+        assert!(matches!(
+            TextureResource::new("tex", 0, 16, vec![]),
+            Err(DebugError::InvalidTextureDim { .. })
+        ));
+        // Backpressure bound: oversized texture bytes are rejected before
+        // ever reaching the network queue.
+        let huge = TextureResource::new("huge", 1024, 1024, vec![0u8; 1024 * 1024 * 4]);
+        assert!(huge.is_ok(), "max-size texture is accepted");
+        let too_huge = TextureResource::new("too", 1025, 16, vec![0u8; 1025 * 16 * 4]);
+        assert!(matches!(
+            too_huge,
+            Err(DebugError::InvalidTextureDim { .. })
+        ));
     }
 
     #[test]
