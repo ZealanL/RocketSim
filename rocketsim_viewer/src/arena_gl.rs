@@ -246,7 +246,13 @@ impl ArenaGl {
             gl.enable(glow::DEPTH_TEST);
             gl.depth_func(glow::LEQUAL);
             gl.enable(glow::BLEND);
-            gl.blend_func(glow::SRC_ALPHA, glow::ONE_MINUS_SRC_ALPHA);
+            // The net changes RGB opacity, not the window's opacity.
+            gl.blend_func_separate(
+                glow::SRC_ALPHA,
+                glow::ONE_MINUS_SRC_ALPHA,
+                glow::ONE,
+                glow::ONE_MINUS_SRC_ALPHA,
+            );
             gl.depth_mask(false);
             gl.use_program(Some(self.prog));
             gl.uniform_matrix_4_f32_slice(Some(&self.u_model), false, &model.to_cols_array());

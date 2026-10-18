@@ -153,7 +153,13 @@ impl LinesGl {
             gl.disable(glow::CULL_FACE);
             gl.disable(glow::SCISSOR_TEST);
             gl.enable(glow::BLEND);
-            gl.blend_func(glow::SRC_ALPHA, glow::ONE_MINUS_SRC_ALPHA);
+            // Keep the opaque background's alpha for window capture.
+            gl.blend_func_separate(
+                glow::SRC_ALPHA,
+                glow::ONE_MINUS_SRC_ALPHA,
+                glow::ONE,
+                glow::ONE_MINUS_SRC_ALPHA,
+            );
             gl.depth_mask(true);
             gl.enable(glow::DEPTH_TEST);
             gl.depth_func(glow::LEQUAL);
