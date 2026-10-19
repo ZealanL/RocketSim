@@ -44,6 +44,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Keep Ubuntu 22.04 to preserve the glibc 2.35 release baseline.
           - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             rustflags: ""

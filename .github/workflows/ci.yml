@@ -41,7 +41,7 @@ jobs:
         with:
           shared-key: quality
       - run: cargo fmt --all -- --check
-      - run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+      - run: cargo clippy --locked --workspace --all-targets -- -D warnings
       - run: python -m unittest discover -s tools/ci -v
       - run: python tools/ci/release.py check
       - name: Verify the core source package
@@ -65,7 +65,7 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           shared-key: msrv
-      - run: cargo check --locked --workspace --all-targets --all-features
+      - run: cargo check --locked --workspace --all-targets
       - run: cargo check --locked -p rocketsim --no-default-features
 
   test:
@@ -75,13 +75,10 @@ jobs:
       matrix:
         include:
           - os: ubuntu-22.04
-            features: --all-features
             test-args: --test-threads=1
           - os: windows-2022
-            features: ""
             test-args: ""
           - os: macos-14
-            features: ""
             test-args: ""
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
@@ -115,7 +112,7 @@ jobs:
       - name: Prepare collision mesh fixtures
         run: python tools/ci/prepare_meshes.py target/ci-fixtures/rlgym/rocket_league/sim/collision_meshes
       # The optional C++ comparison backend uses process-global state.
-      - run: cargo test --locked --workspace --all-targets ${{ matrix.features }} -- ${{ matrix.test-args }}
-      - run: cargo test --locked --workspace --doc ${{ matrix.features }}
+      - run: cargo test --locked --workspace --all-targets -- ${{ matrix.test-args }}
+      - run: cargo test --locked --workspace --doc
       - run: cargo run --locked -p rocketsim_viewer --bin rocketsim-viewer -- --help
       - run: python -m unittest discover -s tools/ci -v

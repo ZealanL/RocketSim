@@ -42,8 +42,9 @@ cargo test --locked -p rocketsim_test --all-targets --features v2 -- --test-thre
 ```
 
 The `v2` feature requires a C++ build toolchain. Run its tests serially because
-the comparison implementation uses process-global state. See the
-[CI guide](../tools/ci/README.md) for all-feature release checks.
+the comparison implementation uses process-global state. Workspace CI skips
+`v2` because `rocketsim-rs` 0.37.0 fails to compile with GCC 11. Use GCC 13 to
+test this feature.
 
 ## Compare simulation results with recordings
 

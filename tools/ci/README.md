@@ -12,13 +12,17 @@ The checks include:
 - Workspace compilation on Rust 1.95, the minimum supported Rust version.
 - A core-library build without default features.
 - Tests on Linux, Windows, and Apple Silicon macOS.
-- All-feature tests on Linux, including the optional C++ comparison backend.
+
 - Documentation tests and a headless viewer `--help` check.
 - Release metadata, archive-tool, and mesh-fixture tests.
 - Core source-package verification.
 
 Linux tests run serially. The optional C++ comparison backend uses
 process-global state and can fail when its tests run concurrently.
+
+Workspace CI does not enable `rocketsim_test/v2`. This feature builds
+`rocketsim-rs` 0.37.0, which fails with GCC 11 on its `constexpr` pointer
+accessors. Use GCC 13 to test the optional C++ backend.
 
 The jobs use the root `Cargo.lock` with `--locked`. Keep this file in Git.
 GitHub Actions dependencies are pinned to commit IDs. Update the IDs when you
@@ -139,9 +143,9 @@ Use Python 3.12 or later for the helper scripts.
 
 ```sh
 cargo fmt --all -- --check
-cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
-cargo test --locked --workspace --all-targets --all-features -- --test-threads=1
-cargo test --locked --workspace --all-features --doc
+cargo clippy --locked --workspace --all-targets -- -D warnings
+cargo test --locked --workspace --all-targets -- --test-threads=1
+cargo test --locked --workspace --doc
 python3 -m unittest discover -s tools/ci -v
 python3 tools/ci/release.py check
 ```
