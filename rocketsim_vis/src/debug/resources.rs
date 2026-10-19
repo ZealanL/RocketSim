@@ -12,13 +12,19 @@ use super::types::{
 ///
 /// ```
 /// use glam::Mat3A;
-/// use rocketsim_vis::debug::{BuiltinMesh, BuiltinTexture, Color, DebugRenderer, DepthMode, DrawList, GroupOptions};
+/// use rocketsim_vis::debug::{
+///     BuiltinMesh, BuiltinTexture, Color, DebugRenderer, DepthMode, DrawList, GroupOptions,
+/// };
 ///
 /// let renderer = DebugRenderer::new_detached();
 /// let mut list = DrawList::new();
 /// list.instance(
-///     BuiltinMesh::Ball.id(), [0.0; 3], Mat3A::IDENTITY.to_cols_array_2d(),
-///     [1.0; 3], Color::WHITE, Some(BuiltinTexture::Ball.id().into()),
+///     BuiltinMesh::Ball.id(),
+///     [0.0; 3],
+///     Mat3A::IDENTITY.to_cols_array_2d(),
+///     [1.0; 3],
+///     Color::WHITE,
+///     Some(BuiltinTexture::Ball.id().into()),
 ///     DepthMode::Test,
 /// );
 /// renderer.replace_group("ball", list, GroupOptions::new())?;
@@ -129,8 +135,11 @@ fn validate_resource_id(id: &str) -> DebugResult<()> {
 ///     "triangle",
 ///     vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
 ///     vec![Color::RED, Color::GREEN, Color::BLUE],
-///     None, None, vec![0, 1, 2],
-/// ).unwrap();
+///     None,
+///     None,
+///     vec![0, 1, 2],
+/// )
+/// .unwrap();
 /// assert_eq!(mesh.indices.len(), 3);
 /// ```
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]

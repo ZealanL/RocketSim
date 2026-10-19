@@ -111,10 +111,7 @@ pub(super) fn update_capture(context: CaptureContext<'_>) -> CaptureUpdate {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        input::sources::Key,
-        input::{Capture, InputSnapshot},
-    };
+    use crate::input::{Capture, InputSnapshot, sources::Key};
 
     #[test]
     fn short_back_press_rebinds_but_a_held_press_cancels() {

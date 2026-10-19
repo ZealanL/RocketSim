@@ -1,13 +1,14 @@
 use std::collections::HashMap;
 
+use super::{CameraChoice, MSAA_LEVELS, UiAction, ViewerUiState, nav_row};
 use crate::{
     camera::CameraPreset,
-    input::sources::{PadButton, clamp_deadzone},
-    input::{ACTIONS, Action, Capture, Evaluator, InputSnapshot, InputSource},
+    input::{
+        ACTIONS, Action, Capture, Evaluator, InputSnapshot, InputSource,
+        sources::{PadButton, clamp_deadzone},
+    },
     settings::{BindingDevice, ViewerSettings},
 };
-
-use super::{CameraChoice, MSAA_LEVELS, UiAction, ViewerUiState, nav_row};
 
 pub(crate) struct SettingsInput<'a> {
     pub(crate) evaluator: &'a mut Evaluator,

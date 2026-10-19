@@ -1,5 +1,6 @@
-use super::*;
 use rocketsim::GameMode;
+
+use super::*;
 
 /// Command line: `rocketsim-viewer [PORT] [CAM] [-g MODE] [--gpushot]`.
 /// PORT/CAM stay positional (pre-clap usage keeps working).

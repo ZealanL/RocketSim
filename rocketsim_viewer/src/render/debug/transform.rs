@@ -54,8 +54,9 @@ fn rotation(rotation: &[[f32; 3]; 3]) -> glam::Mat3A {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use rocketsim_vis::debug::{Color, DebugGroup, DepthMode};
+
+    use super::*;
 
     #[test]
     fn transform_scenarios_compose_local_group_and_anchor_transforms() {

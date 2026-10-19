@@ -14,9 +14,11 @@ pub use sources::{Axis2, InputSource};
 
 #[cfg(test)]
 mod tests {
-    use super::legacy::Bindings;
-    use super::sources::{Key, MouseButton, PadAxis, PadButton};
-    use super::*;
+    use super::{
+        legacy::Bindings,
+        sources::{Key, MouseButton, PadAxis, PadButton},
+        *,
+    };
 
     fn all_sources() -> Vec<InputSource> {
         let mut sources: Vec<InputSource> =

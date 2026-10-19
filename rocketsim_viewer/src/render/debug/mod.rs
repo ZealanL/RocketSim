@@ -6,14 +6,13 @@ use glow::HasContext;
 use rocketsim::ArenaState;
 use rocketsim_vis::debug::{DebugItem, DebugScene, DepthMode, MeshResource};
 
-use crate::render::gl_util::{bytes_of, compile_program, uniform_location};
-
 use self::{
     order::{InstanceRun, OrderedInstance},
     prepare::{append_instance, depth_key, depth_mode, pack_segment},
     resources::{delete_mesh, upload_mesh, upload_ordered_instances},
     transform::instance_matrix,
 };
+use crate::render::gl_util::{bytes_of, compile_program, uniform_location};
 
 mod cache;
 mod draw;
@@ -593,9 +592,10 @@ fn inline_resource(id: &str, m: &rocketsim_vis::debug::InlineMeshItem) -> MeshRe
 
 #[cfg(test)]
 mod tests {
+    use rocketsim_vis::debug::Width;
+
     use super::*;
     use crate::render::debug::{prepare::pack_segment, resources::recompute_normals};
-    use rocketsim_vis::debug::Width;
 
     #[test]
     fn generated_normals_keep_degenerate_and_unused_vertex_fallbacks() {

@@ -16,11 +16,10 @@ mod support;
 use std::net::SocketAddr;
 
 use clap::Parser;
+use drive_controls::Driver;
 use photo_support::init_meshes;
 use rocketsim::{Arena, ArenaConfig, CarBodyConfig, GameMode, Team};
 use rocketsim_vis::{ArenaVisExt, pace::TickPacer, parse_game_mode};
-
-use drive_controls::Driver;
 
 #[derive(Parser)]
 #[command(name = "drive", version)]

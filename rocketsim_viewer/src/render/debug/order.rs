@@ -55,10 +55,11 @@ pub fn contiguous_runs_into(instances: &[OrderedInstance], runs: &mut Vec<Instan
 
 #[cfg(test)]
 mod tests {
+    use glam::Mat4;
+
     use super::{
         DrawLayer, InstanceRun, OrderedInstance, contiguous_runs_into, sort_back_to_front,
     };
-    use glam::Mat4;
 
     fn instance(
         material: usize,

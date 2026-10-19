@@ -181,6 +181,7 @@ pub fn try_ensure_viewer_running(addr: &str) -> io::Result<ViewerHandle> {
 ///
 /// ```no_run
 /// use std::path::Path;
+///
 /// use rocketsim_vis::launcher::try_ensure_viewer_running_with_path;
 ///
 /// let viewer = try_ensure_viewer_running_with_path(

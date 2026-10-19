@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 
-use crate::{
-    input::sources::{Key, MouseButton, PadAxis, PadButton, key_down},
-    input::{Action, ActionMap, ActionValue, Axis2, Evaluator, InputSnapshot, InputSource},
-};
 use rocketsim::CarControls;
+
+use crate::input::{
+    Action, ActionMap, ActionValue, Axis2, Evaluator, InputSnapshot, InputSource,
+    sources::{Key, MouseButton, PadAxis, PadButton, key_down},
+};
 
 pub(super) struct InputState {
     pub(super) evaluator: Evaluator,

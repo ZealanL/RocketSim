@@ -4,14 +4,13 @@ use std::{
 };
 
 use glow::HasContext;
+pub use rocketsim_vis::debug::{BuiltinMesh, BuiltinTexture};
 use rocketsim_vis::debug::{Color, DebugItem, DebugScene, MeshResource, TextureResource};
 
 use super::{
     DebugGl,
     resources::{delete_mesh, upload_mesh, upload_texture},
 };
-
-pub use rocketsim_vis::debug::{BuiltinMesh, BuiltinTexture};
 
 pub(super) const BUILTIN_REVISION: u64 = u64::MAX;
 
@@ -292,8 +291,9 @@ impl DebugGl {
 mod tests {
     use std::sync::Arc;
 
-    use super::*;
     use rocketsim_vis::debug::{DebugGroup, DrawList, GroupOptions};
+
+    use super::*;
 
     fn mesh_resource() -> Arc<MeshResource> {
         Arc::new(MeshResource {

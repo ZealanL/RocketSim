@@ -1,13 +1,12 @@
 use glam::Vec3A;
 use rocketsim_vis::proto::VisFrame;
 
+use super::session;
 use crate::{
     effects::fx::CarFx,
     geometry::lines::{RibbonConfig, RibbonEmitter, Segment, ground_line},
     settings::ViewerSettings,
 };
-
-use super::session;
 
 pub(super) struct EffectState {
     ball_ribbon: RibbonEmitter,

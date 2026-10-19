@@ -542,11 +542,12 @@ mod tests {
 
     #[test]
     fn large_scene_and_debug_chunks_interleave_with_live_frames() {
-        use rocketsim::Vis;
         use std::sync::{
             Arc,
             atomic::{AtomicBool, Ordering},
         };
+
+        use rocketsim::Vis;
 
         let viewer = ViewerListener::try_bind("127.0.0.1:0").unwrap();
         let mut vis = NetVis::connect(&viewer.local_addr().to_string());

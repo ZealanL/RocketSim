@@ -14,7 +14,11 @@
 //! [`ViewerListener::snapshot`] when you send controls.
 //!
 //! ```
-//! use std::{thread, time::{Duration, Instant}};
+//! use std::{
+//!     thread,
+//!     time::{Duration, Instant},
+//! };
+//!
 //! use rocketsim::{Arena, CarBodyConfig, CarControls, GameMode, Team};
 //! use rocketsim_vis::{ArenaVisExt, proto::ControlMsg, transport::viewer::ViewerListener};
 //!
@@ -26,13 +30,16 @@
 //! let snapshot = loop {
 //!     arena.step_tick();
 //!     let snapshot = listener.snapshot();
-//!     if snapshot.frame.is_some() { break snapshot; }
+//!     if snapshot.frame.is_some() {
+//!         break snapshot;
+//!     }
 //!     assert!(Instant::now() < deadline, "no frame received");
 //!     thread::sleep(Duration::from_millis(2));
 //! };
 //! let controls = CarControls::default().with_throttle(1.0);
 //! assert!(listener.send_controls_for_generation(
-//!     snapshot.generation, ControlMsg::new(car as u32, controls, 0, 1),
+//!     snapshot.generation,
+//!     ControlMsg::new(car as u32, controls, 0, 1),
 //! ));
 //! # Ok::<(), std::io::Error>(())
 //! ```
@@ -53,6 +60,7 @@ use std::{
     time::Duration,
 };
 
+use super::socket::OutgoingBuffer;
 use crate::{
     debug::{DebugScene, Lifetime},
     proto::{
@@ -60,8 +68,6 @@ use crate::{
     },
     sync::{ChunkAssembler, SyncError, apply_sync},
 };
-
-use super::socket::OutgoingBuffer;
 
 /// Connection state for a viewer listener.
 #[derive(Clone, Debug)]

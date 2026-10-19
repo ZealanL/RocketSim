@@ -1,9 +1,8 @@
 use glow::HasContext;
 use rocketsim_vis::debug::{MeshResource, TextureResource};
 
-use crate::render::gl_util::bytes_of;
-
 use super::{GpuMesh, GpuTexture};
+use crate::render::gl_util::bytes_of;
 
 pub(super) unsafe fn upload_mesh(gl: &glow::Context, mesh: &MeshResource) -> GpuMesh {
     let vao = unsafe { gl.create_vertex_array().expect("debug mesh VAO") };

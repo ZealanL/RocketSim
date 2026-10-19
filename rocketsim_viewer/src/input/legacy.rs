@@ -616,8 +616,7 @@ fn analog(a: PadAnalog) -> InputSource {
 
 #[cfg(test)]
 mod tests {
-    use super::super::sources::clamp_deadzone;
-    use super::*;
+    use super::{super::sources::clamp_deadzone, *};
 
     #[test]
     fn legacy_defaults_sparse_tables_and_roundtrip() {

@@ -27,8 +27,13 @@ use super::{
 /// use rocketsim_vis::debug::{Color, DebugItem, DepthMode, DrawList, Width};
 ///
 /// let mut draw = DrawList::new();
-/// draw.line([0.0, 0.0, 0.0], [100.0, 0.0, 0.0],
-///     Color::RED, Width::pixels(2.0), DepthMode::Test);
+/// draw.line(
+///     [0.0, 0.0, 0.0],
+///     [100.0, 0.0, 0.0],
+///     Color::RED,
+///     Width::pixels(2.0),
+///     DepthMode::Test,
+/// );
 /// assert_eq!(draw.len(), 1);
 /// assert!(matches!(draw.items[0], DebugItem::Line(_)));
 /// ```

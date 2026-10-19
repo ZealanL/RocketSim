@@ -1,5 +1,6 @@
-use super::messages::*;
 use rocketsim::CarControls;
+
+use super::messages::*;
 
 /// Encodes one control message as a length-prefixed protocol message.
 ///

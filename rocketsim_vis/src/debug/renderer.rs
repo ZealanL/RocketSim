@@ -17,8 +17,14 @@
 //!
 //! let renderer = DebugRenderer::new_detached();
 //! let group = renderer.group("marker");
-//! let first_revision = group.draw(|draw| { draw.point([0.0, 0.0, 0.0]); }).unwrap();
-//! group.set_transform(GroupTransform::from_position([5.0, 0.0, 0.0])).unwrap();
+//! let first_revision = group
+//!     .draw(|draw| {
+//!         draw.point([0.0, 0.0, 0.0]);
+//!     })
+//!     .unwrap();
+//! group
+//!     .set_transform(GroupTransform::from_position([5.0, 0.0, 0.0]))
+//!     .unwrap();
 //! assert!(renderer.snapshot().groups["marker"].revision > first_revision);
 //! ```
 //!
@@ -31,9 +37,17 @@
 //!
 //! let renderer = DebugRenderer::new_detached();
 //! let group = renderer.group("items");
-//! group.draw(|draw| { draw.point([0.0, 0.0, 0.0]); }).unwrap();
+//! group
+//!     .draw(|draw| {
+//!         draw.point([0.0, 0.0, 0.0]);
+//!     })
+//!     .unwrap();
 //! let old_item = renderer.item("items", 0);
-//! group.draw(|draw| { draw.point([1.0, 0.0, 0.0]); }).unwrap();
+//! group
+//!     .draw(|draw| {
+//!         draw.point([1.0, 0.0, 0.0]);
+//!     })
+//!     .unwrap();
 //! assert_eq!(old_item.remove(), Err(DebugError::StaleHandle));
 //! ```
 
@@ -543,8 +557,10 @@ impl DebugRenderer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::debug::types::{Color, DepthMode, Width};
-    use crate::debug::{BuiltinMesh, BuiltinTexture};
+    use crate::debug::{
+        BuiltinMesh, BuiltinTexture,
+        types::{Color, DepthMode, Width},
+    };
 
     fn line_list() -> DrawList {
         let mut list = DrawList::new();

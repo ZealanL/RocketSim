@@ -1,5 +1,7 @@
-use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::{
+    sync::{Arc, Mutex},
+    time::Instant,
+};
 
 use glam::{Mat3, Vec3};
 use glow::HasContext;
@@ -8,17 +10,16 @@ use rocketsim_vis::{debug::DebugScene, proto::VisFrame};
 
 use crate::{
     effects::dropshot::DropshotTileMesh,
-    geometry::frustum::frustum_planes,
-    geometry::lines::Segment,
-    geometry::mesh::ArenaMesh,
-    geometry::pads::build_instances,
-    render::debug::DebugStats,
-    render::main::{
-        BALL_MODEL, BALL_TEXTURE, PUCK_MODEL, car_model_name, car_texture_name, group_car_draws,
-        model_matrix,
+    geometry::{frustum::frustum_planes, lines::Segment, mesh::ArenaMesh, pads::build_instances},
+    render::{
+        debug::DebugStats,
+        main::{
+            BALL_MODEL, BALL_TEXTURE, PUCK_MODEL, car_model_name, car_texture_name,
+            group_car_draws, model_matrix,
+        },
+        scene::SceneGl,
+        view,
     },
-    render::scene::SceneGl,
-    render::view,
 };
 
 pub struct PreparedRenderFrame {

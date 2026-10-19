@@ -2,9 +2,8 @@ pub(crate) mod hud;
 
 mod settings;
 
-pub(crate) use settings::{SettingsInput, SettingsView, show_settings};
-
 use egui::Rect;
+pub(crate) use settings::{SettingsInput, SettingsView, show_settings};
 
 use crate::{
     input::{Action, Capture, InputSource},

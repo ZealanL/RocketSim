@@ -295,8 +295,7 @@ pub(super) fn menu_pad_action(id: String, dx: i32, a: bool, cx: &mut MenuPadCtx)
 
 #[cfg(test)]
 mod tests {
-    use super::super::camera::StartMode;
-    use super::*;
+    use super::{super::camera::StartMode, *};
     use crate::input::{ActionMap, sources::MouseButton};
 
     #[test]

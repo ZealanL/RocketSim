@@ -1,11 +1,10 @@
-use std::sync::Arc;
-
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use glam::Vec3A;
 use rocketsim::{ArenaState, GameMode};
 use rocketsim_vis::proto::SceneMetadata;
 
+use super::input_state::{freecam_dolly_delta, look_delta};
 use crate::{
     camera::{
         ArenaBounds, ArenaBoundsCache, AutoCam, CameraConfig, CameraMan, CarCamSmoothing,
@@ -15,8 +14,6 @@ use crate::{
     render::view,
     settings::ViewerSettings,
 };
-
-use super::input_state::{freecam_dolly_delta, look_delta};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum CamMode {
@@ -582,9 +579,10 @@ pub(super) fn apply_follow_look(cam_dir: Vec3A, yaw: f32, pitch: f32) -> Vec3A {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use super::*;
     use crate::input::Action;
-    use std::collections::HashMap;
 
     #[test]
     fn follow_look_signs_match_resulting_camera_direction_and_accept_remapped_sources() {

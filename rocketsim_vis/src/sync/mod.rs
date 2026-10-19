@@ -315,8 +315,10 @@ fn apply_group_patch(group: &mut DebugGroup, patch: DebugGroupPatch) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::debug::{Color, DebugGroup, DepthMode, DrawList, GroupOptions, Lifetime, Width};
-    use crate::proto::SimMsg;
+    use crate::{
+        debug::{Color, DebugGroup, DepthMode, DrawList, GroupOptions, Lifetime, Width},
+        proto::SimMsg,
+    };
 
     fn group(name: &str) -> DebugGroup {
         let mut list = DrawList::new();

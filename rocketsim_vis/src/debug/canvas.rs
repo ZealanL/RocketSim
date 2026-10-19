@@ -13,13 +13,15 @@
 //! use rocketsim_vis::debug::{Color, DebugRenderer, DepthMode};
 //!
 //! let renderer = DebugRenderer::new_detached();
-//! let revision = renderer.draw_frame(|draw| {
-//!     draw.line([0.0, 0.0, 0.0], [10.0, 0.0, 0.0])
-//!         .color(Color::RED)
-//!         .width_px(2.0)
-//!         .depth(DepthMode::Xray);
-//!     draw.text_2d([0.1, 0.1], "origin");
-//! }).unwrap();
+//! let revision = renderer
+//!     .draw_frame(|draw| {
+//!         draw.line([0.0, 0.0, 0.0], [10.0, 0.0, 0.0])
+//!             .color(Color::RED)
+//!             .width_px(2.0)
+//!             .depth(DepthMode::Xray);
+//!         draw.text_2d([0.1, 0.1], "origin");
+//!     })
+//!     .unwrap();
 //! assert!(revision > 0);
 //! ```
 

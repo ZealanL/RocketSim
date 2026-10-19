@@ -5,9 +5,8 @@ use rocketsim_vis::{
     proto::{SceneMetadata, VisFrame},
 };
 
-use crate::geometry::mesh::ArenaMesh;
-
 use super::{camera::CameraState, startup::metadata_changed};
+use crate::geometry::mesh::ArenaMesh;
 
 pub(super) struct SessionState {
     generation: Option<u64>,
@@ -124,8 +123,9 @@ impl SessionState {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use rocketsim::GameMode;
+
+    use super::*;
 
     #[test]
     fn generation_changes_reset_for_reconnects_and_rewinds() {

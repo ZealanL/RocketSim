@@ -6,45 +6,42 @@ mod startup;
 mod ui_capture;
 mod ui_logic;
 
-pub(crate) use startup::run;
-
-use crate::ui::{
-    CameraChoice, SettingsInput, SettingsView, UiAction, ViewerUiState, menu_nav_step, nav_row,
-    show_settings,
-};
-use crate::{debug_metrics, session};
-use camera::{CamMode, CameraFrameInput, CameraState, StartMode};
-use effects::EffectState;
-use input_state::*;
-use session_state::SessionState;
-use startup::dropshot_tile_states;
-use ui_logic::{MenuPadCtx, menu_pad_action};
-
 use std::{
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
+use camera::{CamMode, CameraFrameInput, CameraState, StartMode};
 use clap::Parser;
-
-use crate::{
-    effects::dropshot::DropshotTileCache,
-    geometry::lines::Segment,
-    geometry::mesh::ArenaMesh,
-    input::Action,
-    input::sources::clamp_deadzone,
-    input::spectate,
-    render::debug::DebugStats,
-    render::debug::overlay::OverlayCache,
-    render::scene::SceneGl,
-    render::view,
-    settings::ViewerSettings,
-    ui::hud::{boost_meter, spectated_boost},
-};
+use effects::EffectState;
+use input_state::*;
 use rocketsim_vis::{
     game_mode_name, parse_game_mode,
     proto::{ControlMsg, DEFAULT_PORT},
     transport::viewer::{ConnStatus, ViewerListener, ViewerSnapshot},
+};
+use session_state::SessionState;
+use startup::dropshot_tile_states;
+pub(crate) use startup::run;
+use ui_logic::{MenuPadCtx, menu_pad_action};
+
+use crate::{
+    debug_metrics,
+    effects::dropshot::DropshotTileCache,
+    geometry::{lines::Segment, mesh::ArenaMesh},
+    input::{Action, sources::clamp_deadzone, spectate},
+    render::{
+        debug::{DebugStats, overlay::OverlayCache},
+        scene::SceneGl,
+        view,
+    },
+    session,
+    settings::ViewerSettings,
+    ui::{
+        CameraChoice, SettingsInput, SettingsView, UiAction, ViewerUiState,
+        hud::{boost_meter, spectated_boost},
+        menu_nav_step, nav_row, show_settings,
+    },
 };
 
 struct ViewerApp {
@@ -784,8 +781,9 @@ impl eframe::App for ViewerApp {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use rocketsim::GameMode;
+
+    use super::*;
 
     #[test]
     fn only_dropshot_frames_supply_tile_geometry() {

@@ -26,7 +26,12 @@ use super::{
 /// use rocketsim_vis::debug::{Anchor, Color, DebugGroup, DrawList, GroupOptions, Lifetime};
 ///
 /// let mut draw = DrawList::new();
-/// draw.point([0.0, 0.0, 0.0], Color::WHITE, Default::default(), Default::default());
+/// draw.point(
+///     [0.0, 0.0, 0.0],
+///     Color::WHITE,
+///     Default::default(),
+///     Default::default(),
+/// );
 /// let options = GroupOptions::new()
 ///     .anchor(Anchor::ball())
 ///     .lifetime(Lifetime::Ticks(5));

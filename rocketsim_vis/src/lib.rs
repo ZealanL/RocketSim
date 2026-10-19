@@ -71,9 +71,8 @@ mod sync;
 
 pub use arena::ArenaVisExt;
 pub use launcher::{ViewerHandle, ensure_viewer_running, try_ensure_viewer_running};
-pub use transport::simulation::NetVis;
-
 use rocketsim::GameMode;
+pub use transport::simulation::NetVis;
 
 /// Default numeric address for a viewer started by [`ArenaVisExt`].
 ///

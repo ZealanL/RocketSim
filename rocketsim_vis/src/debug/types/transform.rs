@@ -220,7 +220,9 @@ pub enum DepthMode {
 /// let renderer = DebugRenderer::new_detached();
 /// renderer.group("temporary").draw_with(
 ///     GroupOptions::new().lifetime(Lifetime::Frame),
-///     |draw| { draw.point([0.0; 3]); },
+///     |draw| {
+///         draw.point([0.0; 3]);
+///     },
 /// )?;
 /// renderer.advance_tick();
 /// assert!(renderer.snapshot().groups.contains_key("temporary"));

@@ -1,10 +1,11 @@
 //! Stable action identifiers, defaults, and action-map storage.
 
-use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
     sync::atomic::{AtomicU64, Ordering},
 };
+
+use serde::{Deserialize, Serialize};
 
 use super::sources::{Axis2, InputSource, Key, MouseButton, PadAxis, PadButton};
 

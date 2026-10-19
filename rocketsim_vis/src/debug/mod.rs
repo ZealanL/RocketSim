@@ -10,10 +10,12 @@
 //! use rocketsim_vis::debug::{Color, DebugRenderer};
 //!
 //! let renderer = DebugRenderer::new_detached();
-//! let revision = renderer.draw_frame(|draw| {
-//!     draw.line([0.0, 0.0, 0.0], [100.0, 0.0, 0.0])
-//!         .color(Color::RED);
-//! }).unwrap();
+//! let revision = renderer
+//!     .draw_frame(|draw| {
+//!         draw.line([0.0, 0.0, 0.0], [100.0, 0.0, 0.0])
+//!             .color(Color::RED);
+//!     })
+//!     .unwrap();
 //! assert!(revision > 0);
 //! ```
 //!
@@ -27,9 +29,15 @@
 //!
 //! let renderer = DebugRenderer::new_detached();
 //! let group = renderer.group("marker");
-//! group.draw(|draw| { draw.point([0.0, 0.0, 0.0]); }).unwrap();
+//! group
+//!     .draw(|draw| {
+//!         draw.point([0.0, 0.0, 0.0]);
+//!     })
+//!     .unwrap();
 //! group.set_visible(false).unwrap();
-//! group.set_transform(GroupTransform::from_position([10.0, 0.0, 0.0])).unwrap();
+//! group
+//!     .set_transform(GroupTransform::from_position([10.0, 0.0, 0.0]))
+//!     .unwrap();
 //! group.set_anchor(Anchor::World).unwrap();
 //! assert_eq!(group.name(), "marker");
 //! ```
@@ -70,15 +78,19 @@
 //!
 //! ```
 //! use std::sync::Arc;
+//!
 //! use glam::Mat3A;
 //! use rocketsim_vis::debug::{
-//!     Color, DebugError, DebugRenderer, DepthMode, DrawList, GroupOptions,
-//!     GroupTransform, MeshResource, TextureResource,
+//!     Color, DebugError, DebugRenderer, DepthMode, DrawList, GroupOptions, GroupTransform,
+//!     MeshResource, TextureResource,
 //! };
 //!
 //! let renderer = DebugRenderer::new_detached();
 //! renderer.insert_texture(TextureResource::new(
-//!     "marker/color", 1, 1, vec![255, 180, 40, 255],
+//!     "marker/color",
+//!     1,
+//!     1,
+//!     vec![255, 180, 40, 255],
 //! )?)?;
 //! renderer.insert_mesh(MeshResource::new(
 //!     "marker/triangle",
@@ -91,23 +103,28 @@
 //! let mut items = DrawList::new();
 //! for index in 0..32 {
 //!     items.instance(
-//!         "marker/triangle", [index as f32 * 100.0, 0.0, 100.0],
-//!         Mat3A::IDENTITY.to_cols_array_2d(), [1.0; 3], Color::WHITE,
-//!         Some("marker/color".into()), DepthMode::Test,
+//!         "marker/triangle",
+//!         [index as f32 * 100.0, 0.0, 100.0],
+//!         Mat3A::IDENTITY.to_cols_array_2d(),
+//!         [1.0; 3],
+//!         Color::WHITE,
+//!         Some("marker/color".into()),
+//!         DepthMode::Test,
 //!     );
 //! }
 //! renderer.replace_group("markers", items, GroupOptions::new())?;
 //! let before = renderer.snapshot();
-//! renderer.set_group_transform(
-//!     "markers", GroupTransform::from_position([0.0, 500.0, 0.0]),
-//! )?;
+//! renderer.set_group_transform("markers", GroupTransform::from_position([0.0, 500.0, 0.0]))?;
 //! let after = renderer.snapshot();
 //! assert_eq!(after.groups["markers"].items.len(), 32);
 //! assert!(Arc::ptr_eq(
-//!     &before.meshes["marker/triangle"], &after.meshes["marker/triangle"],
+//!     &before.meshes["marker/triangle"],
+//!     &after.meshes["marker/triangle"],
 //! ));
-//! assert!(matches!(renderer.remove_mesh("marker/triangle"),
-//!     Err(DebugError::ResourceInUse(_))));
+//! assert!(matches!(
+//!     renderer.remove_mesh("marker/triangle"),
+//!     Err(DebugError::ResourceInUse(_))
+//! ));
 //! renderer.clear_groups();
 //! assert!(renderer.remove_mesh("marker/triangle")?);
 //! assert!(renderer.remove_texture("marker/color")?);
