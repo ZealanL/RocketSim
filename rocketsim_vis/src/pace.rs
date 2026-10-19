@@ -132,18 +132,9 @@ impl TickPacer {
         if now < self.next {
             std::thread::sleep(self.next - now);
         }
-        let (steps, dropped) =
-            steps_for_lateness(Instant::now(), self.next, self.interval, self.max_catch_up);
-        self.next = self
-            .next
-            .checked_add(self.interval.saturating_mul(steps))
-            .unwrap_or_else(Instant::now);
-        if Instant::now() >= self.next {
-            // Re-sync after a long stall. Excess lateness was counted above.
-            self.next = Instant::now()
-                .checked_add(self.interval)
-                .expect("tick interval is too large for the system clock");
-        }
+        let now = Instant::now();
+        let (steps, dropped) = steps_for_lateness(now, self.next, self.interval, self.max_catch_up);
+        self.next = advance_deadline(self.next, now, self.interval, steps);
         record_steps(&mut self.stats, steps, dropped);
         steps
     }
@@ -158,6 +149,7 @@ impl TickPacer {
 ///
 /// ```
 /// use std::time::{Duration, Instant};
+///
 /// use rocketsim_vis::pace::steps_for_lateness;
 ///
 /// let deadline = Instant::now();
@@ -177,6 +169,19 @@ pub fn steps_for_lateness(
     let missed = steps_for_lateness_missed(now, next, interval);
     let catch_up = missed.min(max_catch_up.min(u32::MAX - 1));
     (1 + catch_up, missed - catch_up)
+}
+
+fn advance_deadline(next: Instant, now: Instant, interval: Duration, steps: u32) -> Instant {
+    let next = next
+        .checked_add(interval.saturating_mul(steps))
+        .unwrap_or(now);
+    if now >= next {
+        // Re-sync after a long stall. Excess lateness was counted above.
+        now.checked_add(interval)
+            .expect("tick interval is too large for the system clock")
+    } else {
+        next
+    }
 }
 
 fn record_steps(stats: &mut PaceStats, steps: u32, dropped: u32) {
@@ -270,18 +275,16 @@ mod tests {
 
     #[test]
     fn stall_resyncs_without_spiral() {
-        // 1ms interval, sleep 50ms: capped steps + drops, clock re-synced so
-        // the NEXT wait is prompt (single tick, no inherited backlog).
-        let mut pacer = TickPacer::new(Duration::from_millis(1), 2);
-        std::thread::sleep(Duration::from_millis(50));
-        let steps = pacer.wait();
+        let interval = Duration::from_millis(1);
+        let first_deadline = t0() + interval;
+        let stalled_at = first_deadline + Duration::from_millis(50);
+        let (steps, dropped) = steps_for_lateness(stalled_at, first_deadline, interval, 2);
+
         assert_eq!(steps, 3, "capped at 1 + max_catch_up");
-        assert!(pacer.stats().dropped > 0, "excess must count as dropped");
-        let t = Instant::now();
-        assert_eq!(pacer.wait(), 1, "clock must re-sync after a stall");
-        assert!(
-            t.elapsed() < Duration::from_millis(50),
-            "no spiral after resync"
-        );
+        assert_eq!(dropped, 48, "count excess deadlines once");
+
+        let next = advance_deadline(first_deadline, stalled_at, interval, steps);
+        assert_eq!(next, stalled_at + interval);
+        assert_eq!(steps_for_lateness(next, next, interval, 2), (1, 0));
     }
 }
