@@ -114,14 +114,19 @@
 //! # Ok::<(), DebugError>(())
 //! ```
 
-pub mod canvas;
-pub mod renderer;
-pub mod scene;
-pub mod types;
+mod canvas;
+mod handles;
+mod renderer;
+mod resources;
+mod scene;
+mod store;
+mod types;
 
 pub use canvas::Canvas;
-pub use renderer::{DebugRenderer, GroupHandle, ItemHandle, MeshHandle, TextureHandle};
-pub use scene::{DebugGroup, DebugScene, GroupOptions, MeshResource, TextureResource};
+pub use handles::{GroupHandle, ItemHandle, MeshHandle, TextureHandle};
+pub use renderer::DebugRenderer;
+pub use resources::{BuiltinMesh, BuiltinTexture, MeshResource, TextureResource};
+pub use scene::{DebugGroup, DebugScene, GroupOptions};
 pub use types::{
     Anchor, Color, DebugError, DebugItem, DebugResult, DepthMode, DrawList, GroupTransform,
     InlineMeshItem, LabelItem, LabelPos, Lifetime, LineItem, MAX_DEBUG_BYTES, MAX_GROUPS,

@@ -35,7 +35,9 @@ renderer.group("planner/target").draw(|draw| {
 `draw_frame` expires on the next displayed snapshot after a simulation tick.
 It does not expire after a 250 ms wall-clock timeout. While the simulation is
 paused, the frame drawing remains. Canonical retained updates are independent
-of simulation ticking and do not deep-clone the full scene on each update.
+of simulation ticking. `DebugRenderer::snapshot` reuses one `Arc<DebugScene>`
+until a scene change or expiry. It checks the earliest tick and Unix-time
+deadlines before it scans groups. Persistent-only scenes need no expiry scan.
 
 `Lifetime::Seconds` uses an absolute Unix-millisecond deadline. It is intended
 for a local viewer. Clock differences between machines can change when a
@@ -95,6 +97,34 @@ geometry edit; reacquire items after replacement. Handle operations return a
 `DebugResult` and report stale or missing handles rather than silently
 changing another item.
 
+## Built-in assets
+
+Use `BuiltinMesh` and `BuiltinTexture` for assets that the viewer provides.
+Call `id()` to get the reserved identifier. A built-in reference does not need a
+`MeshResource` or `TextureResource`.
+
+`BuiltinMesh` provides `@builtin/ball`, `@builtin/puck`,
+`@builtin/car_octane`, `@builtin/car_dominus`, `@builtin/car_breakout`, and
+`@builtin/car_merc`. `BuiltinTexture` provides `@builtin/ball`,
+`@builtin/car_blue`, and `@builtin/car_orange`.
+
+Do not create a user resource with an identifier that starts with `@builtin/`.
+Other mesh and texture identifiers must refer to inserted user resources.
+
+```rust
+use glam::Mat3A;
+use rocketsim_vis::debug::{BuiltinMesh, BuiltinTexture, Color, DebugRenderer, DepthMode, DrawList, GroupOptions};
+
+let renderer = DebugRenderer::new_detached();
+let mut draw = DrawList::new();
+draw.instance(
+    BuiltinMesh::Ball.id(), [0.0; 3], Mat3A::IDENTITY.to_cols_array_2d(),
+    [1.0; 3], Color::WHITE, Some(BuiltinTexture::Ball.id().into()),
+    DepthMode::Test,
+);
+renderer.replace_group("ball", draw, GroupOptions::new())?;
+```
+
 ## Depth and transparency
 
 Use `DepthMode::Test` for geometry that opaque objects must hide. Use
@@ -136,8 +166,10 @@ the current overlay uses vertical center alignment.
 
 ## Example and review tool
 
-`examples/debug_render.rs` connects to an already running viewer with
-`--addr IP:PORT`. Its modes are `wire`, `solid`, `showcase`, and `stress`.
+`examples/debug_render.rs` is the CLI driver. Scene builders live in
+`examples/support/debug_render/`. The example connects to an already running
+viewer with `--addr IP:PORT`. Its modes are `wire`, `solid`, `showcase`, and
+`stress`.
 It also accepts `--drive`, `--seconds`, `--mode`, `--count`, `--obj`, `--static`,
 `--original-placement`, and `--benchmark-output`. Run `--help` for exact CLI
 syntax. Debug-only runs stop after 15 seconds by default.

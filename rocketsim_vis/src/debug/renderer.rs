@@ -38,7 +38,6 @@
 //! ```
 
 use std::{
-    collections::BTreeMap,
     sync::{
         Arc, Mutex,
         atomic::{AtomicU64, Ordering},
@@ -47,53 +46,15 @@ use std::{
 };
 
 use super::{
-    scene::{DebugGroup, DebugScene, GroupOptions, MeshResource, TextureResource},
+    handles::{GroupHandle, ItemHandle, MeshHandle, TextureHandle},
+    resources::{MeshResource, TextureResource},
+    scene::{DebugGroup, DebugScene, GroupOptions},
+    store::{GroupEntry, SharedInner, prune_locked, unix_time_ms, validate_item_resources},
     types::{
         Anchor, DebugError, DebugItem, DebugResult, DrawList, GroupTransform, Lifetime,
         MAX_DEBUG_BYTES, MAX_GROUPS, MAX_MESHES, MAX_TEXTURES, MAX_TOTAL_ITEMS, validate_name,
     },
 };
-
-// ---------------------------------------------------------------------------
-// Shared pending tables (sender + renderer share these Arcs)
-// ---------------------------------------------------------------------------
-
-#[derive(Clone, Debug)]
-pub(crate) struct GroupEntry {
-    pub(crate) group: DebugGroup,
-    pub(crate) created_tick: u64,
-    pub(crate) created_at: Instant,
-}
-
-#[derive(Debug, Default)]
-pub(crate) struct SharedInner {
-    pub(crate) groups: BTreeMap<String, Arc<GroupEntry>>,
-    pub(crate) meshes: BTreeMap<String, Arc<MeshResource>>,
-    pub(crate) textures: BTreeMap<String, Arc<TextureResource>>,
-    pub(crate) next_rev: u64,
-    pub(crate) scene_rev: u64,
-}
-
-impl SharedInner {
-    fn alloc_rev(&mut self) -> u64 {
-        self.next_rev = self.next_rev.wrapping_add(1).max(1);
-        self.scene_rev = self.scene_rev.wrapping_add(1).max(1);
-        self.next_rev
-    }
-}
-
-/// Cheap cloneable snapshot of pending tables (Arcs, no deep copy).
-#[derive(Clone, Debug, Default)]
-pub(crate) struct PendingSnapshot {
-    pub groups: BTreeMap<String, Arc<GroupEntry>>,
-    pub meshes: BTreeMap<String, Arc<MeshResource>>,
-    pub textures: BTreeMap<String, Arc<TextureResource>>,
-    pub scene_rev: u64,
-}
-
-// ---------------------------------------------------------------------------
-// Renderer handle
-// ---------------------------------------------------------------------------
 
 /// Shared handle for submitting and updating a retained debug scene.
 ///
@@ -106,8 +67,8 @@ pub(crate) struct PendingSnapshot {
 /// only the newest version of a group, not every intermediate change.
 #[derive(Clone, Debug)]
 pub struct DebugRenderer {
-    inner: Arc<Mutex<SharedInner>>,
-    tick: Arc<AtomicU64>,
+    pub(super) inner: Arc<Mutex<SharedInner>>,
+    pub(super) tick: Arc<AtomicU64>,
 }
 
 impl DebugRenderer {
@@ -152,11 +113,10 @@ impl DebugRenderer {
     /// Group replacement and snapshot operations also remove expired groups.
     pub fn prune_expired(&self) -> usize {
         let now_tick = self.current_tick();
-        let now = Instant::now();
         let Ok(mut inner) = self.inner.lock() else {
             return 0;
         };
-        prune_locked(&mut inner, now_tick, now)
+        prune_locked(&mut inner, now_tick)
     }
 
     /// Atomically replace or create a named group.
@@ -180,36 +140,9 @@ impl DebugRenderer {
         let Ok(mut inner) = self.inner.lock() else {
             return Err(DebugError::InvalidNumber("debug store poisoned"));
         };
-        prune_locked(&mut inner, now_tick, now);
-        // Reference check (where feasible): instances/textures must exist.
+        prune_locked(&mut inner, now_tick);
         for item in &list.items {
-            match item {
-                DebugItem::Instance(v) => {
-                    if !inner.meshes.contains_key(&v.mesh) {
-                        return Err(DebugError::MeshNotFound(v.mesh.clone()));
-                    }
-                    if let Some(t) = &v.texture
-                        && !inner.textures.contains_key(t)
-                    {
-                        return Err(DebugError::TextureNotFound(t.clone()));
-                    }
-                }
-                DebugItem::Mesh(v) => {
-                    if let Some(t) = &v.texture
-                        && !inner.textures.contains_key(t)
-                    {
-                        return Err(DebugError::TextureNotFound(t.clone()));
-                    }
-                }
-                DebugItem::Rect(v) => {
-                    if let Some(t) = &v.texture
-                        && !inner.textures.contains_key(t)
-                    {
-                        return Err(DebugError::TextureNotFound(t.clone()));
-                    }
-                }
-                _ => {}
-            }
+            validate_item_resources(item, &inner.meshes, &inner.textures)?;
         }
         if !inner.groups.contains_key(name) && inner.groups.len() >= MAX_GROUPS {
             return Err(DebugError::TooManyGroups {
@@ -230,10 +163,7 @@ impl DebugRenderer {
                 max: MAX_TOTAL_ITEMS,
             });
         }
-        let rev = inner.alloc_rev();
         let mut group = DebugGroup::new(name, list, opts)?;
-        group.revision = rev;
-        group.geometry_revision = rev;
         group.expires_tick = match group.lifetime {
             Lifetime::Frame => Some(now_tick.saturating_add(2)),
             Lifetime::Ticks(n) => Some(now_tick.saturating_add(u64::from(n)).saturating_add(1)),
@@ -262,10 +192,17 @@ impl DebugRenderer {
                 max: MAX_DEBUG_BYTES,
             });
         }
+        let rev = inner.alloc_rev();
+        group.revision = rev;
+        group.geometry_revision = rev;
+        if let Some(previous) = inner.groups.remove(name) {
+            inner.remove_group_deadlines(&previous.group);
+        }
+        inner.track_group_deadlines(&group);
         inner.groups.insert(
             name.to_string(),
             Arc::new(GroupEntry {
-                group,
+                group: Arc::new(group),
                 created_tick: now_tick,
                 created_at: now,
             }),
@@ -280,8 +217,9 @@ impl DebugRenderer {
         let Ok(mut inner) = self.inner.lock() else {
             return Err(DebugError::InvalidNumber("debug store poisoned"));
         };
-        if inner.groups.remove(name).is_some() {
-            inner.scene_rev = inner.scene_rev.wrapping_add(1).max(1);
+        if let Some(entry) = inner.groups.remove(name) {
+            inner.remove_group_deadlines(&entry.group);
+            inner.bump_scene_rev();
             Ok(true)
         } else {
             Ok(false)
@@ -293,10 +231,14 @@ impl DebugRenderer {
     /// This operation has no validation error result.
     pub fn clear_all(&self) {
         if let Ok(mut inner) = self.inner.lock() {
+            if inner.groups.is_empty() && inner.meshes.is_empty() && inner.textures.is_empty() {
+                return;
+            }
             inner.groups.clear();
             inner.meshes.clear();
             inner.textures.clear();
-            inner.scene_rev = inner.scene_rev.wrapping_add(1).max(1);
+            inner.clear_group_deadlines();
+            inner.bump_scene_rev();
         }
     }
 
@@ -306,7 +248,8 @@ impl DebugRenderer {
             && !inner.groups.is_empty()
         {
             inner.groups.clear();
-            inner.scene_rev = inner.scene_rev.wrapping_add(1).max(1);
+            inner.clear_group_deadlines();
+            inner.bump_scene_rev();
         }
     }
 
@@ -316,11 +259,11 @@ impl DebugRenderer {
             if entry.group.visible == visible {
                 return;
             }
-            let mut group = entry.group.clone();
+            let mut group = (*entry.group).clone();
             group.revision = inner.alloc_rev();
             group.visible = visible;
             *entry = GroupEntry {
-                group,
+                group: Arc::new(group),
                 created_tick: entry.created_tick,
                 created_at: entry.created_at,
             };
@@ -331,11 +274,11 @@ impl DebugRenderer {
     pub fn set_group_transform(&self, name: &str, t: GroupTransform) -> DebugResult<()> {
         t.validate()?;
         self.mutate_group(name, |entry, inner| {
-            let mut group = entry.group.clone();
+            let mut group = (*entry.group).clone();
             group.revision = inner.alloc_rev();
             group.transform = t.clone();
             *entry = GroupEntry {
-                group,
+                group: Arc::new(group),
                 created_tick: entry.created_tick,
                 created_at: entry.created_at,
             };
@@ -346,11 +289,11 @@ impl DebugRenderer {
     pub fn set_group_anchor(&self, name: &str, anchor: Anchor) -> DebugResult<()> {
         anchor.validate()?;
         self.mutate_group(name, |entry, inner| {
-            let mut group = entry.group.clone();
+            let mut group = (*entry.group).clone();
             group.revision = inner.alloc_rev();
             group.anchor = anchor.clone();
             *entry = GroupEntry {
-                group,
+                group: Arc::new(group),
                 created_tick: entry.created_tick,
                 created_at: entry.created_at,
             };
@@ -435,7 +378,7 @@ impl DebugRenderer {
             return Err(DebugError::ResourceInUse(id.to_string()));
         }
         if inner.meshes.remove(id).is_some() {
-            inner.scene_rev = inner.scene_rev.wrapping_add(1).max(1);
+            inner.bump_scene_rev();
             Ok(true)
         } else {
             Ok(false)
@@ -503,7 +446,7 @@ impl DebugRenderer {
             return Err(DebugError::ResourceInUse(id.to_string()));
         }
         if inner.textures.remove(id).is_some() {
-            inner.scene_rev = inner.scene_rev.wrapping_add(1).max(1);
+            inner.bump_scene_rev();
             Ok(true)
         } else {
             Ok(false)
@@ -515,53 +458,34 @@ impl DebugRenderer {
     /// If the internal lock is poisoned, return an empty snapshot.
     pub fn snapshot(&self) -> Arc<DebugScene> {
         let now_tick = self.current_tick();
-        let now = Instant::now();
-        let (groups, meshes, textures, scene_rev) = match self.inner.lock() {
-            Ok(mut inner) => {
-                prune_locked(&mut inner, now_tick, now);
-                let groups = inner
-                    .groups
-                    .iter()
-                    .map(|(k, e)| (k.clone(), Arc::new(e.group.clone())))
-                    .collect();
-                let meshes = inner
-                    .meshes
-                    .iter()
-                    .map(|(k, v)| (k.clone(), v.clone()))
-                    .collect();
-                let textures = inner
-                    .textures
-                    .iter()
-                    .map(|(k, v)| (k.clone(), v.clone()))
-                    .collect();
-                (groups, meshes, textures, inner.scene_rev)
-            }
-            Err(_) => (BTreeMap::new(), BTreeMap::new(), BTreeMap::new(), 0),
+        let Ok(mut inner) = self.inner.lock() else {
+            return Arc::new(DebugScene::empty());
         };
-        Arc::new(DebugScene {
-            groups,
-            meshes,
-            textures,
-            revision: scene_rev,
-        })
-    }
-
-    /// Cheap pending-table clone for the sender thread (prunes expired).
-    pub(crate) fn clone_pending(&self) -> PendingSnapshot {
-        let now_tick = self.current_tick();
-        let now = Instant::now();
-        match self.inner.lock() {
-            Ok(mut inner) => {
-                prune_locked(&mut inner, now_tick, now);
-                PendingSnapshot {
-                    groups: inner.groups.clone(),
-                    meshes: inner.meshes.clone(),
-                    textures: inner.textures.clone(),
-                    scene_rev: inner.scene_rev,
-                }
-            }
-            Err(_) => PendingSnapshot::default(),
+        prune_locked(&mut inner, now_tick);
+        if let Some(scene) = &inner.cached_scene {
+            return scene.clone();
         }
+
+        let scene = Arc::new(DebugScene {
+            groups: inner
+                .groups
+                .iter()
+                .map(|(name, entry)| (name.clone(), entry.group.clone()))
+                .collect(),
+            meshes: inner
+                .meshes
+                .iter()
+                .map(|(id, mesh)| (id.clone(), mesh.clone()))
+                .collect(),
+            textures: inner
+                .textures
+                .iter()
+                .map(|(id, texture)| (id.clone(), texture.clone()))
+                .collect(),
+            revision: inner.scene_rev,
+        });
+        inner.cached_scene = Some(scene.clone());
+        scene
     }
 
     /// Return the group count after pruning expired groups.
@@ -616,298 +540,11 @@ impl DebugRenderer {
     }
 }
 
-pub(crate) fn prune_locked(inner: &mut SharedInner, now_tick: u64, now: Instant) -> usize {
-    let before = inner.groups.len();
-    inner.groups.retain(|_, e| !is_expired(e, now_tick, now));
-    let removed = before.saturating_sub(inner.groups.len());
-    if removed > 0 {
-        inner.scene_rev = inner.scene_rev.wrapping_add(1).max(1);
-    }
-    removed
-}
-
-pub(crate) fn is_expired(entry: &GroupEntry, now_tick: u64, _now: Instant) -> bool {
-    entry
-        .group
-        .expires_tick
-        .is_some_and(|deadline| now_tick >= deadline)
-        || entry
-            .group
-            .expires_at_ms
-            .is_some_and(|deadline| unix_time_ms() >= deadline)
-}
-
-fn unix_time_ms() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis()
-        .min(u128::from(u64::MAX)) as u64
-}
-
-// ---------------------------------------------------------------------------
-// Handles
-// ---------------------------------------------------------------------------
-
-/// Cloneable handle for a named group.
-///
-/// The handle owns a clone of its renderer, so it remains usable while that
-/// renderer state exists. Full replacement restarts the group's lifetime;
-/// visibility, transform, and anchor updates preserve it.
-#[derive(Clone, Debug)]
-pub struct GroupHandle {
-    renderer: DebugRenderer,
-    name: String,
-}
-
-impl GroupHandle {
-    /// Replace the group and restart its lifetime from `opts`.
-    ///
-    /// Return the new revision. Return [`DebugError`] if validation or a scene
-    /// limit rejects the replacement. Referenced assets must already exist.
-    pub fn replace(&self, list: DrawList, opts: GroupOptions) -> DebugResult<u64> {
-        self.renderer.replace_group(&self.name, list, opts)
-    }
-
-    /// Remove the group. Return `true` when a group existed.
-    ///
-    /// Return `false` when the group was already absent.
-    pub fn clear(&self) -> DebugResult<bool> {
-        self.renderer.clear_group(&self.name)
-    }
-
-    /// Set visibility without restarting the lifetime.
-    ///
-    /// Return [`DebugError::GroupNotFound`] when the group does not exist.
-    pub fn set_visible(&self, visible: bool) -> DebugResult<()> {
-        self.renderer.set_group_visible(&self.name, visible)
-    }
-
-    /// Set the group transform without restarting the lifetime.
-    ///
-    /// Invalid transform values or a missing group return [`DebugError`].
-    pub fn set_transform(&self, t: GroupTransform) -> DebugResult<()> {
-        self.renderer.set_group_transform(&self.name, t)
-    }
-
-    /// Set the anchor without restarting the lifetime.
-    ///
-    /// An invalid anchor or a missing group returns [`DebugError`].
-    pub fn set_anchor(&self, anchor: Anchor) -> DebugResult<()> {
-        self.renderer.set_group_anchor(&self.name, anchor)
-    }
-
-    /// Return this handle's group name.
-    #[must_use]
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-}
-
-/// Cloneable handle for one reusable mesh id.
-///
-/// The handle owns a renderer clone. Resource removal fails while a group
-/// uses the mesh.
-#[derive(Clone, Debug)]
-pub struct MeshHandle {
-    renderer: DebugRenderer,
-    id: String,
-}
-
-impl MeshHandle {
-    /// Insert or replace this mesh resource.
-    ///
-    /// The resource id must match [`Self::id`]. Return its new revision, or a
-    /// validation or scene-limit error.
-    pub fn insert(&self, res: MeshResource) -> DebugResult<u64> {
-        if res.id != self.id {
-            return Err(DebugError::ResourceIdMismatch {
-                expected: self.id.clone(),
-                actual: res.id,
-            });
-        }
-        self.renderer.insert_mesh(res)
-    }
-
-    /// Remove the mesh. Return `true` when removed and `false` when absent.
-    ///
-    /// Return [`DebugError::ResourceInUse`] if a group still refers to it.
-    pub fn remove(&self) -> DebugResult<bool> {
-        self.renderer.remove_mesh(&self.id)
-    }
-
-    /// Return this handle's mesh id.
-    #[must_use]
-    pub fn id(&self) -> &str {
-        &self.id
-    }
-}
-
-/// Cloneable handle for one reusable texture id.
-///
-/// The handle owns a renderer clone. Resource removal fails while a group
-/// uses the texture.
-#[derive(Clone, Debug)]
-pub struct TextureHandle {
-    renderer: DebugRenderer,
-    id: String,
-}
-
-impl TextureHandle {
-    /// Insert or replace this texture resource.
-    ///
-    /// The resource id must match [`Self::id`]. Return its new revision, or a
-    /// validation or scene-limit error.
-    pub fn insert(&self, res: TextureResource) -> DebugResult<u64> {
-        if res.id != self.id {
-            return Err(DebugError::ResourceIdMismatch {
-                expected: self.id.clone(),
-                actual: res.id,
-            });
-        }
-        self.renderer.insert_texture(res)
-    }
-
-    /// Remove the texture. Return `true` when removed and `false` when absent.
-    ///
-    /// Return [`DebugError::ResourceInUse`] if a group still refers to it.
-    pub fn remove(&self) -> DebugResult<bool> {
-        self.renderer.remove_texture(&self.id)
-    }
-
-    /// Return this handle's texture id.
-    #[must_use]
-    pub fn id(&self) -> &str {
-        &self.id
-    }
-}
-
-/// Handle for one item at a captured group geometry revision.
-///
-/// The handle owns a renderer clone and preserves the group lifetime when it
-/// changes an item. Any geometry edit invalidates older handles. Request a
-/// new handle after a replacement or item change.
-#[derive(Clone, Debug)]
-pub struct ItemHandle {
-    renderer: DebugRenderer,
-    group: String,
-    index: usize,
-    revision: Option<u64>,
-}
-
-impl ItemHandle {
-    /// Replace this item without restarting the group lifetime.
-    ///
-    /// Return [`DebugError::StaleHandle`] if group geometry changed after this
-    /// handle was created. Invalid items or missing resources also return an
-    /// error.
-    pub fn set(&self, item: DebugItem) -> DebugResult<()> {
-        item.validate()?;
-        let renderer = self.renderer.clone();
-        let group = self.group.clone();
-        let index = self.index;
-        validate_name(&group)?;
-        let Ok(mut inner) = renderer.inner.lock() else {
-            return Err(DebugError::InvalidNumber("debug store poisoned"));
-        };
-        let Some(existing) = inner.groups.get(&group).cloned() else {
-            return Err(DebugError::GroupNotFound(group));
-        };
-        if self.revision != Some(existing.group.geometry_revision) {
-            return Err(DebugError::StaleHandle);
-        }
-        let mut entry = (*existing).clone();
-        if index >= entry.group.items.len() {
-            return Err(DebugError::StaleHandle);
-        }
-        // Reference check for the replacement item.
-        match &item {
-            DebugItem::Instance(v) => {
-                if !inner.meshes.contains_key(&v.mesh) {
-                    return Err(DebugError::MeshNotFound(v.mesh.clone()));
-                }
-            }
-            DebugItem::Mesh(v) => {
-                if let Some(t) = &v.texture
-                    && !inner.textures.contains_key(t)
-                {
-                    return Err(DebugError::TextureNotFound(t.clone()));
-                }
-            }
-            DebugItem::Rect(v) => {
-                if let Some(t) = &v.texture
-                    && !inner.textures.contains_key(t)
-                {
-                    return Err(DebugError::TextureNotFound(t.clone()));
-                }
-            }
-            _ => {}
-        }
-        Arc::make_mut(&mut entry.group.items)[index] = item;
-        entry.group.revision = inner.alloc_rev();
-        entry.group.geometry_revision = entry.group.revision;
-        entry.group.validate()?;
-        let bytes = entry.group.estimated_bytes()
-            + inner
-                .groups
-                .iter()
-                .filter(|(name, _)| *name != &group)
-                .map(|(_, value)| value.group.estimated_bytes())
-                .sum::<usize>()
-            + inner
-                .meshes
-                .values()
-                .map(|value| value.estimated_bytes())
-                .sum::<usize>()
-            + inner
-                .textures
-                .values()
-                .map(|value| value.estimated_bytes())
-                .sum::<usize>();
-        if bytes > MAX_DEBUG_BYTES {
-            return Err(DebugError::PayloadTooLarge {
-                bytes,
-                max: MAX_DEBUG_BYTES,
-            });
-        }
-        inner.groups.insert(group, Arc::new(entry));
-        Ok(())
-    }
-
-    /// Remove this item without restarting the group lifetime.
-    ///
-    /// Return [`DebugError::StaleHandle`] if group geometry changed after this
-    /// handle was created. Any geometry edit invalidates older item handles.
-    pub fn remove(&self) -> DebugResult<()> {
-        let renderer = self.renderer.clone();
-        let group = self.group.clone();
-        let index = self.index;
-        validate_name(&group)?;
-        let Ok(mut inner) = renderer.inner.lock() else {
-            return Err(DebugError::InvalidNumber("debug store poisoned"));
-        };
-        let Some(existing) = inner.groups.get(&group).cloned() else {
-            return Err(DebugError::GroupNotFound(group));
-        };
-        if self.revision != Some(existing.group.geometry_revision) {
-            return Err(DebugError::StaleHandle);
-        }
-        let mut entry = (*existing).clone();
-        if index >= entry.group.items.len() {
-            return Err(DebugError::StaleHandle);
-        }
-        Arc::make_mut(&mut entry.group.items).remove(index);
-        entry.group.revision = inner.alloc_rev();
-        entry.group.geometry_revision = entry.group.revision;
-        inner.groups.insert(group, Arc::new(entry));
-        Ok(())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::debug::types::{Color, DepthMode, Width};
+    use crate::debug::{BuiltinMesh, BuiltinTexture};
 
     fn line_list() -> DrawList {
         let mut list = DrawList::new();
@@ -948,35 +585,7 @@ mod tests {
     }
 
     #[test]
-    fn transform_update_preserves_ttl() {
-        let r = DebugRenderer::new_detached();
-        let rev0 = r
-            .replace_group(
-                "g",
-                line_list(),
-                GroupOptions::default().lifetime(Lifetime::Ticks(100)),
-            )
-            .unwrap();
-        r.advance_tick();
-        r.set_group_transform("t-missing", GroupTransform::identity())
-            .unwrap_err();
-        r.set_group_transform("g", GroupTransform::from_position([1.0, 2.0, 3.0]))
-            .unwrap();
-        let snap = r.snapshot();
-        let g = snap.get_group("g").unwrap();
-        assert!(g.revision != rev0);
-        assert_eq!(g.lifetime, Lifetime::Ticks(100));
-        // Only one tick advanced; Ticks(100) must survive transform updates.
-        assert_eq!(r.group_count(), 1);
-        for _ in 0..200 {
-            r.advance_tick();
-        }
-        assert_eq!(r.prune_expired(), 1);
-        assert_eq!(r.group_count(), 0);
-    }
-
-    #[test]
-    fn frame_lifetime_waits_for_following_sim_tick_not_wall_time() {
+    fn cached_snapshot_tracks_frame_tick_and_seconds_expiry() {
         let r = DebugRenderer::new_detached();
         r.replace_group(
             "frame",
@@ -984,41 +593,55 @@ mod tests {
             GroupOptions::default().lifetime(Lifetime::Frame),
         )
         .unwrap();
-        r.advance_tick();
-        std::thread::sleep(std::time::Duration::from_millis(275));
-        assert_eq!(r.group_count(), 1);
-        r.advance_tick();
-        assert_eq!(r.group_count(), 0);
-    }
-
-    #[test]
-    fn tick_lifetime_uses_absolute_deadline_across_skipped_ticks() {
-        let r = DebugRenderer::new_detached();
         r.replace_group(
             "ticks",
             line_list(),
             GroupOptions::default().lifetime(Lifetime::Ticks(3)),
         )
         .unwrap();
-        for _ in 0..4 {
-            r.advance_tick();
-        }
-        assert_eq!(r.prune_expired(), 1);
-    }
-
-    #[test]
-    fn seconds_deadline_survives_transform_updates() {
-        let r = DebugRenderer::new_detached();
         r.replace_group(
             "seconds",
             line_list(),
-            GroupOptions::default().lifetime(Lifetime::Seconds(10.0)),
+            GroupOptions::default().lifetime(Lifetime::Seconds(0.05)),
         )
         .unwrap();
-        let before = r.snapshot().groups["seconds"].expires_at_ms;
+
+        let initial = r.snapshot();
+        let frame_deadline = initial.groups["frame"].expires_tick;
+        let tick_deadline = initial.groups["ticks"].expires_tick;
+        let seconds_deadline = initial.groups["seconds"].expires_at_ms;
+        assert!(Arc::ptr_eq(&initial, &r.snapshot()));
+
         r.set_group_transform("seconds", GroupTransform::from_position([1.0, 0.0, 0.0]))
             .unwrap();
-        assert_eq!(r.snapshot().groups["seconds"].expires_at_ms, before);
+        let updated = r.snapshot();
+        assert!(!Arc::ptr_eq(&initial, &updated));
+        assert_eq!(updated.groups["frame"].expires_tick, frame_deadline);
+        assert_eq!(updated.groups["ticks"].expires_tick, tick_deadline);
+        assert_eq!(updated.groups["seconds"].expires_at_ms, seconds_deadline);
+        assert!(Arc::ptr_eq(&updated, &r.snapshot()));
+
+        std::thread::sleep(std::time::Duration::from_millis(275));
+        let after_wall_time = r.snapshot();
+        assert!(!Arc::ptr_eq(&updated, &after_wall_time));
+        assert!(after_wall_time.groups.contains_key("frame"));
+        assert!(after_wall_time.groups.contains_key("ticks"));
+        assert!(!after_wall_time.groups.contains_key("seconds"));
+        assert!(Arc::ptr_eq(&after_wall_time, &r.snapshot()));
+
+        r.advance_tick();
+        assert!(Arc::ptr_eq(&after_wall_time, &r.snapshot()));
+        r.advance_tick();
+        let after_frame = r.snapshot();
+        assert!(!Arc::ptr_eq(&after_wall_time, &after_frame));
+        assert!(!after_frame.groups.contains_key("frame"));
+        assert!(after_frame.groups.contains_key("ticks"));
+
+        r.advance_tick();
+        r.advance_tick();
+        let after_ticks = r.snapshot();
+        assert!(!Arc::ptr_eq(&after_frame, &after_ticks));
+        assert!(!after_ticks.groups.contains_key("ticks"));
     }
 
     #[test]
@@ -1032,7 +655,7 @@ mod tests {
     }
 
     #[test]
-    fn snapshots_share_resource_and_group_allocations() {
+    fn cached_snapshots_reuse_allocations_and_invalidate_on_scene_changes() {
         let r = DebugRenderer::new_detached();
         r.insert_mesh(
             MeshResource::new(
@@ -1048,14 +671,47 @@ mod tests {
         .unwrap();
         r.replace_group("g", line_list(), GroupOptions::default())
             .unwrap();
-        let first = r.snapshot();
-        let second = r.snapshot();
-        assert!(Arc::ptr_eq(&first.meshes["tri"], &second.meshes["tri"]));
 
+        let first = r.snapshot();
+        for _ in 0..16 {
+            assert!(Arc::ptr_eq(&first, &r.snapshot()));
+        }
+        let repeated = r.snapshot();
+        assert!(Arc::ptr_eq(&first.meshes["tri"], &repeated.meshes["tri"]));
+        assert!(Arc::ptr_eq(&first.groups["g"], &repeated.groups["g"]));
+        let inner = r.inner.lock().unwrap();
+        assert_eq!(inner.deadline_scans, 0);
+        drop(inner);
+
+        let first_group = first.groups.get("g").unwrap();
+        r.set_group_transform("g", GroupTransform::from_position([1.0, 0.0, 0.0]))
+            .unwrap();
+        let transformed = r.snapshot();
+        assert!(!Arc::ptr_eq(&first, &transformed));
+        assert!(!Arc::ptr_eq(first_group, &transformed.groups["g"]));
         assert!(Arc::ptr_eq(
-            &first.groups["g"].items,
-            &second.groups["g"].items
+            &first.meshes["tri"],
+            &transformed.meshes["tri"]
         ));
+        assert!(Arc::ptr_eq(
+            &first_group.items,
+            &transformed.groups["g"].items
+        ));
+        assert!(Arc::ptr_eq(&transformed, &r.snapshot()));
+
+        r.clear_groups();
+        let cleared = r.snapshot();
+        assert!(!Arc::ptr_eq(&transformed, &cleared));
+        assert!(cleared.groups.is_empty());
+        assert!(Arc::ptr_eq(&cleared, &r.snapshot()));
+
+        assert!(r.remove_mesh("tri").unwrap());
+        let without_mesh = r.snapshot();
+        assert!(!Arc::ptr_eq(&cleared, &without_mesh));
+        assert!(without_mesh.meshes.is_empty());
+        assert!(Arc::ptr_eq(&without_mesh, &r.snapshot()));
+        r.clear_all();
+        assert!(Arc::ptr_eq(&without_mesh, &r.snapshot()));
     }
 
     #[test]
@@ -1093,6 +749,39 @@ mod tests {
         assert!(matches!(
             r.replace_group("bad", bad, GroupOptions::default()),
             Err(DebugError::MeshNotFound(_))
+        ));
+
+        let mut builtin = DrawList::new();
+        builtin.instance(
+            BuiltinMesh::Ball.id(),
+            [0.0; 3],
+            GroupTransform::identity().rotation,
+            [1.0; 3],
+            Color::WHITE,
+            Some(BuiltinTexture::Ball.id().into()),
+            DepthMode::Test,
+        );
+        r.replace_group("builtin", builtin, GroupOptions::default())
+            .unwrap();
+        assert!(!r.snapshot().meshes.contains_key(BuiltinMesh::Ball.id()));
+
+        let reserved_mesh = MeshResource::new(
+            BuiltinMesh::Ball.id(),
+            vec![[0.0; 3], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            vec![Color::WHITE; 3],
+            None,
+            None,
+            vec![0, 1, 2],
+        );
+        assert!(matches!(
+            reserved_mesh,
+            Err(DebugError::ReservedResourceId(_))
+        ));
+        let reserved_texture =
+            TextureResource::new(BuiltinTexture::Ball.id(), 1, 1, vec![255, 255, 255, 255]);
+        assert!(matches!(
+            reserved_texture,
+            Err(DebugError::ReservedResourceId(_))
         ));
     }
 }

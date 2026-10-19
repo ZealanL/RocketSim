@@ -19,7 +19,7 @@ use rocketsim::{
 };
 use rocketsim_vis::{
     NetVis,
-    proto::{VisFrame, decode_frame, encode_frame},
+    proto::{SimMsg, VisFrame, decode_sim, encode_sim},
 };
 
 /// Tick dt, matches `rocketsim::consts::TICK_TIME`.
@@ -67,7 +67,7 @@ fn dummy_state(n_cars: usize) -> ArenaState {
 /// length prefix).
 fn payload_len(n_cars: usize) -> usize {
     let frame = VisFrame::new(dummy_state(n_cars), DT);
-    encode_frame(&frame).len() - 4
+    encode_sim(&SimMsg::Frame(frame)).len() - 4
 }
 
 #[test]
@@ -112,19 +112,19 @@ fn netvis_update_no_viewer_is_cheap() {
 }
 
 #[test]
-fn encode_frame_6car_is_fast() {
-    let frame = VisFrame::new(dummy_state(6), DT);
-    let _ = encode_frame(&frame); // warm up (allocator, first serialize)
+fn encode_live_sim_message_6car_is_fast() {
+    let message = SimMsg::Frame(VisFrame::new(dummy_state(6), DT));
+    let _ = encode_sim(&message); // warm up (allocator, first serialize)
     let mut total_len = 0usize;
     let t0 = Instant::now();
     for _ in 0..ITERS_ENCODE {
-        total_len += encode_frame(std::hint::black_box(&frame)).len();
+        total_len += encode_sim(std::hint::black_box(&message)).len();
     }
     std::hint::black_box(total_len);
     let mean_us = t0.elapsed().as_secs_f64() * 1e6 / ITERS_ENCODE as f64;
     assert!(
         mean_us < MAX_ENCODE_US,
-        "encode_frame @6 cars mean too slow: {mean_us:.2} µs (gate: {MAX_ENCODE_US} µs)"
+        "encode_sim @6 cars mean too slow: {mean_us:.2} µs (gate: {MAX_ENCODE_US} µs)"
     );
 }
 
@@ -146,11 +146,14 @@ fn dropshot_tile_states_round_trip() {
     s.tile_states = Some(TileStates::DEFAULT);
 
     let frame = VisFrame::new(s, DT);
-    let bytes = encode_frame(&frame);
-    let (back, consumed) = decode_frame(&bytes)
+    let bytes = encode_sim(&SimMsg::Frame(frame));
+    let (message, consumed) = decode_sim(&bytes)
         .expect("valid framing")
-        .expect("complete frame");
+        .expect("complete message");
     assert_eq!(consumed, bytes.len());
+    let SimMsg::Frame(back) = message else {
+        panic!("expected a frame")
+    };
     assert_eq!(back.dt, DT);
     assert_eq!(back.state.tick_count, TICK);
     assert_eq!(back.state.game_mode(), GameMode::Dropshot);

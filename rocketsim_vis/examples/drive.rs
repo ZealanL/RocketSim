@@ -9,13 +9,16 @@
 
 #[path = "support/drive.rs"]
 mod drive_controls;
+#[path = "support/photo.rs"]
+mod photo_support;
 mod support;
 
 use std::net::SocketAddr;
 
 use clap::Parser;
+use photo_support::init_meshes;
 use rocketsim::{Arena, ArenaConfig, CarBodyConfig, GameMode, Team};
-use rocketsim_vis::{ArenaVisExt, pace::TickPacer, parse_game_mode, photo::init_meshes};
+use rocketsim_vis::{ArenaVisExt, pace::TickPacer, parse_game_mode};
 
 use drive_controls::Driver;
 

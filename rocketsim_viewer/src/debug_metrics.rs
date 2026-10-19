@@ -5,7 +5,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use rocketsim_viewer::debug_gl::DebugStats;
+use crate::render::debug::DebugStats;
 
 pub struct DebugMetrics {
     path: PathBuf,

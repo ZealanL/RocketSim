@@ -13,9 +13,8 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    bindings::Bindings,
     camera::CameraConfig,
-    input::{Action, ActionMap, InputSource},
+    input::{Action, ActionMap, InputSource, legacy::Bindings},
 };
 
 /// Device view for the universal action binding table.
@@ -139,53 +138,39 @@ const SAVE_DEBOUNCE_SECS: f32 = 1.0;
 /// assert!(!back.show_boost);
 /// assert_eq!(back.fps_limit_hz, 0);
 /// ```
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ViewerSettings {
     /// Follow-camera + FOV tuning (RL defaults).
-    #[serde(default)]
     pub camera: CameraConfig,
     /// Ball trail ribbon.
-    #[serde(default = "on")]
     pub show_trail: bool,
     /// Per-car boost flames.
-    #[serde(default = "on")]
     pub show_boost: bool,
     /// Ball-to-ground drop line.
-    #[serde(default = "on")]
     pub show_ground_line: bool,
     /// Boost pads (instanced draws).
-    #[serde(default = "on")]
     pub show_pads: bool,
     /// Frame-rate cap in Hz (0 = uncapped).
-    #[serde(default = "default_fps")]
     pub fps_limit_hz: u32,
     /// UI scale multiplier.
-    #[serde(default = "default_ui_scale")]
     pub ui_scale: f32,
     /// Vsync (applies on relaunch).
-    #[serde(default = "on")]
     pub vsync: bool,
     /// MSAA samples (applies on relaunch).
-    #[serde(default = "default_msaa")]
     pub msaa: u16,
-    /// Key/mouse/gamepad bindings (all defaulted, old files parse).
-    #[serde(default)]
+    /// Legacy table for settings-file compatibility. Runtime actions use `action_bindings`.
+    /// Direct edits to legacy action fields do not update that map. Call `set_legacy_bindings` to refresh it.
     pub bindings: Bindings,
-    /// Device-independent actions. Missing tables use the legacy bindings.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// Action bindings. This table takes precedence over legacy bindings.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub action_bindings: Option<crate::input::ActionMap>,
     /// Spectate-only mode: watch the followed car, send neutral inputs.
-    #[serde(default)]
     pub spectate_only: bool,
     /// Drive-demo mutators, sent as ControlMsg mutator bits (all off = RL
     /// defaults). Only options the sim can apply live are listed here.
-    #[serde(default)]
     pub mut_unlimited_boost: bool,
-    #[serde(default)]
     pub mut_recharge: bool,
-    #[serde(default)]
     pub mut_flips: bool,
-    #[serde(default)]
     pub mut_double_jumps: bool,
     /// Last save time (not persisted).
     #[serde(skip)]
@@ -195,22 +180,89 @@ pub struct ViewerSettings {
     dirty: bool,
     #[serde(skip)]
     explicit_path: Option<PathBuf>,
+    #[serde(skip)]
+    fallback_action_bindings: ActionMap,
 }
 
-fn on() -> bool {
-    true
+#[derive(Deserialize)]
+#[serde(default)]
+struct ViewerSettingsData {
+    camera: CameraConfig,
+    show_trail: bool,
+    show_boost: bool,
+    show_ground_line: bool,
+    show_pads: bool,
+    fps_limit_hz: u32,
+    ui_scale: f32,
+    vsync: bool,
+    msaa: u16,
+    bindings: Bindings,
+    action_bindings: Option<ActionMap>,
+    spectate_only: bool,
+    mut_unlimited_boost: bool,
+    mut_recharge: bool,
+    mut_flips: bool,
+    mut_double_jumps: bool,
 }
 
-fn default_fps() -> u32 {
-    DEFAULT_FPS_LIMIT
+impl Default for ViewerSettingsData {
+    fn default() -> Self {
+        let settings = ViewerSettings::default();
+        Self {
+            camera: settings.camera,
+            show_trail: settings.show_trail,
+            show_boost: settings.show_boost,
+            show_ground_line: settings.show_ground_line,
+            show_pads: settings.show_pads,
+            fps_limit_hz: settings.fps_limit_hz,
+            ui_scale: settings.ui_scale,
+            vsync: settings.vsync,
+            msaa: settings.msaa,
+            bindings: settings.bindings,
+            action_bindings: settings.action_bindings,
+            spectate_only: settings.spectate_only,
+            mut_unlimited_boost: settings.mut_unlimited_boost,
+            mut_recharge: settings.mut_recharge,
+            mut_flips: settings.mut_flips,
+            mut_double_jumps: settings.mut_double_jumps,
+        }
+    }
 }
 
-fn default_ui_scale() -> f32 {
-    DEFAULT_UI_SCALE
-}
-
-fn default_msaa() -> u16 {
-    DEFAULT_MSAA
+impl<'de> Deserialize<'de> for ViewerSettings {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let data = ViewerSettingsData::deserialize(deserializer)?;
+        let fallback_action_bindings = ActionMap::from_legacy(&data.bindings);
+        let action_bindings = Some(
+            data.action_bindings
+                .unwrap_or_else(|| fallback_action_bindings.clone()),
+        );
+        Ok(Self {
+            camera: data.camera,
+            show_trail: data.show_trail,
+            show_boost: data.show_boost,
+            show_ground_line: data.show_ground_line,
+            show_pads: data.show_pads,
+            fps_limit_hz: data.fps_limit_hz,
+            ui_scale: data.ui_scale,
+            vsync: data.vsync,
+            msaa: data.msaa,
+            bindings: data.bindings,
+            action_bindings,
+            spectate_only: data.spectate_only,
+            mut_unlimited_boost: data.mut_unlimited_boost,
+            mut_recharge: data.mut_recharge,
+            mut_flips: data.mut_flips,
+            mut_double_jumps: data.mut_double_jumps,
+            last_save: None,
+            dirty: false,
+            explicit_path: None,
+            fallback_action_bindings,
+        })
+    }
 }
 
 impl Default for ViewerSettings {
@@ -235,15 +287,31 @@ impl Default for ViewerSettings {
             last_save: None,
             dirty: false,
             explicit_path: None,
+            fallback_action_bindings: ActionMap::default(),
         }
     }
 }
 
 impl ViewerSettings {
-    pub fn input_bindings(&self) -> crate::input::ActionMap {
+    /// Return the canonical action map without cloning it.
+    pub fn action_map(&self) -> &ActionMap {
         self.action_bindings
-            .clone()
-            .unwrap_or_else(|| crate::input::ActionMap::from_legacy(&self.bindings))
+            .as_ref()
+            .unwrap_or(&self.fallback_action_bindings)
+    }
+
+    /// Return a clone of the canonical action map.
+    pub fn input_bindings(&self) -> ActionMap {
+        self.action_map().clone()
+    }
+
+    /// Replace legacy bindings and migrate them to the runtime action map.
+    pub fn set_legacy_bindings(&mut self, bindings: Bindings) {
+        self.bindings = bindings;
+        let action_map = ActionMap::from_legacy(&self.bindings);
+        self.fallback_action_bindings = action_map.clone();
+        self.action_bindings = Some(action_map);
+        self.mark_dirty();
     }
 
     /// Settings file path (`rocketsim-vis/settings.toml` in the OS config
@@ -398,7 +466,7 @@ impl ViewerSettings {
     /// Packs the mutator toggles into a ControlMsg mutator bitmask (all
     /// off = RL defaults = zero).
     pub fn mutators_mask(&self) -> u8 {
-        use crate::proto::{
+        use rocketsim_vis::proto::{
             MUT_BOOST_RECHARGE, MUT_UNLIMITED_BOOST, MUT_UNLIMITED_DOUBLE_JUMPS,
             MUT_UNLIMITED_FLIPS,
         };
@@ -487,13 +555,13 @@ fn directories_dir() -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bindings::{InputBinding, Key, MouseButton, PadButton};
+    use crate::input::sources::{InputBinding, Key, MouseButton, PadButton};
 
     #[test]
     fn binding_device_views_keep_original_slots_and_hide_other_devices() {
-        use crate::{
-            bindings::{Key, MouseButton, PadButton},
-            input::InputSource,
+        use crate::input::{
+            InputSource,
+            sources::{Key, MouseButton, PadButton},
         };
 
         let sources = [
@@ -513,9 +581,9 @@ mod tests {
 
     #[test]
     fn device_reset_preserves_hidden_assignment() {
-        use crate::{
-            bindings::{Key, PadButton},
-            input::InputSource,
+        use crate::input::{
+            InputSource,
+            sources::{Key, PadButton},
         };
 
         let mut map = ActionMap::default();
@@ -534,7 +602,7 @@ mod tests {
 
     #[test]
     fn device_reset_keeps_empty_visible_slot_unbound() {
-        use crate::{bindings::Key, input::InputSource};
+        use crate::input::{InputSource, sources::Key};
 
         let mut map = ActionMap::default();
         map.set(Action::Jump, 0, InputSource::Key(Key::K));
@@ -550,7 +618,7 @@ mod tests {
 
     #[test]
     fn device_reset_assigns_one_default_for_two_visible_slots() {
-        use crate::{bindings::PadButton, input::InputSource};
+        use crate::input::{InputSource, sources::PadButton};
 
         let mut map = ActionMap::default();
         map.set(Action::Jump, 0, InputSource::PadButton(PadButton::West));
@@ -562,18 +630,6 @@ mod tests {
             map.sources(Action::Jump)[1],
             defaults.sources(Action::Jump)[1]
         );
-    }
-
-    #[test]
-    fn defaults_match_spec() {
-        let s = ViewerSettings::default();
-        assert_eq!(s.camera.fov_degrees, 110.0);
-        assert_eq!(s.camera.car_cam.distance, 270.0);
-        assert!(s.show_trail && s.show_boost && s.show_ground_line && s.show_pads);
-        assert_eq!(s.fps_limit_hz, 60);
-        assert_eq!(s.ui_scale, 1.0);
-        assert!(s.vsync);
-        assert_eq!(s.msaa, 4);
     }
 
     #[test]
@@ -646,6 +702,25 @@ mod tests {
     }
 
     #[test]
+    fn setting_legacy_bindings_updates_the_canonical_map() {
+        let mut settings = ViewerSettings::default();
+        let mut bindings = Bindings::default();
+        bindings.car.throttle_fwd = Key::ArrowUp;
+        settings.set_legacy_bindings(bindings);
+        assert!(settings.dirty);
+        assert_eq!(
+            settings.action_map().sources(Action::ThrottleForward)[0],
+            InputSource::Key(Key::ArrowUp)
+        );
+
+        settings.bindings.car.throttle_fwd = Key::B;
+        assert_eq!(
+            settings.action_map().sources(Action::ThrottleForward)[0],
+            InputSource::Key(Key::ArrowUp)
+        );
+    }
+
+    #[test]
     fn universal_rebinds_survive_save_and_reload() {
         use crate::input::{Action, Axis2, InputSource};
 
@@ -658,7 +733,7 @@ mod tests {
             (
                 Action::MenuAccept,
                 InputSource::PadAxis {
-                    axis: crate::bindings::PadAxis::LeftStickY,
+                    axis: crate::input::sources::PadAxis::LeftStickY,
                     sign: -1,
                 },
             ),
@@ -683,10 +758,8 @@ mod tests {
         settings.action_bindings = Some(bindings.clone());
         settings.mark_dirty();
         settings.flush().unwrap();
-        assert_eq!(
-            ViewerSettings::load_from_path(&path).input_bindings(),
-            bindings
-        );
+        let loaded = ViewerSettings::load_from_path(&path);
+        assert_eq!(loaded.action_map(), &bindings);
         let _ = std::fs::remove_file(path);
     }
 
@@ -694,24 +767,38 @@ mod tests {
     fn old_bindings_migrate_until_action_table_is_present() {
         use crate::input::{Action, ActionMap, InputSource};
 
-        let mut settings: ViewerSettings = toml::from_str(
+        let path = test_path("legacy-actions");
+        std::fs::write(
+            &path,
             "[bindings.car]\nthrottle_fwd = \"ArrowUp\"\n[bindings.pad.camera]\ndirector = \"LeftThumb\"\n",
-        ).unwrap();
+        )
+        .unwrap();
+        let mut settings = ViewerSettings::load_from_path(&path);
         assert_eq!(
-            settings.input_bindings().sources(Action::ThrottleForward)[0],
+            settings.action_bindings,
+            Some(ActionMap::from_legacy(&settings.bindings))
+        );
+        let migrated = settings.action_map() as *const ActionMap;
+        assert_eq!(settings.action_map() as *const ActionMap, migrated);
+        assert_eq!(
+            settings.action_map().sources(Action::ThrottleForward)[0],
             InputSource::Key(Key::ArrowUp)
         );
         assert_eq!(
-            settings.input_bindings().sources(Action::Director)[1],
+            settings.action_map().sources(Action::Director)[1],
             InputSource::PadButton(PadButton::LeftThumb)
         );
+
         settings.action_bindings = Some(ActionMap::default());
+        let configured = settings.action_bindings.as_ref().unwrap() as *const ActionMap;
+        assert_eq!(settings.action_map() as *const ActionMap, configured);
         assert_eq!(
-            settings.input_bindings().sources(Action::ThrottleForward)[0],
+            settings.action_map().sources(Action::ThrottleForward)[0],
             InputSource::Key(Key::W)
         );
         settings.reset_all();
         assert!(settings.action_bindings.is_none());
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]

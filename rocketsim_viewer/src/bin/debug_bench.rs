@@ -22,10 +22,10 @@ mod native {
     use clap::Parser;
     use glam::{Mat4, Vec3};
     use glow::HasContext;
-    use rocketsim_viewer::debug_gl::DebugGl;
+    use rocketsim_viewer::render::debug::DebugGl;
     use rocketsim_vis::debug::{
-        Color, DebugItem, DebugRenderer, DepthMode, DrawList, GroupOptions, MeshInstanceItem,
-        MeshResource, PointItem, PolylineItem, Width,
+        BuiltinMesh, BuiltinTexture, Color, DebugItem, DebugRenderer, DebugScene, DepthMode,
+        DrawList, GroupOptions, MeshInstanceItem, MeshResource, PointItem, PolylineItem, Width,
     };
 
     const W: u32 = 1280;
@@ -534,6 +534,7 @@ mod native {
         }
         check_line_depth(gl, output, &renderer, &opaque, expected)?;
         check_transparent_ordering(gl, output)?;
+        check_builtin_assets(gl)?;
         Ok(())
     }
     fn check_line_depth(
@@ -807,6 +808,174 @@ mod native {
         gpu.destroy(gl);
         Ok(())
     }
+    fn check_builtin_assets(gl: &glow::Context) -> Result<(), String> {
+        let make_items = |textured: bool| {
+            let mut items = DrawList::new();
+            let identity = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+            for (mesh, position, texture) in [
+                (
+                    BuiltinMesh::Ball,
+                    [-180.0, 0.0, 300.0],
+                    BuiltinTexture::Ball,
+                ),
+                (
+                    BuiltinMesh::CarOctane,
+                    [180.0, 0.0, 300.0],
+                    BuiltinTexture::CarBlue,
+                ),
+            ] {
+                items.instance(
+                    mesh.id(),
+                    position,
+                    identity,
+                    [1.0; 3],
+                    Color::WHITE,
+                    textured.then(|| texture.id().to_owned()),
+                    DepthMode::Test,
+                );
+            }
+            items
+        };
+
+        let renderer = DebugRenderer::new_detached();
+        renderer
+            .replace_group("builtin-assets", make_items(true), GroupOptions::default())
+            .map_err(|error| error.to_string())?;
+        let scene = renderer.snapshot();
+        ensure(
+            scene.meshes.is_empty() && scene.textures.is_empty(),
+            "built-in assets must not need uploaded resource definitions",
+        )?;
+
+        let mut gpu = DebugGl::new(gl);
+        gpu.sync(gl, &scene);
+        let uploaded = gpu.stats();
+        ensure(
+            uploaded.mesh_uploads == 2 && uploaded.texture_uploads == 2,
+            &format!(
+                "expected two lazy mesh and texture uploads, got {} meshes and {} textures",
+                uploaded.mesh_uploads, uploaded.texture_uploads
+            ),
+        )?;
+
+        let eye = Vec3::new(0.0, -1200.0, 300.0);
+        let forward = Vec3::Y;
+        let right = forward.cross(Vec3::Z).normalize();
+        let up = right.cross(forward);
+        let view = Mat4::from_cols(
+            glam::Vec4::new(right.x, up.x, -forward.x, 0.0),
+            glam::Vec4::new(right.y, up.y, -forward.y, 0.0),
+            glam::Vec4::new(right.z, up.z, -forward.z, 0.0),
+            glam::Vec4::new(-right.dot(eye), -up.dot(eye), forward.dot(eye), 1.0),
+        );
+        let f = 1.0 / (60_f32.to_radians() * 0.5).tan();
+        let near = 1.0;
+        let far = 5000.0;
+        let proj = Mat4::from_cols(
+            glam::Vec4::new(f / (W as f32 / H as f32), 0.0, 0.0, 0.0),
+            glam::Vec4::new(0.0, f, 0.0, 0.0),
+            glam::Vec4::new(0.0, 0.0, far / (near - far), -1.0),
+            glam::Vec4::new(0.0, 0.0, near * far / (near - far), 0.0),
+        );
+        let render = |gpu: &mut DebugGl, scene: &Arc<DebugScene>| -> Result<Vec<u8>, String> {
+            unsafe {
+                gl.viewport(0, 0, W as i32, H as i32);
+                gl.depth_mask(true);
+                gl.clear_color(0.025, 0.035, 0.055, 1.0);
+                gl.clear(glow::COLOR_BUFFER_BIT | glow::DEPTH_BUFFER_BIT);
+            }
+            gpu.draw(gl, scene, None, &view, &proj, [W as f32, H as f32]);
+            unsafe {
+                gl.finish();
+            }
+            let mut rgba = vec![0_u8; (W * H * 4) as usize];
+            unsafe {
+                gl.pixel_store_i32(glow::PACK_ALIGNMENT, 1);
+                gl.read_pixels(
+                    0,
+                    0,
+                    W as i32,
+                    H as i32,
+                    glow::RGBA,
+                    glow::UNSIGNED_BYTE,
+                    glow::PixelPackData::Slice(Some(&mut rgba)),
+                );
+            }
+            let error = unsafe { gl.get_error() };
+            ensure(
+                error == glow::NO_ERROR,
+                &format!("OpenGL error 0x{error:04x} in built-in asset fixture"),
+            )?;
+            ensure(
+                rgba.as_chunks::<4>().0.iter().all(|pixel| pixel[3] == 255),
+                "built-in asset readback contains non-opaque alpha",
+            )?;
+            Ok(rgba)
+        };
+
+        let textured = render(&mut gpu, &scene)?;
+        let background = [textured[0], textured[1], textured[2]];
+        let mut visible_halves = [0_usize; 2];
+        for (index, pixel) in textured.as_chunks::<4>().0.iter().enumerate() {
+            if pixel[0..3] != background {
+                let half = usize::from(index % W as usize >= W as usize / 2);
+                visible_halves[half] += 1;
+            }
+        }
+        ensure(
+            visible_halves.iter().all(|&count| count > 100),
+            &format!("both built-in models must render visible pixels: {visible_halves:?}"),
+        )?;
+
+        gpu.sync(gl, &scene);
+        let reused = gpu.stats();
+        ensure(
+            reused.mesh_uploads == uploaded.mesh_uploads
+                && reused.texture_uploads == uploaded.texture_uploads,
+            "reusing one scene uploaded built-in assets again",
+        )?;
+        ensure(
+            render(&mut gpu, &scene)? == textured,
+            "built-in rendering changed when the same scene cache was reused",
+        )?;
+
+        renderer
+            .replace_group("builtin-assets", make_items(false), GroupOptions::default())
+            .map_err(|error| error.to_string())?;
+        let untextured_scene = renderer.snapshot();
+        gpu.sync(gl, &untextured_scene);
+        let untextured_stats = gpu.stats();
+        ensure(
+            untextured_stats.mesh_uploads == uploaded.mesh_uploads
+                && untextured_stats.texture_uploads == uploaded.texture_uploads,
+            "changing only built-in texture references uploaded resources again",
+        )?;
+        let untextured = render(&mut gpu, &untextured_scene)?;
+        let mut texture_differences = [0_usize; 2];
+        for (index, (with_texture, without_texture)) in textured
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .zip(untextured.as_chunks::<4>().0)
+            .enumerate()
+        {
+            if with_texture[0..3] != without_texture[0..3] {
+                let half = usize::from(index % W as usize >= W as usize / 2);
+                texture_differences[half] += 1;
+            }
+        }
+        ensure(
+            texture_differences.iter().all(|&count| count > 0),
+            &format!("both built-in textures must affect visible pixels: {texture_differences:?}"),
+        )?;
+        println!(
+            "PASS builtin-assets meshes={} textures={} visible_pixels={visible_halves:?} texture_pixels={texture_differences:?} cache_reused=true",
+            uploaded.mesh_uploads, uploaded.texture_uploads
+        );
+        gpu.destroy(gl);
+        Ok(())
+    }
+
     fn save_rgba_png(output: &str, rgba: &[u8]) -> Result<(), String> {
         std::fs::create_dir_all(
             std::path::Path::new(output)

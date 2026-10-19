@@ -3,8 +3,10 @@
 //! Run with: `cargo run -p rocketsim_viewer --bin mesh_stats`
 
 use rocketsim::GameMode;
-use rocketsim_viewer::mesh::ArenaMesh;
-use rocketsim_vis::photo::init_meshes;
+use rocketsim_viewer::geometry::mesh::ArenaMesh;
+#[path = "../../examples/support/photo.rs"]
+mod photo;
+use photo::init_meshes;
 
 fn main() {
     init_meshes();

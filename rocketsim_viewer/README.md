@@ -33,8 +33,10 @@ To watch a fixed-seed scene instead, run:
 cargo run -p rocketsim_viewer --example photo
 ```
 
-The photo example also builds the viewer. It prints state after 600 ticks,
-then keeps simulating and streaming until you stop it with Ctrl-C.
+Build the viewer before you run the photo example. The example starts or
+reuses that executable. Its fixture is in `examples/support/photo.rs`.
+It prints state after 600 ticks, then keeps simulating and streaming until
+you stop it with Ctrl-C.
 
 ## Install the viewer separately
 
@@ -165,8 +167,7 @@ Hold that input for 0.75 seconds to cancel instead. You can clear a slot or
 reset the visible device assignments. A device reset keeps assignments hidden
 by that view. Duplicate bindings are allowed and show a warning.
 
-The **Camera**, **Display
-**, and **Simulation** tabs contain the other
+The **Camera**, **Display**, and **Simulation** tabs contain the other
 settings. Spectate-only mode sends neutral driving controls and no action
 requests. The viewer sends mutator values, but the simulation decides whether
 to apply them.
@@ -211,12 +212,28 @@ on a trusted network, and restrict access with a firewall.
 Run `rocketsim-viewer --help` for all command options, including the initial
 camera and game mode. Streamed scene data replaces the initial game mode.
 
+## Viewer library modules
+
+The viewer separates CPU geometry, rendering, effects, and input. The old flat
+module paths are removed. Import CPU helpers from
+`geometry::{frustum, lines, mesh, obj, pads}`. Import OpenGL pipelines from
+`render::{main, lines, scene, view, debug}`. Simulation effects are in
+`effects::{fx, dropshot}`. Input backends use `input::{sources,legacy}`.
+`camera` and `settings` remain public root modules. `app` and `ui` are private.
+
+The receiver API is `rocketsim_vis::transport::viewer::ViewerListener`. It
+returns a `ViewerSnapshot` with an optional `Arc<VisFrame>`. The sender is
+`rocketsim_vis::transport::simulation`; `NetVis` and `ArenaVisExt` remain at the
+`rocketsim_vis` root. `FrameClient`, standalone frame codecs, and control ports
+are removed. The unreleased wire format also changed. The protocol version
+remains `1`. Rebuild the simulation and viewer together.
+
 ## Debug rendering review
 
 The `debug_render` example shows the retained drawing API. Build and run it
 with a viewer from the same checkout. See
 [`rocketsim_vis/DEBUG_RENDERING.md`](../rocketsim_vis/DEBUG_RENDERING.md) for
-its modes, local OBJ input, API limits, and review tool.
+its modes, local OBJ input, built-in debug assets, API limits, and review tool.
 
 Pass `--debug-stats PATH` to write CPU timing and asynchronous GPU query
 statistics to a file. Pass `--no-menu` to start with the menu closed. Pass

@@ -5,11 +5,14 @@
 //!
 //! Run with: `cargo run -p rocketsim_vis --example minimal -- [-g hoops]`
 
+#[path = "support/photo.rs"]
+mod photo_support;
 mod support;
 
 use clap::Parser;
+use photo_support::init_meshes;
 use rocketsim::{Arena, ArenaConfig, CarBodyConfig, CarControls, GameMode, Team};
-use rocketsim_vis::{ArenaVisExt, parse_game_mode, photo::init_meshes};
+use rocketsim_vis::{ArenaVisExt, parse_game_mode};
 
 /// Minimal streaming sim: `minimal [-g MODE]` (defaults: soccar).
 #[derive(clap::Parser)]

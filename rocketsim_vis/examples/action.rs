@@ -6,11 +6,14 @@
 //!
 //! Run with: `cargo run -p rocketsim_vis --example action`
 
+#[path = "support/photo.rs"]
+mod photo_support;
 mod support;
 
 use glam::Vec3A;
+use photo_support::init_meshes;
 use rocketsim::{Arena, ArenaConfig, CarBodyConfig, CarControls, GameMode, Team};
-use rocketsim_vis::{ArenaVisExt, photo::init_meshes};
+use rocketsim_vis::ArenaVisExt;
 
 /// Tick at which the script launches the ball (fast +Y with pop).
 pub const LAUNCH_TICK: u64 = 60;

@@ -411,7 +411,7 @@ mod tests {
     #[test]
     fn containment_shortens_boom_at_wall() {
         use crate::camera::{ArenaBounds, FOLLOW_BACKOFF};
-        crate::photo::init_meshes();
+        crate::geometry::init_collision_meshes();
         let bounds = ArenaBounds::build(GameMode::Soccar);
 
         // Car hugging the +X wall, ball deep at -X: the ball-cam boom

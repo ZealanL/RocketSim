@@ -192,8 +192,8 @@ labels, rectangles, and helpers for boxes, circles, spheres, arrows, grids, and
 axes. See [the retained rendering guide](DEBUG_RENDERING.md) for group updates,
 anchors, resources, limits, and current rendering limits.
 
-`set_vis_debug` remains available for small latest-only frame drawings. It is
-separate from retained groups.
+Use `DebugRenderer::draw_frame` for temporary marks. Use named groups for
+persistent drawings. Both APIs use the same retained debug scene.
 
 ## Troubleshooting
 
@@ -219,8 +219,20 @@ because the simulation sends scene geometry.
 
 The old `backend`, `camera`, and `VisInst` interfaces are no longer available.
 Use `ArenaVisExt` for simulation connections and `debug::DebugRenderer` for
-drawing. `proto::DebugDraw` remains available for legacy frame drawings.
-Viewer camera code now belongs to `rocketsim_viewer`.
+drawing. `proto::DebugDraw` and `VisFrame.debug` are removed. Do not use the
+standalone frame codecs or control ports.
+
+Custom viewer code uses `transport::viewer::ViewerListener::{bind, try_bind}`
+and reads a unified `ViewerSnapshot`. Its fields include the generation,
+connection status, optional `Arc<VisFrame>`, scene metadata, retained debug
+scene, and counters. This replaces the old `FrameClient` API. `ArenaVisExt` and
+`NetVis` remain the simulation-facing connection APIs. Viewer camera code
+belongs to `rocketsim_viewer`.
+
+The Rust API and the wire format changed during development. The protocol
+version remains `1` because this format is not released. Rebuild the
+simulation and viewer together. Earlier development binaries are not
+compatible.
 
 See the [API guide](https://docs.rs/rocketsim_vis) for complete examples of
 connections, controls, and timing. The

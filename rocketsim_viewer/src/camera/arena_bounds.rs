@@ -962,7 +962,7 @@ mod tests {
     use super::*;
 
     fn soccar() -> ArenaBounds {
-        crate::photo::init_meshes();
+        crate::geometry::init_collision_meshes();
         ArenaBounds::build(GameMode::Soccar)
     }
 
@@ -1138,7 +1138,7 @@ mod tests {
 
     #[test]
     fn void_is_unconstrained() {
-        crate::photo::init_meshes();
+        crate::geometry::init_collision_meshes();
         let b = ArenaBounds::build(GameMode::TheVoid);
         assert!(b.is_empty());
         let want = Vec3A::new(1.0, 2.0, 3.0);

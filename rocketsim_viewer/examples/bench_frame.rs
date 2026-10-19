@@ -1,30 +1,42 @@
 //! Viewer per-frame CPU microbenchmark (headless, no GL).
 //!
-//! Mirrors the `rocketsim-viewer` update body: frame clone, ball/boost trail
-//! ribbons, ground line, [`CarFx`](rocketsim_viewer::fx::CarFx) effects,
-//! follow-camera smoothing, view/projection, frustum planes, pad instance
-//! build, car draw grouping, and CPU line expansion. Runs entirely on
-//! snapshots so results are comparable across machines and commits.
+//! Mirrors the `rocketsim-viewer` update body: an `Arc<VisFrame>` clone,
+//! ball/boost trail ribbons, ground line, [`CarFx`](rocketsim_viewer::effects::fx::CarFx)
+//! effects, follow-camera smoothing, view/projection, frustum planes, pad
+//! instance build, car draw grouping, and production CPU line packing. Jump/dodge
+//! fixtures are prepared before timing. Frame reads now clone an Arc, and line
+//! packing reuses the production buffer. Do not compare totals with older runs.
 //!
 //! Run with: `cargo run -r -p rocketsim_viewer --example bench_frame`
 //! (`perf record` this binary for hotspot traces.)
 
-use std::{hint::black_box, time::Instant};
+#[path = "support/photo.rs"]
+mod demo_support;
 
+use std::{hint::black_box, sync::Arc, time::Instant};
+
+use demo_support::init_meshes;
 use glam::{Mat3, Vec3, Vec3A};
 use rocketsim::{
     Arena, ArenaConfig, CarBodyConfig, CarControls, CarCore, CarState, GameMode, Team,
 };
 use rocketsim_viewer::{
     camera::{CameraConfig, CarCamSmoothing},
-    frustum::frustum_planes,
-    fx::CarFx,
-    lines::{RibbonConfig, RibbonEmitter, Segment, expand_segment, ground_line},
-    main_gl::{car_model_name, car_texture_name, group_car_draws, model_matrix},
-    pads::{build_instances, load_pad_meshes, variant_radius},
-    view::view_proj,
+    effects::fx::CarFx,
+    geometry::{
+        frustum::frustum_planes,
+        lines::{
+            LINE_VERTEX_FLOATS, LineBuffer, RibbonConfig, RibbonEmitter, Segment, ground_line,
+        },
+        pads::{build_instances, load_pad_meshes, variant_radius},
+    },
+    render::{
+        lines::MAX_LINES,
+        main::{car_model_name, car_texture_name, group_car_draws, model_matrix},
+        view::view_proj,
+    },
 };
-use rocketsim_vis::{photo::init_meshes, proto::VisFrame};
+use rocketsim_vis::proto::VisFrame;
 
 /// 3v3 with mixed bodies (matches a real match for grouping/culling).
 const BODIES: [CarBodyConfig; 6] = [
@@ -45,49 +57,6 @@ const ITERS: usize = 3000;
 /// 720p aspect (the CPU-limited case from the report).
 const ASPECT: f32 = 1280.0 / 720.0;
 
-/// Floats per packed corner in [`LinesGl`](rocketsim_viewer::lines_gl::LinesGl)
-/// upload: world(3) + pa(3) + pb(3) + color(4) + width(1).
-const PACK_STRIDE: usize = 14;
-/// Segment cap mirrored from the lines pipeline.
-const PACK_MAX: usize = 1024;
-
-/// Mirrors the CPU half of `LinesGl::upload` (no GL): skip invisible,
-/// truncate past the cap, expand every kept segment, pack corners into a
-/// float buffer. Returns (floats, truncated, checksum).
-fn pack_lines(segs: &[Segment], eye: Vec3A, view: &glam::Mat4, proj11: f32) -> (usize, usize, f64) {
-    let mut buf = Vec::new();
-    let mut kept = 0usize;
-    for seg in segs {
-        if seg.is_invisible() {
-            continue;
-        }
-        if kept >= PACK_MAX {
-            break;
-        }
-        for corner in expand_segment(seg, eye, view, proj11, 720.0) {
-            buf.extend_from_slice(&corner.world.to_array());
-            buf.extend_from_slice(&seg.a.to_array());
-            buf.extend_from_slice(&seg.b.to_array());
-            buf.extend_from_slice(&corner.color.to_array());
-            buf.push(corner.width);
-        }
-        kept += 1;
-    }
-    let over = segs
-        .iter()
-        .filter(|s| !s.is_invisible())
-        .count()
-        .saturating_sub(kept);
-    let mut acc = 0.0f64;
-    for (i, v) in buf.iter().enumerate() {
-        if i % PACK_STRIDE == 0 {
-            acc += *v as f64;
-        }
-    }
-    black_box(&buf);
-    (buf.len(), over, acc)
-}
-
 fn controls_for_tick(car: usize, tick: usize) -> CarControls {
     CarControls {
         throttle: if tick % 240 < 200 { 1.0 } else { -0.5 },
@@ -98,7 +67,7 @@ fn controls_for_tick(car: usize, tick: usize) -> CarControls {
     }
 }
 
-fn build_frames() -> Vec<VisFrame> {
+fn build_frames() -> Vec<Arc<VisFrame>> {
     init_meshes();
     let mut arena = Arena::new_with_config(ArenaConfig {
         rng_seed: Some(0),
@@ -120,7 +89,10 @@ fn build_frames() -> Vec<VisFrame> {
             arena.set_car_controls(i, controls_for_tick(i, PREROLL_TICKS + tick));
         }
         arena.step_tick();
-        frames.push(VisFrame::new(arena.get_arena_state(), 1.0 / 120.0));
+        frames.push(Arc::new(VisFrame::new(
+            arena.get_arena_state(),
+            1.0 / 120.0,
+        )));
     }
     frames
 }
@@ -135,6 +107,7 @@ fn frame_work(
     smooth: &mut CarCamSmoothing,
     cfg: &CameraConfig,
     pad_radii: &[f32; 4],
+    line_buffer: &mut LineBuffer,
     eye_in: Vec3A,
 ) -> (f64, Vec3A) {
     // Trail replay (viewer replays 1 step; missed ticks clamp at 10).
@@ -179,10 +152,19 @@ fn frame_work(
         ));
     }
     let groups = group_car_draws(&placements);
-    // Lines overlay path: expand every segment + pack the upload buffer
-    // (mirrors the CPU half of `LinesGl::upload` — the viewer's only
-    // expansion of these segments).
-    let (packed, _trunc, pack_acc) = pack_lines(&segs, pos, &view, proj.y_axis.y);
+    line_buffer.prepare(&segs, pos, &view, proj.y_axis.y, 720.0, MAX_LINES);
+    let packed = line_buffer.vertices.len();
+    let pack_acc = line_buffer
+        .vertices
+        .iter()
+        .step_by(LINE_VERTEX_FLOATS)
+        .map(|value| *value as f64)
+        .sum::<f64>();
+    black_box((
+        &line_buffer.vertices,
+        line_buffer.drawn,
+        line_buffer.truncated,
+    ));
     let mut acc = pack_acc;
     // Sink the batching work too (else the optimizer deletes it).
     acc += (inst_total + packed) as f64
@@ -221,29 +203,40 @@ fn force_fx_edges(frame: &mut VisFrame, k: usize) {
     }
 }
 
-/// Times one workload phase; prints per-frame ns and fps.
+/// Prepare jump and dodge states before the timed loop.
+fn build_fx_frames(frames: &[Arc<VisFrame>]) -> Vec<Arc<VisFrame>> {
+    // Both FX edge periods divide CAPTURED_FRAMES, so each fixture matches the
+    // prior k-based mutation for the frame at the same cyclic index.
+    frames
+        .iter()
+        .enumerate()
+        .map(|(index, frame)| {
+            let mut fixture = (**frame).clone();
+            force_fx_edges(&mut fixture, index);
+            Arc::new(fixture)
+        })
+        .collect()
+}
+
+/// Time one prepared workload phase; print per-frame ns and fps.
 #[allow(clippy::too_many_arguments)]
 fn run_phase(
     name: &str,
-    frames: &[VisFrame],
+    frames: &[Arc<VisFrame>],
     iters: usize,
-    fx_heavy: bool,
     ball_ribbon: &mut RibbonEmitter,
     boost_ribbons: &mut Vec<RibbonEmitter>,
     fx: &mut CarFx,
     smooth: &mut CarCamSmoothing,
     cfg: &CameraConfig,
     pad_radii: &[f32; 4],
+    line_buffer: &mut LineBuffer,
     eye: &mut Vec3A,
 ) {
     let mut sink = 0.0f64;
     let t0 = Instant::now();
     for k in 0..iters {
-        // Mirror `FrameClient::latest()`: one full clone per viewer frame.
-        let mut frame = black_box(frames[k % frames.len()].clone());
-        if fx_heavy {
-            force_fx_edges(&mut frame, k);
-        }
+        let frame = black_box(Arc::clone(&frames[k % frames.len()]));
         let (a, e) = frame_work(
             &frame,
             ball_ribbon,
@@ -252,6 +245,7 @@ fn run_phase(
             smooth,
             cfg,
             pad_radii,
+            line_buffer,
             *eye,
         );
         sink += a;
@@ -272,6 +266,7 @@ fn main() {
         .and_then(|a| a.parse().ok())
         .unwrap_or(ITERS);
     let frames = build_frames();
+    let fx_frames = build_fx_frames(&frames);
     let pad_meshes = load_pad_meshes();
     let pad_radii = [
         variant_radius(&pad_meshes[0]),
@@ -280,6 +275,7 @@ fn main() {
         variant_radius(&pad_meshes[3]),
     ];
     let cfg = CameraConfig::default();
+    let mut line_buffer = LineBuffer::default();
 
     // Warm up (ribbons reach steady state, like a live viewer).
     let mut ball_ribbon = RibbonEmitter::new(RibbonConfig::ball_trail());
@@ -297,6 +293,7 @@ fn main() {
             &mut smooth,
             &cfg,
             &pad_radii,
+            &mut line_buffer,
             eye,
         );
         sink += a;
@@ -304,7 +301,7 @@ fn main() {
     }
     black_box(sink);
     // Steady-state segment load (what each timed frame chews through).
-    let probe = frames[frames.len() - 1].clone();
+    let probe = Arc::clone(&frames[frames.len() - 1]);
     let mut segs_probe: Vec<Segment> = ball_ribbon.segments(probe.state.ball.phys.pos);
     for (i, (_, car)) in probe.state.cars.iter().enumerate() {
         let fwd = car.phys.get_forward_dir();
@@ -320,26 +317,26 @@ fn main() {
         "steady",
         &frames,
         iters,
-        false,
         &mut ball_ribbon,
         &mut boost_ribbons,
         &mut fx,
         &mut smooth,
         &cfg,
         &pad_radii,
+        &mut line_buffer,
         &mut eye,
     );
     run_phase(
         "jump-dodge",
-        &frames,
+        &fx_frames,
         iters.max(3000) / 3,
-        true,
         &mut ball_ribbon,
         &mut boost_ribbons,
         &mut fx,
         &mut smooth,
         &cfg,
         &pad_radii,
+        &mut line_buffer,
         &mut eye,
     );
 }

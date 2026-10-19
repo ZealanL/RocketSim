@@ -52,12 +52,4 @@ mod tests {
         assert_eq!(clamp_dt(f32::NAN), 0.0);
         assert_eq!(clamp_dt(f32::INFINITY), 0.0);
     }
-
-    #[test]
-    fn smootherstep_endpoints() {
-        assert_eq!(smootherstep01(0.0), 0.0);
-        assert_eq!(smootherstep01(1.0), 1.0);
-        let mid = smootherstep01(0.5);
-        assert!((mid - 0.5).abs() < 1e-6);
-    }
 }

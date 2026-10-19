@@ -5,10 +5,11 @@
 //!
 //! Run with: `cargo run -p rocketsim_viewer --example photo`
 
-use rocketsim_vis::{
-    ArenaVisExt, ensure_viewer_running,
-    photo::{build_arena, init_meshes, step_ticks},
-};
+#[path = "support/photo.rs"]
+mod demo_support;
+
+use demo_support::{build_arena, init_meshes, step_ticks};
+use rocketsim_vis::{ArenaVisExt, ensure_viewer_running};
 
 fn main() {
     init_meshes();

@@ -394,7 +394,7 @@ mod tests {
         use rocketsim::GameMode;
 
         use crate::camera::{ArenaBounds, FREECAM_BACKOFF};
-        crate::photo::init_meshes();
+        crate::geometry::init_collision_meshes();
         let bounds = ArenaBounds::build(GameMode::Soccar);
 
         // Inside, facing +X into the wall: the step stops one backoff

@@ -37,6 +37,11 @@ cargo build --release -p rocketsim_viewer --bin rocketsim-viewer
 cargo build --release -p rocketsim_vis --example debug_render
 ```
 
+The small CLI driver uses scene builders in
+`rocketsim_vis/examples/support/debug_render/`. Each package keeps its own
+photo fixture under `examples/support/photo.rs`. The examples do not include
+source files from another package. The simulation package has no GUI dependency.
+
 Run the review harness in showcase and stress modes:
 
 ```sh
@@ -54,8 +59,8 @@ python3 tools/debug-render-review.py --obj /path/to/ZeroTwo.obj \
 ```
 
 The ZeroTwo model is user-local input. The repository does not include the
-model or a derived asset because its license is unknown. The procedural
-showcase uses original code and no third-party assets. Use `--static` to keep
+model or a derived asset because its license is unknown. The procedural showcase uses original code and no third-party assets. Do not
+check in the user-local OBJ file or any derived mesh data. Use `--static` to keep
 the selected scene static. Use `--viewer-arg=ARG` to pass a viewer option;
 for example, `--viewer-arg=--no-menu` starts with the menu closed. The harness
 also requests `--debug-stats PATH` and saves captures and logs under
