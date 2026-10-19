@@ -7,7 +7,7 @@ description = "3D visualizer for RocketSim Rocket League simulation"
 readme = "README.md"
 homepage.workspace = true
 repository.workspace = true
-license.workspace = true
+license-file = "LICENSES.md"
 keywords.workspace = true
 categories.workspace = true
 default-run = "rocketsim-viewer"
@@ -25,10 +25,6 @@ pkg-fmt = "zip"
 [[bin]]
 name = "rocketsim-viewer"
 path = "src/main.rs"
-
-[[bin]]
-name = "mesh_stats"
-path = "src/bin/mesh_stats.rs"
 
 [[bin]]
 name = "debug-render-bench"

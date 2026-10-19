@@ -87,9 +87,9 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           shared-key: dist-${{ matrix.target }}
-      - name: Build the viewer binaries
-        run: cargo build --locked --profile dist -p rocketsim_viewer --bins --target "${{ matrix.target }}"
-      - name: Test and package the binaries
+      - name: Build the viewer
+        run: cargo build --locked --profile dist -p rocketsim_viewer --bin rocketsim-viewer --target "${{ matrix.target }}"
+      - name: Test and package the viewer
         run: python tools/ci/release.py package --target "${{ matrix.target }}"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

@@ -212,6 +212,9 @@ persistent drawings. Both APIs use the same retained debug scene.
 
 ## Compatibility
 
+See the [0.2-to-0.3 migration guide](https://github.com/ZealanL/RocketSim/blob/v0.3.0/MIGRATING.md)
+for changes to published APIs.
+
 Keep `rocketsim`, `rocketsim_vis`, and `rocketsim_viewer` on matching versions.
 Version 0.3 uses protocol version 1. Use matching builds of `rocketsim_vis`
 and `rocketsim_viewer`. The installed viewer does not need collision meshes
@@ -239,3 +242,9 @@ connections, controls, and timing. The
 [debug-rendering API](https://docs.rs/rocketsim_vis/latest/rocketsim_vis/debug/)
 includes tested examples for frame drawings, persistent groups, reusable
 meshes and textures, lifetimes, and handle errors.
+
+## License
+
+The source uses the [MIT license](LICENSE). This crate does not include the
+viewer's bundled assets. Your own debug meshes and textures keep their
+original license terms.

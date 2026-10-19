@@ -17,8 +17,8 @@ TARGETS = (
     "x86_64-apple-darwin",
     "aarch64-apple-darwin",
 )
-BINARIES = ("rocketsim-viewer", "mesh_stats")
-ARCHIVE_FILES = ("LICENSE", "README.md", "MODEL_LICENSE_README.md")
+BINARIES = ("rocketsim-viewer",)
+ARCHIVE_FILES = ("LICENSE", "LICENSES.md", "README.md", "MODEL_LICENSE_README.md")
 PKG_URL = "{ repo }/releases/download/v{ version }/{ name }-{ version }-{ target }{ archive-suffix }"
 
 
@@ -93,9 +93,21 @@ def check(root: Path, tag: str | None = None) -> str:
     viewer = viewer_manifest.get("package", {})
     if viewer.get("autobins") is not False:
         raise ReleaseError("Viewer package must set autobins = false")
-    bins = {item.get("name") for item in viewer_manifest.get("bin", [])}
-    if bins != set(BINARIES):
-        raise ReleaseError("Viewer package must declare exactly both release binaries")
+    features = viewer_manifest.get("features", {})
+    default_features = set()
+    pending = ["default"] if "default" in features else []
+    while pending:
+        feature = pending.pop()
+        if feature not in default_features:
+            default_features.add(feature)
+            pending.extend(features.get(feature, []))
+    default_bins = {
+        item.get("name")
+        for item in viewer_manifest.get("bin", [])
+        if set(item.get("required-features", [])).issubset(default_features)
+    }
+    if default_bins != set(BINARIES):
+        raise ReleaseError("Viewer default binaries must be exactly: rocketsim-viewer")
     vis_path = root / "rocketsim_vis" / "Cargo.toml"
     vis_manifest = _load_toml(vis_path)
     _check_dependency(vis_manifest, "rocketsim", version, vis_path)
@@ -226,10 +238,9 @@ def _smoke_test(viewer: Path, root: Path, version: str, timeout: int) -> None:
 def _archive_sources(
     root: Path, target: str, binaries: list[Path]
 ) -> list[tuple[Path, str]]:
-    sources = [
-        (binaries[0], _binary_names(target)[0]),
-        (binaries[1], _binary_names(target)[1]),
+    sources = list(zip(binaries, _binary_names(target))) + [
         (root / "LICENSE", "LICENSE"),
+        (root / "rocketsim_viewer" / "LICENSES.md", "LICENSES.md"),
         (root / "rocketsim_viewer" / "README.md", "README.md"),
         (
             root / "rocketsim_viewer" / "src" / "models" / "MODEL_LICENSE_README.md",

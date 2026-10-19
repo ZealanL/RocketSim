@@ -169,6 +169,7 @@ Run these examples from the workspace root after you prepare the meshes:
 | Read state and cast rays | `cargo run -p rocketsim --example snapshot_raycast` |
 
 - [API reference](https://docs.rs/rocketsim). For this checkout, run `cargo doc -p rocketsim --no-deps --open`.
+- [Migrate from 0.2 to 0.3](MIGRATING.md).
 - [Tests, recording comparisons, and benchmarks](rocketsim_test/README.md).
 - [Viewer screenshot and input review tools](tools/README.md).
 - [GitHub Actions and release instructions](tools/ci/README.md).
@@ -188,4 +189,8 @@ Run these examples from the workspace root after you prepare the meshes:
 - **An older example does not compile:** Check its crate version. This README
   uses the 0.3 API. Do not mix 0.2 code with 0.3 dependencies.
 
-The viewer models have [separate credit and use requirements](rocketsim_viewer/src/models/MODEL_LICENSE_README.md).
+The Rust source uses the [MIT license](LICENSE). Viewer assets have separate
+terms and source records. Read the [viewer license record](rocketsim_viewer/LICENSES.md)
+before redistribution. The record identifies unconfirmed texture terms and a
+shader attribution question. The [model terms](rocketsim_viewer/src/models/MODEL_LICENSE_README.md)
+remain unchanged.

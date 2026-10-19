@@ -54,9 +54,15 @@ This workflow does not sign or notarize the binaries.
 
 Each archive contains:
 
-- `rocketsim-viewer` and `mesh_stats`, with `.exe` suffixes on Windows.
+- `rocketsim-viewer`, with an `.exe` suffix on Windows.
 - The viewer `README.md`.
-- The code `LICENSE` and `MODEL_LICENSE_README.md`.
+- The code `LICENSE`, asset record `LICENSES.md`, and `MODEL_LICENSE_README.md`.
+
+`mesh_stats` is a development example. Run it with
+`cargo run -p rocketsim_viewer --example mesh_stats`. Normal installation and
+release archives do not include it. The feature-gated `debug-render-bench`
+binary is also excluded from release archives. The release checker permits
+binaries that require non-default features.
 
 The `dist` Cargo profile removes debug data and strips symbols. Each archive
 has a SHA-256 checksum file. The draft release also has a `SHA256SUMS` file.
@@ -92,7 +98,9 @@ permit the workflow to create releases.
 
 The workflow does not publish crates or publish the draft automatically.
 
-1. Review the draft assets and the code and model license notices.
+1. Review the draft assets and all license notices. Resolve the unconfirmed
+   texture terms and shader attribution recorded in
+   [`LICENSES.md`](../../rocketsim_viewer/LICENSES.md) before redistribution.
 2. Publish the library crates in dependency order:
 
    ```sh
@@ -143,7 +151,7 @@ The Rust tests need the collision meshes at `collision_meshes/`.
 To build and package a native Linux archive:
 
 ```sh
-cargo +1.95 build --locked --profile dist -p rocketsim_viewer --bins --target x86_64-unknown-linux-gnu
+cargo +1.95 build --locked --profile dist -p rocketsim_viewer --bin rocketsim-viewer --target x86_64-unknown-linux-gnu
 python3 tools/ci/release.py package --target x86_64-unknown-linux-gnu
 ```
 

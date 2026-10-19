@@ -41,6 +41,7 @@ class ReleaseTests(unittest.TestCase):
         models = viewer / "src" / "models"
         models.mkdir(parents=True)
         (viewer / "README.md").write_text("viewer readme", encoding="utf-8")
+        (viewer / "LICENSES.md").write_text("asset records", encoding="utf-8")
         (models / "MODEL_LICENSE_README.md").write_text("model notice", encoding="utf-8")
         metadata = """[package]
 name = "rocketsim_viewer"
@@ -51,8 +52,13 @@ repository.workspace = true
 name = "rocketsim-viewer"
 path = "src/main.rs"
 [[bin]]
-name = "mesh_stats"
-path = "src/bin/mesh_stats.rs"
+name = "debug-render-bench"
+path = "src/bin/debug_bench.rs"
+required-features = ["debug-bench"]
+[features]
+default = []
+debug-bench = []
+review = ["debug-bench"]
 [dependencies]
 rocketsim = { path = "../rocketsim", version = "0.3.0" }
 rocketsim_vis = { path = "../rocketsim_vis", version = "0.3.0" }
@@ -93,12 +99,8 @@ pkg-fmt = "zip"
         )
         return path
 
-    def test_check_versions_metadata_and_all_target_urls(self):
+    def test_check_accepts_feature_gated_benchmark(self):
         self.assertEqual(release.check(self.root, "v0.3.0"), "0.3.0")
-        self.assertEqual(len(release.TARGETS), 4)
-        self.assertEqual(release._expected_members(release.TARGETS[1]), {
-            "rocketsim-viewer.exe", "mesh_stats.exe", *release.ARCHIVE_FILES
-        })
 
     def test_check_rejects_wrong_tag(self):
         with self.assertRaisesRegex(release.ReleaseError, "Tag must be"):
@@ -117,15 +119,22 @@ pkg-fmt = "zip"
         with self.assertRaisesRegex(release.ReleaseError, "Dependency rocketsim version"):
             release.check(self.root)
 
-    def test_check_requires_both_declared_bins_and_disables_autobins(self):
+    def test_check_rejects_missing_release_or_extra_default_binaries(self):
         path = self.root / "rocketsim_viewer" / "Cargo.toml"
         original = path.read_text(encoding="utf-8")
-        path.write_text(original.replace("autobins = false", "autobins = true"), encoding="utf-8")
-        with self.assertRaisesRegex(release.ReleaseError, "autobins"):
-            release.check(self.root)
-        path.write_text(original.replace('name = "mesh_stats"', 'name = "other"'), encoding="utf-8")
-        with self.assertRaisesRegex(release.ReleaseError, "exactly both"):
-            release.check(self.root)
+        cases = [
+            ("automatic binaries", "autobins = false", "autobins = true", "autobins"),
+            ("missing viewer", 'name = "rocketsim-viewer"', 'name = "other"', "default binaries"),
+            ("ungated benchmark", 'required-features = ["debug-bench"]', "", "default binaries"),
+            ("default feature gate", 'required-features = ["debug-bench"]', 'required-features = ["default"]', "default binaries"),
+            ("default benchmark", "default = []", 'default = ["debug-bench"]', "default binaries"),
+            ("transitive default", "default = []", 'default = ["review"]', "default binaries"),
+        ]
+        for label, old, new, error in cases:
+            with self.subTest(label=label):
+                path.write_text(original.replace(old, new), encoding="utf-8")
+                with self.assertRaisesRegex(release.ReleaseError, error):
+                    release.check(self.root)
 
     @mock.patch.object(release.subprocess, "run")
     def test_package_creates_archives_for_all_targets(self, run):
@@ -136,6 +145,9 @@ pkg-fmt = "zip"
                 file = inputs / binary
                 file.write_bytes(b"fake executable")
                 file.chmod(0o755)
+            for tool in ("mesh_stats", "debug-render-bench"):
+                suffix = ".exe" if target == "x86_64-pc-windows-msvc" else ""
+                (inputs / (tool + suffix)).write_bytes(b"development tool")
             run.side_effect = [
                 SimpleNamespace(stdout="rocketsim-viewer 0.3.0\n"),
                 SimpleNamespace(stdout=""),
@@ -143,8 +155,12 @@ pkg-fmt = "zip"
             archive = release.package(self.root, target)
             self.assertEqual(archive.parent, self.root / "dist")
             self.assertTrue(archive.with_name(archive.name + ".sha256").is_file())
+            expected_binary = "rocketsim-viewer" + (
+                ".exe" if target == "x86_64-pc-windows-msvc" else ""
+            )
             self.assertEqual(
-                release._archive_members(archive), release._expected_members(target)
+                release._archive_members(archive),
+                {expected_binary, "LICENSE", "LICENSES.md", "README.md", "MODEL_LICENSE_README.md"},
             )
             if target == "x86_64-pc-windows-msvc":
                 with zipfile.ZipFile(archive) as actual:
@@ -152,6 +168,7 @@ pkg-fmt = "zip"
                         set(actual.namelist()), release._expected_members(target)
                     )
                     self.assertEqual(actual.read("README.md"), b"viewer readme")
+                    self.assertEqual(actual.read("LICENSES.md"), b"asset records")
                     self.assertEqual(
                         actual.read("MODEL_LICENSE_README.md"), b"model notice"
                     )
@@ -161,6 +178,7 @@ pkg-fmt = "zip"
                         set(actual.getnames()), release._expected_members(target)
                     )
                     self.assertEqual(actual.extractfile("README.md").read(), b"viewer readme")
+                    self.assertEqual(actual.extractfile("LICENSES.md").read(), b"asset records")
                     self.assertEqual(
                         actual.extractfile("MODEL_LICENSE_README.md").read(), b"model notice"
                     )

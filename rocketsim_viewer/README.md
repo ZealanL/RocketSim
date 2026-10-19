@@ -214,6 +214,9 @@ camera and game mode. Streamed scene data replaces the initial game mode.
 
 ## Viewer library modules
 
+See the [0.2-to-0.3 migration guide](https://github.com/ZealanL/RocketSim/blob/v0.3.0/MIGRATING.md)
+for changes to published APIs.
+
 The viewer separates CPU geometry, rendering, effects, and input. The old flat
 module paths are removed. Import CPU helpers from
 `geometry::{frustum, lines, mesh, obj, pads}`. Import OpenGL pipelines from
@@ -257,5 +260,14 @@ these options with its normal port and camera arguments.
 - **The scene disappears after a disconnect:** This is expected. The viewer
   clears the old scene and waits for a new simulation connection.
 
-The viewer models have [separate credit and use requirements](src/models/MODEL_LICENSE_README.md).
-Release archives include those model terms in `MODEL_LICENSE_README.md`.
+## Licenses
+
+The Rust source uses the [MIT license](LICENSE). Bundled assets do not all
+use the same terms. Read [`LICENSES.md`](LICENSES.md) for asset sources,
+model restrictions, unconfirmed texture terms, and a shader attribution
+question. Resolve the unconfirmed terms before redistribution.
+
+The model credit is **model made by ZealanL**. The
+[original model terms](src/models/MODEL_LICENSE_README.md) remain unchanged.
+Release archives include `LICENSE`, `LICENSES.md`, and
+`MODEL_LICENSE_README.md` beside the viewer executable.

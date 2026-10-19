@@ -9,6 +9,9 @@ The library does not open a window.
 Enable the optional `serde` feature if you need to serialize simulation types.
 The core library does not need a C++ compiler or graphics libraries.
 
+For an existing application, see the
+[0.2-to-0.3 migration guide](https://github.com/ZealanL/RocketSim/blob/v0.3.0/MIGRATING.md).
+
 ## Prepare the collision meshes
 
 Supply compatible `.cmf` collision meshes before you create an arena. The
@@ -126,3 +129,8 @@ Viewing is optional. Add [`rocketsim_vis`](https://crates.io/crates/rocketsim_vi
 to send frames to the separate
 [`rocketsim_viewer`](https://crates.io/crates/rocketsim_viewer) application.
 Your simulation does not need the viewer's graphics dependencies.
+
+## License
+
+The source uses the [MIT license](LICENSE). Collision meshes are external
+inputs with separate terms. This crate does not include them.
