@@ -1,42 +1,67 @@
-//! Wall-clock-disciplined tick pacer (real-time sim loops).
+//! Wait between simulation ticks to run near real time.
 //!
-//! [`TickPacer`] anchors tick deadlines to a timeline: early ticks sleep
-//! the remainder, late ticks run capped catch-up steps, worse lateness
-//! counts as dropped and re-syncs. Used by `examples/drive.rs`.
+//! [`TickPacer::wait`] returns the number of simulation ticks to run. It
+//! sleeps if the next deadline is in the future. If the application is late,
+//! it returns extra ticks up to a configured limit. After a longer delay, it
+//! resets the next deadline instead of requesting an unlimited number of ticks.
+//!
+//! Call [`rocketsim::Arena::step_tick`] once for each returned tick. The pacer
+//! does not step an arena, send input, or change simulation time by itself.
+//! Missed deadlines in [`PaceStats::dropped`] are not skipped physics ticks.
+//! Your application runs fewer simulation ticks relative to elapsed real time.
+//!
+//! ```no_run
+//! use rocketsim::{Arena, GameMode};
+//! use rocketsim_vis::pace::TickPacer;
+//!
+//! let mut arena = Arena::new(GameMode::TheVoid);
+//! let mut pacer = TickPacer::at_120hz();
+//! for _ in 0..120 {
+//!     for _ in 0..pacer.wait() {
+//!         arena.step_tick();
+//!     }
+//! }
+//! println!("Missed deadlines: {}", pacer.stats().dropped);
+//! ```
+//!
+//! Use [`steps_for_lateness`] to test timing calculations without sleeping.
+//! Omit the pacer when a batch simulation must run as fast as possible.
 
 use std::time::{Duration, Instant};
 
-/// Sim tick rate for real-time driving (matches `TICK_TIME`, 1/120s).
+/// Simulation rate in ticks per second: `120.0`.
 pub const TICK_HZ: f64 = 120.0;
 
-/// Nominal tick interval (8_333_333ns ≈ 1/120s).
+/// Nominal interval between ticks: `8_333_333` nanoseconds.
 pub const TICK_INTERVAL: Duration = Duration::from_nanos(8_333_333);
 
-/// Tick dt handed to the sim (`TICK_TIME` as `f32`).
+/// Simulated time per tick in seconds: `1.0 / 120.0`.
 pub const TICK_DT: f32 = 1.0 / 120.0;
 
-/// Max extra ticks run when behind; further lateness is dropped
-/// and the clock re-syncs. 5 keeps a ~40ms hitch recoverable.
+/// Default maximum number of extra ticks returned after a delay.
+///
+/// The value `5` permits a batch of at most six ticks from one wait.
 pub const MAX_CATCH_UP: u32 = 5;
 
-/// Cumulative pacer counters (overlay / log diagnostics).
+/// Cumulative counts returned by [`TickPacer::stats`].
+///
+/// These counts describe requests from the pacer. They do not measure how
+/// many physics ticks the application actually completed.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct PaceStats {
-    /// Ticks actually executed (includes catch-up steps).
+    /// Total ticks returned by [`TickPacer::wait`], including extra ticks.
     pub ticks: u64,
-    /// Ticks skipped after [`MAX_CATCH_UP`] was exhausted.
+    /// Missed real-time deadlines beyond the configured extra-tick limit.
     pub dropped: u64,
-    /// Largest single catch-up burst observed (0 = never late).
+    /// Largest number of extra ticks returned by one wait. Initially `0`.
     pub max_backlog: u32,
 }
 
-/// Real-time tick pacer: [`TickPacer::wait`] blocks to the next deadline and
-/// returns how many ticks to run now (`1` on time, more when catching up).
+/// A timer that requests bounded batches of simulation ticks.
 ///
-/// The next deadline is anchored to a timeline: an early tick sleeps the
-/// remainder, a late tick runs catch-up steps (capped by `max_catch_up`);
-/// further lateness counts as dropped and the clock re-syncs, so a stall
-/// never spirals into a backlog.
+/// [`Self::wait`] returns one tick when on time. It returns more ticks after
+/// a delay, up to `1 + max_catch_up`. Longer delays reset the schedule.
+/// The timer does not guarantee exact sleep duration or simulation speed.
 ///
 /// ```rust
 /// use std::time::Duration;
@@ -57,8 +82,16 @@ pub struct TickPacer {
 }
 
 impl TickPacer {
-    /// Pacer for `interval` ticks starting now (first [`TickPacer::wait`]
-    /// sleeps one full interval).
+    /// Create a timer with a fixed interval and an extra-tick limit.
+    ///
+    /// Schedule the first deadline one `interval` after construction. Clamp
+    /// `max_catch_up` to `u32::MAX - 1` so the total tick count fits in `u32`.
+    /// The first wait sleeps only for time that remains before that deadline.
+    ///
+    /// # Panics
+    ///
+    /// Panic if `interval` is zero or the system clock cannot represent the
+    /// first deadline.
     pub fn new(interval: Duration, max_catch_up: u32) -> Self {
         assert!(!interval.is_zero(), "tick interval must be non-zero");
         let max_catch_up = max_catch_up.min(u32::MAX - 1);
@@ -72,23 +105,28 @@ impl TickPacer {
         }
     }
 
-    /// 120Hz pacer ([`TICK_INTERVAL`], [`MAX_CATCH_UP`]) for sim driving.
+    /// Create a 120 Hz timer with at most five extra ticks per wait.
+    ///
+    /// Use [`TICK_INTERVAL`] and [`MAX_CATCH_UP`] as the constructor values.
     pub fn at_120hz() -> Self {
         Self::new(TICK_INTERVAL, MAX_CATCH_UP)
     }
 
-    /// Tick interval this pacer enforces.
+    /// Return the configured interval between deadlines.
     pub fn interval(&self) -> Duration {
         self.interval
     }
 
-    /// Counters so far (copy; cheap).
+    /// Copy the accumulated timing counts without resetting them.
     pub fn stats(&self) -> PaceStats {
         self.stats
     }
 
-    /// Sleeps to the next deadline, then returns the ticks to run now.
-    /// Never 0; capped at `1 + max_catch_up`, then the clock re-syncs.
+    /// Wait for the next deadline and return the number of ticks to run.
+    ///
+    /// Return at least `1` and at most `1 + max_catch_up`. A late call can
+    /// return immediately. Update [`PaceStats`] before returning. Run one
+    /// physics tick for each returned tick to follow the timer's schedule.
     pub fn wait(&mut self) -> u32 {
         let now = Instant::now();
         if now < self.next {
@@ -111,8 +149,22 @@ impl TickPacer {
     }
 }
 
-/// Pure catch-up math (core of [`TickPacer::wait`]): returns
-/// `(steps, dropped)` with steps clamped to `1 + max_catch_up`.
+/// Calculate a tick batch and missed deadlines without waiting.
+///
+/// Return `(steps, dropped)`. `steps` includes the next tick and at most
+/// `max_catch_up` extra ticks. `dropped` counts additional elapsed deadlines.
+/// An early call or a zero interval returns `(1, 0)`. This function does not
+/// modify a deadline or the clock. See [`TickPacer::wait`] for actual pacing.
+///
+/// ```
+/// use std::time::{Duration, Instant};
+/// use rocketsim_vis::pace::steps_for_lateness;
+///
+/// let deadline = Instant::now();
+/// let interval = Duration::from_millis(10);
+/// let now = deadline + Duration::from_millis(100);
+/// assert_eq!(steps_for_lateness(now, deadline, interval, 5), (6, 5));
+/// ```
 pub fn steps_for_lateness(
     now: Instant,
     next: Instant,

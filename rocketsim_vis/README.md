@@ -218,8 +218,12 @@ and `rocketsim_viewer`. The installed viewer does not need collision meshes
 because the simulation sends scene geometry.
 
 The old `backend`, `camera`, and `VisInst` interfaces are no longer available.
-Use `ArenaVisExt` for simulation connections and `DebugDraw` for drawing.
+Use `ArenaVisExt` for simulation connections and `debug::DebugRenderer` for
+drawing. `proto::DebugDraw` remains available for legacy frame drawings.
 Viewer camera code now belongs to `rocketsim_viewer`.
 
-See the [API reference](https://docs.rs/rocketsim_vis) for the connection and
-drawing types.
+See the [API guide](https://docs.rs/rocketsim_vis) for complete examples of
+connections, controls, and timing. The
+[debug-rendering API](https://docs.rs/rocketsim_vis/latest/rocketsim_vis/debug/)
+includes tested examples for frame drawings, persistent groups, reusable
+meshes and textures, lifetimes, and handle errors.

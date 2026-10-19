@@ -1,4 +1,54 @@
-//! Viewer discovery and ownership. Arena connections never share a viewer address.
+//! Find, start, and retain a viewer process.
+//!
+//! Normal applications can use [`crate::ArenaVisExt::try_set_vis_enabled`].
+//! Use this module when a viewer must remain open between arena attachments,
+//! or when you need to select an executable path.
+//!
+//! # Executable discovery
+//!
+//! [`try_ensure_viewer_running`] first checks whether `addr` accepts a TCP
+//! connection. If it does, the function reuses that listener. Otherwise it
+//! searches for an executable in this order:
+//!
+//! 1. The path in `ROCKETSIM_VIEWER`, if that variable is set.
+//! 2. Beside the current executable. For Cargo examples and tests, also check
+//!    the parent of the `examples` or `deps` directory.
+//! 3. Directories on `PATH`.
+//!
+//! An invalid `ROCKETSIM_VIEWER` path stops discovery. It does not fall back
+//! to the other locations. [`try_ensure_viewer_running_with_path`] uses only
+//! its supplied path when a new process is needed. Neither function installs
+//! or builds the viewer.
+//!
+//! # Process ownership
+//!
+//! A [`ViewerHandle`] retains one process lease. Arena attachments retain
+//! separate leases. The last lease closes and waits for a process that this
+//! crate started. A viewer started by the user is never closed by this crate.
+//! [`ensure_viewer_running`] is the exception: it leaves the process open.
+//!
+//! Each arena attachment reserves its address within the current process.
+//! Several handles can retain one viewer, but only one arena can attach to
+//! that address. These leases do not prevent another process from connecting.
+//!
+//! ```no_run
+//! use rocketsim::{Arena, GameMode};
+//! use rocketsim_vis::{ArenaVisExt, DEFAULT_VIEWER_ADDR, try_ensure_viewer_running};
+//!
+//! let viewer = try_ensure_viewer_running(DEFAULT_VIEWER_ADDR)?;
+//! {
+//!     let mut arena = Arena::new(GameMode::TheVoid);
+//!     arena.try_set_vis_enabled(true)?;
+//!     arena.step_tick();
+//! } // The handle keeps the viewer open after the arena is dropped.
+//! drop(viewer);
+//! # Ok::<(), std::io::Error>(())
+//! ```
+//!
+//! A new viewer can start only at a nonzero loopback address. Start remote
+//! viewers yourself and use [`crate::ArenaVisExt::try_set_net_vis`]. Addresses
+//! must be numeric `IP:port` values. A successful TCP probe does not verify the
+//! listener's identity or protocol version.
 
 use std::{
     collections::HashMap,
@@ -94,10 +144,23 @@ pub(crate) fn attach(addr: SocketAddr, launch: bool) -> io::Result<ViewerLease> 
     Ok(lease)
 }
 
-/// Ensure a viewer is available. Keep this handle while the viewer is needed.
+/// Reuse a listening viewer, or start one found by executable discovery.
 ///
-/// The last handle or arena attachment closes a viewer started by this crate.
-/// A viewer started by the user is never closed by this crate.
+/// Wait up to five seconds for a new viewer to listen at `addr`. Keep the
+/// returned handle while the viewer is needed. The last lease closes a viewer
+/// started by this crate, unless [`ensure_viewer_running`] keeps it open.
+/// A viewer started by the user remains open.
+///
+/// # Errors
+///
+/// Return an error for an invalid numeric address, an unavailable registry,
+/// a missing executable, or process startup failure. Return
+/// [`io::ErrorKind::AddrNotAvailable`] if a new process would need a remote
+/// address or port `0`. Return [`io::ErrorKind::TimedOut`] if the new viewer
+/// does not listen within five seconds. An existing reachable listener can
+/// be reused at a remote address.
+///
+/// See the [module guide](self) for discovery order and an ownership example.
 pub fn try_ensure_viewer_running(addr: &str) -> io::Result<ViewerHandle> {
     let addr = parse(addr)?;
     let lease = reserve(addr, false)?;
@@ -105,10 +168,29 @@ pub fn try_ensure_viewer_running(addr: &str) -> io::Result<ViewerHandle> {
     Ok(ViewerHandle { _lease: lease })
 }
 
-/// Ensure a viewer is available. Use `path` if a new process is needed.
+/// Reuse a listening viewer, or start the executable at `path`.
 ///
-/// This does not search `PATH` or use `ROCKETSIM_VIEWER`. A viewer that already
-/// listens at `addr` is reused. Keep the returned handle while the viewer is needed.
+/// Do not search `PATH` or use `ROCKETSIM_VIEWER`. If `addr` already accepts
+/// a connection, reuse it without checking `path`. Keep the returned handle
+/// while the viewer is needed.
+///
+/// # Errors
+///
+/// Return the address, registry, startup, and timeout errors described by
+/// [`try_ensure_viewer_running`]. Process errors identify the supplied path.
+///
+/// ```no_run
+/// use std::path::Path;
+/// use rocketsim_vis::launcher::try_ensure_viewer_running_with_path;
+///
+/// let viewer = try_ensure_viewer_running_with_path(
+///     "127.0.0.1:39201",
+///     Path::new("target/release/rocketsim-viewer"),
+/// )?;
+/// // Keep `viewer` until the application no longer needs the process.
+/// drop(viewer);
+/// # Ok::<(), std::io::Error>(())
+/// ```
 pub fn try_ensure_viewer_running_with_path(addr: &str, path: &Path) -> io::Result<ViewerHandle> {
     let addr = parse(addr)?;
     let lease = reserve(addr, false)?;
@@ -116,15 +198,22 @@ pub fn try_ensure_viewer_running_with_path(addr: &str, path: &Path) -> io::Resul
     Ok(ViewerHandle { _lease: lease })
 }
 
-/// A process lease. Dropping the handle releases only this lease.
+/// A lease that keeps a viewer process available.
+///
+/// Obtain a handle with [`try_ensure_viewer_running`] or
+/// [`try_ensure_viewer_running_with_path`]. Dropping it releases only this
+/// lease. Other handles and attached arenas can keep the process open.
+/// The handle does not send frames or receive driving controls.
 pub struct ViewerHandle {
     _lease: ViewerLease,
 }
 
-/// Start a standalone viewer on a best-effort basis.
+/// Start or reuse a viewer and leave it open after attachments end.
 ///
-/// This compatibility function leaves the viewer running. Use
-/// [`try_ensure_viewer_running`] for scoped ownership and error handling.
+/// Write setup errors to standard error. This compatibility function does
+/// not return a handle and disables automatic process closure for this
+/// address. Prefer [`try_ensure_viewer_running`] for explicit ownership and
+/// error handling.
 pub fn ensure_viewer_running(addr: &str) {
     match try_ensure_viewer_running(addr) {
         Ok(handle) => {

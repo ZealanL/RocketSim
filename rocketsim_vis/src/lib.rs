@@ -1,29 +1,182 @@
-//! Stream a RocketSim arena to the detached `rocketsim-viewer` process.
+//! Connect a RocketSim simulation to the separate `rocketsim-viewer` application.
 //!
-//! Frames, scene geometry, debug drawing, and controls use one versioned TCP
-//! connection. This crate does not depend on the GUI stack.
+//! Send simulation frames, arena geometry, and debug drawings. Receive optional
+//! driving controls and action requests through the same TCP connection. This
+//! crate does not include graphics dependencies. Your application runs the
+//! simulation. The viewer only displays its state and sends input requests.
 //!
-//! Install or build `rocketsim-viewer` before calling
-//! [`ArenaVisExt::set_vis_enabled`]. Use [`ArenaVisExt::set_net_vis`] to connect
-//! to a viewer that you start separately. Addresses must be numeric `IP:port`
-//! socket addresses. Each viewer accepts one arena.
+//! # Choose an API
+//!
+//! | Task | API |
+//! | --- | --- |
+//! | Attach a viewer to an arena | [`ArenaVisExt`] |
+//! | Draw lines, labels, and reusable meshes | [`debug`] |
+//! | Run a simulation near real time | [`pace::TickPacer`] |
+//! | Start a viewer and control its process lifetime | [`launcher`] |
+//! | Apply the drive example's live mutators | [`mutators::Mutators`] |
+//! | Write a custom viewer or transport | [`net_client`], [`net_vis`], [`proto`] |
+//! | Create a fixed scene for screenshot tests | [`photo`] |
+//!
+//! Use [`ArenaVisExt`] for normal simulation applications. The lower-level
+//! transport types do not start a simulation or apply controls for you.
+//!
+//! # Send your first frames
+//!
+//! Install or build `rocketsim-viewer` separately. Put its executable on `PATH`,
+//! or set `ROCKETSIM_VIEWER` to its executable path. Use matching versions of
+//! `rocketsim`, `rocketsim_vis`, and `rocketsim_viewer`.
+//!
+//! Supply compatible collision meshes before you create a Soccar arena. This
+//! crate does not include those assets. [`rocketsim::init_from_default`] reads
+//! `./collision_meshes/` relative to the process's working directory.
+//!
+//! This program creates an arena and shows about two seconds of simulation.
+//! It starts a viewer if none listens at [`DEFAULT_VIEWER_ADDR`].
 //!
 //! ```no_run
-//! use rocketsim::{Arena, CarBodyConfig, GameMode, Team, init_from_default};
+//! use rocketsim::{
+//!     Arena, CarBodyConfig, CarControls, GameMode, Team, init_from_default,
+//! };
+//! use rocketsim_vis::{ArenaVisExt, pace::TickPacer};
+//!
+//! fn main() -> std::io::Result<()> {
+//!     init_from_default(true)?;
+//!     let mut arena = Arena::new(GameMode::Soccar);
+//!     let car = arena.add_car(Team::Blue, CarBodyConfig::OCTANE);
+//!     arena.reset_to_random_kickoff(Some(0));
+//!     arena.try_set_vis_enabled(true)?;
+//!     arena.set_car_controls(car, CarControls::default().with_throttle(1.0));
+//!
+//!     let mut pacer = TickPacer::at_120hz();
+//!     let mut ticks = 0;
+//!     while ticks < 240 {
+//!         for _ in 0..pacer.wait().min(240 - ticks) {
+//!             arena.step_tick();
+//!             ticks += 1;
+//!         }
+//!     }
+//!     arena.try_set_vis_enabled(false)?;
+//!     Ok(())
+//! }
+//! ```
+//!
+//! Each [`rocketsim::Arena::step_tick`] advances the simulation by `1/120`
+//! second. It does not wait for real time. Use [`pace::TickPacer`] for
+//! interactive runs. Omit that wait for batch simulation. A slow viewer can
+//! miss intermediate frames. It does not stop the simulation's network sender.
+//!
+//! # Connect to a viewer you start yourself
+//!
+//! Start `rocketsim-viewer 39202`, then attach to that numeric address.
+//! [`try_set_net_vis`](ArenaVisExt::try_set_net_vis) does not start a process.
+//! It starts a background connection attempt and returns before connection.
+//!
+//! ```no_run
+//! use rocketsim::{Arena, GameMode};
 //! use rocketsim_vis::ArenaVisExt;
 //!
-//! init_from_default(true).unwrap();
-//! let mut arena = Arena::new(GameMode::Soccar);
-//! arena.add_car(Team::Blue, CarBodyConfig::OCTANE);
-//! arena.reset_to_random_kickoff(None);
-//! arena.try_set_vis_enabled(true)?;
-//! for _ in 0..240 {
-//!     arena.step_tick();
-//!     std::thread::sleep(std::time::Duration::from_millis(8));
-//! }
-//! arena.set_vis_enabled(false);
+//! // TheVoid does not need collision meshes.
+//! let mut arena = Arena::new(GameMode::TheVoid);
+//! arena.try_set_net_vis(Some("127.0.0.1:39202"))?;
+//! arena.step_tick();
+//! arena.try_set_net_vis(None)?;
 //! # Ok::<(), std::io::Error>(())
 //! ```
+//!
+//! Each viewer accepts one arena. Use a separate process and port for each
+//! arena. A second arena in the same process gets [`std::io::ErrorKind::AddrInUse`]
+//! if it reserves an address that another arena uses. Host names are not resolved.
+//!
+//! # Apply viewer controls
+//!
+//! Your application must apply received inputs before each simulation tick.
+//! Use neutral controls when input is absent or more than 250 ms old. Check
+//! `car_index` before you use it. For several cars, also release the previous
+//! car's controls when the viewer selects another car.
+//!
+//! This example lets the viewer drive one car. It also handles reset requests.
+//! Select the car in the viewer and close its settings menu before driving.
+//!
+//! ```no_run
+//! use rocketsim::{
+//!     Arena, CarBodyConfig, CarControls, GameMode, Team, init_from_default,
+//! };
+//! use rocketsim_vis::{ArenaVisExt, pace::TickPacer};
+//!
+//! init_from_default(true)?;
+//! let mut arena = Arena::new(GameMode::Soccar);
+//! let car = arena.add_car(Team::Blue, CarBodyConfig::OCTANE);
+//! arena.reset_to_random_kickoff(Some(0));
+//! arena.try_set_vis_enabled(true)?;
+//! let mut pacer = TickPacer::at_120hz();
+//! for _ in 0..240 {
+//!     for _ in 0..pacer.wait() {
+//!         let message = arena.latest_vis_controls()
+//!             .filter(|message| message.car_index as usize == car);
+//!         let controls = message.map_or_else(CarControls::default, |m| m.controls);
+//!         if arena.take_vis_actions() & 1 != 0 {
+//!             arena.reset_to_random_kickoff(None);
+//!         }
+//!         arena.set_car_controls(car, controls);
+//!         arena.step_tick();
+//!     }
+//! }
+//! # Ok::<(), std::io::Error>(())
+//! ```
+//!
+//! [`ArenaVisExt::take_vis_actions`] consumes pending action bits. Bit 0
+//! requests reset, bit 1 requests a dribble, and bit 2 requests a ball launch.
+//! Your application decides how to handle each request. Mutator flags are
+//! separate level values in [`proto::ControlMsg`]. Apply them with
+//! [`mutators::Mutators`] if your application supports them.
+//!
+//! # Draw debug geometry
+//!
+//! Get a [`debug::DebugRenderer`] after you attach the arena. Use
+//! [`draw_frame`](debug::DebugRenderer::draw_frame) for marks that last until
+//! the next displayed simulation update. They expire at the following update.
+//! Use named groups for persistent marks.
+//! The [`debug`] module has complete examples for groups and resources.
+//!
+//! This example runs without a viewer. Use `arena.debug_renderer()` instead
+//! of a detached renderer to send the same drawing to an attached viewer.
+//!
+//! ```
+//! use rocketsim_vis::debug::{Color, DebugRenderer};
+//!
+//! let renderer = DebugRenderer::new_detached();
+//! let target = renderer.group("planner.target");
+//! target.draw(|draw| {
+//!     draw.line([0.0, 0.0, 0.0], [500.0, 0.0, 200.0])
+//!         .color(Color::GREEN)
+//!         .width_px(2.0);
+//!     draw.text_2d([0.02, 0.05], "Target selected");
+//! })?;
+//! assert_eq!(renderer.snapshot().groups["planner.target"].items.len(), 2);
+//! target.clear()?;
+//! # Ok::<(), rocketsim_vis::debug::DebugError>(())
+//! ```
+//!
+//! World positions and dimensions use Unreal units. There are 50 Unreal units
+//! per meter. `+Z` points up. Blue defends the `-Y` goal. Screen positions use
+//! normalized coordinates with the origin at the top-left corner.
+//!
+//! # Connection lifetime and safety
+//!
+//! The sender retries a lost connection in the background. It keeps the latest
+//! simulation frame instead of a frame queue. Retained debug groups and
+//! resources remain available for the next connection.
+//!
+//! Detaching releases the arena's viewer attachment. A viewer started by this
+//! crate closes when its last attachment or [`ViewerHandle`] is released. A
+//! viewer that you start yourself stays open. Keep a handle from
+//! [`try_ensure_viewer_running`] if you need the process between arena runs.
+//!
+//! The viewer listens on loopback by default. The protocol has no
+//! authentication or encryption. Use remote connections only on trusted
+//! networks. This crate and the matching viewer use protocol version 1.
+
+#![warn(missing_docs)]
 
 pub mod debug;
 pub mod launcher;
@@ -40,10 +193,20 @@ pub use launcher::{ViewerHandle, ensure_viewer_running, try_ensure_viewer_runnin
 pub use net_vis::NetVis;
 use rocketsim::{Arena, GameMode};
 
-/// Default endpoint for the detached viewer.
+/// Default numeric address for a viewer started through [`ArenaVisExt`].
+///
+/// The viewer listens at `127.0.0.1:39201`. Use
+/// [`ArenaVisExt::try_set_net_vis`] to select a different address.
 pub const DEFAULT_VIEWER_ADDR: &str = "127.0.0.1:39201";
 
-/// Return the canonical lowercase game-mode name.
+/// Return the lowercase name used in viewer commands.
+///
+/// ```
+/// use rocketsim::GameMode;
+/// use rocketsim_vis::game_mode_name;
+///
+/// assert_eq!(game_mode_name(GameMode::TheVoid), "thevoid");
+/// ```
 pub fn game_mode_name(mode: GameMode) -> &'static str {
     match mode {
         GameMode::Soccar => "soccar",
@@ -55,7 +218,20 @@ pub fn game_mode_name(mode: GameMode) -> &'static str {
     }
 }
 
-/// Parse a game-mode name without case sensitivity. `void` is an alias for `thevoid`.
+/// Parse a viewer game-mode name without case sensitivity.
+///
+/// Accept `soccar`, `hoops`, `heatseeker`, `snowday`, `dropshot`, and `thevoid`.
+/// Also accept `void` for `TheVoid`. Return `None` for an unknown name. This
+/// function does not remove whitespace.
+///
+/// ```
+/// use rocketsim::GameMode;
+/// use rocketsim_vis::parse_game_mode;
+///
+/// assert_eq!(parse_game_mode("Hoops"), Some(GameMode::Hoops));
+/// assert_eq!(parse_game_mode("void"), Some(GameMode::TheVoid));
+/// assert_eq!(parse_game_mode("unknown"), None);
+/// ```
 pub fn parse_game_mode(text: &str) -> Option<GameMode> {
     match text.to_lowercase().as_str() {
         "soccar" => Some(GameMode::Soccar),
@@ -68,66 +244,129 @@ pub fn parse_game_mode(text: &str) -> Option<GameMode> {
     }
 }
 
-/// Attach the viewer to an arena and receive optional driving inputs.
+/// Attach a viewer to an [`Arena`] and receive optional input requests.
 ///
-/// These methods never apply controls to the simulation. The simulation
-/// decides whether to apply controls, actions, and mutators.
+/// Import this trait to call its methods on an arena. Prefer the `try_set_*`
+/// methods to handle setup errors. Methods without `try_` write those errors
+/// to standard error.
+///
+/// An attachment sends new state when the arena steps. It does not apply
+/// controls, actions, or mutators. Your application must handle those inputs.
+/// See the [crate guide](crate) for complete simulation and control examples.
 pub trait ArenaVisExt {
-    /// Enable or disable the default viewer. Return startup errors to the caller.
-    /// Calling this with the current enabled state does nothing.
+    /// Attach the default viewer, or detach the current viewer.
+    ///
+    /// With `true`, start or reuse the viewer at [`DEFAULT_VIEWER_ADDR`]. If the
+    /// arena already has a visualizer, keep that visualizer and its address.
+    /// With `false`, remove the current visualizer and release its process lease.
+    /// The background sender transmits frames when the arena steps.
+    ///
+    /// # Errors
+    ///
+    /// Return an error if another arena reserves the address, the executable
+    /// cannot be found or started, or the viewer does not listen within five
+    /// seconds. See [`launcher`] for executable discovery and process ownership.
     fn try_set_vis_enabled(&mut self, enabled: bool) -> io::Result<()>;
 
-    /// Enable or disable the default viewer. Startup errors are written to stderr.
+    /// Attach or detach a viewer and write setup errors to standard error.
+    ///
+    /// This is the convenience form of [`Self::try_set_vis_enabled`]. Use the
+    /// fallible method when the application must recover from a setup error.
     fn set_vis_enabled(&mut self, enabled: bool) {
         if let Err(error) = self.try_set_vis_enabled(enabled) {
             eprintln!("rocketsim_vis: {error}");
         }
     }
 
-    /// Connect to an explicit numeric address, or detach with `None`.
-    /// This method never launches a process. A new address replaces the old connection.
-    /// A second arena in this process cannot reserve the same viewer address.
+    /// Attach to a numeric `IP:port` address, or detach with `None`.
+    ///
+    /// This method does not start a viewer or wait for a connection. The sender
+    /// connects and retries in the background. It can accept debug updates
+    /// before a viewer connects. Call [`Self::vis_connected`] to read its status.
+    ///
+    /// A new address replaces the current attachment. The same address leaves
+    /// it unchanged. `None` removes the current visualizer. A remote address
+    /// does not provide authentication or encryption.
+    ///
+    /// # Errors
+    ///
+    /// Return [`io::ErrorKind::InvalidInput`] for an address that is not a
+    /// numeric socket address. Return [`io::ErrorKind::AddrInUse`] if another
+    /// arena in this process reserves the address. Registry errors can also
+    /// prevent attachment. A viewer that is absent is not a setup error.
     fn try_set_net_vis(&mut self, addr: Option<&str>) -> io::Result<()>;
 
-    /// Connect without launching a process. Address errors are written to stderr.
+    /// Attach without starting a viewer and write setup errors to standard error.
+    ///
+    /// This is the convenience form of [`Self::try_set_net_vis`].
     fn set_net_vis(&mut self, addr: Option<&str>) {
         if let Err(error) = self.try_set_net_vis(addr) {
             eprintln!("rocketsim_vis: {error}");
         }
     }
 
-    /// Connect to the viewer at `addr` without launching it.
+    /// Attach to `addr` without starting a viewer.
+    ///
+    /// Equivalent to `set_net_vis(Some(addr))`. Write setup errors to standard
+    /// error. Use [`Self::try_set_net_vis`] to handle errors in the application.
     fn set_net_vis_enabled(&mut self, addr: &str) {
         self.set_net_vis(Some(addr));
     }
 
-    /// Detach this arena from its viewer.
+    /// Remove this arena's visualizer and release its viewer attachment.
+    ///
+    /// Equivalent to `set_net_vis(None)`. This does not close a viewer that
+    /// the user started. See [`launcher::ViewerHandle`] for process ownership.
     fn set_net_vis_disabled(&mut self) {
         self.set_net_vis(None);
     }
 
-    /// Return the latest inputs, or `None` on disconnect or after 250 ms without inputs.
+    /// Return the latest control state from this arena's attached viewer.
+    ///
+    /// Return `None` when no input is available, the connection is lost, or
+    /// the input is more than 250 ms old. The returned `car_index` identifies
+    /// the requested target. Check it against [`Arena::num_cars`] before use.
+    /// This method does not apply controls. Send [`rocketsim::CarControls::default`]
+    /// when it returns `None` to release previous driving inputs.
     fn latest_vis_controls(&self) -> Option<proto::ControlMsg>;
 
-    /// Consume pending actions: bit 0 resets play, bit 1 dribbles, and bit 2 launches.
-    /// Actions remain pending across later analog updates until consumed.
+    /// Consume pending action requests from the attached viewer.
+    ///
+    /// Bit 0 requests reset. Bit 1 requests a dribble. Bit 2 requests a ball
+    /// launch. Later control messages do not erase pending requests. This
+    /// method returns the accumulated bits once, then clears them. Repeated
+    /// requests for one action can combine into one bit. Return `0` when no
+    /// request is pending. The application must implement each action.
     fn take_vis_actions(&mut self) -> u8;
 
-    /// Replace the debug drawing included in subsequent frames.
+    /// Replace the small legacy drawing copied into subsequent frames.
     ///
-    /// Legacy per-tick frame drawings (small, latest-only). Retained scene
-    /// drawings use [`debug_renderer`](Self::debug_renderer) instead and are
-    /// never cloned into ticks.
+    /// The drawing remains until it is replaced. Pass
+    /// [`proto::DebugDraw::default`] to clear it. Ignore invalid drawings and
+    /// calls without an attached [`NetVis`].
+    ///
+    /// Prefer [`debug::DebugRenderer::draw_frame`] for new frame drawings.
+    /// Retained groups use [`Self::debug_renderer`] and are not copied into
+    /// each simulation frame.
     fn set_vis_debug(&mut self, debug: proto::DebugDraw);
 
-    /// Cloneable retained-scene handle, or `None` when no viewer is attached.
+    /// Return a shared debug renderer for this arena's [`NetVis`] attachment.
     ///
-    /// Accepted updates coalesce in bounded tables even while disconnected
-    /// or while the sim is paused; the sender thread serializes off the sim
-    /// tick. Short API locks only; the network path stays nonblocking.
+    /// Return `None` if the arena has no [`NetVis`]. A viewer does not need to
+    /// be connected yet. Accepted updates remain in bounded scene storage
+    /// while disconnected or paused. The sender serializes them separately
+    /// from simulation ticks.
+    ///
+    /// Cloned handles share the same scene. Detaching the arena stops its
+    /// sender. Old handles still refer to the old scene and do not attach to
+    /// a replacement connection. See [`debug`] for drawing examples.
     fn debug_renderer(&self) -> Option<debug::DebugRenderer>;
 
-    /// Return whether the sender currently has a viewer connection.
+    /// Return whether the sender has a live viewer connection.
+    ///
+    /// This is a status value, not proof that a particular frame was displayed.
+    /// The value can change immediately after this call. Return `false` when
+    /// no [`NetVis`] is attached.
     fn vis_connected(&self) -> bool;
 }
 

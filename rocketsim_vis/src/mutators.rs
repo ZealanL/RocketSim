@@ -1,39 +1,35 @@
-//! Live demo mutators for the drive demo.
+//! Apply the drive example's supported live mutators to one car.
 //!
-//! [`MutatorConfig`](rocketsim::MutatorConfig) cannot change mid-match:
-//! [`Arena`](rocketsim::Arena) keeps it in a private field with only a
-//! shared-reference getter, so the drive demo emulates the live-capable
-//! subset per tick instead. Before each [`step_tick`](rocketsim::Arena::step_tick),
-//! call [`Mutators::apply_pre_tick`] before [`Arena::step_tick`]. Boost uses
-//! the targeted setter. Flip flags use the full-state editor to preserve tuning
-//! and contact history.
+//! [`rocketsim::MutatorConfig`] is fixed when an arena is created. This module
+//! implements four options through car-state updates before each physics tick:
 //!
-//! Live-capable set (each verified against the sim source):
+//! - Unlimited boost refills the car's boost before the tick.
+//! - Boost recharge adds boost after the normal recharge delay.
+//! - Unlimited flips clear the used-flip flag when the car is not flipping.
+//! - Unlimited double jumps clear the used-double-jump state under the same
+//!   condition.
 //!
-//! * `unlimited_boost` — refills the tank every tick. Same net effect as
-//!   `boost_used_per_second = 0` (Heatseeker setting).
-//! * `boost_recharge` — passive regen at [`Mutators::recharge_per_second`]
-//!   once [`time_since_boosted`](rocketsim::CarState::time_since_boosted)
-//!   passes the RL recharge delay. Same net effect as
-//!   `recharge_boost_enabled = true` (Dropshot setting).
-//! * `unlimited_flips` / `unlimited_double_jumps` — clear the spent
-//!   flip/double-jump flags while airborne. Same net effect as the matching
-//!   [`MutatorConfig`](rocketsim::MutatorConfig) flags.
+//! Call [`Mutators::apply_pre_tick`] before [`rocketsim::Arena::step_tick`].
+//! These updates do not replace the arena's configuration. They do not change
+//! gravity, masses, ball size, arena geometry, or boost-pad rules. Use
+//! [`rocketsim::ArenaConfig`] to set those values before arena creation.
 //!
-//! Not live (excluded, one line each):
+//! [`crate::proto::ControlMsg::mutators`] carries only boolean flags. The
+//! recharge rate remains local to the application. Your application decides
+//! whether to accept any flags received from the viewer.
 //!
-//! * gravity — baked into `DiscreteDynamicsWorld` at build, no setter, and
-//!   `Arena.bullet_world` is crate-private.
-//! * ball bounciness/restitution — baked into the rigid body at `Ball::new`.
-//! * ball scale — baked into the collision shape at `Ball::new`.
-//! * car/ball mass — baked into rigid-body inertia at build.
-//! * jump/dodge/boost force magnitudes — read per tick from the private
-//!   config with no public setter and no state-write emulation.
-//! * tick-rate slow-mo — not a sim mutator; pacing lives in the demo loop.
-//! * demo rules — read per tick from the private config in car-car contact
-//!   handling; no public override.
-//! * boost-pad amounts/cooldowns — baked into `BoostPadGrid` at build.
-//! * `GameMode`/arena geometry — meshes and goals built once at construction.
+//! ```
+//! use rocketsim::{Arena, CarBodyConfig, GameMode, Team};
+//! use rocketsim_vis::{mutators::Mutators, proto::MUT_UNLIMITED_BOOST};
+//!
+//! let mut arena = Arena::new(GameMode::TheVoid);
+//! let car = arena.add_car(Team::Blue, CarBodyConfig::OCTANE);
+//! arena.set_car_boost(car, 10.0);
+//! let mutators = Mutators::from_mask(MUT_UNLIMITED_BOOST);
+//! mutators.apply_pre_tick(&mut arena, car);
+//! assert_eq!(arena.get_car_state(car).boost, 100.0);
+//! arena.step_tick();
+//! ```
 
 use rocketsim::consts;
 
@@ -42,39 +38,40 @@ use crate::proto::{
     MUT_UNLIMITED_FLIPS,
 };
 
-/// Default passive regen rate (boost/s, RL default).
+/// Default recharge rate in boost units per second.
 pub const DEFAULT_RECHARGE_PER_SECOND: f32 = consts::car::boost::RECHARGE_PER_SECOND;
-/// Regen starts only after this long without boosting (s, RL default).
+/// Delay in seconds without boosting before recharge can start.
 pub const RECHARGE_DELAY: f32 = consts::car::boost::RECHARGE_DELAY;
-/// Full boost tank (RL default).
+/// Maximum boost amount: `100.0`.
 pub const MAX_BOOST: f32 = consts::car::boost::MAX;
-/// Upper clamp for [`Mutators::recharge_per_second`].
+/// Maximum configured recharge rate in boost units per second.
 pub const MAX_RECHARGE_PER_SECOND: f32 = 100.0;
 
 fn default_recharge_per_second() -> f32 {
     DEFAULT_RECHARGE_PER_SECOND
 }
 
-/// Live mutators for one driven car. All off = unmodded Soccar behavior.
+/// Options applied to one car before each simulation tick.
 ///
-/// Wire form is a [`u8`] level-state bitmask
-/// ([`Mutators::to_mask`]/[`from_mask`](Mutators::from_mask)); floats stay
-/// at local defaults and are not sent.
+/// The default disables all flags and uses [`DEFAULT_RECHARGE_PER_SECOND`].
+/// Convert flags to and from [`crate::proto::ControlMsg::mutators`] with
+/// [`Self::to_mask`] and [`Self::from_mask`]. The bit mask does not include
+/// `recharge_per_second`. See the [module example](self) for application.
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Mutators {
-    /// Refill the tank every tick (no boost drain).
+    /// Refill boost before each tick. This takes priority over recharge.
     #[serde(default)]
     pub unlimited_boost: bool,
-    /// Passive regen at [`recharge_per_second`](Self::recharge_per_second).
+    /// Recharge boost at [`Self::recharge_per_second`] after [`RECHARGE_DELAY`].
     #[serde(default)]
     pub boost_recharge: bool,
-    /// Regen rate in boost/s (clamped `0..=100`).
+    /// Recharge rate in boost units per second. Finite values use `0..=100`.
     #[serde(default = "default_recharge_per_second")]
     pub recharge_per_second: f32,
-    /// Re-arm flips while airborne.
+    /// Clear a used flip when the car is not currently flipping.
     #[serde(default)]
     pub unlimited_flips: bool,
-    /// Re-arm double jumps while airborne.
+    /// Clear used double-jump state when the car is not currently flipping.
     #[serde(default)]
     pub unlimited_double_jumps: bool,
 }
@@ -92,19 +89,25 @@ impl Default for Mutators {
 }
 
 impl Mutators {
-    /// Clamps [`recharge_per_second`](Self::recharge_per_second) to `0..=100`.
+    /// Restrict the recharge rate to `0..=100` boost units per second.
+    ///
+    /// This does not change the boolean flags. As with [`f32::clamp`], a
+    /// `NaN` rate remains `NaN`. Supply a finite rate before applying it.
     pub fn clamp(&mut self) {
         self.recharge_per_second = self.recharge_per_second.clamp(0.0, MAX_RECHARGE_PER_SECOND);
     }
 
-    /// Copy with [`recharge_per_second`](Self::recharge_per_second) clamped.
+    /// Return these options with the recharge rate restricted by [`Self::clamp`].
     #[must_use]
     pub fn clamped(mut self) -> Self {
         self.clamp();
         self
     }
 
-    /// Packs the bool flags into the wire bitmask (floats are not sent).
+    /// Encode the four boolean flags as a protocol bit mask.
+    ///
+    /// Do not include the recharge rate. The bit positions are the
+    /// `MUT_*` constants in [`crate::proto`].
     #[must_use]
     pub fn to_mask(self) -> u8 {
         let mut mask = 0u8;
@@ -123,7 +126,10 @@ impl Mutators {
         mask
     }
 
-    /// Unpacks a wire bitmask. Reserved bits are ignored (forward compatible).
+    /// Decode the known mutator bits and ignore reserved bits.
+    ///
+    /// Set the recharge rate to [`DEFAULT_RECHARGE_PER_SECOND`]. This method
+    /// does not preserve a previously configured custom rate.
     #[must_use]
     pub fn from_mask(mask: u8) -> Self {
         Self {
@@ -135,14 +141,25 @@ impl Mutators {
         }
     }
 
-    /// True when no bit in `mask` is outside the known set.
+    /// Return `true` if `mask` contains no reserved mutator bits.
+    ///
+    /// A zero mask is valid. [`Self::from_mask`] ignores reserved bits even
+    /// when this method returns `false`.
     #[must_use]
     pub const fn is_known_mask(mask: u8) -> bool {
         mask & !MUT_KNOWN_MASK == 0
     }
 
-    /// Applies active mutators to one car before the tick, then call `step_tick`.
-    /// Uses targeted boost updates and preserves tuning and contact history.
+    /// Apply these options to `car_idx` before the next physics tick.
+    ///
+    /// Add recharge for one `1/120`-second tick. Restrict finite recharge
+    /// rates to `0..=100`. Unlimited boost takes priority over recharge.
+    /// Preserve unrelated state, tuning, and collision history. This method
+    /// does not step the arena. Call [`rocketsim::Arena::step_tick`] afterward.
+    ///
+    /// # Panics
+    ///
+    /// Panic if `car_idx` does not identify an existing car.
     pub fn apply_pre_tick(&self, arena: &mut rocketsim::Arena, car_idx: usize) {
         let car = arena.get_car_state(car_idx);
         let mut boost = car.boost;

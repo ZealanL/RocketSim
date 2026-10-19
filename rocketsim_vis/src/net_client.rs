@@ -1,8 +1,57 @@
 //! Viewer-side TCP frame server.
-//! The viewer LISTENS; sims dial in. One background thread accepts and
-//! keeps only the LATEST frame (no queue: a slow viewer drops frames,
-//! never lags). On sim disconnect the loop takes the next sim; the viewer
-//! keeps showing the last frame meanwhile.
+//!
+//! The viewer listens and sims dial in. One background thread accepts a sim
+//! and stores only its latest frame. A slow viewer can miss frames. On
+//! disconnect, the client resets its frame, scene, controls, and retained
+//! debug state, then waits for the next sim. Each new session has a new
+//! generation. Use this module to implement a custom viewer. Simulation
+//! applications normally use [`crate::ArenaVisExt`] instead.
+//!
+//! # Receive frames and return controls on one connection
+//!
+//! This bounded example uses loopback and needs no viewer window or collision
+//! meshes. Port `0` selects an available port. Pair the generation from a
+//! snapshot with any controls derived from that snapshot.
+//!
+//! ```
+//! use std::{thread, time::{Duration, Instant}};
+//! use rocketsim::{Arena, CarBodyConfig, CarControls, GameMode, Team};
+//! use rocketsim_vis::{ArenaVisExt, net_client::FrameClient, proto::ControlMsg};
+//!
+//! let client = FrameClient::try_connect("127.0.0.1:0")?;
+//! let mut arena = Arena::new(GameMode::TheVoid);
+//! let car = arena.add_car(Team::Blue, CarBodyConfig::OCTANE);
+//! arena.try_set_net_vis(Some(&client.local_addr().to_string()))?;
+//! let deadline = Instant::now() + Duration::from_secs(5);
+//! while client.latest().is_none() {
+//!     assert!(Instant::now() < deadline, "no frame received");
+//!     arena.step_tick();
+//!     thread::sleep(Duration::from_millis(2));
+//! }
+//! let (generation, frame, scene) = client.snapshot();
+//! assert!(frame.is_some());
+//! assert!(scene.is_some());
+//! let controls = CarControls::default().with_throttle(1.0);
+//! assert!(client.send_controls_for_generation(
+//!     generation, ControlMsg::new(car as u32, controls, 0, 1),
+//! ));
+//! let message = loop {
+//!     if let Some(message) = arena.latest_vis_controls() {
+//!         break message;
+//!     }
+//!     assert!(Instant::now() < deadline, "no controls received");
+//!     thread::sleep(Duration::from_millis(2));
+//! };
+//! assert_eq!(message.controls.throttle, 1.0);
+//! arena.set_car_controls(car, message.controls);
+//! arena.step_tick();
+//! # Ok::<(), std::io::Error>(())
+//! ```
+//!
+//! The listener accepts one simulation at a time. Extra connections are
+//! closed. A connection generation changes on connect and disconnect. Read
+//! [`FrameClient::snapshot`] to get a frame and metadata from one generation.
+//! Neither the listener nor the sender authenticates remote peers.
 
 use std::{
     io::{Read, Write},
@@ -17,21 +66,20 @@ use std::{
 
 use crate::proto::{ControlMsg, VisFrame, decode_sim, encode_control};
 
-/// Viewer→sim control sender, viewer side.
-/// Dials the sim's control port lazily and streams [`ControlMsg`] frames.
-/// [`ControlSender::send`] overwrites any unsent message (latest-only), so
-/// it never blocks the viewer; with no sim listening the thread retries
-/// with backoff and inputs are dropped. Drop stops the thread.
-/// Construction never blocks, fails, or panics.
+/// Legacy sender for a separate simulation-side control listener.
 ///
-/// ```rust
+/// Pair it with [`crate::net_vis::ControlServer`]. The stock viewer uses
+/// [`FrameClient::send_controls`] on its frame connection instead. This type
+/// retains only the latest unsent message, including while disconnected.
+/// It does not expire messages or accumulate action bits separately. Dropping
+/// it stops and joins the sender thread.
+///
+/// ```no_run
 /// use rocketsim::CarControls;
 /// use rocketsim_vis::{net_client::ControlSender, proto::ControlMsg};
 ///
-/// // Port 1 never accepts: sends are dropped, never block.
-/// let sender = ControlSender::connect("127.0.0.1:1");
+/// let sender = ControlSender::connect("127.0.0.1:39202");
 /// sender.send(ControlMsg::new(0, CarControls::default(), 0, 1));
-/// assert!(!sender.connected());
 /// ```
 pub struct ControlSender {
     slot: Arc<Mutex<Option<ControlMsg>>>,
@@ -42,10 +90,15 @@ pub struct ControlSender {
 }
 
 impl ControlSender {
-    /// Starts the background dialer for the sim's control port (e.g.
-    /// `"127.0.0.1:39202"`). Use a numeric socket address; DNS lookup cannot be cancelled.
-    /// Never blocks or fails: with no sim listening
-    /// the thread retries with backoff and inputs are dropped, never queued.
+    /// Starts the background dialer for the sim control port, such as
+    /// `"127.0.0.1:39202"`. Use a numeric socket address because DNS lookup
+    /// cannot be cancelled. The worker retries with increasing delays when
+    /// no simulation listens. It keeps only the newest unsent message. Invalid
+    /// addresses cause retries rather than a returned error.
+    ///
+    /// # Panics
+    ///
+    /// Panic if the operating system cannot create the worker thread.
     pub fn connect(addr: &str) -> Self {
         let slot = Arc::new(Mutex::new(None));
         let stop = Arc::new(AtomicBool::new(false));
@@ -67,16 +120,19 @@ impl ControlSender {
         }
     }
 
-    /// Queues `msg` for sending (overwrites any unsent older message).
-    /// Lock-only via `try_lock`; never blocks, never panics.
+    /// Offer a message and replace any older unsent message.
+    ///
+    /// If the internal lock is unavailable, drop this update. Do not wait for
+    /// the network. Action bits in an overwritten message are not preserved.
     pub fn send(&self, msg: ControlMsg) {
         if let Ok(mut slot) = self.slot.try_lock() {
             *slot = Some(msg);
         }
     }
 
-    /// True while the worker holds a live sim connection. False means
-    /// inputs are dropped (no sim listening).
+    /// Return whether the worker currently holds a simulation connection.
+    ///
+    /// This does not confirm that a particular input was received or applied.
     pub fn connected(&self) -> bool {
         self.connected.load(Ordering::Relaxed)
     }
@@ -250,6 +306,11 @@ fn display_debug_scene(session: &ClientSession) -> Arc<crate::debug::DebugScene>
     })
 }
 
+/// Viewer-side receiver for the latest sim frame and retained scene.
+///
+/// The listener accepts one active sim at a time. It resets frame, control,
+/// scene, and retained debug data when that connection ends. The worker then
+/// accepts another sim. Use [`FrameClient::try_connect`] to handle bind errors.
 pub struct FrameClient {
     session: Arc<Mutex<ClientSession>>,
     /// Total frames decoded (overlay diagnostics).
@@ -260,14 +321,31 @@ pub struct FrameClient {
 }
 
 impl FrameClient {
-    /// Binds `addr` and starts the background accept loop. Panics if the
-    /// port is busy (another viewer is already up — connect the sim to it
-    /// instead of starting a second viewer).
+    /// Bind a listener and start a receiver thread.
+    ///
+    /// Prefer [`Self::try_connect`] to handle socket errors.
+    ///
+    /// # Panics
+    ///
+    /// Panic if binding or socket setup fails, or the worker cannot start.
     pub fn connect(addr: &str) -> Self {
         Self::try_connect(addr)
             .unwrap_or_else(|e| panic!("rocketsim-viewer: cannot listen on {addr} ({e})"))
     }
 
+    /// Bind a listener and start a background receiver.
+    ///
+    /// Despite its name, this function listens rather than connecting to a
+    /// simulation. Use port `0` to select an available port and read it with
+    /// [`Self::local_addr`]. Keep non-loopback listeners on trusted networks.
+    ///
+    /// # Errors
+    ///
+    /// Return bind, address-resolution, or socket setup errors.
+    ///
+    /// # Panics
+    ///
+    /// Panic if the operating system cannot create the receiver thread.
     pub fn try_connect(addr: &str) -> std::io::Result<Self> {
         let listener = TcpListener::bind(addr)?;
         listener.set_nonblocking(true)?;
@@ -298,13 +376,20 @@ impl FrameClient {
         })
     }
 
+    /// Offers controls to the active session. The client drops this message
+    /// if there is no active sim or if its session changes before it is sent.
     pub fn send_controls(&self, msg: ControlMsg) {
         let generation = self.generation();
         let _ = self.send_controls_for_generation(generation, msg);
     }
 
-    /// Enqueue controls only if `generation` still names the active sim session.
-    /// Returns false for stale generations or when no sim is connected.
+    /// Queue controls only for the specified active connection generation.
+    ///
+    /// Use the generation returned by [`Self::snapshot`]. Replace pending
+    /// analog input but combine pending action bits. Overwrite the message's
+    /// `generation` field with the active value. Return `true` for acceptance,
+    /// not delivery. Return `false` for a stale generation, no active
+    /// connection, or an unavailable internal store.
     pub fn send_controls_for_generation(&self, generation: u64, mut msg: ControlMsg) -> bool {
         let Ok(mut session) = self.session.lock() else {
             return false;
@@ -321,8 +406,11 @@ impl FrameClient {
         true
     }
 
-    /// Return one coherent session generation, frame, and shared scene.
-    /// The frame has no scene field; use the returned `Arc` for metadata.
+    /// Return a generation, latest frame, and scene metadata from one session.
+    ///
+    /// The frame's `scene` field is `None`; use the returned shared metadata.
+    /// Both options can be `None` before the first frame or after disconnect.
+    /// The frame is cloned. Scene metadata shares its storage through [`Arc`].
     pub fn snapshot(
         &self,
     ) -> (
@@ -336,15 +424,18 @@ impl FrameClient {
             .unwrap_or((0, None, None))
     }
 
+    /// Returns whether a sim session is active.
     pub fn controls_connected(&self) -> bool {
         self.session
             .lock()
             .map(|s| matches!(s.status, ConnStatus::Connected { .. }))
             .unwrap_or(false)
     }
+    /// Return the current generation. It changes on connect and disconnect.
     pub fn generation(&self) -> u64 {
         self.session.lock().map(|s| s.generation).unwrap_or(0)
     }
+    /// Returns the current session's shared scene metadata, if available.
     pub fn scene(&self) -> Option<Arc<crate::proto::SceneMetadata>> {
         self.session.lock().ok().and_then(|s| s.scene.clone())
     }

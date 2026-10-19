@@ -1,27 +1,73 @@
-//! Wire protocol: `[u32 LE frame_len][u32 LE version][postcard payload]` over TCP.
+//! Encode and decode viewer messages over a TCP byte stream.
 //!
-//! `frame_len` includes the version field and payload, but not its own prefix.
-//! The sim dials; the viewer listens (default port [`DEFAULT_PORT`]).
-//! Keep [`PROTOCOL_VERSION`] at 1 until the first release.
+//! Normal applications use [`crate::ArenaVisExt`]. Custom viewers can use
+//! [`crate::net_client::FrameClient`] without implementing message framing.
+//! Use this module when implementing another client or inspecting messages.
+//!
+//! # Message framing
+//!
+//! Each message contains a little-endian `u32` length, a little-endian `u32`
+//! version, then a postcard payload. The length includes the version and
+//! payload, but not the length field itself. The current version is
+//! [`PROTOCOL_VERSION`]. The simulation connects to the viewer's listener.
+//!
+//! Use [`encode_sim`] and [`decode_sim`] for the normal simulation-to-viewer
+//! stream. [`SimMsg`] carries either a physics frame or a retained-debug
+//! chunk. Use [`encode_control`] and [`decode_control`] in the other direction
+//! on that same connection. [`encode_frame`] and [`decode_frame`] support the
+//! separate legacy frame format. They are not interchangeable with the
+//! multiplexed simulation format.
+//!
+//! TCP reads do not preserve message boundaries. Keep incomplete bytes until
+//! a decoder returns `Some`. Remove exactly its returned byte count, then
+//! decode the next message. `Ok(None)` means more bytes are needed, not EOF.
+//! A framing or validation error should end the current connection.
+//!
+//! ```
+//! use rocketsim::{Arena, GameMode};
+//! use rocketsim_vis::proto::{SimMsg, VisFrame, decode_sim, encode_sim};
+//!
+//! let arena = Arena::new(GameMode::TheVoid);
+//! let frame = VisFrame::new(arena.get_arena_state(), 1.0 / 120.0);
+//! let bytes = encode_sim(&SimMsg::Frame(frame));
+//! assert!(decode_sim(&bytes[..8])?.is_none());
+//! let (message, consumed) = decode_sim(&bytes)?.unwrap();
+//! assert_eq!(consumed, bytes.len());
+//! let SimMsg::Frame(frame) = message else { panic!("expected a frame") };
+//! assert_eq!(frame.state.tick_count, 0);
+//! # Ok::<(), rocketsim_vis::proto::ProtocolError>(())
+//! ```
+//!
+//! # Retained debug transfers
+//!
+//! [`encode_debug_sync`] validates and serializes a [`DebugSyncMsg`]. Pass its
+//! result to [`split_debug_sync`], then frame each chunk with [`encode_sim`].
+//! Reassemble all chunks for one transfer before calling [`decode_debug_sync`].
+//! Apply a full scene or delta atomically. Do not display a partial transfer.
+//! A new connection resets the retained scene before a full synchronization.
+//!
+//! World positions and dimensions use Unreal units. Linear velocities use
+//! Unreal units per second. Angular velocities use radians per second.
+//! This protocol has no authentication or encryption.
 
 use rocketsim::{ArenaState, CarControls};
 
 /// Unreleased wire protocol. Keep this at 1 until the first release.
 pub const PROTOCOL_VERSION: u32 = 1;
 
-/// Default TCP port. Deliberately different from rlviser's 34254.
+/// Default TCP listener port for the detached viewer: `39201`.
 pub const DEFAULT_PORT: u16 = 39201;
 
 /// Legacy TCP port for the standalone control server API.
 /// Stock viewers send controls on the accepted frame stream and do not use this port.
 pub const DEFAULT_CONTROL_PORT: u16 = DEFAULT_PORT + 1;
 
-/// Sanity cap on one frame; real frames are a few KB.
+/// Maximum framed length for one legacy frame, including its version field.
 pub const MAX_FRAME_BYTES: usize = 32 * 1024 * 1024;
 /// Limit scene geometry separately from snapshots and debug data.
 pub const MAX_SCENE_BYTES: usize = 24 * 1024 * 1024;
 
-/// Sanity cap on one control message (corrupt-stream tripwire).
+/// Maximum framed length for one control message, including its version field.
 pub const MAX_CONTROL_BYTES: usize = 1024;
 
 /// Cap on one multiplexed sim→viewer message (frame or debug chunk).
@@ -35,18 +81,28 @@ pub const DEBUG_CHUNK_SIZE: usize = 16 * 1024;
 /// Maximum chunks per debug transfer (`512 * 16 KiB` = `MAX_DEBUG_SYNC_BYTES`).
 pub const MAX_CHUNKS_PER_TRANSFER: usize = 512;
 
+/// An error while reading or validating a protocol message.
 #[derive(Debug)]
 pub enum ProtocolError {
+    /// The message uses a different wire version.
     VersionMismatch {
+        /// Version found in the message.
         received: u32,
+        /// Version supported by this crate.
         expected: u32,
     },
+    /// The framed payload length is outside its allowed range.
     InvalidLength {
+        /// Length declared by the message.
         length: usize,
+        /// Smallest allowed length.
         min: usize,
+        /// Largest allowed length.
         max: usize,
     },
+    /// The message contains invalid values.
     InvalidData(&'static str),
+    /// The postcard payload could not be decoded.
     Deserialize(postcard::Error),
 }
 impl std::fmt::Display for ProtocolError {
@@ -81,11 +137,14 @@ impl From<postcard::Error> for ProtocolError {
 /// One streamed tick: full arena snapshot + tick dt (`TICK_TIME`, 1/120).
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct VisFrame {
+    /// Arena snapshot for this tick. Positions and velocities use RocketSim world units.
     pub state: ArenaState,
+    /// Tick duration in seconds. The decoder accepts finite values in `0..=1`.
     pub dt: f32,
     /// Simulation update clock used to evaluate retained debug lifetimes.
     #[serde(default)]
     pub debug_tick: u64,
+    /// Per-tick debug shapes. Retained debug uses [`DebugSyncMsg`].
     #[serde(default)]
     pub debug: DebugDraw,
     /// Scene metadata is optional for raw and synthetic clients.
@@ -93,40 +152,65 @@ pub struct VisFrame {
     pub scene: Option<SceneMetadata>,
 }
 
+/// Per-frame debug shapes. Use [`DebugSyncMsg`] for retained scene data.
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct DebugDraw {
+    /// Lines in world coordinates.
     pub lines: Vec<DebugLine>,
+    /// Text entries in normalized screen coordinates.
     pub text: Vec<DebugText>,
+    /// Rectangles in normalized screen coordinates.
     pub rects: Vec<DebugRect>,
+    /// Models in world coordinates.
     pub models: Vec<DebugModel>,
 }
+/// A line segment in world coordinates.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct DebugLine {
+    /// Start position in world units.
     pub start: [f32; 3],
+    /// End position in world units.
     pub end: [f32; 3],
+    /// RGBA color. Each component must be finite.
     pub color: [f32; 4],
+    /// Line width. Must be finite and non-negative.
     pub width: f32,
 }
+/// Text placed in normalized screen coordinates.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct DebugText {
+    /// Text content. The UTF-8 byte length must not exceed 4096.
     pub text: String,
+    /// Screen position. Each value must be in `0..=1`.
     pub position: [f32; 2],
+    /// RGBA color. Each component must be finite.
     pub color: [f32; 4],
 }
+/// A rectangle in normalized screen coordinates.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct DebugRect {
+    /// Minimum corner. Each value must be in `0..=1`.
     pub min: [f32; 2],
+    /// Maximum corner. Each value must be in `0..=1`.
     pub max: [f32; 2],
+    /// RGBA color. Each component must be finite.
     pub color: [f32; 4],
 }
+/// A named model instance in world coordinates.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct DebugModel {
+    /// Model resource name. Its byte length must not exceed 256.
     pub model: String,
+    /// Texture resource name. Its byte length must not exceed 256.
     pub texture: String,
+    /// Model position in world units. Values must be finite.
     pub position: [f32; 3],
+    /// Rotation matrix. Values must be finite.
     pub rotation: [[f32; 3]; 3],
+    /// Per-axis scale. Values must be finite.
     pub scale: [f32; 3],
 }
+/// Creates a zero-length line with white color and width `2.0`.
 impl Default for DebugLine {
     fn default() -> Self {
         Self {
@@ -137,6 +221,7 @@ impl Default for DebugLine {
         }
     }
 }
+/// Creates empty white text at the screen origin.
 impl Default for DebugText {
     fn default() -> Self {
         Self {
@@ -146,6 +231,7 @@ impl Default for DebugText {
         }
     }
 }
+/// Creates a white zero-size rectangle at the screen origin.
 impl Default for DebugRect {
     fn default() -> Self {
         Self {
@@ -155,6 +241,7 @@ impl Default for DebugRect {
         }
     }
 }
+/// Creates a unit-scale ball model with a matching texture at the origin.
 impl Default for DebugModel {
     fn default() -> Self {
         Self {
@@ -167,7 +254,7 @@ impl Default for DebugModel {
     }
 }
 
-/// Sim→viewer multiplexed message (v4).
+/// Sim-to-viewer multiplexed message for protocol version 1.
 ///
 /// Physics frames stay latest-only; retained-debug transfers split into
 /// `16 KiB` chunks so frames interleave and progress during large uploads.
@@ -191,7 +278,10 @@ pub struct DebugChunk {
     pub index: u32,
     /// Total chunks (`1..=MAX_CHUNKS_PER_TRANSFER`).
     pub total: u32,
-    /// Slice of the postcard-encoded [`DebugSyncMsg`] (`<= DEBUG_CHUNK_SIZE`).
+    /// Part of the encoded [`DebugSyncMsg`].
+    ///
+    /// [`split_debug_sync`] emits at most [`DEBUG_CHUNK_SIZE`] bytes per part.
+    /// Framing validation permits an additional 1024 bytes.
     pub bytes: Vec<u8>,
 }
 
@@ -211,8 +301,11 @@ pub enum DebugSyncMsg {
 /// Complete retained scene for a fresh session.
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct DebugFull {
+    /// Complete retained groups for the receiver to replace its group table.
     pub groups: Vec<crate::debug::DebugGroup>,
+    /// Mesh resources required by the groups.
     pub meshes: Vec<crate::debug::MeshResource>,
+    /// Texture resources required by the groups.
     pub textures: Vec<crate::debug::TextureResource>,
     /// Sender global scene revision.
     pub rev: u64,
@@ -221,32 +314,55 @@ pub struct DebugFull {
 /// Metadata-only update for an existing group's retained geometry.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct DebugGroupPatch {
+    /// Name of the existing group to update.
     pub name: String,
+    /// Whether the group is visible.
     pub visible: bool,
+    /// Coordinate anchor for the group.
     pub anchor: crate::debug::Anchor,
+    /// Updated group transform.
     pub transform: crate::debug::GroupTransform,
+    /// Lifetime policy for the group.
     pub lifetime: crate::debug::Lifetime,
+    /// Optional simulation-tick expiry.
     pub expires_tick: Option<u64>,
+    /// Optional wall-clock expiry in milliseconds since the Unix epoch.
     pub expires_at_ms: Option<u64>,
+    /// Revision of this group record.
     pub revision: u64,
 }
 
 /// Per-group/resource delta within one ordered stream.
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct DebugDelta {
+    /// Groups to add or replace.
     pub upsert_groups: Vec<crate::debug::DebugGroup>,
+    /// Existing groups whose metadata changes without geometry changes.
     pub group_patches: Vec<DebugGroupPatch>,
+    /// Group names to remove.
     pub removed_groups: Vec<String>,
+    /// Mesh resources to add or replace.
     pub upsert_meshes: Vec<crate::debug::MeshResource>,
+    /// Mesh resource names to remove.
     pub removed_meshes: Vec<String>,
+    /// Texture resources to add or replace.
     pub upsert_textures: Vec<crate::debug::TextureResource>,
+    /// Texture resource names to remove.
     pub removed_textures: Vec<String>,
     /// Sender global scene revision after this delta.
     pub rev: u64,
 }
 
 impl DebugChunk {
-    /// Validate framing only (payload validated after reassembly).
+    /// Check chunk count, index, and byte length.
+    ///
+    /// Accept `1..=MAX_CHUNKS_PER_TRANSFER` chunks and an index below `total`.
+    /// Permit at most `DEBUG_CHUNK_SIZE + 1024` bytes. Do not validate the
+    /// encoded scene or compare this chunk with other chunks.
+    ///
+    /// # Errors
+    ///
+    /// Return [`ProtocolError::InvalidData`] when any framing limit fails.
     pub fn validate_framing(&self) -> Result<(), ProtocolError> {
         if self.total == 0 || self.total as usize > MAX_CHUNKS_PER_TRANSFER {
             return Err(ProtocolError::InvalidData("debug chunk total out of range"));
@@ -357,19 +473,27 @@ fn validate_debug_wire(
     Ok(())
 }
 
+/// One collision mesh in scene metadata.
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct MeshData {
+    /// Vertex positions in RocketSim world units.
     pub vertices: Vec<[f32; 3]>,
+    /// Triangle indices into `vertices`. The count must be a multiple of three.
     pub indices: Vec<u32>,
 }
+/// Arena collision data and ball settings for a frame's game mode.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct SceneMetadata {
+    /// Game mode for the scene. It must match the frame state.
     pub game_mode: rocketsim::GameMode,
+    /// Ball radius in world units. Must be finite and greater than zero.
     pub ball_radius: f32,
+    /// Collision meshes used to draw the arena.
     pub meshes: Vec<MeshData>,
 }
 
 impl DebugDraw {
+    /// Checks count, size, coordinate, and color limits for debug drawing.
     pub fn validate(&self) -> bool {
         let count = self
             .lines
@@ -422,6 +546,7 @@ impl DebugDraw {
 }
 
 impl SceneMetadata {
+    /// Creates metadata with the mode's default ball radius and no meshes.
     pub fn empty(game_mode: rocketsim::GameMode) -> Self {
         Self {
             game_mode,
@@ -430,7 +555,14 @@ impl SceneMetadata {
         }
     }
 
-    /// Build metadata from the arena's loaded collision meshes.
+    /// Copy the arena's collision meshes and configured ball radius.
+    ///
+    /// Convert collision vertices to Unreal units. This can allocate a large
+    /// buffer. The normal attachment API calls it once during setup.
+    ///
+    /// # Panics
+    ///
+    /// Panic if the loaded meshes fail [`Self::validate`].
     pub fn from_arena(arena: &rocketsim::Arena) -> Self {
         let game_mode = arena.get_arena_state().game_mode();
         let meshes = rocketsim::get_arena_collision_mesh_files(game_mode)
@@ -460,6 +592,7 @@ impl SceneMetadata {
         metadata
     }
 
+    /// Checks mesh counts, indices, finite coordinates, and the scene byte limit.
     pub fn validate(&self) -> bool {
         if !self.ball_radius.is_finite() || self.ball_radius <= 0.0 || self.meshes.len() > 256 {
             return false;
@@ -489,7 +622,10 @@ impl SceneMetadata {
 }
 
 impl VisFrame {
-    /// Snapshots `state` with tick `dt`.
+    /// Create a frame from an owned arena state and a duration in seconds.
+    ///
+    /// Set `debug_tick` to the state's tick count. Start with an empty legacy
+    /// drawing and no scene metadata. Do not validate `dt` or the state here.
     pub fn new(state: ArenaState, dt: f32) -> Self {
         Self {
             debug_tick: state.tick_count,
@@ -501,26 +637,32 @@ impl VisFrame {
     }
 }
 
-/// Level-state mutator bits for [`ControlMsg::mutators`] (1 = on).
-/// Unlike `buttons`, these are NOT edge-triggered: the sim applies the
-/// current level every tick (see `mutators` module for the emulation).
+/// Unlimited-boost flag for [`ControlMsg::mutators`].
+///
+/// Mutator flags are level values, not one-time actions. The application
+/// decides whether to apply them through [`crate::mutators::Mutators`].
 pub const MUT_UNLIMITED_BOOST: u8 = 0b0000_0001;
-/// Passive boost regen while the sim runs.
+/// Boost-recharge flag for [`ControlMsg::mutators`].
 pub const MUT_BOOST_RECHARGE: u8 = 0b0000_0010;
-/// Re-arm flips while airborne.
+/// Unlimited-flips flag for [`ControlMsg::mutators`].
 pub const MUT_UNLIMITED_FLIPS: u8 = 0b0000_0100;
-/// Re-arm double jumps while airborne.
+/// Unlimited-double-jumps flag for [`ControlMsg::mutators`].
 pub const MUT_UNLIMITED_DOUBLE_JUMPS: u8 = 0b0000_1000;
-/// Bits the sim honors; the rest are reserved (ignored on receive).
+/// Mask of the four supported mutator flags. Other bits are reserved.
 pub const MUT_KNOWN_MASK: u8 =
     MUT_UNLIMITED_BOOST | MUT_BOOST_RECHARGE | MUT_UNLIMITED_FLIPS | MUT_UNLIMITED_DOUBLE_JUMPS;
 
-/// One viewer→sim driving update: inputs for `car_index` with a sender-side
-/// sequence number (`seq`, starts at 1, +1 per send).
+/// Driving inputs and action requests from a viewer to a simulation.
 ///
-/// Same framing as frames (`[u32 LE len][postcard]`); the sim keeps only the
-/// NEWEST message per tick and drops stale ones (monotonic `seq` tells a
-/// reconnect replay from fresh input).
+/// The normal client keeps the latest unsent analog inputs. It separately
+/// accumulates action bits until transmission. The simulation exposes the
+/// latest controls and pending actions through [`crate::ArenaVisExt`]. It
+/// does not apply them automatically.
+///
+/// `seq` is a sender-supplied sequence number. The current transport does not
+/// reject messages based on that number. Use
+/// [`crate::net_client::FrameClient::send_controls_for_generation`] to avoid
+/// submitting inputs from a previous connection.
 ///
 /// ```rust
 /// use rocketsim::CarControls;
@@ -534,18 +676,25 @@ pub const MUT_KNOWN_MASK: u8 =
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ControlMsg {
-    /// Which arena car these inputs drive (sim clamps to its car count).
+    /// Requested car index. The application must check that the car exists.
     pub car_index: u32,
-    /// Driver inputs (analog `-1..1`, clamped again by `set_car_controls`).
+    /// Requested controls. Analog inputs normally use `-1..=1`.
+    ///
+    /// Decoding requires finite values. [`rocketsim::Arena::step_tick`]
+    /// restricts applied analog controls to their valid range.
     pub controls: CarControls,
-    /// Action buttons as level state (bit0 = reset kickoff, bit1 = dribble
-    /// ball, bit2 = launch ball); the sim fires each on its rising edge.
+    /// One-time action requests: bit 0 reset, bit 1 dribble, bit 2 launch.
+    ///
+    /// Send a set bit for each request, not continuously while a key is held.
+    /// Repeated pending requests can combine. [`crate::ArenaVisExt::take_vis_actions`]
+    /// consumes the accumulated bits. It does not perform the actions.
     pub buttons: u8,
-    /// Live mutators as level state (`MUT_*` bits); the sim applies the
-    /// current level every tick. On link loss the sim freezes the last
-    /// received level (controls still failsafe to neutral).
+    /// Requested mutator level values, using the `MUT_*` flags.
+    ///
+    /// The application decides whether to apply or retain them on link loss.
+    /// The drive example keeps the last selection and releases driving inputs.
     pub mutators: u8,
-    /// Sender sequence (monotonic per connection; gaps = dropped frames).
+    /// Sender sequence number. The stock viewer increases it for each update.
     pub seq: u64,
     /// Connection generation. Zero is reserved for legacy standalone APIs.
     #[serde(default)]
@@ -574,7 +723,11 @@ impl ControlMsg {
     }
 }
 
-/// Encodes a control message ready for `write_all` (length prefix + payload).
+/// Encodes one control message as a length-prefixed protocol message.
+///
+/// The length is little-endian and includes the version and payload. The
+/// version is [`PROTOCOL_VERSION`]. The result can be passed to
+/// [`std::io::Write::write_all`]. This function does not validate message values.
 pub fn encode_control(msg: &ControlMsg) -> Vec<u8> {
     let payload = postcard::to_allocvec(msg).expect("ControlMsg must serialize");
     let wire_len = payload.len() + 4;
@@ -586,7 +739,15 @@ pub fn encode_control(msg: &ControlMsg) -> Vec<u8> {
 }
 
 /// Decodes one control message from the front of `buf`.
-/// `Ok(None)` means the message is incomplete. `Err` gives a framing or data reason.
+/// Returns `Ok(None)` when the message is incomplete. The consumed byte count
+/// includes the length prefix, version, and payload.
+///
+/// # Errors
+///
+/// Returns [`ProtocolError::InvalidLength`] for a length outside
+/// `4..=MAX_CONTROL_BYTES`, [`ProtocolError::VersionMismatch`] for another
+/// version, [`ProtocolError::Deserialize`] for invalid postcard data, or
+/// [`ProtocolError::InvalidData`] when analog values are not finite.
 pub fn decode_control(buf: &[u8]) -> Result<Option<(ControlMsg, usize)>, ProtocolError> {
     if buf.len() < 4 {
         return Ok(None);
@@ -629,7 +790,15 @@ pub fn decode_control(buf: &[u8]) -> Result<Option<(ControlMsg, usize)>, Protoco
     }
     Ok(Some((msg, 4 + len)))
 }
-/// Encodes a frame ready for `write_all` (length prefix + postcard payload).
+/// Encodes a frame as a length-prefixed protocol message.
+///
+/// The length is little-endian and includes the version and postcard payload.
+/// The version is [`PROTOCOL_VERSION`].
+///
+/// # Errors
+///
+/// This function returns no `Result`. Serialization must succeed for
+/// [`VisFrame`].
 pub fn encode_frame(frame: &VisFrame) -> Vec<u8> {
     let payload = postcard::to_allocvec(frame).expect("VisFrame must serialize");
     let wire_len = payload.len() + 4;
@@ -645,6 +814,13 @@ pub fn encode_frame(frame: &VisFrame) -> Vec<u8> {
 /// * `Ok(None)` — fewer than 4 header bytes, or the payload is incomplete.
 /// * `Ok(Some((frame, consumed)))` — `consumed` covers header + payload.
 /// * `Err` — framing, version, deserialization, or value validation failed.
+///
+/// # Errors
+///
+/// Returns [`ProtocolError::InvalidLength`] for a length outside
+/// `4..=MAX_FRAME_BYTES`, [`ProtocolError::VersionMismatch`] for another
+/// version, [`ProtocolError::Deserialize`] for invalid postcard data, or
+/// [`ProtocolError::InvalidData`] for invalid frame values.
 pub fn decode_frame(buf: &[u8]) -> Result<Option<(VisFrame, usize)>, ProtocolError> {
     if buf.len() < 4 {
         return Ok(None);
@@ -726,7 +902,15 @@ pub fn decode_frame(buf: &[u8]) -> Result<Option<(VisFrame, usize)>, ProtocolErr
     Ok(Some((frame, 4 + len)))
 }
 
-/// Encodes one multiplexed sim→viewer message (`Frame` or `DebugChunk`).
+/// Encodes one multiplexed sim-to-viewer message.
+///
+/// The length is little-endian and includes the version and postcard payload.
+/// The version is [`PROTOCOL_VERSION`].
+///
+/// # Errors
+///
+/// This function returns no `Result`. Serialization must succeed for
+/// [`SimMsg`].
 pub fn encode_sim(msg: &SimMsg) -> Vec<u8> {
     let payload = postcard::to_allocvec(msg).expect("SimMsg must serialize");
     let wire_len = payload.len() + 4;
@@ -739,8 +923,16 @@ pub fn encode_sim(msg: &SimMsg) -> Vec<u8> {
 
 /// Decodes one multiplexed sim→viewer message from the front of `buf`.
 ///
-/// `Ok(None)` means incomplete; `Err` is framing/version/data.
-/// Malformed payloads never panic (bounded checks first).
+/// Returns `Ok(None)` when the message is incomplete. The consumed byte count
+/// includes the length prefix, version, and payload.
+///
+/// # Errors
+///
+/// Returns [`ProtocolError::InvalidLength`] for a length outside
+/// `4..=MAX_SIM_MSG_BYTES`, [`ProtocolError::VersionMismatch`] for another
+/// version, [`ProtocolError::Deserialize`] for invalid postcard data, or
+/// [`ProtocolError::InvalidData`] for invalid frame values. A debug chunk can
+/// also fail [`DebugChunk::validate_framing`].
 pub fn decode_sim(buf: &[u8]) -> Result<Option<(SimMsg, usize)>, ProtocolError> {
     if buf.len() < 4 {
         return Ok(None);
@@ -819,7 +1011,13 @@ pub fn decode_sim(buf: &[u8]) -> Result<Option<(SimMsg, usize)>, ProtocolError> 
     Ok(Some((msg, 4 + len)))
 }
 
-/// Encodes a retained-debug publication (validated first).
+/// Encodes a retained-debug publication after validation.
+///
+/// # Errors
+///
+/// Returns [`ProtocolError::InvalidData`] if the message fails validation or
+/// exceeds [`MAX_DEBUG_SYNC_BYTES`]. Returns
+/// [`ProtocolError::Deserialize`] if postcard serialization fails.
 pub fn encode_debug_sync(msg: &DebugSyncMsg) -> Result<Vec<u8>, ProtocolError> {
     match msg {
         DebugSyncMsg::Full(v) => v.validate()?,
@@ -832,8 +1030,13 @@ pub fn encode_debug_sync(msg: &DebugSyncMsg) -> Result<Vec<u8>, ProtocolError> {
     Ok(bytes)
 }
 
-/// Decodes and validates one reassembled `DebugSyncMsg` payload.
-/// Never panics on malformed input.
+/// Decodes and validates one reassembled [`DebugSyncMsg`] payload.
+///
+/// # Errors
+///
+/// Returns [`ProtocolError::InvalidData`] if the payload exceeds
+/// [`MAX_DEBUG_SYNC_BYTES`] or its values fail validation. Returns
+/// [`ProtocolError::Deserialize`] if postcard cannot decode the payload.
 pub fn decode_debug_sync(bytes: &[u8]) -> Result<DebugSyncMsg, ProtocolError> {
     if bytes.len() > MAX_DEBUG_SYNC_BYTES {
         return Err(ProtocolError::InvalidData("debug sync too large"));
@@ -846,8 +1049,13 @@ pub fn decode_debug_sync(bytes: &[u8]) -> Result<DebugSyncMsg, ProtocolError> {
     Ok(msg)
 }
 
-/// Splits an encoded sync payload into `<= DEBUG_CHUNK_SIZE` chunks.
-/// Returns wire-ready `SimMsg::DebugChunk` messages with `transfer_id`.
+/// Split encoded scene bytes into at most 512 chunk messages.
+///
+/// Use bytes returned by [`encode_debug_sync`]. Each chunk contains at most
+/// [`DEBUG_CHUNK_SIZE`] bytes and the supplied `transfer_id`. Serialize each
+/// message with [`encode_sim`] before sending it. Return an empty vector for
+/// an empty input. This function does not validate input and truncates bytes
+/// beyond [`MAX_DEBUG_SYNC_BYTES`].
 #[must_use]
 pub fn split_debug_sync(encoded: &[u8], transfer_id: u64) -> Vec<SimMsg> {
     if encoded.is_empty() {

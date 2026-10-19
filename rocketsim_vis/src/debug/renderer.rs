@@ -1,15 +1,41 @@
-//! Cloneable [`DebugRenderer`]: retained-scene submissions accepted even
-//! while disconnected or while the sim is paused.
+//! Submit and update shared retained drawings through [`DebugRenderer`].
 //!
-//! Short API locks (a single `Mutex` around the pending tables) versus
-//! nonblocking network: submissions copy small validated records under the
-//! lock; the sender thread serializes and chunks off the sim tick, and
-//! [`Vis::update`](rocketsim::Vis) never touches this state (it only bumps
-//! an atomic tick and overwrites the latest-only physics slot).
+//! Submissions validate data and update bounded scene storage under a lock.
+//! They do not wait for network delivery. The sender serializes accepted
+//! changes on a separate thread. Updates remain available while the viewer
+//! is disconnected or the simulation is paused.
 //!
-//! TTL rule: only a full `replace_group` restarts a group's deadline.
-//! `set_group_visible` / `set_group_transform` / `set_group_anchor` and
-//! single-item updates preserve `created_tick` / `created_at`.
+//! Only group replacement restarts a group's lifetime. Visibility, transform,
+//! anchor, and item changes preserve its deadline. [`Lifetime::Frame`] remains
+//! through the next simulation update and expires at the following update.
+//! A detached renderer advances only through [`DebugRenderer::advance_tick`].
+//!
+//! # Update a persistent group
+//!
+//! ```
+//! use rocketsim_vis::debug::{DebugRenderer, GroupTransform};
+//!
+//! let renderer = DebugRenderer::new_detached();
+//! let group = renderer.group("marker");
+//! let first_revision = group.draw(|draw| { draw.point([0.0, 0.0, 0.0]); }).unwrap();
+//! group.set_transform(GroupTransform::from_position([5.0, 0.0, 0.0])).unwrap();
+//! assert!(renderer.snapshot().groups["marker"].revision > first_revision);
+//! ```
+//!
+//! Item handles capture a geometry revision. Group replacement and item
+//! replacement or removal make older item handles stale. Transform, visibility,
+//! and anchor updates do not. Request a new handle after a geometry change.
+//!
+//! ```
+//! use rocketsim_vis::debug::{DebugError, DebugRenderer};
+//!
+//! let renderer = DebugRenderer::new_detached();
+//! let group = renderer.group("items");
+//! group.draw(|draw| { draw.point([0.0, 0.0, 0.0]); }).unwrap();
+//! let old_item = renderer.item("items", 0);
+//! group.draw(|draw| { draw.point([1.0, 0.0, 0.0]); }).unwrap();
+//! assert_eq!(old_item.remove(), Err(DebugError::StaleHandle));
+//! ```
 
 use std::{
     collections::BTreeMap,
@@ -69,15 +95,15 @@ pub(crate) struct PendingSnapshot {
 // Renderer handle
 // ---------------------------------------------------------------------------
 
-/// Cloneable retained-scene handle obtained from
-/// [`ArenaVisExt::debug_renderer`](crate::ArenaVisExt::debug_renderer)
-/// after attach.
+/// Shared handle for submitting and updating a retained debug scene.
 ///
-/// All submissions validate and return [`DebugError`] on rejection
-/// (never silently dropped, never panics). Accepted changes coalesce in
-/// bounded pending tables: repeated replaces collapse to the newest value,
-/// and removals derive from set differences (no unbounded queues, no
-/// tombstone history).
+/// Obtain it from [`crate::ArenaVisExt::debug_renderer`] after attachment.
+/// Use [`Self::new_detached`] for local drawing and tests without a viewer.
+/// Clones share groups, resources, revisions, and the update clock.
+///
+/// Fallible operations return [`DebugError`] for invalid input or scene limits.
+/// Repeated updates can combine before network delivery. A viewer can receive
+/// only the newest version of a group, not every intermediate change.
 #[derive(Clone, Debug)]
 pub struct DebugRenderer {
     inner: Arc<Mutex<SharedInner>>,
@@ -85,8 +111,10 @@ pub struct DebugRenderer {
 }
 
 impl DebugRenderer {
-    /// Create a detached renderer (tests / local preview without `NetVis`).
-    /// The tick starts at `0` and only advances via [`Self::advance_tick`].
+    /// Create a detached renderer for local use without a viewer or network.
+    ///
+    /// The tick starts at `0` and advances only through
+    /// [`Self::advance_tick`].
     #[must_use]
     pub fn new_detached() -> Self {
         Self {
@@ -102,19 +130,26 @@ impl DebugRenderer {
         }
     }
 
-    /// Current physics tick (bumped by `Vis::update`, or manually in tests).
+    /// Return the debug update count used for tick lifetimes.
+    ///
+    /// An attached renderer counts visualizer updates since attachment. This
+    /// can differ from the arena's tick count. A detached renderer uses the
+    /// count advanced by [`Self::advance_tick`].
     #[must_use]
     pub fn current_tick(&self) -> u64 {
         self.tick.load(Ordering::Acquire)
     }
 
-    /// Advance the tick by one (tests; `NetVis` advances automatically).
+    /// Advance this renderer's tick by one.
+    ///
+    /// Use this with a detached renderer to expire tick-based groups.
     pub fn advance_tick(&self) {
         self.tick.fetch_add(1, Ordering::AcqRel);
     }
 
-    /// Remove expired groups now (also runs lazily on submit/snapshot).
-    /// Returns the number removed.
+    /// Remove expired groups now and return the number removed.
+    ///
+    /// Group replacement and snapshot operations also remove expired groups.
     pub fn prune_expired(&self) -> usize {
         let now_tick = self.current_tick();
         let now = Instant::now();
@@ -124,11 +159,13 @@ impl DebugRenderer {
         prune_locked(&mut inner, now_tick, now)
     }
 
-    /// Atomically replace (or create) a named group.
+    /// Atomically replace or create a named group.
     ///
-    /// Returns the group's new revision. Referenced mesh/texture ids must
-    /// already exist (insert assets first); otherwise [`DebugError`] is
-    /// returned and nothing changes.
+    /// Return the new group revision. A successful replacement restarts the
+    /// lifetime in `opts`. Validate the name, options, items, and resource
+    /// references before the change. Invalid input, a missing resource, a
+    /// scene limit, or a poisoned store returns [`DebugError`]. On error, the
+    /// requested group is not replaced.
     pub fn replace_group(
         &self,
         name: &str,
@@ -252,6 +289,8 @@ impl DebugRenderer {
     }
 
     /// Remove all groups, meshes, and textures.
+    ///
+    /// This operation has no validation error result.
     pub fn clear_all(&self) {
         if let Ok(mut inner) = self.inner.lock() {
             inner.groups.clear();
@@ -261,7 +300,7 @@ impl DebugRenderer {
         }
     }
 
-    /// Remove all groups but keep reusable assets.
+    /// Remove all groups and keep reusable meshes and textures.
     pub fn clear_groups(&self) {
         if let Ok(mut inner) = self.inner.lock()
             && !inner.groups.is_empty()
@@ -271,7 +310,7 @@ impl DebugRenderer {
         }
     }
 
-    /// Toggle visibility without restarting TTL.
+    /// Set visibility without restarting the lifetime.
     pub fn set_group_visible(&self, name: &str, visible: bool) -> DebugResult<()> {
         self.mutate_group(name, |entry, inner| {
             if entry.group.visible == visible {
@@ -288,7 +327,7 @@ impl DebugRenderer {
         })
     }
 
-    /// Replace the group transform without restarting TTL.
+    /// Replace the group transform without restarting the lifetime.
     pub fn set_group_transform(&self, name: &str, t: GroupTransform) -> DebugResult<()> {
         t.validate()?;
         self.mutate_group(name, |entry, inner| {
@@ -303,7 +342,7 @@ impl DebugRenderer {
         })
     }
 
-    /// Replace the group anchor without restarting TTL.
+    /// Replace the group anchor without restarting the lifetime.
     pub fn set_group_anchor(&self, name: &str, anchor: Anchor) -> DebugResult<()> {
         anchor.validate()?;
         self.mutate_group(name, |entry, inner| {
@@ -377,7 +416,11 @@ impl DebugRenderer {
         Ok(rev)
     }
 
-    /// Remove a reusable mesh. Instances referencing it are skipped by renderers.
+    /// Remove a reusable mesh if no retained group refers to it.
+    ///
+    /// Return `true` when removed, or `false` if it was absent. Return
+    /// [`DebugError::ResourceInUse`] if a group still contains an instance
+    /// of this mesh. Clear or replace those items before removing the mesh.
     pub fn remove_mesh(&self, id: &str) -> DebugResult<bool> {
         validate_name(id)?;
         let Ok(mut inner) = self.inner.lock() else {
@@ -439,7 +482,11 @@ impl DebugRenderer {
         Ok(rev)
     }
 
-    /// Remove a reusable texture.
+    /// Remove a reusable texture if no retained item refers to it.
+    ///
+    /// Return `true` when removed, or `false` if it was absent. Return
+    /// [`DebugError::ResourceInUse`] while a mesh, instance, or rectangle
+    /// item still uses the texture. Invalid identifiers also return an error.
     pub fn remove_texture(&self, id: &str) -> DebugResult<bool> {
         validate_name(id)?;
         let Ok(mut inner) = self.inner.lock() else {
@@ -463,7 +510,9 @@ impl DebugRenderer {
         }
     }
 
-    /// Atomic immutable snapshot (prunes expired first).
+    /// Return an immutable snapshot after pruning expired groups.
+    ///
+    /// If the internal lock is poisoned, return an empty snapshot.
     pub fn snapshot(&self) -> Arc<DebugScene> {
         let now_tick = self.current_tick();
         let now = Instant::now();
@@ -515,7 +564,7 @@ impl DebugRenderer {
         }
     }
 
-    /// Number of groups (prunes expired first).
+    /// Return the group count after pruning expired groups.
     pub fn group_count(&self) -> usize {
         self.prune_expired();
         self.inner.lock().map(|i| i.groups.len()).unwrap_or(0)
@@ -600,7 +649,11 @@ fn unix_time_ms() -> u64 {
 // Handles
 // ---------------------------------------------------------------------------
 
-/// Live handle for one named group (all ops preserve TTL except `replace`).
+/// Cloneable handle for a named group.
+///
+/// The handle owns a clone of its renderer, so it remains usable while that
+/// renderer state exists. Full replacement restarts the group's lifetime;
+/// visibility, transform, and anchor updates preserve it.
 #[derive(Clone, Debug)]
 pub struct GroupHandle {
     renderer: DebugRenderer,
@@ -608,39 +661,53 @@ pub struct GroupHandle {
 }
 
 impl GroupHandle {
-    /// Atomic replace (restarts TTL with `opts.lifetime`).
+    /// Replace the group and restart its lifetime from `opts`.
+    ///
+    /// Return the new revision. Return [`DebugError`] if validation or a scene
+    /// limit rejects the replacement. Referenced assets must already exist.
     pub fn replace(&self, list: DrawList, opts: GroupOptions) -> DebugResult<u64> {
         self.renderer.replace_group(&self.name, list, opts)
     }
 
-    /// Remove the group (idempotent).
+    /// Remove the group. Return `true` when a group existed.
+    ///
+    /// Return `false` when the group was already absent.
     pub fn clear(&self) -> DebugResult<bool> {
         self.renderer.clear_group(&self.name)
     }
 
-    /// Visibility update (preserves TTL).
+    /// Set visibility without restarting the lifetime.
+    ///
+    /// Return [`DebugError::GroupNotFound`] when the group does not exist.
     pub fn set_visible(&self, visible: bool) -> DebugResult<()> {
         self.renderer.set_group_visible(&self.name, visible)
     }
 
-    /// Transform update (preserves TTL).
+    /// Set the group transform without restarting the lifetime.
+    ///
+    /// Invalid transform values or a missing group return [`DebugError`].
     pub fn set_transform(&self, t: GroupTransform) -> DebugResult<()> {
         self.renderer.set_group_transform(&self.name, t)
     }
 
-    /// Anchor update (preserves TTL).
+    /// Set the anchor without restarting the lifetime.
+    ///
+    /// An invalid anchor or a missing group returns [`DebugError`].
     pub fn set_anchor(&self, anchor: Anchor) -> DebugResult<()> {
         self.renderer.set_group_anchor(&self.name, anchor)
     }
 
-    /// Group name.
+    /// Return this handle's group name.
     #[must_use]
     pub fn name(&self) -> &str {
         &self.name
     }
 }
 
-/// Live handle for one reusable mesh id.
+/// Cloneable handle for one reusable mesh id.
+///
+/// The handle owns a renderer clone. Resource removal fails while a group
+/// uses the mesh.
 #[derive(Clone, Debug)]
 pub struct MeshHandle {
     renderer: DebugRenderer,
@@ -648,7 +715,10 @@ pub struct MeshHandle {
 }
 
 impl MeshHandle {
-    /// Insert or replace the mesh resource.
+    /// Insert or replace this mesh resource.
+    ///
+    /// The resource id must match [`Self::id`]. Return its new revision, or a
+    /// validation or scene-limit error.
     pub fn insert(&self, res: MeshResource) -> DebugResult<u64> {
         if res.id != self.id {
             return Err(DebugError::ResourceIdMismatch {
@@ -659,19 +729,24 @@ impl MeshHandle {
         self.renderer.insert_mesh(res)
     }
 
-    /// Remove the mesh (idempotent).
+    /// Remove the mesh. Return `true` when removed and `false` when absent.
+    ///
+    /// Return [`DebugError::ResourceInUse`] if a group still refers to it.
     pub fn remove(&self) -> DebugResult<bool> {
         self.renderer.remove_mesh(&self.id)
     }
 
-    /// Mesh id.
+    /// Return this handle's mesh id.
     #[must_use]
     pub fn id(&self) -> &str {
         &self.id
     }
 }
 
-/// Live handle for one reusable texture id.
+/// Cloneable handle for one reusable texture id.
+///
+/// The handle owns a renderer clone. Resource removal fails while a group
+/// uses the texture.
 #[derive(Clone, Debug)]
 pub struct TextureHandle {
     renderer: DebugRenderer,
@@ -679,7 +754,10 @@ pub struct TextureHandle {
 }
 
 impl TextureHandle {
-    /// Insert or replace the texture resource.
+    /// Insert or replace this texture resource.
+    ///
+    /// The resource id must match [`Self::id`]. Return its new revision, or a
+    /// validation or scene-limit error.
     pub fn insert(&self, res: TextureResource) -> DebugResult<u64> {
         if res.id != self.id {
             return Err(DebugError::ResourceIdMismatch {
@@ -690,19 +768,25 @@ impl TextureHandle {
         self.renderer.insert_texture(res)
     }
 
-    /// Remove the texture (idempotent).
+    /// Remove the texture. Return `true` when removed and `false` when absent.
+    ///
+    /// Return [`DebugError::ResourceInUse`] if a group still refers to it.
     pub fn remove(&self) -> DebugResult<bool> {
         self.renderer.remove_texture(&self.id)
     }
 
-    /// Texture id.
+    /// Return this handle's texture id.
     #[must_use]
     pub fn id(&self) -> &str {
         &self.id
     }
 }
 
-/// Live handle for one item index inside a group (preserves group TTL).
+/// Handle for one item at a captured group geometry revision.
+///
+/// The handle owns a renderer clone and preserves the group lifetime when it
+/// changes an item. Any geometry edit invalidates older handles. Request a
+/// new handle after a replacement or item change.
 #[derive(Clone, Debug)]
 pub struct ItemHandle {
     renderer: DebugRenderer,
@@ -712,7 +796,11 @@ pub struct ItemHandle {
 }
 
 impl ItemHandle {
-    /// Replace one item in place (preserves group TTL).
+    /// Replace this item without restarting the group lifetime.
+    ///
+    /// Return [`DebugError::StaleHandle`] if group geometry changed after this
+    /// handle was created. Invalid items or missing resources also return an
+    /// error.
     pub fn set(&self, item: DebugItem) -> DebugResult<()> {
         item.validate()?;
         let renderer = self.renderer.clone();
@@ -786,8 +874,10 @@ impl ItemHandle {
         Ok(())
     }
 
-    /// Remove one item in place (preserves group TTL).
-    /// Handles are conservatively invalidated by any geometry edit.
+    /// Remove this item without restarting the group lifetime.
+    ///
+    /// Return [`DebugError::StaleHandle`] if group geometry changed after this
+    /// handle was created. Any geometry edit invalidates older item handles.
     pub fn remove(&self) -> DebugResult<()> {
         let renderer = self.renderer.clone();
         let group = self.group.clone();

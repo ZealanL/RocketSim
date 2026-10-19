@@ -1,7 +1,17 @@
-//! Detached-viewer bridge: a [`rocketsim::Vis`] that forwards ticks to a
-//! separate viewer process over TCP without ever blocking the sim.
-//! Latest-only slot on a background thread: a slow or missing viewer costs
-//! dropped frames, never a stalled tick. Wire format: [`crate::proto`].
+//! Send simulation frames to a detached viewer through [`NetVis`].
+//!
+//! [`NetVis`] implements [`rocketsim::Vis`]. It copies the latest update into
+//! shared storage. A background thread handles network writes and retries.
+//! The simulation does not wait for those writes. Intermediate frames can
+//! be lost when a viewer is slow or disconnected.
+//!
+//! Prefer [`crate::ArenaVisExt::try_set_net_vis`] for normal applications.
+//! It validates the address, reserves the viewer, and supplies arena metadata.
+//! Construct [`NetVis`] directly only for custom visualizer integration.
+//!
+//! [`ControlServer`] is a separate legacy control listener. It is not needed
+//! by the normal combined frame-and-control connection. See [`crate::proto`]
+//! for message framing and [`crate::net_client`] for custom viewer examples.
 
 use std::{
     io::Read,
@@ -28,9 +38,10 @@ use crate::{
 /// [`rocketsim::Vis`] implementation that streams `(ArenaState, dt)` to a
 /// viewer process listening on `addr` (e.g. `"127.0.0.1:39201"`).
 ///
-/// Construct with [`NetVis::connect`], or attach to an arena with
-/// `ArenaVisExt::set_net_vis_enabled`.
-/// Dropping the instance stops the sender thread and detaches the viewer.
+/// Construct with [`NetVis::connect`], or attach it to an arena with
+/// [`crate::ArenaVisExt::set_net_vis_enabled`]. The sender retries after a
+/// disconnect. It sends only the newest pending frame. Dropping this value
+/// stops the sender thread.
 pub struct NetVis {
     slot: Arc<Mutex<Option<VisFrame>>>,
     controls: Arc<Mutex<Option<(ControlMsg, std::time::Instant)>>>,
@@ -47,10 +58,16 @@ pub struct NetVis {
 }
 
 impl NetVis {
-    /// Starts the background sender; never blocks or fails. `addr` must be
-    /// a numeric socket address because DNS lookup cannot be cancelled. If no viewer
-    /// listens, the sender thread retries with backoff until one appears —
-    /// ticks in the meantime are dropped, never queued.
+    /// Start a background sender without starting a viewer process.
+    ///
+    /// Supply a numeric `IP:port` address. The worker retries an absent viewer
+    /// or invalid address instead of returning an error. This raw constructor
+    /// does not reserve an address or populate scene metadata. Prefer
+    /// [`crate::ArenaVisExt::try_set_net_vis`] for validated arena attachment.
+    ///
+    /// # Panics
+    ///
+    /// Panic if the operating system cannot create the sender thread.
     pub fn connect(addr: &str) -> Self {
         let slot = Arc::new(Mutex::new(None));
         let stop = Arc::new(AtomicBool::new(false));
@@ -91,12 +108,16 @@ impl NetVis {
         }
     }
 
+    /// Returns the configured viewer socket address.
     pub fn address(&self) -> &str {
         &self.address
     }
+    /// Returns whether the sender currently holds a viewer connection.
     pub fn connected(&self) -> bool {
         self.connected.load(Ordering::Acquire)
     }
+    /// Returns the latest received control message if it arrived within the
+    /// last 250 milliseconds. This does not consume the message.
     pub fn latest_controls(&self) -> Option<ControlMsg> {
         self.controls
             .lock()
@@ -104,9 +125,18 @@ impl NetVis {
             .and_then(|g| *g)
             .and_then(|(msg, at)| (at.elapsed() <= Duration::from_millis(250)).then_some(msg))
     }
+    /// Return and clear accumulated action requests.
+    ///
+    /// Bit 0 requests reset, bit 1 requests a dribble, and bit 2 requests a
+    /// ball launch. Return `0` if no action is pending. This does not perform
+    /// the requested actions.
     pub fn take_actions(&self) -> u8 {
         self.actions.swap(0, Ordering::AcqRel)
     }
+    /// Replace the legacy drawing copied into future frames.
+    ///
+    /// Ignore invalid drawings and leave the previous drawing unchanged.
+    /// Prefer [`Self::debug_renderer`] for retained groups and new drawings.
     pub fn set_debug(&self, debug: DebugDraw) {
         if debug.validate()
             && let Ok(mut d) = self.debug.lock()
@@ -120,6 +150,11 @@ impl NetVis {
     pub fn debug_renderer(&self) -> DebugRenderer {
         self.retained.clone()
     }
+    /// Store valid scene metadata for the first frame of a connection.
+    ///
+    /// Ignore invalid metadata. Set this before sending the first frame.
+    /// Changes after metadata was sent reach the viewer only on a subsequent
+    /// connection. This does not modify the arena or check its game mode.
     pub fn set_scene_metadata(&self, scene: SceneMetadata) {
         if scene.validate()
             && let Ok(mut s) = self.scene.lock()
@@ -161,14 +196,15 @@ impl Vis for NetVis {
     }
 }
 
-/// Viewer→sim control channel, sim side.
-/// The SIM listens here (default `127.0.0.1:39202`); the viewer dials lazily
-/// and streams [`ControlMsg`] frames. One background thread accepts and
-/// keeps only the LATEST message — poll each tick with
-/// [`ControlServer::latest`] (level state: same message until a newer one
-/// arrives, so failsafe to neutral on age). Construction never blocks,
-/// fails, or panics (the bind itself retries on the worker thread).
-/// Drop stops the thread.
+/// Legacy simulation-side listener for a separate control connection.
+///
+/// Pair it with [`crate::net_client::ControlSender`]. The stock viewer uses
+/// the combined connection instead. A background thread retries binding and
+/// accepts one sender at a time. Dropping this value stops and joins it.
+///
+/// [`Self::latest`] keeps the latest message until replacement or disconnect.
+/// Unlike [`NetVis::latest_controls`], it has no 250 ms freshness limit.
+/// Applications must handle stale input and action transitions themselves.
 ///
 /// ```rust
 /// use std::{
@@ -228,9 +264,15 @@ pub struct ControlServer {
 }
 
 impl ControlServer {
-    /// Starts the background listener on `addr` (e.g. `"127.0.0.1:39202"`).
-    /// Returns immediately; while no viewer is connected [`ControlServer::latest`]
-    /// is `None` (drive with neutral inputs until then).
+    /// Start a listener worker and return before it binds.
+    ///
+    /// Retry socket errors in the background. Use port `0` to select an
+    /// available port, then poll [`Self::local_addr`]. No setup error is
+    /// returned to the caller.
+    ///
+    /// # Panics
+    ///
+    /// Panic if the operating system cannot create the worker thread.
     pub fn bind(addr: &str) -> Self {
         let slot = Arc::new(Mutex::new(None));
         let received = Arc::new(Mutex::new(0));
@@ -257,8 +299,10 @@ impl ControlServer {
         }
     }
 
-    /// Clones the newest control message, or `None` if none arrived yet.
-    /// Lock-only, never blocks on the network.
+    /// Copy the newest decoded message, or return `None` when none is stored.
+    ///
+    /// Clear stored input when a connection ends. This method does not
+    /// consume the message, enforce a maximum age, or detect action edges.
     pub fn latest(&self) -> Option<ControlMsg> {
         self.slot.lock().ok().and_then(|g| *g)
     }
