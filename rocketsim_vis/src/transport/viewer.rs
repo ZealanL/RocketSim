@@ -277,12 +277,9 @@ impl ViewerListener {
     ///
     /// Panic if the operating system cannot create the receiver thread.
     pub fn try_bind(addr: &str) -> std::io::Result<Self> {
-        test_trace!("viewer: binding {addr}");
         let listener = TcpListener::bind(addr)?;
-        test_trace!("viewer: setting listener nonblocking");
         listener.set_nonblocking(true)?;
         let local_addr = listener.local_addr()?;
-        test_trace!("viewer: bound {local_addr}");
         let session = Arc::new(Mutex::new(ClientSession::new()));
         let stop = Arc::new(AtomicBool::new(false));
         let worker = {
@@ -367,12 +364,9 @@ impl ViewerListener {
     ///
     /// This method runs automatically when the listener is dropped.
     pub fn shutdown(&mut self) {
-        test_trace!("viewer {}: shutdown requested", self.local_addr);
         self.stop.store(true, Ordering::Release);
         if let Some(worker) = self.worker.take() {
-            test_trace!("viewer {}: joining receiver", self.local_addr);
             let _ = worker.join();
-            test_trace!("viewer {}: receiver joined", self.local_addr);
         }
     }
 }
@@ -384,11 +378,9 @@ impl Drop for ViewerListener {
 }
 
 fn accept_loop(listener: TcpListener, session: &Mutex<ClientSession>, stop: &AtomicBool) {
-    test_trace!("viewer: accept loop started at {:?}", listener.local_addr());
     while !stop.load(Ordering::Acquire) {
         match listener.accept() {
-            Ok((stream, peer_addr)) => {
-                test_trace!("viewer: accepted {peer_addr}");
+            Ok((stream, _)) => {
                 let peer = stream
                     .peer_addr()
                     .map(|address| address.to_string())
@@ -396,9 +388,7 @@ fn accept_loop(listener: TcpListener, session: &Mutex<ClientSession>, stop: &Ato
                 if let Ok(mut current) = session.lock() {
                     current.reset(ConnStatus::Connected { addr: peer.clone() });
                 }
-                test_trace!("viewer: starting pump for {peer}");
                 pump(stream, &listener, session, stop, &peer);
-                test_trace!("viewer: pump returned for {peer}; resetting session");
                 if let Ok(mut current) = session.lock() {
                     current.reset(ConnStatus::Waiting);
                 }
@@ -409,8 +399,7 @@ fn accept_loop(listener: TcpListener, session: &Mutex<ClientSession>, stop: &Ato
             {
                 std::thread::sleep(Duration::from_millis(20));
             }
-            Err(error) => {
-                test_trace!("viewer: accept failed: {error}");
+            Err(_) => {
                 std::thread::sleep(Duration::from_millis(50));
             }
         }
@@ -433,12 +422,9 @@ fn pump(
     stop: &AtomicBool,
     peer: &str,
 ) {
-    test_trace!("viewer {peer}: setting stream nonblocking");
-    if let Err(error) = stream.set_nonblocking(true) {
-        test_trace!("viewer {peer}: nonblocking setup failed: {error}");
+    if stream.set_nonblocking(true).is_err() {
         return;
     }
-    test_trace!("viewer {peer}: stream nonblocking; starting I/O");
     let mut input = Vec::new();
     let mut chunk = [0u8; 65536];
     let mut output = OutgoingBuffer::default();
@@ -456,14 +442,12 @@ fn pump(
                 return;
             }
             match listener.accept() {
-                Ok((extra, addr)) => {
-                    test_trace!("viewer {peer}: rejecting extra connection from {addr}");
+                Ok((extra, _)) => {
                     drop(extra);
                 }
                 Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
                 Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => break,
-                Err(error) => {
-                    test_trace!("viewer {peer}: extra accept failed: {error}");
+                Err(_) => {
                     break;
                 }
             }
@@ -488,7 +472,6 @@ fn pump(
         match stream.read(&mut chunk) {
             Ok(0) => return,
             Ok(count) => {
-                test_trace!("viewer {peer}: received {count} bytes");
                 input.extend_from_slice(&chunk[..count]);
                 loop {
                     match decode_sim(&input) {
@@ -540,8 +523,7 @@ fn pump(
             Err(error)
                 if error.kind() == std::io::ErrorKind::WouldBlock
                     || error.kind() == std::io::ErrorKind::Interrupted => {}
-            Err(error) => {
-                test_trace!("viewer {peer}: read failed: {error}");
+            Err(_) => {
                 return;
             }
         }

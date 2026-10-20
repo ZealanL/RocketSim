@@ -120,11 +120,9 @@ fn probe(addr: SocketAddr) -> bool {
 }
 
 fn reserve(addr: SocketAddr, attached: bool) -> io::Result<ViewerLease> {
-    test_trace!("launcher {addr}: locking registry for reservation");
     let mut entries = registry()
         .lock()
         .map_err(|_| io::Error::other("viewer process registry is unavailable"))?;
-    test_trace!("launcher {addr}: registry locked");
     let entry = entries.entry(addr).or_default();
     if attached && entry.attached {
         return Err(io::Error::new(
@@ -139,7 +137,6 @@ fn reserve(addr: SocketAddr, attached: bool) -> io::Result<ViewerLease> {
 
 /// Reserve a viewer for one arena. A connection-only attachment does not launch a process.
 pub(crate) fn attach(addr: SocketAddr, launch: bool) -> io::Result<ViewerLease> {
-    test_trace!("launcher {addr}: attaching; launch={launch}");
     let lease = reserve(addr, true)?;
     if launch {
         start_and_wait(addr, None)?;

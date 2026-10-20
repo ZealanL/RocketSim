@@ -90,6 +90,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
@@ -101,6 +102,7 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           shared-key: test-${{ matrix.os }}
+
       - name: Fetch pinned collision mesh fixtures
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -111,22 +113,11 @@ jobs:
           persist-credentials: false
       - name: Prepare collision mesh fixtures
         run: python tools/ci/prepare_meshes.py target/ci-fixtures/rlgym/rocket_league/sim/collision_meshes
-      - name: Show Windows environment details
-        if: runner.os == 'Windows'
-        run: |
-          rustc -Vv
-          python -c "import platform; print(platform.platform()); print(platform.python_version())"
-      - name: Test rocketsim_vis with tracing
-        if: runner.os == 'Windows'
-        timeout-minutes: 5
-        env:
-          ROCKETSIM_TEST_TRACE: "1"
-        run: cargo test --locked -p rocketsim_vis --lib -- --nocapture
+
       # The optional C++ comparison backend uses process-global state.
       - name: Test workspace
         run: cargo test --locked --workspace --all-targets -- ${{ matrix.test-args }}
-        env:
-          ROCKETSIM_TEST_TRACE: ${{ runner.os == 'Windows' && '1' || '' }}
+
       - run: cargo test --locked --workspace --doc
-      - run: cargo run --locked -p rocketsim_viewer --bin rocketsim-viewer -- --help
+      - run: cargo run --locked --profile test -p rocketsim_viewer --bin rocketsim-viewer -- --help
       - run: python -m unittest discover -s tools/ci -v

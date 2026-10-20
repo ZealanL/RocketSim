@@ -211,20 +211,13 @@ mod tests {
 
     #[test]
     fn explicit_connections_retarget_without_launching_and_reject_duplicate_arenas() {
-        test_trace!("explicit connections start");
         let first = TcpListener::bind("127.0.0.1:0").unwrap();
         let second = TcpListener::bind("127.0.0.1:0").unwrap();
         let first_addr = first.local_addr().unwrap().to_string();
         let second_addr = second.local_addr().unwrap().to_string();
-        test_trace!("create arena");
         let mut arena = Arena::new(GameMode::TheVoid);
-        test_trace!("arena created");
-        test_trace!("create second arena");
         let mut other = Arena::new(GameMode::TheVoid);
-        test_trace!("second arena created");
-        test_trace!("attach first address");
         arena.try_set_net_vis(Some(&first_addr)).unwrap();
-        test_trace!("attached first address");
         assert_eq!(net_vis(&arena).unwrap().address(), first_addr);
         arena.try_set_vis_enabled(true).unwrap();
         assert_eq!(net_vis(&arena).unwrap().address(), first_addr);
@@ -273,16 +266,11 @@ mod tests {
 
     #[test]
     fn retained_deletions_survive_skipped_physics_frames() {
-        test_trace!("retained deletions start");
         let viewer = ViewerListener::try_bind("127.0.0.1:0").unwrap();
-        test_trace!("create arena");
         let mut arena = Arena::new(GameMode::TheVoid);
-        test_trace!("arena created");
-        test_trace!("attach viewer");
         arena
             .try_set_net_vis(Some(&viewer.local_addr().to_string()))
             .unwrap();
-        test_trace!("viewer attached");
         let renderer = arena.debug_renderer().expect("renderer attached");
         for index in 0..5 {
             renderer
@@ -294,7 +282,6 @@ mod tests {
                 .unwrap();
         }
         let deadline = Instant::now() + Duration::from_secs(10);
-        test_trace!("wait for initial scene");
         loop {
             arena.step_tick();
             if viewer.snapshot().debug.group_count() >= 5 {
@@ -306,75 +293,55 @@ mod tests {
             );
             std::thread::sleep(Duration::from_millis(2));
         }
-        test_trace!("initial scene received");
         for index in 0..5 {
             renderer.clear_group(&format!("g{index}")).unwrap();
         }
         for _ in 0..30 {
             arena.step_tick();
         }
-        test_trace!("wait for deletions");
         wait_for_debug(
             &viewer,
             Instant::now() + Duration::from_secs(10),
             DebugScene::is_empty,
         );
-        test_trace!("deletions received");
         assert!(viewer.snapshot().frame.is_some());
-        test_trace!("test body complete; dropping local values");
     }
 
     #[test]
     fn retained_updates_arrive_while_simulation_is_paused() {
-        test_trace!("paused updates start");
         let viewer = ViewerListener::try_bind("127.0.0.1:0").unwrap();
-        test_trace!("create arena");
         let mut arena = Arena::new(GameMode::TheVoid);
-        test_trace!("arena created");
-        test_trace!("attach viewer");
         arena
             .try_set_net_vis(Some(&viewer.local_addr().to_string()))
             .unwrap();
-        test_trace!("viewer attached");
         let renderer = arena.debug_renderer().expect("renderer attached");
         renderer
             .replace_group("paused", point_list(1.0), GroupOptions::default())
             .unwrap();
-        test_trace!("wait for paused group");
         wait_for_debug(&viewer, Instant::now() + Duration::from_secs(10), |scene| {
             scene.get_group("paused").is_some()
         });
-        test_trace!("paused group received");
         renderer.set_group_visible("paused", false).unwrap();
-        test_trace!("wait for visibility update");
         wait_for_debug(&viewer, Instant::now() + Duration::from_secs(10), |scene| {
             scene
                 .get_group("paused")
                 .is_some_and(|group| !group.visible)
         });
-        test_trace!("visibility update received");
         assert!(viewer.snapshot().frame.is_none());
-        test_trace!("test body complete; dropping local values");
     }
 
     #[test]
     fn reconnect_sends_clean_full_scene_without_old_deletes() {
-        test_trace!("reconnect start");
         let viewer = ViewerListener::try_bind("127.0.0.1:0").unwrap();
         let addr = viewer.local_addr().to_string();
-        test_trace!("create arena");
         let mut arena = Arena::new(GameMode::TheVoid);
-        test_trace!("arena created");
-        test_trace!("attach viewer");
         arena.try_set_net_vis(Some(&addr)).unwrap();
-        test_trace!("viewer attached");
         arena
             .debug_renderer()
             .unwrap()
             .replace_group("stale", point_list(0.0), GroupOptions::default())
             .unwrap();
         let deadline = Instant::now() + Duration::from_secs(10);
-        test_trace!("wait for first scene");
         loop {
             arena.step_tick();
             if viewer.snapshot().debug.get_group("stale").is_some() {
@@ -383,12 +350,8 @@ mod tests {
             assert!(Instant::now() < deadline, "first scene did not arrive");
             std::thread::sleep(Duration::from_millis(2));
         }
-        test_trace!("first scene received");
         let generation = viewer.snapshot().generation;
-        test_trace!("detach viewer");
         arena.set_net_vis(None);
-        test_trace!("viewer detached");
-        test_trace!("wait for reset");
         let deadline = Instant::now() + Duration::from_secs(5);
         while viewer.snapshot().generation <= generation {
             assert!(
@@ -397,17 +360,13 @@ mod tests {
             );
             std::thread::sleep(Duration::from_millis(5));
         }
-        test_trace!("viewer reset");
-        test_trace!("reattach viewer");
         arena.try_set_net_vis(Some(&addr)).unwrap();
-        test_trace!("viewer reattached");
         arena
             .debug_renderer()
             .unwrap()
             .replace_group("fresh", point_list(9.0), GroupOptions::default())
             .unwrap();
         let deadline = Instant::now() + Duration::from_secs(10);
-        test_trace!("wait for fresh scene");
         loop {
             arena.step_tick();
             let snapshot = viewer.snapshot();
@@ -418,21 +377,15 @@ mod tests {
             assert!(Instant::now() < deadline, "fresh full scene did not arrive");
             std::thread::sleep(Duration::from_millis(2));
         }
-        test_trace!("fresh scene received; dropping local values");
     }
 
     #[test]
     fn retained_rejections_are_typed_and_bounded() {
-        test_trace!("retained rejections start");
         let viewer = ViewerListener::try_bind("127.0.0.1:0").unwrap();
-        test_trace!("create arena");
         let mut arena = Arena::new(GameMode::TheVoid);
-        test_trace!("arena created");
-        test_trace!("attach viewer");
         arena
             .try_set_net_vis(Some(&viewer.local_addr().to_string()))
             .unwrap();
-        test_trace!("viewer attached");
         let renderer = arena.debug_renderer().expect("renderer attached");
         assert!(matches!(
             renderer.replace_group("bad name!", point_list(0.0), GroupOptions::default()),
@@ -453,25 +406,17 @@ mod tests {
 
     #[test]
     fn arena_receives_controls_and_accumulates_action_pulses() {
-        test_trace!("controls start");
         let viewer = ViewerListener::try_bind("127.0.0.1:0").unwrap();
-        test_trace!("create arena");
         let mut arena = Arena::new(GameMode::TheVoid);
-        test_trace!("arena created");
-        test_trace!("attach viewer");
         arena
             .try_set_net_vis(Some(&viewer.local_addr().to_string()))
             .unwrap();
-        test_trace!("viewer attached");
         let deadline = Instant::now() + Duration::from_secs(3);
-        test_trace!("wait for first frame");
         while viewer.snapshot().frame.is_none() {
             arena.step_tick();
             assert!(Instant::now() < deadline, "frame did not arrive");
             std::thread::sleep(Duration::from_millis(2));
         }
-        test_trace!("first frame received");
-        test_trace!("send controls");
         assert!(viewer.send_controls(crate::proto::ControlMsg::new(
             0,
             rocketsim::CarControls::default(),
@@ -484,7 +429,6 @@ mod tests {
             4,
             2,
         )));
-        test_trace!("wait for controls");
         loop {
             if arena
                 .latest_vis_controls()
@@ -496,12 +440,8 @@ mod tests {
             std::thread::sleep(Duration::from_millis(2));
         }
         assert_eq!(arena.take_vis_actions(), 5);
-        test_trace!("controls received");
         assert_eq!(arena.take_vis_actions(), 0);
-        test_trace!("detach viewer");
         arena.set_vis_enabled(false);
-        test_trace!("viewer detached");
         assert!(!arena.vis_connected());
-        test_trace!("test body complete; dropping local values");
     }
 }
