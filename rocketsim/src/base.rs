@@ -287,6 +287,13 @@ where
             ));
         }
 
+        if game_mode == GameMode::Soccar {
+            mesh_files.sort_by_key(|mesh| {
+                GameMode::soccar_component_order(mesh.get_hash())
+                    .expect("validated Soccar mesh hash has a native order")
+            });
+        }
+
         arena_collision_mesh_files.insert(game_mode, mesh_files);
     }
 

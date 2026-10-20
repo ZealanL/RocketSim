@@ -557,6 +557,11 @@ impl Arena {
     /// The index is the car's id for `get_car_*/set_car_*`. Cars can only be
     /// added, never removed — build a fresh [`Arena`] to reset the lobby.
     ///
+    /// # Panics
+    ///
+    /// Panics if the car exceeds the broadphase limit of 16,384 collision
+    /// objects. This count includes arena shapes and the ball.
+    ///
     /// ```no_run
     /// # use rocketsim::{Arena, CarBodyConfig, GameMode, Team, init_from_default};
     /// # init_from_default(true).unwrap();

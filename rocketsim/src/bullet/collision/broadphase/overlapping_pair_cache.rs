@@ -1,5 +1,3 @@
-use std::mem;
-
 use super::{BroadphasePair, BroadphaseProxy};
 use crate::bullet::{
     collision::{
@@ -9,81 +7,106 @@ use crate::bullet::{
     dynamics::rigid_body::RigidBody,
 };
 
-/// Pair dedup keyed by sorted proxy IDs.
+/// Dense retained pair cache keyed by ordered proxy unique IDs.
 ///
-/// Proxy `unique_id`s are assigned once at insertion with no removal path,
-/// so IDs stay valid for the cache lifetime. Generation `0` marks empty
-/// cells; live ticks run from `1`.
+/// `pair_indices` maps a triangular proxy-ID key to the pair-array index plus one.
+/// Zero means that no pair is retained.
 #[derive(Clone)]
 pub struct OverlappingPairCache {
     overlapping_pair_array: Vec<BroadphasePair>,
-    seen_gens: Vec<u32>,
-    cur_gen: u32,
+    pair_indices: Vec<u32>,
 }
 
 impl Default for OverlappingPairCache {
     fn default() -> Self {
         Self {
             overlapping_pair_array: Vec::with_capacity(32),
-            seen_gens: Vec::new(),
-            cur_gen: 1,
+            pair_indices: Vec::new(),
         }
     }
 }
 
 impl OverlappingPairCache {
+    /// Filter, deduplicate, append at the end.
+    ///
+    /// Returns true when a new pair was appended.
     pub fn add_overlapping_pair(
         &mut self,
         proxy0: &BroadphaseProxy,
         proxy0_idx: usize,
         proxy1: &BroadphaseProxy,
         proxy1_idx: usize,
-    ) {
+    ) -> bool {
         if !Self::needs_broadphase_collision(proxy0, proxy1) {
-            return;
+            return false;
         }
 
-        let (mut proxy0_id, mut proxy0_idx) = (proxy0.unique_id, proxy0_idx);
-        let (mut proxy1_id, mut proxy1_idx) = (proxy1.unique_id, proxy1_idx);
-        if proxy0_id > proxy1_id {
-            mem::swap(&mut proxy0_id, &mut proxy1_id);
-            mem::swap(&mut proxy0_idx, &mut proxy1_idx);
+        let (proxy0_id, proxy0_idx, proxy1_id, proxy1_idx) = if proxy0.unique_id <= proxy1.unique_id
+        {
+            (proxy0.unique_id, proxy0_idx, proxy1.unique_id, proxy1_idx)
+        } else {
+            (proxy1.unique_id, proxy1_idx, proxy0.unique_id, proxy0_idx)
+        };
+
+        let table_idx = Self::table_index(proxy0_id, proxy1_id);
+        if table_idx >= self.pair_indices.len() {
+            self.pair_indices.resize(table_idx + 1, 0);
+        }
+        if self.pair_indices[table_idx] != 0 {
+            return false;
         }
 
-        let (lo, hi) = (proxy0_id as usize, proxy1_id as usize);
-        debug_assert!(lo <= hi);
-        // Triangular index is stable under growth: extending the table for
-        // a new max ID never moves existing pairs.
-        let table_idx = hi * (hi + 1) / 2 + lo;
-        if table_idx >= self.seen_gens.len() {
-            // Cold path: runs only when a new max ID appears.
-            let needed = (hi + 1).checked_mul(hi + 2).expect("pair table overflow") / 2;
-            self.seen_gens.resize(needed, 0);
-        }
-        debug_assert!(table_idx < self.seen_gens.len());
-        if self.seen_gens[table_idx] == self.cur_gen {
-            return;
-        }
-        self.seen_gens[table_idx] = self.cur_gen;
         self.overlapping_pair_array.push(BroadphasePair {
             proxy0: proxy0_idx,
             proxy1: proxy1_idx,
         });
+        self.pair_indices[table_idx] =
+            u32::try_from(self.overlapping_pair_array.len()).expect("pair index overflow");
+        true
     }
 
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.overlapping_pair_array.is_empty()
-    }
-
-    #[inline]
-    pub fn finish_direct_dispatch(&mut self) {
-        debug_assert!(self.overlapping_pair_array.is_empty());
-        self.cur_gen = self.cur_gen.wrapping_add(1);
-        if self.cur_gen == 0 {
-            self.seen_gens.fill(0);
-            self.cur_gen = 1;
+    /// Swap-with-last and fix the moved entry.
+    ///
+    /// Returns the removed pair. The caller must release its manifold at
+    /// this removal site, before any later edge event or dispatch.
+    pub fn remove_overlapping_pair(
+        &mut self,
+        handles: &[BroadphaseProxy],
+        proxy0_id: u32,
+        proxy1_id: u32,
+    ) -> Option<BroadphasePair> {
+        let table_idx = Self::table_index(proxy0_id, proxy1_id);
+        if table_idx >= self.pair_indices.len() {
+            return None;
         }
+
+        let entry = self.pair_indices[table_idx];
+        if entry == 0 {
+            return None;
+        }
+
+        let index = entry as usize - 1;
+        let last_index = self.overlapping_pair_array.len() - 1;
+        let removed = self.overlapping_pair_array[index];
+
+        self.pair_indices[table_idx] = 0;
+        if index != last_index {
+            self.overlapping_pair_array.swap(index, last_index);
+            let moved = self.overlapping_pair_array[index];
+            let moved_key = Self::table_index(
+                handles[moved.proxy0].unique_id,
+                handles[moved.proxy1].unique_id,
+            );
+            self.pair_indices[moved_key] = u32::try_from(index + 1).expect("pair index overflow");
+        }
+        self.overlapping_pair_array.pop();
+
+        Some(removed)
+    }
+
+    #[inline]
+    pub(super) fn retained_pairs(&self) -> &[BroadphasePair] {
+        &self.overlapping_pair_array
     }
 
     #[inline]
@@ -95,6 +118,16 @@ impl OverlappingPairCache {
             && (proxy1.collision_filter_group & proxy0.collision_filter_mask) != 0
     }
 
+    fn table_index(proxy0_id: u32, proxy1_id: u32) -> usize {
+        let lo = proxy0_id.min(proxy1_id) as usize;
+        let hi = proxy0_id.max(proxy1_id) as usize;
+        hi * (hi + 1) / 2 + lo
+    }
+
+    /// Dispatch the retained pairs in array order.
+    ///
+    /// Pair add and removal already happened during `setAabb`. There is no
+    /// stale sweep here.
     pub fn process_all_overlapping_pairs<T: ContactAddedCallback>(
         &mut self,
         collision_objs: &[RigidBody],
@@ -102,22 +135,14 @@ impl OverlappingPairCache {
         handles: &[BroadphaseProxy],
         contact_added_callback: &mut T,
     ) {
+        dispatcher.prepare_dispatch_bounds(collision_objs.len());
         for pair in &self.overlapping_pair_array {
-            dispatcher.near_callback(
+            dispatcher.near_callback_with_cached_bounds(
                 collision_objs,
                 &handles[pair.proxy0],
                 &handles[pair.proxy1],
                 contact_added_callback,
             );
-        }
-
-        self.overlapping_pair_array.clear();
-        // Next tick uses a fresh generation; no table clear needed.
-        self.cur_gen = self.cur_gen.wrapping_add(1);
-        if self.cur_gen == 0 {
-            // `u32` wrap after ~4B ticks: reset all marks and restart.
-            self.seen_gens.fill(0);
-            self.cur_gen = 1;
         }
     }
 }

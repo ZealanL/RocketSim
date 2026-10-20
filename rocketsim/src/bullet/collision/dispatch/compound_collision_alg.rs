@@ -83,6 +83,24 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
     }
 }
 
+pub(crate) fn child_world_aabb(compound_obj: &RigidBody, compound_shape: &CompoundShape) -> Aabb {
+    let org_trans = *compound_obj.get_world_trans();
+    let new_child_world_trans = org_trans * compound_shape.child_trans;
+    compound_shape.child_shape.get_aabb(&new_child_world_trans)
+}
+
+pub(crate) fn child_overlaps_other(
+    compound_obj: &RigidBody,
+    compound_shape: &CompoundShape,
+    other_obj: &RigidBody,
+) -> bool {
+    let child_aabb = child_world_aabb(compound_obj, compound_shape);
+    let other_aabb = other_obj
+        .get_collision_shape()
+        .get_aabb(other_obj.get_world_trans());
+    child_aabb.intersects(&other_aabb)
+}
+
 pub fn process_collision<T: ContactAddedCallback>(
     compound_obj: &RigidBody,
     compound_shape: &CompoundShape,
@@ -91,19 +109,34 @@ pub fn process_collision<T: ContactAddedCallback>(
     out: &mut Option<PersistentManifold>,
 ) {
     debug_assert!(out.is_none());
+    if !child_overlaps_other(compound_obj, compound_shape, other_obj) {
+        return;
+    }
+
+    process_collision_after_child_gate(
+        compound_obj,
+        compound_shape,
+        other_obj,
+        contact_added_callback,
+        out,
+    );
+}
+
+pub(crate) fn process_collision_after_child_gate<T: ContactAddedCallback>(
+    compound_obj: &RigidBody,
+    compound_shape: &CompoundShape,
+    other_obj: &RigidBody,
+    contact_added_callback: &mut T,
+    out: &mut Option<PersistentManifold>,
+) {
+    debug_assert!(out.is_none());
+
     let org_trans = *compound_obj.get_world_trans();
     let child_trans = &compound_shape.child_trans;
     let new_child_world_trans = org_trans * child_trans;
 
     let box_shape = &compound_shape.child_shape;
-    let aabb1 = box_shape.get_aabb(&new_child_world_trans);
-
     let other_col_shape = other_obj.get_collision_shape();
-    let aabb2 = other_col_shape.get_aabb(other_obj.get_world_trans());
-
-    if !aabb1.intersects(&aabb2) {
-        return;
-    }
 
     match other_col_shape {
         CollisionShapes::TriangleMesh(tri_mesh) => {

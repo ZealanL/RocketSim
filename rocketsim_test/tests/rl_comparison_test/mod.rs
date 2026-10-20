@@ -1,3 +1,5 @@
+use std::process::Command;
+
 use rocketsim::{Arena, CarBodyConfig, CarControls, CarState, GameMode, PhysState, Team};
 use rocketsim_test::rlpr::{
     Recording, cpp_records::copy_recorded_contact_cache, tick_record::TickRecord,
@@ -146,6 +148,54 @@ fn init_rocketsim() {
         )
         .unwrap();
     });
+}
+
+#[test]
+fn turtle_goal_fall_island_order_regression() {
+    const TEST_NAME: &str = "rl_comparison_test::turtle_goal_fall_island_order_regression";
+    const CHILD_ENV: &str = "ROCKETSIM_ISLAND_ORDER";
+
+    if let Ok(order) = std::env::var(CHILD_ENV) {
+        let mesh_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../collision_meshes")
+            .join(GameMode::Soccar.name());
+        let mut paths = std::fs::read_dir(mesh_dir)
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .filter(|path| path.extension().is_some_and(|extension| extension == "cmf"))
+            .collect::<Vec<_>>();
+        paths.sort();
+        match order.as_str() {
+            "forward" => {}
+            "reverse" => paths.reverse(),
+            "shuffle-17" | "shuffle-98321" => {
+                let seed = if order == "shuffle-17" { 17 } else { 98_321 };
+                fastrand::Rng::with_seed(seed).shuffle(&mut paths);
+            }
+            _ => panic!("Unknown mesh order: {order}"),
+        }
+        let meshes = paths
+            .into_iter()
+            .map(|path| std::fs::read(path).unwrap())
+            .collect::<Vec<_>>();
+        rocketsim::init_from_mem([(GameMode::Soccar, meshes)], true).unwrap();
+        let recording = Recording::from_bytes(
+            "cw_turtle_goal_fall_autoroll",
+            include_bytes!("test_recordings/cw_turtle_goal_fall_autoroll.rlpr"),
+        )
+        .unwrap();
+        test_recording(&recording);
+        return;
+    }
+
+    for order in ["forward", "reverse", "shuffle-17", "shuffle-98321"] {
+        let status = Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", TEST_NAME, "--nocapture"])
+            .env(CHILD_ENV, order)
+            .status()
+            .unwrap();
+        assert!(status.success(), "mesh order {order} failed with {status}");
+    }
 }
 
 // This will be called from each test file

@@ -3,17 +3,22 @@ use super::{
     convex_plane_collision_alg, obb_obb_collision_alg, sphere_concave_collision_alg,
     sphere_obb_collision_alg,
 };
-use crate::bullet::{
-    collision::{
-        broadphase::{BroadphaseProxy, GridBroadphase},
-        dispatch::convex_convex_collision_alg,
-        narrowphase::persistent_manifold::{ContactAddedCallback, PersistentManifold, pair_key},
-        shapes::{
-            bvh_triangle_mesh_shape::BvhTriangleMeshShape, collision_shape::CollisionShapes,
-            sphere_shape::SphereShape,
+use crate::{
+    bullet::{
+        collision::{
+            broadphase::{BroadphaseProxy, GridBroadphase},
+            dispatch::convex_convex_collision_alg,
+            narrowphase::persistent_manifold::{
+                ContactAddedCallback, PersistentManifold, pair_key,
+            },
+            shapes::{
+                bvh_triangle_mesh_shape::BvhTriangleMeshShape, collision_shape::CollisionShapes,
+                compound_shape::CompoundShape, sphere_shape::SphereShape,
+            },
         },
+        dynamics::rigid_body::RigidBody,
     },
-    dynamics::rigid_body::RigidBody,
+    shared::Aabb,
 };
 
 #[derive(Clone)]
@@ -23,12 +28,12 @@ pub struct CollisionDispatcher {
     /// Pushed in pair-processing order, so the solver sees the same
     /// contact order as the old per-tick manifold clones.
     pub active_manifolds: Vec<usize>,
-    /// Dense index from ordered body pair to `persistent_manifolds` index.
-    /// Cell `min * stride + max` holds the index plus one (`0` = none).
-    /// Push-only manifold vector, so indices stay stable. Maintain at push
-    /// sites below; any removal/clear must rebuild this table too.
+    /// Dense index from ordered body pair to manifold index plus one.
+    /// Zero means that the pair has no retained manifold.
     manifold_table: Vec<u32>,
     manifold_stride: usize,
+    raw_body_aabbs: Vec<Option<Aabb>>,
+    compound_child_aabbs: Vec<Option<Aabb>>,
 }
 
 enum MeshCollision<'a> {
@@ -69,6 +74,8 @@ impl Default for CollisionDispatcher {
             active_manifolds: Vec::with_capacity(8),
             manifold_table: Vec::new(),
             manifold_stride: 0,
+            raw_body_aabbs: Vec::new(),
+            compound_child_aabbs: Vec::new(),
         }
     }
 }
@@ -86,7 +93,11 @@ impl CollisionDispatcher {
     }
 
     /// Push a first-seen pair's manifold and record its index.
-    fn insert_persistent_manifold(&mut self, key: u64, manifold: PersistentManifold) -> usize {
+    pub(crate) fn insert_persistent_manifold(
+        &mut self,
+        key: u64,
+        manifold: PersistentManifold,
+    ) -> usize {
         debug_assert_eq!(manifold.pair_key, key);
         // Read indices before push; growth rebuild covers prior manifolds only.
         let (lo, hi) = (
@@ -108,20 +119,150 @@ impl CollisionDispatcher {
         idx
     }
 
+    fn lookup_persistent_manifold(&self, body0_idx: usize, body1_idx: usize) -> Option<usize> {
+        let (lo, hi) = (body0_idx.min(body1_idx), body0_idx.max(body1_idx));
+        if hi >= self.manifold_stride {
+            return None;
+        }
+        let entry = self.manifold_table[lo * self.manifold_stride + hi];
+        if entry == 0 {
+            None
+        } else {
+            Some(entry as usize - 1)
+        }
+    }
+
+    pub(crate) fn release_manifold(&mut self, body0_idx: usize, body1_idx: usize) {
+        let Some(index) = self.lookup_persistent_manifold(body0_idx, body1_idx) else {
+            return;
+        };
+        let (lo, hi) = (body0_idx.min(body1_idx), body0_idx.max(body1_idx));
+        let table_index = lo * self.manifold_stride + hi;
+        let last_index = self.persistent_manifolds.len() - 1;
+
+        self.persistent_manifolds[index].point_cache.clear();
+        self.manifold_table[table_index] = 0;
+
+        // A child-algorithm cleanup can release a manifold in the middle of
+        // pair dispatch. Keep earlier active rows and remap the swap target.
+        self.active_manifolds.retain(|&active| active != index);
+        self.persistent_manifolds.swap_remove(index);
+        if index != last_index {
+            for active in &mut self.active_manifolds {
+                if *active == last_index {
+                    *active = index;
+                }
+            }
+            let moved = &self.persistent_manifolds[index];
+            let moved_lo = moved.body0_idx.min(moved.body1_idx);
+            let moved_hi = moved.body0_idx.max(moved.body1_idx);
+            self.manifold_table[moved_lo * self.manifold_stride + moved_hi] =
+                u32::try_from(index + 1).expect("manifold index overflow");
+        }
+    }
+
     /// Grow the table to cover `needed - 1` and reinsert existing mappings.
     fn grow_manifold_table(&mut self, needed: usize) {
         // Round stride to 16 to avoid reallocating per body.
         let new_stride = (needed + 15) & !15;
-        let mut new_table = vec![0u32; new_stride * new_stride];
+        self.manifold_table.clear();
+        self.manifold_table.resize(new_stride * new_stride, 0);
         for (idx, manifold) in self.persistent_manifolds.iter().enumerate() {
             let lo = manifold.body0_idx.min(manifold.body1_idx);
             let hi = manifold.body0_idx.max(manifold.body1_idx);
-            new_table[lo * new_stride + hi] =
+            self.manifold_table[lo * new_stride + hi] =
                 u32::try_from(idx + 1).expect("manifold index overflow");
         }
 
-        self.manifold_table = new_table;
         self.manifold_stride = new_stride;
+    }
+
+    fn compound_child_pair<'a>(
+        col_obj_a: &'a RigidBody,
+        col_obj_b: &'a RigidBody,
+    ) -> Option<(&'a RigidBody, &'a CompoundShape, &'a RigidBody)> {
+        // `Compound` versus `Compound` keeps the OBB-OBB path. The native
+        // compound child cleanup is recovered only for one compound side.
+        let is_other = |shape: &CollisionShapes| {
+            !matches!(
+                shape,
+                CollisionShapes::Compound(_) | CollisionShapes::Triangle(_)
+            )
+        };
+
+        match (
+            col_obj_a.get_collision_shape(),
+            col_obj_b.get_collision_shape(),
+        ) {
+            (CollisionShapes::Compound(compound), other) if is_other(other) => {
+                Some((col_obj_a, compound, col_obj_b))
+            }
+            (other, CollisionShapes::Compound(compound)) if is_other(other) => {
+                Some((col_obj_b, compound, col_obj_a))
+            }
+            _ => None,
+        }
+    }
+
+    pub(crate) fn prepare_dispatch_bounds(&mut self, body_count: usize) {
+        self.raw_body_aabbs.clear();
+        self.raw_body_aabbs.resize(body_count, None);
+        self.compound_child_aabbs.clear();
+        self.compound_child_aabbs.resize(body_count, None);
+    }
+
+    fn cached_raw_body_aabb(&mut self, body_idx: usize, body: &RigidBody) -> Aabb {
+        if let Some(aabb) = self.raw_body_aabbs[body_idx] {
+            return aabb;
+        }
+
+        let aabb = body.get_collision_shape().get_aabb(body.get_world_trans());
+        self.raw_body_aabbs[body_idx] = Some(aabb);
+        aabb
+    }
+
+    fn cached_compound_child_overlaps_other(
+        &mut self,
+        compound_idx: usize,
+        compound_obj: &RigidBody,
+        compound_shape: &CompoundShape,
+        other_idx: usize,
+        other_obj: &RigidBody,
+    ) -> bool {
+        let child_aabb = match self.compound_child_aabbs[compound_idx] {
+            Some(aabb) => aabb,
+            None => {
+                let aabb = compound_collision_alg::child_world_aabb(compound_obj, compound_shape);
+                self.compound_child_aabbs[compound_idx] = Some(aabb);
+                aabb
+            }
+        };
+        let other_aabb = self.cached_raw_body_aabb(other_idx, other_obj);
+        child_aabb.intersects(&other_aabb)
+    }
+
+    fn empty_manifold_bodies<'a>(
+        col_obj_a: &'a RigidBody,
+        col_obj_b: &'a RigidBody,
+    ) -> (&'a RigidBody, &'a RigidBody) {
+        use CollisionShapes as Shape;
+
+        match (
+            col_obj_a.get_collision_shape(),
+            col_obj_b.get_collision_shape(),
+        ) {
+            (Shape::StaticPlane(_), _) => (col_obj_b, col_obj_a),
+            (Shape::Sphere(_), Shape::Compound(_)) => (col_obj_a, col_obj_b),
+            (Shape::Sphere(_), Shape::TriangleMesh(_)) => (col_obj_a, col_obj_b),
+            (Shape::TriangleMesh(_), Shape::Sphere(_) | Shape::ConvexHull(_)) => {
+                (col_obj_b, col_obj_a)
+            }
+            (Shape::TriangleMesh(_), Shape::Compound(_)) => (col_obj_b, col_obj_a),
+            (Shape::ConvexHull(_), Shape::Compound(_)) => (col_obj_b, col_obj_a),
+            (Shape::ConvexHull(_), _) => (col_obj_a, col_obj_b),
+            (Shape::Compound(_), Shape::Sphere(_)) => (col_obj_b, col_obj_a),
+            _ => (col_obj_a, col_obj_b),
+        }
     }
 
     fn mesh_collision<'a>(
@@ -171,6 +312,15 @@ impl CollisionDispatcher {
         col_obj_a: &'a RigidBody,
         col_obj_b: &'a RigidBody,
         contact_added_callback: &'a mut T,
+        out: &mut Option<PersistentManifold>,
+    ) {
+        Self::process_collision_inner(col_obj_a, col_obj_b, contact_added_callback, out);
+    }
+
+    fn process_collision_inner<T: ContactAddedCallback>(
+        col_obj_a: &RigidBody,
+        col_obj_b: &RigidBody,
+        contact_added_callback: &mut T,
         out: &mut Option<PersistentManifold>,
     ) {
         debug_assert!(out.is_none());
@@ -363,7 +513,22 @@ impl CollisionDispatcher {
         }
     }
 
-    pub fn near_callback<T: ContactAddedCallback>(
+    pub(crate) fn near_callback_with_cached_bounds<T: ContactAddedCallback>(
+        &mut self,
+        collision_objs: &[RigidBody],
+        proxy0: &BroadphaseProxy,
+        proxy1: &BroadphaseProxy,
+        contact_added_callback: &mut T,
+    ) {
+        self.near_callback_with_bounds::<true, T>(
+            collision_objs,
+            proxy0,
+            proxy1,
+            contact_added_callback,
+        );
+    }
+
+    fn near_callback_with_bounds<const USE_CACHED_BOUNDS: bool, T: ContactAddedCallback>(
         &mut self,
         collision_objs: &[RigidBody],
         proxy0: &BroadphaseProxy,
@@ -383,20 +548,10 @@ impl CollisionDispatcher {
         }
 
         // Dense table lookup; insertion order is unchanged.
-        let (lo, hi) = (rb0_idx.min(rb1_idx), rb0_idx.max(rb1_idx));
-        let cached_idx = if hi < self.manifold_stride {
-            let cell = self.manifold_table[lo * self.manifold_stride + hi];
-            if cell == 0 {
-                None
-            } else {
-                Some(cell as usize - 1)
-            }
-        } else {
-            None
-        };
+        let cached_idx = self.lookup_persistent_manifold(rb0_idx, rb1_idx);
 
         if let Some(cached_idx) = cached_idx {
-            // Push-only vector, so a hit must reference this exact pair.
+            // The dense index must reference this exact body pair.
             let manifold = &self.persistent_manifolds[cached_idx];
             debug_assert_eq!(manifold.pair_key, pair_key(rb0_idx, rb1_idx));
             debug_assert!(
@@ -404,6 +559,30 @@ impl CollisionDispatcher {
                     || (manifold.body0_idx == rb1_idx && manifold.body1_idx == rb0_idx),
                 "stale pair index"
             );
+        }
+
+        let compound_pair = Self::compound_child_pair(rb0, rb1);
+        let compound_gate = compound_pair.map(|(compound_obj, compound, other_obj)| {
+            if USE_CACHED_BOUNDS {
+                let (compound_idx, other_idx) = if std::ptr::eq(compound_obj, rb0) {
+                    (rb0_idx, rb1_idx)
+                } else {
+                    (rb1_idx, rb0_idx)
+                };
+                self.cached_compound_child_overlaps_other(
+                    compound_idx,
+                    compound_obj,
+                    compound,
+                    other_idx,
+                    other_obj,
+                )
+            } else {
+                compound_collision_alg::child_overlaps_other(compound_obj, compound, other_obj)
+            }
+        });
+        if compound_gate == Some(false) {
+            self.release_manifold(rb0_idx, rb1_idx);
+            return;
         }
 
         if let Some(mesh_collision) = Self::mesh_collision(rb0, rb1) {
@@ -417,20 +596,36 @@ impl CollisionDispatcher {
                 )
             };
 
-            let has_contacts = Self::process_mesh_collision_into(
+            Self::process_mesh_collision_into(
                 mesh_collision,
                 &mut self.persistent_manifolds[persistent_idx],
                 contact_added_callback,
             );
 
-            if has_contacts {
-                self.active_manifolds.push(persistent_idx);
-            }
+            self.active_manifolds.push(persistent_idx);
             return;
         }
 
         let mut fresh: Option<PersistentManifold> = None;
-        Self::process_collision(rb0, rb1, contact_added_callback, &mut fresh);
+        match compound_pair {
+            Some((compound_obj, compound_shape, other_obj))
+                if matches!(
+                    other_obj.get_collision_shape(),
+                    CollisionShapes::StaticPlane(_)
+                        | CollisionShapes::TriangleMesh(_)
+                        | CollisionShapes::ConvexHull(_)
+                ) =>
+            {
+                compound_collision_alg::process_collision_after_child_gate(
+                    compound_obj,
+                    compound_shape,
+                    other_obj,
+                    contact_added_callback,
+                    &mut fresh,
+                );
+            }
+            _ => Self::process_collision_inner(rb0, rb1, contact_added_callback, &mut fresh),
+        }
 
         // Share the persistent manifold with the solver by index instead
         // of pushing a per-tick clone. Merge and refresh order is
@@ -482,12 +677,19 @@ impl CollisionDispatcher {
                 pair_key(rb0_idx, rb1_idx),
                 fresh.take().expect("fresh hit"),
             ),
-            (None, None) => return,
+            (None, None) => {
+                // The child algorithm exists because the gate above passed.
+                // Its convex-concave constructor creates the manifold before
+                // the first point, so keep an empty retained row.
+                let (body0, body1) = Self::empty_manifold_bodies(rb0, rb1);
+                self.insert_persistent_manifold(
+                    pair_key(rb0_idx, rb1_idx),
+                    PersistentManifold::new(body0, body1),
+                )
+            }
         };
 
-        if !self.persistent_manifolds[active_idx].point_cache.is_empty() {
-            self.active_manifolds.push(active_idx);
-        }
+        self.active_manifolds.push(active_idx);
     }
 
     pub fn dispatch_all_collision_pairs<T: ContactAddedCallback>(

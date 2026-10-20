@@ -240,7 +240,32 @@ impl RigidBody {
         self.contact_breaking_threshold
     }
 
+    /// Assert that an inserted static body does not change transform.
+    ///
+    /// A static proxy AABB is final after `CollisionWorld::add_collision_obj`
+    /// assigns a broadphase handle. The `bullet` module is private, and the
+    /// public `Arena` API exposes no mutable static body. Internal setup code
+    /// must set `start_world_trans` before insertion.
+    #[inline]
+    fn assert_static_transform_unchanged(&self, world_trans: &Affine3A) {
+        assert!(
+            !self.is_static_obj()
+                || self.broadphase_handle == 0
+                || *world_trans == self.world_trans,
+            "static collision object {} changed its world transform after broadphase insertion; its proxy AABB would be stale",
+            self.world_array_idx
+        );
+    }
+
+    /// Set the world transform.
+    ///
+    /// # Panics
+    ///
+    /// Panics when this is a static body with a broadphase handle and the new
+    /// transform differs from the cached transform.
     pub fn set_world_trans(&mut self, world_trans: Affine3A) {
+        self.assert_static_transform_unchanged(&world_trans);
+
         if (self.collision_flags & CollisionFlags::NoAngularMotion) == 0 {
             self.world_quat = Quat::from_mat3a(&world_trans.matrix3);
         }
@@ -451,7 +476,16 @@ impl RigidBody {
         self.get_world_trans().translation
     }
 
+    /// Set the world translation.
+    ///
+    /// # Panics
+    ///
+    /// Panics when this is a static body with a broadphase handle and the new
+    /// position differs from the cached position.
     pub fn set_world_pos(&mut self, pos: Vec3A) {
+        let mut world_trans = self.world_trans;
+        world_trans.translation = pos;
+        self.assert_static_transform_unchanged(&world_trans);
         self.world_trans.translation = pos;
     }
 

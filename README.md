@@ -144,15 +144,20 @@ random seed, and inputs when you need repeatable runs.
 `Heavy` is the default. Try `Balanced` when you need many arenas. Use `Light`
 when memory use is more important than simulation speed.
 
-The following approximate measurements come from `stress_v3`. They are
-examples, not memory or speed guarantees. Results depend on the platform and
-workload.
+Memory values are approximate Linux RSS measurements. After `init_from_default()`,
+create 100 Soccar arenas with the listed roster. Run 100 episodes of 10,000 ticks
+per arena with generated `stress_v3` input on two worker threads. Subtract the
+initial RSS and divide by 100. RSS rose slowly in the final 10 episodes, so these
+are end-of-run estimates, not a fixed upper bound. The 1v1 workload uses two cars.
+The 3v3 workload uses six cars. Speed values are release `stress_v3` results.
+Differences between modes were within run-to-run variation. Results depend on
+the platform and workload.
 
 | Mode | 1v1 memory per arena | 1v1 speed | 3v3 memory per arena | 3v3 speed |
 | --- | ---: | ---: | ---: | ---: |
-| `Heavy` | 915 KiB | Baseline | 946 KiB | Baseline |
-| `Balanced` | 108 KiB | 1–2% slower | 123 KiB | 3% slower |
-| `Light` | 66 KiB | 9% slower | 91 KiB | 12% slower |
+| `Heavy` | 1,106 KiB | Baseline | 1,119 KiB | Baseline |
+| `Balanced` | 133 KiB | Similar | 147 KiB | Similar |
+| `Light` | 95 KiB | Similar | 108 KiB | Similar |
 
 Use the [benchmark guide](rocketsim_test/README.md#measure-simulation-speed)
 to compare memory modes on your workload.

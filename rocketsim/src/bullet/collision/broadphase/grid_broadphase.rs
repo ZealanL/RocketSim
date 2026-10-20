@@ -1,11 +1,13 @@
 use glam::{IVec3, USizeVec3, Vec3A};
 
-use super::{broadphase_proxy::BroadphaseProxy, overlapping_pair_cache::OverlappingPairCache};
+use super::{
+    axis_sweep::AxisSweep3,
+    broadphase_proxy::{BroadphaseAabbCallback, BroadphaseProxy},
+};
 use crate::{
     bullet::{
         collision::{
-            broadphase::{CollisionFilterGroups, broadphase_proxy::BroadphaseAabbCallback},
-            dispatch::collision_dispatcher::CollisionDispatcher,
+            broadphase::CollisionFilterGroups, dispatch::collision_dispatcher::CollisionDispatcher,
             narrowphase::persistent_manifold::ContactAddedCallback,
             shapes::collision_shape::CollisionShapes,
         },
@@ -163,14 +165,15 @@ impl CellGrid {
     }
 }
 
+/// Grid broadphase for ray queries plus the axis-sweep pair cache.
+///
+/// The grid keeps the cell data used by `ray_test`.
+/// Collision pairs come from `AxisSweep3`, which owns the handles and the retained pair array.
 #[derive(Clone)]
 pub struct GridBroadphase {
     cell_grid: CellGrid,
-    min_dyn_handle_idx: usize,
-    dynamic_proxy_count: usize,
-    singleton_layout_valid: bool,
-    pub handles: Vec<BroadphaseProxy>,
-    pair_cache: OverlappingPairCache,
+    axis_sweep: AxisSweep3,
+    island_dynamic_pairs: Vec<(usize, usize)>,
 }
 
 impl GridBroadphase {
@@ -193,9 +196,6 @@ impl GridBroadphase {
             .collect();
 
         Self {
-            min_dyn_handle_idx: 0,
-            dynamic_proxy_count: 0,
-            singleton_layout_valid: true,
             cell_grid: CellGrid {
                 max_pos,
                 min_pos,
@@ -204,72 +204,91 @@ impl GridBroadphase {
                 num_cells,
                 cells,
             },
-            handles: Vec::with_capacity(32),
-            pair_cache: OverlappingPairCache::default(),
+            axis_sweep: AxisSweep3::new(),
+            island_dynamic_pairs: Vec::with_capacity(16),
         }
     }
 
-    pub fn set_aabb(&mut self, col_obj: &RigidBody, proxy_idx: usize, aabb: Aabb) {
-        let sbp = &mut self.handles[proxy_idx];
-        sbp.aabb = aabb;
+    /// Update the ray-query cells and the native axis-sweep edges.
+    ///
+    /// Pair add and remove happen inside the sweep update.
+    /// A removed pair releases its manifold before this method returns.
+    pub fn set_aabb(
+        &mut self,
+        col_obj: &RigidBody,
+        proxy_idx: usize,
+        aabb: Aabb,
+        dispatcher: &mut CollisionDispatcher,
+    ) {
+        let Self {
+            cell_grid,
+            axis_sweep,
+            ..
+        } = self;
 
-        if (sbp.collision_filter_group & CollisionFilterGroups::Static) != 0 {
-            self.cell_grid.update_cells_static(sbp, col_obj, proxy_idx);
+        // Cache the bounds and update the edges first
+        axis_sweep.set_aabb(proxy_idx, aabb, dispatcher);
+
+        let is_static = (axis_sweep.proxy(proxy_idx).collision_filter_group
+            & CollisionFilterGroups::Static as u8)
+            != 0;
+
+        if is_static {
+            let proxy = *axis_sweep.proxy(proxy_idx);
+            cell_grid.update_cells_static(&proxy, col_obj, proxy_idx);
         } else {
-            let old_idx = sbp.cell_idx as usize;
-            let new_indices = self.cell_grid.get_cell_indices(aabb.min);
-            let new_idx = self.cell_grid.cell_indices_to_idx(new_indices);
+            let old_idx = axis_sweep.proxy(proxy_idx).cell_idx as usize;
+            let new_indices = cell_grid.get_cell_indices(aabb.min);
+            let new_idx = cell_grid.cell_indices_to_idx(new_indices);
 
-            self.handles[proxy_idx].cell_idx = u32::try_from(new_idx).unwrap();
+            axis_sweep.proxy_mut(proxy_idx).cell_idx = u32::try_from(new_idx).unwrap();
             if new_idx != old_idx {
-                let [x, y, z] = self.handles[proxy_idx].indices;
-                self.cell_grid.update_cells_dynamic::<false>(
+                let indices = axis_sweep.proxy(proxy_idx).indices;
+                cell_grid.update_cells_dynamic::<false>(
                     proxy_idx,
-                    USizeVec3::new(x as usize, y as usize, z as usize),
+                    USizeVec3::new(
+                        indices[0] as usize,
+                        indices[1] as usize,
+                        indices[2] as usize,
+                    ),
                 );
-                self.handles[proxy_idx].indices = new_indices.as_uvec3().to_array();
-                self.cell_grid
-                    .update_cells_dynamic::<true>(proxy_idx, new_indices);
+                axis_sweep.proxy_mut(proxy_idx).indices = new_indices.as_uvec3().to_array();
+                cell_grid.update_cells_dynamic::<true>(proxy_idx, new_indices);
             }
         }
     }
 
+    /// Add a handle to the ray grid and to the axis sweep.
     pub fn create_proxy(
         &mut self,
         aabb: Aabb,
         co: &RigidBody,
         collision_filter_group: u8,
         collision_filter_mask: u8,
+        dispatcher: &mut CollisionDispatcher,
     ) -> usize {
         debug_assert!(aabb.min.cmple(aabb.max).all());
 
         let is_static = (collision_filter_group & CollisionFilterGroups::Static) != 0;
-        let new_handle_idx = self.handles.len();
         let indices = self.cell_grid.get_cell_indices(aabb.min);
         let cell_idx = self.cell_grid.cell_indices_to_idx(indices);
 
-        let new_handle = BroadphaseProxy {
-            aabb,
+        let proxy = BroadphaseProxy {
             client_obj_idx: u32::try_from(co.world_array_idx).unwrap(),
             collision_filter_group,
             collision_filter_mask,
-            unique_id: u32::try_from(new_handle_idx).unwrap(),
+            unique_id: 0,
+            aabb,
             cell_idx: u32::try_from(cell_idx).unwrap(),
             indices: indices.as_uvec3().to_array(),
         };
+        let new_handle_idx = self.axis_sweep.add_handle(proxy, dispatcher);
 
         if is_static {
-            if self.dynamic_proxy_count != 0 {
-                self.singleton_layout_valid = false;
-            }
-            self.min_dyn_handle_idx = new_handle_idx + 1;
+            let proxy = *self.axis_sweep.proxy(new_handle_idx);
             self.cell_grid
-                .update_cells_static(&new_handle, co, new_handle_idx);
+                .update_cells_static(&proxy, co, new_handle_idx);
         } else {
-            self.dynamic_proxy_count += 1;
-            if self.dynamic_proxy_count > 1 || new_handle_idx != self.min_dyn_handle_idx {
-                self.singleton_layout_valid = false;
-            }
             debug_assert!(
                 aabb.min.distance_squared(aabb.max) <= self.cell_grid.cell_size_sq,
                 "Dynamic objects must fit within a single cell - ({} > {})",
@@ -281,117 +300,27 @@ impl GridBroadphase {
                 .update_cells_dynamic::<true>(new_handle_idx, indices);
         }
 
-        self.handles.push(new_handle);
         new_handle_idx
     }
 
-    pub fn dispatch_singleton_pairs<T: ContactAddedCallback>(
-        &mut self,
-        collision_objs: &[RigidBody],
-        dispatcher: &mut CollisionDispatcher,
-        contact_added_callback: &mut T,
-    ) -> bool {
-        if self.dynamic_proxy_count != 1
-            || !self.singleton_layout_valid
-            || self.handles.len() != self.min_dyn_handle_idx + 1
-        {
-            return false;
-        }
+    pub fn overlapping_dynamic_body_pairs(&mut self) -> &[(usize, usize)] {
+        self.island_dynamic_pairs.clear();
 
-        let proxy_idx = self.min_dyn_handle_idx;
-        {
-            let proxy = &self.handles[proxy_idx];
-            let cell = &self.cell_grid.cells[proxy.cell_idx as usize];
-            for &other_proxy_idx in &cell.static_handles {
-                let other_proxy = &self.handles[other_proxy_idx];
-                if proxy.aabb.intersects(&other_proxy.aabb)
-                    && OverlappingPairCache::needs_broadphase_collision(proxy, other_proxy)
-                {
-                    dispatcher.near_callback(
-                        collision_objs,
-                        other_proxy,
-                        proxy,
-                        contact_added_callback,
-                    );
-                }
+        let handles = self.axis_sweep.handles();
+        for pair in self.axis_sweep.retained_pairs() {
+            let proxy0 = &handles[pair.proxy0];
+            let proxy1 = &handles[pair.proxy1];
+            if proxy0.collision_filter_group & CollisionFilterGroups::Static as u8 == 0
+                && proxy1.collision_filter_group & CollisionFilterGroups::Static as u8 == 0
+            {
+                self.island_dynamic_pairs.push((
+                    proxy0.client_obj_idx as usize,
+                    proxy1.client_obj_idx as usize,
+                ));
             }
         }
 
-        self.pair_cache.finish_direct_dispatch();
-        true
-    }
-
-    pub fn calculate_overlapping_pairs(&mut self) {
-        debug_assert!(self.pair_cache.is_empty());
-
-        // The common ball-only layout has exactly one dynamic proxy. Keep
-        // this path free of iterator/filter setup and scan its cell directly.
-        if self.handles.len() == self.min_dyn_handle_idx + 1 {
-            let proxy_idx = self.min_dyn_handle_idx;
-            let proxy = &self.handles[proxy_idx];
-            let cell = &self.cell_grid.cells[proxy.cell_idx as usize];
-            for &other_proxy_idx in &cell.static_handles {
-                let other_proxy = &self.handles[other_proxy_idx];
-                if proxy.aabb.intersects(&other_proxy.aabb) {
-                    self.pair_cache.add_overlapping_pair(
-                        proxy,
-                        proxy_idx,
-                        other_proxy,
-                        other_proxy_idx,
-                    );
-                }
-            }
-
-            for &other_proxy_idx in &cell.dyn_handles {
-                if proxy_idx >= other_proxy_idx {
-                    continue;
-                }
-
-                let other_proxy = &self.handles[other_proxy_idx];
-                if proxy.aabb.intersects(&other_proxy.aabb) {
-                    self.pair_cache.add_overlapping_pair(
-                        proxy,
-                        proxy_idx,
-                        other_proxy,
-                        other_proxy_idx,
-                    );
-                }
-            }
-
-            return;
-        }
-
-        for (i, proxy) in self
-            .handles
-            .iter()
-            .enumerate()
-            .skip(self.min_dyn_handle_idx)
-            .filter(|(_, proxy)| {
-                (proxy.collision_filter_group & CollisionFilterGroups::Static) == 0
-            })
-        {
-            let cell = &self.cell_grid.cells[proxy.cell_idx as usize];
-            for &other_proxy_idx in &cell.static_handles {
-                let other_proxy = &self.handles[other_proxy_idx];
-
-                if proxy.aabb.intersects(&other_proxy.aabb) {
-                    self.pair_cache
-                        .add_overlapping_pair(proxy, i, other_proxy, other_proxy_idx);
-                }
-            }
-
-            for &other_proxy_idx in &cell.dyn_handles {
-                if i >= other_proxy_idx {
-                    continue;
-                }
-
-                let other_proxy = &self.handles[other_proxy_idx];
-                if proxy.aabb.intersects(&other_proxy.aabb) {
-                    self.pair_cache
-                        .add_overlapping_pair(proxy, i, other_proxy, other_proxy_idx);
-                }
-            }
-        }
+        &self.island_dynamic_pairs
     }
 
     pub fn process_all_overlapping_pairs<T: ContactAddedCallback>(
@@ -400,10 +329,9 @@ impl GridBroadphase {
         dispatcher: &mut CollisionDispatcher,
         contact_added_callback: &mut T,
     ) {
-        self.pair_cache.process_all_overlapping_pairs(
+        self.axis_sweep.process_all_overlapping_pairs(
             collision_objs,
             dispatcher,
-            &self.handles,
             contact_added_callback,
         );
     }
@@ -423,6 +351,8 @@ impl GridBroadphase {
             |bounds, (from, to)| bounds.combine(&Aabb::new(from.min(*to), from.max(*to))),
         );
 
+        let handles = self.axis_sweep.handles();
+
         // Collect one source cell per ray.
         let mut cell_idxs = [usize::MAX; 4];
         let mut num_cells = 0;
@@ -434,12 +364,12 @@ impl GridBroadphase {
             }
         }
 
-        // Most wheel packets stay within one grid cell. Avoid entering the
-        // cross-cell de-duplication loop in that common case.
+        // Most wheel packets stay within one grid cell.
+        // Avoid entering the cross-cell de-duplication loop in that common case.
         if num_cells == 1 {
             let cell = &self.cell_grid.cells[cell_idxs[0]];
             for &other_proxy_idx in cell.static_handles.iter().chain(&cell.dyn_handles) {
-                let other_proxy = &self.handles[other_proxy_idx];
+                let other_proxy = &handles[other_proxy_idx];
                 if ray_aabb.intersects(&other_proxy.aabb) {
                     ray_callback.process(other_proxy);
                 }
@@ -452,7 +382,7 @@ impl GridBroadphase {
         // per cell, so a small bitset handles the usual arena-sized case.
         const SEEN_WORDS: usize = 4;
         let mut seen = [0u64; SEEN_WORDS];
-        let use_seen_bitset = self.handles.len() <= SEEN_WORDS * u64::BITS as usize;
+        let use_seen_bitset = handles.len() <= SEEN_WORDS * u64::BITS as usize;
         for (i, &cell_idx) in cell_idxs[..num_cells].iter().enumerate() {
             let cell = &self.cell_grid.cells[cell_idx];
             'cells: for &other_proxy_idx in cell.static_handles.iter().chain(&cell.dyn_handles) {
@@ -474,7 +404,7 @@ impl GridBroadphase {
                     }
                 }
 
-                let other_proxy = &self.handles[other_proxy_idx];
+                let other_proxy = &handles[other_proxy_idx];
                 if ray_aabb.intersects(&other_proxy.aabb) {
                     ray_callback.process(other_proxy);
                 }

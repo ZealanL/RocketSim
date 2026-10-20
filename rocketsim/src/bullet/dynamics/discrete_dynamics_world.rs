@@ -3,6 +3,7 @@ use glam::Vec3A;
 use super::{
     constraint_solver::seq_impulse_constraint_solver::SeqImpulseConstraintSolver,
     rigid_body::{ActivationState, RigidBody},
+    simulation_island_manager::SimulationIslandManager,
 };
 use crate::{
     bullet::{
@@ -24,6 +25,7 @@ pub struct DiscreteDynamicsWorld {
     collision_world: CollisionWorld,
     solver: SeqImpulseConstraintSolver,
     dynamic_body_idcs: Vec<usize>,
+    island_manager: SimulationIslandManager,
     gravity: Vec3A,
     ball_only: bool,
 }
@@ -34,6 +36,7 @@ impl DiscreteDynamicsWorld {
             collision_world: CollisionWorld::new(pair_cache),
             solver: SeqImpulseConstraintSolver::default(),
             dynamic_body_idcs: Vec::new(),
+            island_manager: SimulationIslandManager::default(),
             gravity,
             ball_only: false,
         }
@@ -213,6 +216,18 @@ impl DiscreteDynamicsWorld {
 
         self.collision_world
             .perform_discrete_collision_detection(contact_added_callback);
+
+        let dynamic_pairs = self
+            .collision_world
+            .broadphase_pair_cache
+            .overlapping_dynamic_body_pairs();
+        self.island_manager.sort_manifolds(
+            &self.collision_world.collision_objs,
+            &self.dynamic_body_idcs,
+            dynamic_pairs,
+            &self.collision_world.dispatcher1.persistent_manifolds,
+            &mut self.collision_world.dispatcher1.active_manifolds,
+        );
 
         let ball_only = self.ball_only
             && self.dynamic_body_idcs.len() == 1

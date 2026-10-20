@@ -21,7 +21,6 @@ pub struct CollisionWorld {
     pub collision_objs: Vec<RigidBody>,
     pub dispatcher1: CollisionDispatcher,
     pub broadphase_pair_cache: GridBroadphase,
-    num_skippable_statics: usize,
 }
 
 impl CollisionWorld {
@@ -30,27 +29,36 @@ impl CollisionWorld {
             collision_objs: Vec::new(),
             dispatcher1: CollisionDispatcher::default(),
             broadphase_pair_cache: pair_cache,
-            num_skippable_statics: 0,
         }
     }
 
+    /// Insert a body and create its broadphase proxy from the raw shape AABB.
+    ///
+    /// A static body must set its transform before this call. After this call
+    /// the proxy AABB is final. The `RigidBody` transform setters assert this
+    /// invariant.
     pub fn add_collision_obj(
         &mut self,
         mut obj: RigidBody,
         filter_group: u8,
         filter_mask: u8,
     ) -> usize {
-        let idx = self.collision_objs.len();
+        let Self {
+            collision_objs,
+            dispatcher1,
+            broadphase_pair_cache,
+            ..
+        } = self;
+
+        let idx = collision_objs.len();
         obj.world_array_idx = idx;
 
-        let trans = obj.get_world_trans();
-        let aabb = obj.get_collision_shape().get_aabb(trans);
-        let proxy = self
-            .broadphase_pair_cache
-            .create_proxy(aabb, &obj, filter_group, filter_mask);
+        let aabb = obj.get_collision_shape().get_aabb(obj.get_world_trans());
+        let proxy =
+            broadphase_pair_cache.create_proxy(aabb, &obj, filter_group, filter_mask, dispatcher1);
 
         obj.set_broadphase_handle(proxy);
-        self.collision_objs.push(obj);
+        collision_objs.push(obj);
 
         idx
     }
@@ -58,49 +66,23 @@ impl CollisionWorld {
     pub fn update_aabbs(&mut self) {
         const CBT: Vec3A = Vec3A::splat(CONTACT_BREAKING_THRESHOLD);
 
-        // Ball-only arenas have one dynamic body after the static prefix.
-        if self.num_skippable_statics + 1 == self.collision_objs.len()
-            && !self.collision_objs[self.num_skippable_statics].is_static_obj()
-        {
-            let body_idx = self.num_skippable_statics;
-            let aabb = {
-                let col_obj = &self.collision_objs[body_idx];
-                let mut aabb = col_obj
-                    .get_collision_shape()
-                    .get_aabb(col_obj.get_world_trans());
-                aabb.min -= CBT;
-                aabb.max += CBT;
+        let Self {
+            collision_objs,
+            dispatcher1,
+            broadphase_pair_cache,
+        } = self;
 
-                let mut aabb2 = col_obj
-                    .get_collision_shape()
-                    .get_aabb(&col_obj.interp_world_trans);
-                aabb2.min -= CBT;
-                aabb2.max += CBT;
-                aabb += aabb2;
-                aabb
-            };
-            self.broadphase_pair_cache.set_aabb(
-                &self.collision_objs[body_idx],
-                self.collision_objs[body_idx].get_broadphase_handle(),
-                aabb,
-            );
-            return;
-        }
-
-        let mut prev_is_static = true;
-        for (i, col_obj) in self
-            .collision_objs
-            .iter()
-            .enumerate()
-            .skip(self.num_skippable_statics)
-        {
+        for (i, col_obj) in collision_objs.iter().enumerate() {
             debug_assert_eq!(col_obj.world_array_idx, i);
 
-            if prev_is_static && col_obj.is_static_obj() {
-                // static objects only need their aabbs set the first time
-                self.num_skippable_statics += 1;
-            } else {
-                prev_is_static = false;
+            // Static arena objects keep the raw creation AABB. They never
+            // receive the 0.02 update expansion.
+            //
+            // Invariant: an inserted static body cannot move. The `RigidBody`
+            // transform setters assert that invariant. The `bullet` module is
+            // private, so no external caller can mutate a static body.
+            if col_obj.is_static_obj() {
+                continue;
             }
 
             let mut aabb = col_obj
@@ -110,23 +92,25 @@ impl CollisionWorld {
             aabb.min -= CBT;
             aabb.max += CBT;
 
-            if !col_obj.is_static_obj() {
-                let mut aabb2 = col_obj
-                    .get_collision_shape()
-                    .get_aabb(&col_obj.interp_world_trans);
-                aabb2.min -= CBT;
-                aabb2.max += CBT;
-                aabb += aabb2;
-            }
+            let mut aabb2 = col_obj
+                .get_collision_shape()
+                .get_aabb(&col_obj.interp_world_trans);
+            aabb2.min -= CBT;
+            aabb2.max += CBT;
+            aabb += aabb2;
 
             debug_assert!(
-                col_obj.is_static_obj() || (aabb.max - aabb.min).length_squared() < 1e12,
+                (aabb.max - aabb.min).length_squared() < 1e12,
                 "object #{i} {:?} has invalid aabb: {:?}",
                 col_obj.user_idx,
                 aabb
             );
-            self.broadphase_pair_cache
-                .set_aabb(col_obj, col_obj.get_broadphase_handle(), aabb);
+            broadphase_pair_cache.set_aabb(
+                col_obj,
+                col_obj.get_broadphase_handle(),
+                aabb,
+                dispatcher1,
+            );
         }
     }
 
@@ -136,15 +120,6 @@ impl CollisionWorld {
     ) {
         self.update_aabbs();
 
-        if self.broadphase_pair_cache.dispatch_singleton_pairs(
-            &self.collision_objs,
-            &mut self.dispatcher1,
-            contact_added_callback,
-        ) {
-            return;
-        }
-
-        self.broadphase_pair_cache.calculate_overlapping_pairs();
         self.dispatcher1.dispatch_all_collision_pairs(
             &self.collision_objs,
             &mut self.broadphase_pair_cache,
