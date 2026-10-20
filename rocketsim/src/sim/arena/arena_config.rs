@@ -5,15 +5,20 @@ use crate::{BoostPadConfig, GameMode, MutatorConfig};
 /// Broadphase memory/performance tradeoff for [`crate::Arena`].
 ///
 /// Approximate Linux RSS per 1v1 Soccar arena after a 100-episode `stress_v3`
-/// workload, measured across 100 arenas: `Heavy` (default) ~1,106 KiB,
-/// `Balanced` ~133 KiB, and `Light` ~95 KiB. RSS rose slowly in the final
-/// episodes, so these are end-of-run estimates. See the repository `README.md`.
+/// workload, measured across 100 arenas: `Heavy` ~1,106 KiB,
+/// `Balanced` (default) ~133 KiB, and `Light` ~95 KiB.
 #[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ArenaMemWeightMode {
-    #[default]
+    /// Small ray-query cells with eight dynamic handles reserved per cell.
+    /// Uses more memory. This mode does not guarantee higher simulation speed.
     Heavy,
+    /// Larger ray-query cells with one dynamic handle reserved per cell.
+    /// This is the default memory mode.
+    #[default]
     Balanced,
+    /// One ray-query cell across the longest world axis.
+    /// Uses less memory but can reduce simulation speed.
     Light,
 }
 
@@ -57,7 +62,7 @@ impl ArenaConfig {
     pub const DEFAULT: Self = Self {
         game_mode: GameMode::Soccar,
         mutators: MutatorConfig::new(GameMode::Soccar),
-        mem_weight_mode: ArenaMemWeightMode::Heavy,
+        mem_weight_mode: ArenaMemWeightMode::Balanced,
         min_pos: Vec3A::new(-5600., -6000., 0.),
         max_pos: Vec3A::new(5600., 6000., 2200.),
         max_aabb_len: 370.,

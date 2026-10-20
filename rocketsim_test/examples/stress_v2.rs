@@ -42,8 +42,8 @@ impl From<GameModeArg> for GameMode {
     }
 }
 
-fn arena_mem_weight_mode(value: MemWeightModeArg) -> ArenaMemWeightMode {
-    match value {
+fn arena_mem_weight_mode(value: Option<MemWeightModeArg>) -> ArenaMemWeightMode {
+    match value.unwrap_or(MemWeightModeArg::Heavy) {
         MemWeightModeArg::Light => ArenaMemWeightMode::Light,
         MemWeightModeArg::Heavy => ArenaMemWeightMode::Heavy,
         MemWeightModeArg::Balanced => {
@@ -170,7 +170,7 @@ fn run_rlpr_replay(path: &Path, cli: &Args) -> Result<(), Box<dyn std::error::Er
     if !matches!(cli.game_mode, GameModeArg::Soccar) {
         return Err("RLPR replay mode requires --game-mode soccar".into());
     }
-    if matches!(cli.mem_weight_mode, MemWeightModeArg::Balanced) {
+    if matches!(cli.mem_weight_mode, Some(MemWeightModeArg::Balanced)) {
         return Err("stress_v2 does not support the balanced memory mode".into());
     }
 

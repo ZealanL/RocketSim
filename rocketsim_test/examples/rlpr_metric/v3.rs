@@ -55,7 +55,7 @@ impl V3Backend {
 
     /// Make a backend with a custom dodge deadzone.
     pub fn with_dodge_deadzone(dodge_deadzone: f32) -> Self {
-        Self::with_mem_weight_mode(dodge_deadzone, ArenaMemWeightMode::Heavy)
+        Self::with_mem_weight_mode(dodge_deadzone, ArenaMemWeightMode::default())
     }
 
     /// Make a backend with an explicit arena memory mode.

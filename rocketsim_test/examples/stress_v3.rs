@@ -116,7 +116,11 @@ impl rlpr_replay::ReplayBenchmarkBackend for v3::V3Backend {
 fn run_ball_only_benchmark(cli: &Args) {
     let arena_config = ArenaConfig::new(cli.game_mode.into())
         .with_rng_seed(0)
-        .with_mem_weight_mode(cli.mem_weight_mode.into());
+        .with_mem_weight_mode(
+            cli.mem_weight_mode
+                .map(ArenaMemWeightMode::from)
+                .unwrap_or_default(),
+        );
     let mut arenas: Vec<_> = (0..cli.num_arenas)
         .map(|arena_idx| {
             let mut arena_config = arena_config.clone();
@@ -169,7 +173,10 @@ fn run_rlpr_replay(path: &Path, cli: &Args) -> Result<(), Box<dyn std::error::Er
     let recording = Recording::from_file(path)?;
     let plan = rlpr_replay::ReplayPlan::from_recording(&recording)
         .map_err(|error| format!("invalid RLPR replay: {error}"))?;
-    let mem_weight_mode: ArenaMemWeightMode = cli.mem_weight_mode.into();
+    let mem_weight_mode = cli
+        .mem_weight_mode
+        .map(ArenaMemWeightMode::from)
+        .unwrap_or_default();
     let mut backends: Vec<_> = (0..cli.num_arenas)
         .map(|_| v3::V3Backend::with_mem_weight_mode(0.5, mem_weight_mode))
         .collect();
@@ -213,7 +220,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let arena_config = ArenaConfig::new(cli.game_mode.into())
         .with_rng_seed(0)
-        .with_mem_weight_mode(cli.mem_weight_mode.into());
+        .with_mem_weight_mode(
+            cli.mem_weight_mode
+                .map(ArenaMemWeightMode::from)
+                .unwrap_or_default(),
+        );
     let mut arenas: Vec<_> = (0..cli.num_arenas)
         .map(|arena_idx| {
             let mut arena_config = arena_config.clone();

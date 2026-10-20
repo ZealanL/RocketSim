@@ -39,8 +39,9 @@ pub struct Args {
     pub num_cars: u8,
     #[arg(short, long, value_enum, default_value_t = GameModeArg::Soccar)]
     pub game_mode: GameModeArg,
-    #[arg(long, value_enum, default_value_t = MemWeightModeArg::Heavy)]
-    pub mem_weight_mode: MemWeightModeArg,
+    /// Memory mode. Omit this option to use the tool default.
+    #[arg(long, value_enum)]
+    pub mem_weight_mode: Option<MemWeightModeArg>,
     #[arg(long, default_value_t = 1)]
     pub num_arenas: usize,
     /// Replay an RLPR recording instead of generating random bot input.

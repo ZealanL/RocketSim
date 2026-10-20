@@ -121,6 +121,8 @@ The tool reports elapsed time, ticks per second (`TPS`), and ball hits. Use
 `--num-cars` and `--game-mode` to select a workload. Use `--num-arenas` to step
 several arenas in the same run. This option does not create worker threads.
 
+`stress_v3` uses the simulator default memory mode, `Balanced`. `stress_v2`
+keeps `Heavy` as its default because the C++ backend does not support `Balanced`.
 Compare memory modes with the same workload:
 
 ```sh
@@ -140,13 +142,13 @@ cargo run --release -p rocketsim_test --features v2 --example stress_v2
 
 ### Measure recorded match input
 
-Use the same 3v3 recording for a repeatable comparison:
+Use the same 3v3 recording and explicit memory mode for a repeatable comparison:
 
 ```sh
 cargo run --release -p rocketsim_test --example stress_v3 -- \
-  --rlpr-file rocketsim_test/recordings/wisp_3v3_300s.rlpr.zst
+  --rlpr-file rocketsim_test/recordings/wisp_3v3_300s.rlpr.zst --mem-weight-mode heavy
 cargo run --release -p rocketsim_test --features v2 --example stress_v2 -- \
-  --rlpr-file rocketsim_test/recordings/wisp_3v3_300s.rlpr.zst
+  --rlpr-file rocketsim_test/recordings/wisp_3v3_300s.rlpr.zst --mem-weight-mode heavy
 ```
 
 Replay speed measurements require six cars and Soccar. `--rlpr-file` selects
