@@ -69,6 +69,7 @@ impl NetVis {
     ///
     /// Panic if the operating system cannot create the sender thread.
     pub fn connect(addr: &str) -> Self {
+        test_trace!("sender: creating connection worker for {addr}");
         let slot = Arc::new(Mutex::new(None));
         let stop = Arc::new(AtomicBool::new(false));
         let controls = Arc::new(Mutex::new(None));
@@ -156,9 +157,12 @@ impl NetVis {
 
 impl Drop for NetVis {
     fn drop(&mut self) {
+        test_trace!("sender {}: stop requested", self.address);
         self.stop.store(true, Ordering::Relaxed);
         if let Some(handle) = self.sender.take() {
+            test_trace!("sender {}: joining worker", self.address);
             let _ = handle.join();
+            test_trace!("sender {}: worker joined", self.address);
         }
     }
 }
@@ -200,12 +204,18 @@ fn sender_loop(addr: &str, shared: SenderState) {
         if shared.stop.load(Ordering::Relaxed) {
             return;
         }
+        test_trace!("sender {addr}: connecting");
         match connect_bounded(addr) {
             Ok(stream) => {
+                test_trace!(
+                    "sender {addr}: connected; local address {:?}",
+                    stream.local_addr()
+                );
                 backoff = Duration::from_millis(500);
                 let _ = stream.set_nodelay(true);
                 shared.connected.store(true, Ordering::Release);
                 pump(stream, &shared);
+                test_trace!("sender {addr}: pump returned");
                 shared.connected.store(false, Ordering::Release);
                 if let Ok(mut c) = shared.controls.lock() {
                     *c = None;
@@ -213,7 +223,8 @@ fn sender_loop(addr: &str, shared: SenderState) {
                 shared.actions.store(0, Ordering::Release);
                 // pump returned = connection lost; reconnect with backoff.
             }
-            Err(_) => {
+            Err(error) => {
+                test_trace!("sender {addr}: connect failed: {error}; retry in {backoff:?}");
                 sleep_interruptible(&shared.stop, backoff);
                 backoff = (backoff * 2).min(max_backoff);
                 continue;
@@ -247,10 +258,14 @@ fn sleep_interruptible(stop: &AtomicBool, d: Duration) {
 /// happens here (off the sim tick). A reconnect resets `SentDebug` and
 /// opens with a `Full`, so old deletes are never replayed.
 fn pump(mut stream: TcpStream, shared: &SenderState) {
-    if stream.set_nonblocking(true).is_err() {
+    test_trace!("sender: setting stream nonblocking");
+    if let Err(error) = stream.set_nonblocking(true) {
+        test_trace!("sender: nonblocking setup failed: {error}");
         return;
     }
+    test_trace!("sender: setting write timeout");
     let _ = stream.set_write_timeout(Some(Duration::from_millis(250)));
+    test_trace!("sender: stream configured; starting I/O");
     let peer = stream
         .peer_addr()
         .map(|a| a.to_string())
@@ -284,6 +299,7 @@ fn pump(mut stream: TcpStream, shared: &SenderState) {
         match stream.read(&mut chunk) {
             Ok(0) => return,
             Ok(n) => {
+                test_trace!("sender {peer}: received {n} control bytes");
                 input.extend_from_slice(&chunk[..n]);
                 loop {
                     match decode_control(&input) {

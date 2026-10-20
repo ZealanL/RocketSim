@@ -20,6 +20,32 @@ The checks include:
 Linux tests run serially. The optional C++ comparison backend uses
 process-global state and can fail when its tests run concurrently.
 
+### Windows transport diagnostics
+
+Windows CI runs the `rocketsim_vis` library tests before the workspace tests.
+This step keeps parallel execution and has a five-minute timeout. It prints
+Rust and Windows version details before the tests.
+
+`ROCKETSIM_TEST_TRACE=1` enables progress output in library unit tests. Each
+line includes elapsed time, the process ID, and the thread ID and name. The
+trace covers arena setup, socket setup, connections, received data, and worker
+joins. Output goes directly to standard error, outside test output capture.
+Normal library builds do not emit this trace.
+
+To collect the same trace locally, run:
+
+```sh
+ROCKETSIM_TEST_TRACE=1 cargo test --locked -p rocketsim_vis --lib -- --nocapture
+```
+
+Compare the last line from each thread when a test stops making progress.
+A `joining worker` line without a `worker joined` line identifies a blocked
+shutdown. A socket error includes the operating-system error text.
+
+The arena connection tests use `GameMode::TheVoid` and local TCP listeners.
+They do not start the viewer or load collision mesh fixtures. These traces
+do not include native thread stacks and do not establish a cause by themselves.
+
 Workspace CI does not enable `rocketsim_test/v2`. This feature builds
 `rocketsim-rs` 0.37.0, which fails with GCC 11 on its `constexpr` pointer
 accessors. Use GCC 13 to test the optional C++ backend.

@@ -58,6 +58,42 @@
 
 #![warn(missing_docs)]
 
+// Compile transport tracing only into unit-test executables.
+macro_rules! test_trace {
+    ($($arg:tt)*) => {
+        #[cfg(test)]
+        crate::test_trace(format_args!($($arg)*));
+        #[cfg(not(test))]
+        if false {
+            let _ = format_args!($($arg)*);
+        }
+    };
+}
+
+#[cfg(test)]
+fn test_trace(message: std::fmt::Arguments<'_>) {
+    use std::{io::Write, sync::OnceLock, time::Instant};
+
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+    if !*ENABLED
+        .get_or_init(|| std::env::var_os("ROCKETSIM_TEST_TRACE").is_some_and(|value| value == "1"))
+    {
+        return;
+    }
+    static START: OnceLock<Instant> = OnceLock::new();
+    let elapsed = START.get_or_init(Instant::now).elapsed();
+    let thread = std::thread::current();
+    // Write directly to stderr so libtest cannot hide progress from a blocked test.
+    let _ = writeln!(
+        std::io::stderr().lock(),
+        "[vis-test {:.3}s pid={} {:?} {}] {message}",
+        elapsed.as_secs_f64(),
+        std::process::id(),
+        thread.id(),
+        thread.name().unwrap_or("worker"),
+    );
+}
+
 pub mod arena;
 pub mod debug;
 pub mod launcher;

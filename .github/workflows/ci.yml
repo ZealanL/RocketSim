@@ -111,8 +111,22 @@ jobs:
           persist-credentials: false
       - name: Prepare collision mesh fixtures
         run: python tools/ci/prepare_meshes.py target/ci-fixtures/rlgym/rocket_league/sim/collision_meshes
+      - name: Show Windows environment details
+        if: runner.os == 'Windows'
+        run: |
+          rustc -Vv
+          python -c "import platform; print(platform.platform()); print(platform.python_version())"
+      - name: Test rocketsim_vis with tracing
+        if: runner.os == 'Windows'
+        timeout-minutes: 5
+        env:
+          ROCKETSIM_TEST_TRACE: "1"
+        run: cargo test --locked -p rocketsim_vis --lib -- --nocapture
       # The optional C++ comparison backend uses process-global state.
-      - run: cargo test --locked --workspace --all-targets -- ${{ matrix.test-args }}
+      - name: Test workspace
+        run: cargo test --locked --workspace --all-targets -- ${{ matrix.test-args }}
+        env:
+          ROCKETSIM_TEST_TRACE: ${{ runner.os == 'Windows' && '1' || '' }}
       - run: cargo test --locked --workspace --doc
       - run: cargo run --locked -p rocketsim_viewer --bin rocketsim-viewer -- --help
       - run: python -m unittest discover -s tools/ci -v
