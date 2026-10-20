@@ -2247,7 +2247,7 @@ checksum = "19b30a45b0cd0bcca8037f3d0dc3421eaf95327a17cad11964fb8179b4fc4832"
 
 [[package]]
 name = "rocketsim"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "arrayvec",
  "byteorder",
@@ -2273,7 +2273,7 @@ dependencies = [
 
 [[package]]
 name = "rocketsim_test"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "byteorder",
  "clap",
@@ -2287,7 +2287,7 @@ dependencies = [
 
 [[package]]
 name = "rocketsim_viewer"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "clap",
  "eframe",
@@ -2307,7 +2307,7 @@ dependencies = [
 
 [[package]]
 name = "rocketsim_vis"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "clap",
  "glam",
