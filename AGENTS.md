@@ -116,14 +116,16 @@ cargo test --locked -p rocketsim_vis -p rocketsim_viewer --doc --all-features
 Use these formatting and lint checks when relevant:
 
 ```sh
-cargo fmt --all -- --check
+cargo +nightly fmt --all -- --check
 cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
 ```
 
+Use nightly rustfmt when the nightly toolchain is available. Do not use
+`cargo fmt`; it can select stable rustfmt and ignore nightly-only settings.
+If nightly is unavailable, report that the formatting check could not run.
+
 Workspace all-feature checks enable the optional C++ comparison code. They need
 its toolchain. Do not make C++ a requirement for normal Rust-only use.
-Stable rustfmt can warn about nightly-only settings in `rustfmt.toml`.
-Check the command's exit status instead of treating those warnings as failure.
 
 Keep the visualization API documentation warning-free:
 
