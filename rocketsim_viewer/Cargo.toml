@@ -44,8 +44,8 @@ glam.workspace = true
 glow = "0.17"
 png = "0.18.0"
 postcard = { version = "1", features = ["alloc"] }
-rocketsim = { path = "../rocketsim", version = "0.3.0", features = ["serde"] }
-rocketsim_vis = { path = "../rocketsim_vis", version = "0.3.0" }
+rocketsim = { path = "../rocketsim", version = "0.3.1", features = ["serde"] }
+rocketsim_vis = { path = "../rocketsim_vis", version = "0.3.1" }
 rustc-hash.workspace = true
 serde = { version = "1", features = ["derive"] }
 toml = "1.1.8"
