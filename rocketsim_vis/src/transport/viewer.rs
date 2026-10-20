@@ -388,27 +388,7 @@ fn accept_loop(listener: TcpListener, session: &Mutex<ClientSession>, stop: &Ato
     while !stop.load(Ordering::Acquire) {
         match listener.accept() {
             Ok((stream, peer_addr)) => {
-                test_trace!("viewer: accepted {peer_addr}; cloning listener");
-                let active = Arc::new(AtomicBool::new(true));
-                let extra_active = active.clone();
-                let extra_listener = match listener.try_clone() {
-                    Ok(listener) => listener,
-                    Err(error) => {
-                        test_trace!("viewer {peer_addr}: listener clone failed: {error}");
-                        continue;
-                    }
-                };
-                test_trace!("viewer: listener cloned for {peer_addr}");
-                let extra_worker = std::thread::spawn(move || {
-                    test_trace!("viewer: extra accept worker started for {peer_addr}");
-                    while extra_active.load(Ordering::Acquire) {
-                        match extra_listener.accept() {
-                            Ok((extra, _)) => drop(extra),
-                            Err(_) => std::thread::sleep(Duration::from_millis(10)),
-                        }
-                    }
-                    test_trace!("viewer: extra accept worker stopped for {peer_addr}");
-                });
+                test_trace!("viewer: accepted {peer_addr}");
                 let peer = stream
                     .peer_addr()
                     .map(|address| address.to_string())
@@ -417,11 +397,8 @@ fn accept_loop(listener: TcpListener, session: &Mutex<ClientSession>, stop: &Ato
                     current.reset(ConnStatus::Connected { addr: peer.clone() });
                 }
                 test_trace!("viewer: starting pump for {peer}");
-                pump(stream, session, stop, &peer);
-                test_trace!("viewer: pump returned for {peer}; joining extra accept worker");
-                active.store(false, Ordering::Release);
-                let _ = extra_worker.join();
-                test_trace!("viewer: extra accept worker joined for {peer}");
+                pump(stream, &listener, session, stop, &peer);
+                test_trace!("viewer: pump returned for {peer}; resetting session");
                 if let Ok(mut current) = session.lock() {
                     current.reset(ConnStatus::Waiting);
                 }
@@ -449,7 +426,13 @@ fn apply_transfer(session: &Mutex<ClientSession>, message: DebugSyncMsg) -> Resu
     Ok(())
 }
 
-fn pump(mut stream: TcpStream, session: &Mutex<ClientSession>, stop: &AtomicBool, peer: &str) {
+fn pump(
+    mut stream: TcpStream,
+    listener: &TcpListener,
+    session: &Mutex<ClientSession>,
+    stop: &AtomicBool,
+    peer: &str,
+) {
     test_trace!("viewer {peer}: setting stream nonblocking");
     if let Err(error) = stream.set_nonblocking(true) {
         test_trace!("viewer {peer}: nonblocking setup failed: {error}");
@@ -464,6 +447,26 @@ fn pump(mut stream: TcpStream, session: &Mutex<ClientSession>, stop: &AtomicBool
         if stop.load(Ordering::Acquire) {
             let _ = stream.shutdown(std::net::Shutdown::Both);
             return;
+        }
+        // Use the original nonblocking listener. A cloned-listener accept worker
+        // can block its shutdown join on Windows. Bound rejection work so active
+        // traffic and shutdown do not wait for the connection backlog to drain.
+        for _ in 0..8 {
+            if stop.load(Ordering::Acquire) {
+                return;
+            }
+            match listener.accept() {
+                Ok((extra, addr)) => {
+                    test_trace!("viewer {peer}: rejecting extra connection from {addr}");
+                    drop(extra);
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => break,
+                Err(error) => {
+                    test_trace!("viewer {peer}: extra accept failed: {error}");
+                    break;
+                }
+            }
         }
         if !output.is_empty() && output.flush(&mut stream).is_err() {
             return;
@@ -744,25 +747,71 @@ mod tests {
     }
 
     #[test]
-    fn competing_sim_connection_is_rejected() {
+    fn competing_connections_are_rejected_without_blocking_traffic_or_reconnect() {
         let listener = ViewerListener::try_bind("127.0.0.1:0").unwrap();
-        let owner = TcpStream::connect(listener.local_addr()).unwrap();
+        let mut owner = TcpStream::connect(listener.local_addr()).unwrap();
         let deadline = Instant::now() + Duration::from_secs(2);
         while !matches!(listener.snapshot().status, ConnStatus::Connected { .. }) {
-            assert!(Instant::now() < deadline);
+            assert!(Instant::now() < deadline, "owner was not accepted");
             std::thread::sleep(Duration::from_millis(2));
         }
-        let mut extra = TcpStream::connect(listener.local_addr()).unwrap();
-        extra
-            .set_read_timeout(Some(Duration::from_secs(1)))
-            .unwrap();
-        let mut byte = [0u8; 1];
-        assert!(matches!(extra.read(&mut byte), Ok(0) | Err(_)));
-        assert!(matches!(
-            listener.snapshot().status,
-            ConnStatus::Connected { .. }
-        ));
+        let generation = listener.snapshot().generation;
+        let extras: Vec<_> = (0..12)
+            .map(|_| {
+                TcpStream::connect_timeout(&listener.local_addr(), Duration::from_secs(2)).unwrap()
+            })
+            .collect();
+        for mut extra in extras {
+            extra
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .unwrap();
+            let mut byte = [0u8; 1];
+            match extra.read(&mut byte) {
+                Ok(0) => {}
+                Err(error)
+                    if matches!(
+                        error.kind(),
+                        std::io::ErrorKind::ConnectionReset | std::io::ErrorKind::ConnectionAborted
+                    ) => {}
+                result => panic!("extra connection was not closed: {result:?}"),
+            }
+        }
+        assert_eq!(listener.snapshot().generation, generation);
+        let arena = rocketsim::Arena::new(rocketsim::GameMode::TheVoid);
+        let frame = encode_sim(&SimMsg::Frame(VisFrame::new(
+            arena.get_arena_state(),
+            1.0 / 120.0,
+        )));
+        owner.write_all(&frame).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while listener.snapshot().frame.is_none() {
+            assert!(Instant::now() < deadline, "owner traffic did not arrive");
+            std::thread::sleep(Duration::from_millis(2));
+        }
         drop(owner);
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !matches!(listener.snapshot().status, ConnStatus::Waiting) {
+            assert!(
+                Instant::now() < deadline,
+                "owner disconnect was not observed"
+            );
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        let mut replacement = TcpStream::connect(listener.local_addr()).unwrap();
+        replacement.write_all(&frame).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        loop {
+            let snapshot = listener.snapshot();
+            if snapshot.frame.is_some() {
+                assert!(snapshot.generation > generation);
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "replacement traffic did not arrive"
+            );
+            std::thread::sleep(Duration::from_millis(2));
+        }
     }
 
     #[test]
@@ -770,9 +819,19 @@ mod tests {
         let mut listener = ViewerListener::try_bind("127.0.0.1:0").unwrap();
         let mut peer = TcpStream::connect(listener.local_addr()).unwrap();
         peer.write_all(&[0x20, 0x00]).unwrap();
-        std::thread::sleep(Duration::from_millis(20));
-        let start = Instant::now();
-        listener.shutdown();
-        assert!(start.elapsed() < Duration::from_secs(1));
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !matches!(listener.snapshot().status, ConnStatus::Connected { .. }) {
+            assert!(Instant::now() < deadline, "stalled peer was not accepted");
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        let (done, finished) = std::sync::mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            listener.shutdown();
+            done.send(()).unwrap();
+        });
+        finished
+            .recv_timeout(Duration::from_secs(2))
+            .expect("listener shutdown blocked with an active peer");
+        worker.join().unwrap();
     }
 }
