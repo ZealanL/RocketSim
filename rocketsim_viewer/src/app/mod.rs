@@ -1,5 +1,6 @@
 mod camera;
 mod effects;
+mod frame_limiter;
 mod input_state;
 mod session_state;
 mod startup;
@@ -8,7 +9,7 @@ mod ui_logic;
 
 use std::{
     sync::{Arc, Mutex},
-    time::{Duration, Instant},
+    time::Instant,
 };
 
 use camera::{CamMode, CameraFrameInput, CameraState, StartMode};
@@ -70,6 +71,7 @@ struct ViewerApp {
     ui_state: ViewerUiState,
     input: InputState,
     last_frame: Instant,
+    frame_limiter: frame_limiter::FrameLimiter,
     fps_ema: f32,
 }
 
@@ -108,12 +110,22 @@ impl ViewerApp {
             ui_state: ViewerUiState::new(menu_open),
             input: InputState::new(),
             last_frame: Instant::now(),
+            frame_limiter: frame_limiter::FrameLimiter::default(),
             fps_ema: 60.0,
         }
     }
 }
 
 impl eframe::App for ViewerApp {
+    fn raw_input_hook(&mut self, _ctx: &egui::Context, input: &mut egui::RawInput) {
+        // This hook runs once per native frame, not once per egui layout pass.
+        let waited = self.frame_limiter.wait(self.settings.fps_limit_hz);
+        // eframe sets this timestamp before it calls the hook.
+        if let Some(time) = &mut input.time {
+            *time += waited.as_secs_f64();
+        }
+    }
+
     fn on_exit(&mut self, gl: Option<&glow::Context>) {
         if let Some(gl) = gl
             && let Ok(scene) = self.scene.lock()
@@ -129,12 +141,7 @@ impl eframe::App for ViewerApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         // eframe hands us the root Ui; the body below works on the Context.
         let ctx = &ui.ctx().clone();
-        // Use repaint scheduling for the frame cap. Do not block the UI thread.
-        let budget = if self.settings.fps_limit_hz == 0 {
-            Duration::ZERO
-        } else {
-            Duration::from_secs_f32(1.0 / self.settings.fps_limit_hz as f32)
-        };
+
         // UI scale applies live.
         if (self.settings.ui_scale - self.ui_state.applied_ui_scale).abs() > 1e-6 {
             ctx.set_pixels_per_point(self.settings.ui_scale);
@@ -771,16 +778,9 @@ impl eframe::App for ViewerApp {
                 debug_transfers,
             );
         }
-        // Repaint follows the frame limiter so idle frames are not pinned
-        // to 60Hz: uncapped repaints immediately (busy loop), capped waits
-        // out the rest of this frame's budget (the limiter sleep above
-        // already consumed part of it). Input events still repaint at once,
-        // which is why activity used to look faster than idling.
-        if self.settings.fps_limit_hz == 0 {
-            ctx.request_repaint();
-        } else {
-            ctx.request_repaint_after(budget.saturating_sub(cpu_t0.elapsed()));
-        }
+        // The native-frame hook applies the cap to all repaint sources.
+        // Always request the next frame so FPS=0 also runs continuously at idle.
+        ctx.request_repaint();
     }
 }
 
