@@ -5,7 +5,6 @@ edition.workspace = true
 rust-version.workspace = true
 description = "Detached-viewer network interface for RocketSim (frames, transport, launcher)"
 readme = "README.md"
-homepage.workspace = true
 repository.workspace = true
 license.workspace = true
 keywords.workspace = true

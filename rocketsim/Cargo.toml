@@ -6,7 +6,6 @@ rust-version.workspace = true
 description = "Simulate Rocket League games at maximum efficiency"
 documentation.workspace = true
 readme = "README.md"
-homepage.workspace = true
 repository.workspace = true
 license.workspace = true
 keywords.workspace = true

@@ -3,7 +3,6 @@ package.version = "0.3.1"
 package.edition = "2024"
 package.rust-version = "1.95"
 package.documentation = "https://docs.rs/rocketsim"
-package.homepage = "https://github.com/ZealanL/RocketSim"
 package.repository = "https://github.com/ZealanL/RocketSim"
 package.license = "MIT"
 package.keywords = ["physics", "rocket-league", "simulation"]

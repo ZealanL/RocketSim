@@ -5,7 +5,6 @@ edition.workspace = true
 rust-version.workspace = true
 description = "3D visualizer for RocketSim Rocket League simulation"
 readme = "README.md"
-homepage.workspace = true
 repository.workspace = true
 license-file = "LICENSES.md"
 keywords.workspace = true
