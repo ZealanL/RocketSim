@@ -412,10 +412,15 @@ impl eframe::App for ViewerApp {
             ctx.egui_wants_pointer_input(),
             self.ui_state.reset_requested,
         );
-        // Spectate-only beats everything: neutral + zeroed buttons, but the
-        // frame below still sends every tick so the channel stays live.
-        let (controls, buttons) =
-            spectate::gate(self.settings.spectate_only, driving, controls, buttons);
+        // Spectate-only messages have no target car. Neutral controls for a
+        // valid car would replace its policy controls and stop the bot.
+        let (car_index, controls, buttons) = spectate::gate(
+            self.settings.spectate_only,
+            driving,
+            self.driven_car,
+            controls,
+            buttons,
+        );
         // The menu's Reset-play button is a deliberate click, not a held
         // movement key: it survives the menu-open neutral above (but never
         // spectate-only, which zeroes all inputs by definition).
@@ -433,7 +438,7 @@ impl eframe::App for ViewerApp {
         self.ctrl_seq += 1;
         self.listener.send_controls_for_generation(
             generation,
-            ControlMsg::new(self.driven_car, controls, buttons, self.ctrl_seq).with_mutators(
+            ControlMsg::new(car_index, controls, buttons, self.ctrl_seq).with_mutators(
                 if self.settings.spectate_only {
                     0
                 } else {

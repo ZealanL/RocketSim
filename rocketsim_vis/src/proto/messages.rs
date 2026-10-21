@@ -422,6 +422,9 @@ pub const MUT_KNOWN_MASK: u8 =
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ControlMsg {
     /// Requested car index. The application must check that the car exists.
+    ///
+    /// The stock viewer sends `u32::MAX` in spectate-only mode. Ignore driving
+    /// controls for an invalid index. Keep the car's existing policy controls.
     pub car_index: u32,
     /// Requested controls. Analog inputs normally use `-1..=1`.
     ///

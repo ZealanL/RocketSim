@@ -1,29 +1,30 @@
 //! Spectate-only input gate (pure, no IO).
 //!
-//! [`gate`] sits between the per-frame input build in `rocketsim-viewer.rs` and
-//! the control-channel send: spectate-only mode (or a non-driving frame)
-//! forces neutral inputs plus zeroed buttons, so held keys and gamepad
-//! blends never reach the sim. Frames still send every tick, so the channel
-//! stays live; `driven_car` tracking is display only and untouched.
+//! [`gate`] clears inputs when spectate-only mode is set or driving is blocked.
+//! Spectate-only messages use an invalid car index. Simulations must ignore
+//! that index instead of replacing policy controls with neutral controls.
+//! Messages still send every tick. Camera selection does not change.
 
 use rocketsim::CarControls;
 
 /// Gate driver inputs for one frame.
 ///
-/// Returns neutral plus zeroed buttons when `spectate_only` is set or the
-/// frame is not driving (no follow view, or window unfocused); otherwise
-/// passes `controls`/`buttons` through unchanged. `CarControls` is `Copy`,
-/// neutral is [`CarControls::default`].
+/// Spectate-only mode returns `u32::MAX` as the car index and clears inputs.
+/// A blocked driving frame keeps the car index but clears inputs. This
+/// releases held controls when the window loses focus or a menu opens.
 pub fn gate(
     spectate_only: bool,
     driving: bool,
+    car_index: u32,
     controls: CarControls,
     buttons: u8,
-) -> (CarControls, u8) {
-    if spectate_only || !driving {
-        (CarControls::default(), 0)
+) -> (u32, CarControls, u8) {
+    if spectate_only {
+        (u32::MAX, CarControls::default(), 0)
+    } else if !driving {
+        (car_index, CarControls::default(), 0)
     } else {
-        (controls, buttons)
+        (car_index, controls, buttons)
     }
 }
 
@@ -64,16 +65,46 @@ mod tests {
     }
 
     #[test]
-    fn input_gate_clears_controls_and_actions_unless_driving() {
+    fn input_gate_releases_manual_controls_without_overriding_spectated_bots() {
+        use rocketsim_vis::proto::{ControlMsg, decode_control, encode_control};
+
         let (controls, buttons) = hot_input();
-        for (spectate_only, driving) in [(false, false), (false, true), (true, false), (true, true)]
-        {
-            let expected = if driving && !spectate_only {
-                (controls, buttons)
-            } else {
-                (CarControls::default(), 0)
-            };
-            assert_eq!(gate(spectate_only, driving, controls, buttons), expected);
+        for (spectate_only, driving, input, expected_index, expected_controls, expected_buttons) in [
+            (false, true, controls, 1, controls, buttons),
+            (
+                false,
+                true,
+                CarControls::default(),
+                1,
+                CarControls::default(),
+                buttons,
+            ),
+            (false, false, controls, 1, CarControls::default(), 0),
+            (true, true, controls, u32::MAX, CarControls::default(), 0),
+            (true, false, controls, u32::MAX, CarControls::default(), 0),
+        ] {
+            let (index, gated_controls, gated_buttons) =
+                gate(spectate_only, driving, 1, input, buttons);
+            let bytes = encode_control(&ControlMsg::new(index, gated_controls, gated_buttons, 1));
+            let (message, _) = decode_control(&bytes).unwrap().unwrap();
+            assert_eq!(message.car_index, expected_index);
+            assert_eq!(message.controls, expected_controls);
+            assert_eq!(message.buttons, expected_buttons);
+
+            // Apply the message with the same bounds check as a policy client.
+            let mut policy_controls = [controls; 2];
+            if let Some(car) = policy_controls.get_mut(message.car_index as usize) {
+                *car = message.controls;
+            }
+            assert_eq!(policy_controls[0], controls);
+            assert_eq!(
+                policy_controls[1],
+                if spectate_only {
+                    controls
+                } else {
+                    expected_controls
+                }
+            );
         }
     }
 }
