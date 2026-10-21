@@ -1,9 +1,9 @@
 //! Camera logic: birds-eye, follow-car, director, auto-cam.
 //!
 //! Follow views use RL semantics: rigid ball-cam yaw (frozen when the ball
-//! is overhead), liftoff-frozen car-cam yaw with stiffness lag, speed zoom,
-//! toggle swing, dynamic FOV. Time advances through caller `dt`, clamped
-//! to `[0, 1/30]`.
+//! is overhead), delayed aerial velocity tracking, ground heading tracking
+//! with stiffness lag, speed zoom, toggle swing, and dynamic FOV.
+//! Time advances through caller `dt`, clamped to `[0, 1]` seconds.
 
 mod arena_bounds;
 mod auto_cam;
