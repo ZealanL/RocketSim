@@ -48,7 +48,7 @@ pub struct MutatorConfig {
     pub respawn_delay: f32,
     /// Seconds a bumper ignores further bumps after one connects.
     pub bump_cooldown_time: f32,
-    /// Boost tank capacity (default 100).
+    /// Boost tank capacity (default 100). Must be finite and non-negative.
     pub car_max_boost_amount: f32,
     /// Boost granted on spawn/kickoff (100 in Heatseeker/Dropshot).
     pub car_spawn_boost_amount: f32,

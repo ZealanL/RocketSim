@@ -905,7 +905,10 @@ impl Car {
             }
         }
 
-        self.state.boost = self.state.boost.clamp(0.0, car_consts::boost::MAX);
+        self.state.boost = self
+            .state
+            .boost
+            .clamp(0.0, mutator_config.car_max_boost_amount);
     }
 
     /// Apply ongoing-flip vertical damping before wheel updates.

@@ -438,8 +438,9 @@ impl Arena {
 
         let mut kickoff_order_perm = ArrayVec::<usize, 5>::new();
         kickoff_order_perm.extend(0..kickoff_locs.len());
-        if let Some(seed) = rng_seed {
-            Rng::with_seed(seed).shuffle(&mut kickoff_order_perm);
+        let mut seeded_rng = rng_seed.map(Rng::with_seed);
+        if let Some(rng) = seeded_rng.as_mut() {
+            rng.shuffle(&mut kickoff_order_perm);
         } else {
             self.rng.shuffle(&mut kickoff_order_perm);
         }
@@ -528,7 +529,9 @@ impl Arena {
         let mut ball_state = BallState::DEFAULT;
         match self.config.game_mode {
             GameMode::Heatseeker => {
-                let next_rand = self.rng.bool();
+                let next_rand = seeded_rng
+                    .as_mut()
+                    .map_or_else(|| self.rng.bool(), Rng::bool);
                 let y_sign = f32::from(i8::from(next_rand) * 2 - 1);
                 let scale = Vec3A::new(-y_sign, y_sign, 1.0);
                 ball_state.phys.pos = consts::heatseeker::BALL_START_POS * scale;
