@@ -603,6 +603,20 @@ mod tests {
     }
 
     #[test]
+    fn explicit_octane_hybrid_roster_builds_each_body_geometry() {
+        init();
+        let mut backend = V3Backend::new();
+        backend.set_bodies(&[0, 4]);
+        backend.ensure_cars(2);
+
+        let configs = backend.arena_body.as_ref().unwrap();
+        for (slot, expected) in [(0, CarBodyConfig::OCTANE), (1, CarBodyConfig::HYBRID)] {
+            assert_eq!(configs[slot].hitbox_size, expected.hitbox_size);
+            assert_eq!(configs[slot].hitbox_pos_offset, expected.hitbox_pos_offset);
+        }
+    }
+
+    #[test]
     fn short_roster_pads_with_octane() {
         init();
         let mut backend = V3Backend::new();

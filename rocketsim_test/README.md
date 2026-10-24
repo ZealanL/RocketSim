@@ -66,6 +66,24 @@ cargo run --release -p rocketsim_test --example rlpr_metric -- \
   rocketsim_test/recordings/wisp_3v3_300s.rlpr.zst
 ```
 
+RLPR stores one hitbox in the recording header. It describes car slot 0. The
+metric can infer other slots from settled wheel height, but Octane and Hybrid
+share wheel geometry and cannot be distinguished this way. Use `--car-bodies`
+to specify one preset per car slot when the roster is known. This example
+shows the syntax. It does not identify the Wisp recording's actual roster:
+
+```sh
+cargo run --release -p rocketsim_test --example rlpr_metric -- \
+  --car-bodies octane,hybrid,octane,hybrid,octane,hybrid \
+  rocketsim_test/recordings/wisp_3v3_300s.rlpr.zst
+```
+
+Preset names are case-insensitive. The list must have exactly one name for
+every car slot in each selected recording. The metric rejects an unknown name
+or a roster-length mismatch before it evaluates any recording. When omitted,
+the metric uses its normal header and settled-height detection. It cannot
+confirm the body of a car when the recording does not store that per-car data.
+
 The report groups results by contact type. `Support` counts car-ticks: one car
 compared for one tick counts as one sample. Contact groups can overlap. A
 sample passes when its normalized error is less than `1.0`. Lower `Mean norm`

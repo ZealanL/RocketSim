@@ -454,7 +454,7 @@ impl Car {
                 Impulse::Linear(
                     upwards_dir
                         * sticky_force_scale
-                        * mutator_config.gravity.z
+                        * -mutator_config.gravity.z.abs()
                         * TICK_TIME
                         * UU_TO_BT,
                 ),

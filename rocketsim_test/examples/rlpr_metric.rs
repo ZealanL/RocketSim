@@ -32,6 +32,12 @@ struct Args {
     #[arg(long)]
     per_recording: bool,
 
+    /// Explicit body preset for each car slot, in recording order.
+    /// Use comma-separated names: octane,dominus,plank,breakout,hybrid,merc,psyclops.
+    /// The list must contain exactly one preset per car in every selected recording.
+    #[arg(long, value_name = "PRESET,PRESET,...")]
+    car_bodies: Option<String>,
+
     /// Ticks per segment.
     #[arg(long, default_value_t = 120)]
     segment_ticks: usize,
@@ -68,6 +74,48 @@ const DEFAULT_RECORDINGS: [&str; 5] = [
     "nexto_1v1_300s.rlpr.zst",
     "veai_3v3_320wall.rlpr.zst",
 ];
+
+fn parse_car_bodies(value: &str) -> Result<Vec<usize>, String> {
+    value
+        .split(',')
+        .map(|name| {
+            common::BODY_PRESET_NAMES
+                .iter()
+                .position(|preset| preset.eq_ignore_ascii_case(name.trim()))
+                .ok_or_else(|| {
+                    format!(
+                        "unknown body preset {name:?}; expected one of {}",
+                        common::BODY_PRESET_NAMES.join(", ")
+                    )
+                })
+        })
+        .collect()
+}
+
+fn validate_roster_len(
+    recording: &std::path::Path,
+    roster_len: usize,
+    car_slots: usize,
+) -> Result<(), String> {
+    if roster_len != car_slots {
+        return Err(format!(
+            "{}: --car-bodies has {roster_len} entries but the recording has {car_slots} car slots",
+            recording.display()
+        ));
+    }
+    Ok(())
+}
+
+fn validate_roster_for_recordings(recordings: &[PathBuf], roster: &[usize]) -> Result<(), String> {
+    for path in recordings {
+        let recording =
+            Recording::from_file(path).map_err(|err| format!("{}: {err}", path.display()))?;
+        let ticks = common::collapse_duplicate_ticks(&recording.ticks);
+        let car_slots = ticks.first().map(common::tick_car_count).unwrap_or(0);
+        validate_roster_len(path, roster.len(), car_slots)?;
+    }
+    Ok(())
+}
 
 /// Resolve the recordings to evaluate: explicit CLI files as-is, or every
 /// bundled capture that exists on disk.
@@ -182,6 +230,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let rlpr_files = resolve_recordings(&args.rlpr_files)?;
+    let explicit_bodies = args
+        .car_bodies
+        .as_deref()
+        .map(parse_car_bodies)
+        .transpose()?;
+    if let Some(bodies) = &explicit_bodies {
+        validate_roster_for_recordings(&rlpr_files, bodies)?;
+    }
     println!(
         "Recordings: {} file{}",
         rlpr_files.len(),
@@ -255,14 +311,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .into());
         }
 
-        // The header carries one hitbox for the whole file, so it only ever
-        // describes car 0 and cannot see a mixed roster. Detect every car's
-        // body: the header settles car 0, and each car's settled resting
-        // height fingerprints the rest.
-        let header_body = v3::body_preset_index(&recording.info)
-            .map_err(|err| format!("{}: {err}", rlpr_file.display()))?;
-        let bodies = common::bodies_from_ticks(&ticks, header_body, &settled_heights)
-            .map_err(|err| format!("{}: {err}", rlpr_file.display()))?;
+        let bodies = match &explicit_bodies {
+            Some(bodies) => bodies.clone(),
+            None => {
+                // The header carries one hitbox for the whole file, so it only
+                // describes car 0. Settled heights detect wheel geometry but
+                // cannot separate bodies with shared wheel geometry.
+                let header_body = v3::body_preset_index(&recording.info)
+                    .map_err(|err| format!("{}: {err}", rlpr_file.display()))?;
+                common::bodies_from_ticks(&ticks, header_body, &settled_heights)
+                    .map_err(|err| format!("{}: {err}", rlpr_file.display()))?
+            }
+        };
         v3_backend.set_bodies(&bodies);
         #[cfg(feature = "v2")]
         v2_backend.set_bodies(&bodies);
@@ -387,6 +447,82 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn explicit_car_bodies_parse_case_insensitively_and_require_exact_slots() {
+        let valid = Args::try_parse_from([
+            "rlpr_metric",
+            "--car-bodies",
+            "OCTANE,Dominus,plank,BREAKOUT,hybrid,Merc,PSYCLOPS",
+        ])
+        .unwrap();
+        let roster = parse_car_bodies(valid.car_bodies.as_deref().unwrap()).unwrap();
+        assert_eq!(roster, (0..common::NUM_BODY_PRESETS).collect::<Vec<_>>());
+
+        for (input, expected_error) in [
+            ("octane,,hybrid", "unknown body preset \"\""),
+            ("octane,unknown", "unknown body preset \"unknown\""),
+            ("octane, hybrid,", "unknown body preset \"\""),
+        ] {
+            let parsed = parse_car_bodies(input).unwrap_err();
+            assert!(parsed.contains(expected_error), "{input:?}: {parsed}");
+        }
+
+        let mut errors = Vec::new();
+        for (recording, roster_len, car_slots) in [
+            ("three-cars.rlpr", 3, 3),
+            ("three-cars.rlpr", 2, 3),
+            ("two-cars.rlpr", 3, 2),
+        ] {
+            let result =
+                validate_roster_len(std::path::Path::new(recording), roster_len, car_slots);
+            errors.push(result.map_err(|error| error));
+        }
+        assert_eq!(errors[0], Ok(()));
+        assert!(errors[1].as_ref().unwrap_err().contains("three-cars.rlpr"));
+        assert!(errors[2].as_ref().unwrap_err().contains("two-cars.rlpr"));
+    }
+
+    #[test]
+    fn roster_preflight_checks_each_selected_recording() {
+        let recordings = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("recordings");
+        let selected = [
+            recordings.join("wisp_3v3_300s.rlpr.zst"),
+            recordings.join("nexto_1v1_300s.rlpr.zst"),
+        ];
+        let six_car_roster = vec![0; 6];
+
+        let error = validate_roster_for_recordings(&selected, &six_car_roster).unwrap_err();
+        assert!(error.contains("nexto_1v1_300s.rlpr.zst"), "{error}");
+        assert!(error.contains("2 car slots"), "{error}");
+    }
+
+    #[test]
+    fn explicit_roster_resolves_shared_octane_hybrid_height_ambiguity() {
+        let references: [f32; common::NUM_BODY_PRESETS] =
+            [100.0, 102.0, 105.0, 108.0, 100.0, 112.0, 115.0];
+        let hybrid_height = references[4];
+        let candidates: Vec<_> = references
+            .iter()
+            .enumerate()
+            .filter_map(|(index, height)| {
+                ((hybrid_height - height).abs() <= common::SETTLED_HEIGHT_TOL_UU).then_some(index)
+            })
+            .collect();
+        let default_selection =
+            common::body_from_settled_height(hybrid_height, &references, Some(0)).unwrap();
+        let explicit_roster = parse_car_bodies("octane,hybrid").unwrap();
+
+        assert_eq!(candidates, vec![0, 4]);
+        assert_eq!(default_selection, 0);
+        assert_eq!(explicit_roster[1], 4);
+    }
+
+    #[test]
+    fn explicit_car_bodies_are_opt_in() {
+        let defaults = Args::try_parse_from(["rlpr_metric"]).unwrap();
+        assert!(defaults.car_bodies.is_none());
+    }
 
     #[test]
     fn per_recording_is_opt_in() {
