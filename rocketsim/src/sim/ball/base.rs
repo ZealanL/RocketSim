@@ -81,6 +81,7 @@ impl Ball {
         info.start_world_trans.translation.z = consts::ball::REST_Z * UU_TO_BT;
         info.local_inertia = local_inertia;
         info.linear_damping = mutator_config.ball_drag;
+        info.linear_sleeping_threshold = 0.8;
 
         let coefs = if game_mode == GameMode::Snowday {
             snowday::PUCK_COEFS
@@ -92,7 +93,7 @@ impl Ball {
 
         let mut body = RigidBody::new(info);
         body.user_idx = UserInfoType::Ball;
-        // Keep the ball active so resting contacts remain responsive.
+        body.collision_flags |= CollisionFlags::CanSleep;
         body.collision_flags |= CollisionFlags::CustomMaterialCallback;
         if no_rot && matches!(body.get_collision_shape(), CollisionShapes::Sphere(_)) {
             body.collision_flags |= CollisionFlags::NoAngularMotion;
@@ -133,9 +134,7 @@ impl Ball {
         rb.clear_accum_vels();
         rb.update_inertia_tensor();
 
-        if self.state.phys.vel != Vec3A::ZERO || self.state.phys.ang_vel != Vec3A::ZERO {
-            rb.set_activation_state(ActivationState::Active);
-        }
+        rb.force_activate();
     }
 
     pub(crate) fn pre_tick_update(&mut self, rb: &mut RigidBody, game_mode: GameMode) {

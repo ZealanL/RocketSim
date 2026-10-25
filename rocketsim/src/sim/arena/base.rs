@@ -805,6 +805,9 @@ impl Arena {
     /// contact breaking threshold; call `clear_persistent_manifolds` first
     /// only if you need bit-identical fresh-arena matching for large
     /// planning jumps.
+    ///
+    /// This operation activates the ball and resets its deactivation timer,
+    /// even when both velocity vectors are zero.
     pub fn set_ball_state(&mut self, ball_state: BallState) {
         self.ball.set_state(
             &mut self.bullet_world.bodies_mut()[self.ball.rigid_body_idx],
@@ -813,6 +816,8 @@ impl Arena {
     }
 
     /// Edit ball state in place. Synchronize its body as in [`Arena::set_ball_state`].
+    /// This operation activates the ball and resets its deactivation timer,
+    /// even when both velocity vectors are zero.
     ///
     /// If the callback panics, completed edits remain. The body is synchronized
     /// during unwinding.

@@ -2,7 +2,7 @@ use arrayvec::ArrayVec;
 
 use crate::bullet::{
     collision::narrowphase::persistent_manifold::PersistentManifold,
-    dynamics::rigid_body::RigidBody,
+    dynamics::rigid_body::{ActivationState, RigidBody},
 };
 
 /// This limit applies only to the sort cache. Physics inputs remain unbounded.
@@ -13,6 +13,7 @@ pub(super) struct SimulationIslandManager {
     body_to_dynamic: Vec<usize>,
     parents: Vec<usize>,
     island_tags: Vec<isize>,
+    island_has_active_body: Vec<bool>,
     sort_keys: Vec<isize>,
     cached_input: ArrayVec<usize, SORT_CACHE_CAPACITY>,
     cached_output: ArrayVec<usize, SORT_CACHE_CAPACITY>,
@@ -21,16 +22,12 @@ pub(super) struct SimulationIslandManager {
 impl SimulationIslandManager {
     pub(super) fn sort_manifolds(
         &mut self,
-        bodies: &[RigidBody],
+        bodies: &mut [RigidBody],
         dynamic_body_indices: &[usize],
         overlapping_dynamic_pairs: &[(usize, usize)],
         manifolds: &[PersistentManifold],
         active_manifold_indices: &mut [usize],
     ) {
-        if active_manifold_indices.len() <= 1 {
-            return;
-        }
-
         self.update_body_mapping(bodies.len(), dynamic_body_indices);
         for (dynamic_index, parent) in self.parents.iter_mut().enumerate() {
             *parent = dynamic_index;
@@ -58,6 +55,27 @@ impl SimulationIslandManager {
 
         for dynamic_index in 0..self.island_tags.len() {
             self.island_tags[dynamic_index] = self.find(dynamic_index) as isize;
+        }
+
+        self.island_has_active_body
+            .resize(self.island_tags.len(), false);
+        self.island_has_active_body.fill(false);
+        for (dynamic_index, &body_index) in dynamic_body_indices.iter().enumerate() {
+            let island = self.island_tags[dynamic_index] as usize;
+            if bodies[body_index].activation_state() == ActivationState::Active {
+                self.island_has_active_body[island] = true;
+            }
+        }
+        for (dynamic_index, &body_index) in dynamic_body_indices.iter().enumerate() {
+            let island = self.island_tags[dynamic_index] as usize;
+            let state = bodies[body_index].activation_state();
+            if !self.island_has_active_body[island] && state == ActivationState::WantsDeactivation {
+                bodies[body_index].sleep();
+            }
+        }
+
+        if active_manifold_indices.len() <= 1 {
+            return;
         }
 
         let body_to_dynamic = &self.body_to_dynamic;

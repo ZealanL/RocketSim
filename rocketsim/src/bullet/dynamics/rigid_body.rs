@@ -46,6 +46,7 @@ pub enum ActivationState {
     Active,
     Sleeping,
     DisableSimulation,
+    WantsDeactivation,
 }
 
 pub enum CollisionFlags {
@@ -418,22 +419,40 @@ impl RigidBody {
         self.lin_vel + self.ang_vel.cross(rel_pos)
     }
 
-    pub fn update_activation_state(&mut self, _time_step: f32) {
+    pub fn update_activation_state(&mut self, time_step: f32) {
         if self.collision_flags & CollisionFlags::CanSleep == 0 {
             self.set_activation_state(ActivationState::Active);
             return;
         }
 
-        let thresh_lin_sq = self.linear_sleeping_threshold.powi(2);
-        let thresh_ang_sq = self.angular_sleeping_threshold.powi(2);
-        let within_sleep_thresh = (self.lin_vel.length_squared() < thresh_lin_sq)
-            && (self.ang_vel.length_squared() < thresh_ang_sq);
+        if self.activation == ActivationState::Sleeping {
+            return;
+        }
+
+        let lin_thresh_sq = self.linear_sleeping_threshold * self.linear_sleeping_threshold;
+        let ang_thresh_sq = self.angular_sleeping_threshold * self.angular_sleeping_threshold;
+        let within_sleep_thresh = self.lin_vel.length_squared() < lin_thresh_sq
+            && self.ang_vel.length_squared() < ang_thresh_sq;
 
         if within_sleep_thresh {
-            self.set_activation_state(ActivationState::Sleeping);
+            self.deactivation_time += time_step;
+            if self.deactivation_time > 2.0 && self.activation == ActivationState::Active {
+                self.set_activation_state(ActivationState::WantsDeactivation);
+            }
         } else {
+            self.deactivation_time = 0.0;
             self.set_activation_state(ActivationState::Active);
         }
+    }
+
+    pub(crate) const fn activation_state(&self) -> ActivationState {
+        self.activation
+    }
+
+    pub(crate) fn sleep(&mut self) {
+        self.set_activation_state(ActivationState::Sleeping);
+        self.lin_vel = Vec3A::ZERO;
+        self.ang_vel = Vec3A::ZERO;
     }
 
     pub fn clear_accum_vels(&mut self) {

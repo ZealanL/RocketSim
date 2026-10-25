@@ -5,7 +5,7 @@ use crate::bullet::{
     collision::narrowphase::{
         manifold_point::ManifoldPoint, persistent_manifold::PersistentManifold,
     },
-    dynamics::rigid_body::{CollisionFlags, RigidBody},
+    dynamics::rigid_body::{ActivationState, CollisionFlags, RigidBody},
     linear_math::{integrate_trans, integrate_trans_no_rot},
 };
 
@@ -600,8 +600,15 @@ impl SeqImpulseConstraintSolver {
                 body.set_world_trans(world_trans);
             }
 
-            body.set_lin_vel(solver.lin_vel + solver.external_force_impulse);
-            body.set_ang_vel(solver.ang_vel + solver.external_torque_impulse);
+            let lin_vel = solver.lin_vel + solver.external_force_impulse;
+            let ang_vel = solver.ang_vel + solver.external_torque_impulse;
+            let was_sleeping = body.activation_state() == ActivationState::Sleeping;
+            body.set_lin_vel(lin_vel);
+            body.set_ang_vel(ang_vel);
+            if was_sleeping && (lin_vel != glam::Vec3A::ZERO || ang_vel != glam::Vec3A::ZERO) {
+                body.set_activation_state(ActivationState::WantsDeactivation);
+                body.deactivation_time = 0.0;
+            }
         }
 
         self.tmp_solver_body_pool.clear();

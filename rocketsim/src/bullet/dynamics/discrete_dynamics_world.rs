@@ -149,6 +149,11 @@ impl DiscreteDynamicsWorld {
         self.for_each_dynamic_body(|body| {
             debug_assert!(!body.is_static_obj());
 
+            if body.activation_state() == ActivationState::Sleeping {
+                body.interp_world_trans = *body.get_world_trans();
+                return;
+            }
+
             body.apply_damping(time_step);
             let predicted_trans = body.predict_integration_trans(time_step);
             body.interp_world_trans = predicted_trans;
@@ -222,7 +227,7 @@ impl DiscreteDynamicsWorld {
             .broadphase_pair_cache
             .overlapping_dynamic_body_pairs();
         self.island_manager.sort_manifolds(
-            &self.collision_world.collision_objs,
+            &mut self.collision_world.collision_objs,
             &self.dynamic_body_idcs,
             dynamic_pairs,
             &self.collision_world.dispatcher1.persistent_manifolds,
