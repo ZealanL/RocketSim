@@ -115,6 +115,10 @@ impl BoostPadGrid {
         mutator_config: &MutatorConfig,
         tick_count: u64,
     ) -> Option<usize> {
+        if car_state.is_demoed {
+            return None; // The stored position remains after demolition.
+        }
+
         if car_state.boost >= mutator_config.car_max_boost_amount {
             return None; // Already full on boost
         }
