@@ -196,11 +196,7 @@ impl Arena {
                     }
                 }
 
-                Some(BoostPadGrid::new(
-                    &boost_pad_configs,
-                    &config.mutators,
-                    config.custom_boost_pads.is_none(),
-                ))
+                Some(BoostPadGrid::new(&boost_pad_configs, &config.mutators))
             } else {
                 None
             };
@@ -740,53 +736,24 @@ impl Arena {
         self.contact_tracker.clear_records();
 
         if !self.ball_only {
-            if self.config.custom_boost_pads.is_some() {
-                for car in &mut self.cars {
-                    car.post_tick_update(&mut self.bullet_world);
-                    let rb = &mut self.bullet_world.bodies_mut()[car.rigid_body_idx];
-                    car.finish_physics_tick(rb);
+            for car in &mut self.cars {
+                car.post_tick_update(&mut self.bullet_world);
+                let rb = &mut self.bullet_world.bodies_mut()[car.rigid_body_idx];
+                car.finish_physics_tick(rb);
+            }
 
-                    let car_idx = car.idx;
-                    if let Some(grid) = self.boost_pad_grid.as_mut()
-                        && let Some(pad_idx) = grid.maybe_give_car_boost(
+            if let Some(grid) = self.boost_pad_grid.as_mut() {
+                grid.update_membership(&self.cars, self.config.mutators.car_max_boost_amount);
+
+                for car_idx in 0..self.cars.len() {
+                    let collected = {
+                        let car = &mut self.cars[car_idx];
+                        grid.maybe_give_car_boost(
                             &mut car.state,
                             &self.config.mutators,
                             self.tick_count,
                             car_idx,
                         )
-                    {
-                        self.events.push(CarPickupBoost(CarPickupBoostEvent {
-                            car_idx,
-                            boost_pad_idx: pad_idx,
-                        }));
-                    }
-                }
-
-                if let Some(grid) = self.boost_pad_grid.as_mut() {
-                    grid.update_membership(&self.cars, self.config.mutators.car_max_boost_amount);
-                }
-            } else {
-                for car in &mut self.cars {
-                    car.post_tick_update(&mut self.bullet_world);
-                    let rb = &mut self.bullet_world.bodies_mut()[car.rigid_body_idx];
-                    car.finish_physics_tick(rb);
-                }
-
-                if let Some(grid) = self.boost_pad_grid.as_mut() {
-                    grid.update_membership(&self.cars, self.config.mutators.car_max_boost_amount);
-                }
-
-                for car_idx in 0..self.cars.len() {
-                    let collected = {
-                        let car = &mut self.cars[car_idx];
-                        self.boost_pad_grid.as_mut().and_then(|grid| {
-                            grid.maybe_give_car_boost(
-                                &mut car.state,
-                                &self.config.mutators,
-                                self.tick_count,
-                                car_idx,
-                            )
-                        })
                     };
 
                     if let Some(boost_pad_idx) = collected {
@@ -794,11 +761,11 @@ impl Arena {
                             car_idx,
                             boost_pad_idx,
                         }));
-
-                        self.boost_pad_grid
-                            .as_mut()
-                            .unwrap()
-                            .refresh_winners(&self.cars, self.config.mutators.car_max_boost_amount);
+                        grid.refresh_winner(
+                            boost_pad_idx,
+                            &self.cars,
+                            self.config.mutators.car_max_boost_amount,
+                        );
                     }
                 }
             }
@@ -1109,8 +1076,9 @@ impl Arena {
         self.cars[car_idx].demolish(self.config.mutators.respawn_delay);
     }
 
-    /// Returns pad cooldown and ordered overlapping car indices. The order uses the current
-    /// cylinder predicate and preserves first entry while membership continues.
+    /// Returns pad cooldown and ordered car members. Membership uses the
+    /// acquisition cylinder and hitbox retention box. A car appears on one pad
+    /// only. The order preserves first entry while membership continues.
     ///
     /// # Panics
     ///
@@ -1132,7 +1100,9 @@ impl Arena {
 
     /// Restores pad cooldown and ordered membership. `cooldown <= 0` reactivates the pad.
     /// Add all cars before restoring this state. Invalid car IDs are discarded, and duplicate
-    /// IDs keep their first position. Membership changes take effect on the next tick.
+    /// IDs in this list keep their first position. Do not restore one car on multiple pads.
+    /// If restored data does so, the next tick keeps that car on the lowest-index pad that still
+    /// retains it. Membership changes take effect on the next tick.
     pub fn set_boost_pad_state(&mut self, idx: usize, state: BoostPadState) {
         let boost_pad_grid = self.boost_pad_grid.as_mut().unwrap();
         let tick_count = self.tick_count;

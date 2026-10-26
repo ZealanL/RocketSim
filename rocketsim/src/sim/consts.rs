@@ -561,7 +561,7 @@ pub mod boost_pads {
     pub const CYL_RAD_SMALL: f32 = 144.0;
     pub const BOX_HEIGHT: f32 = 64.0;
     pub const BOX_RAD_BIG: f32 = 160.0;
-    pub const BOX_RAD_SMALL: f32 = 120.0;
+    pub const BOX_RAD_SMALL: f32 = 96.0;
     pub const COOLDOWN_BIG: f32 = 10.0;
     pub const COOLDOWN_SMALL: f32 = 4.0;
     pub const BOOST_AMOUNT_BIG: f32 = 100.0;

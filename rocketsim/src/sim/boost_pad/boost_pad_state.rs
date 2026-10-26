@@ -1,4 +1,4 @@
-/// Dynamic boost-pad state: seconds of cooldown left (`0` = active) and ordered overlapping car indices.
+/// Dynamic boost-pad state: seconds of cooldown left (`0` = active) and ordered car members.
 ///
 /// This public type is no longer `Copy`. Existing struct literals must now provide
 /// `touching_car_idxs` or use `BoostPadState::DEFAULT`. The added field changes
@@ -6,12 +6,15 @@
 /// next tick rebuilds order by car index and loses saved arrival order. Sequence
 /// formats such as postcard cannot read old layouts. Rebuild both protocol ends.
 /// Read with `Arena::get_boost_pad_state`; restore with
-/// `Arena::set_boost_pad_state`. Cooldowns tick in
+/// `Arena::set_boost_pad_state`. A car index must occur in no more than one
+/// pad state's `touching_car_idxs` list. If restored data repeats an index
+/// across pads, the next tick keeps it on the lowest-index pad that still
+/// retains the car. Cooldowns tick in
 /// [`crate::Arena::step_tick`] from `MutatorConfig::boost_pad_cooldown_*`.
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BoostPadState {
-    /// Current overlap order under RocketSim's boost-pad cylinder test.
+    /// Car members in retained-entry order. A car index can occur on one pad only.
     #[cfg_attr(feature = "serde", serde(default))]
     pub touching_car_idxs: Vec<usize>,
     /// Seconds of cooldown left (`0` = active).
