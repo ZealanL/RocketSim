@@ -2,6 +2,8 @@ use rocketsim::CarControls;
 
 use super::messages::*;
 
+const MAX_FRAME_CARS: usize = 256;
+
 /// Encodes one control message as a length-prefixed protocol message.
 ///
 /// The length is little-endian and includes the version and payload. The
@@ -150,7 +152,7 @@ pub fn decode_sim(buf: &[u8]) -> Result<Option<(SimMsg, usize)>, ProtocolError> 
                 ));
             }
             if !valid_phys(&frame.state.ball.phys)
-                || frame.state.cars.len() > 256
+                || frame.state.cars.len() > MAX_FRAME_CARS
                 || frame.state.cars.iter().any(|(_, car)| {
                     !valid_phys(&car.phys)
                         || !valid_controls(&car.controls)
@@ -159,6 +161,36 @@ pub fn decode_sim(buf: &[u8]) -> Result<Option<(SimMsg, usize)>, ProtocolError> 
                 || frame.state.boost_pads.len() > 4096
             {
                 return Err(ProtocolError::InvalidData("arena state has invalid values"));
+            }
+            let mut car_ids = [0; MAX_FRAME_CARS];
+            let car_ids = &mut car_ids[..frame.state.cars.len()];
+            for (id, (info, _)) in car_ids.iter_mut().zip(&frame.state.cars) {
+                *id = info.idx;
+            }
+            car_ids.sort_unstable();
+            if car_ids.windows(2).any(|pair| pair[0] == pair[1]) {
+                return Err(ProtocolError::InvalidData("car indices must be unique"));
+            }
+            let mut member_pad = [0; MAX_FRAME_CARS];
+            for (pad_idx, (_, pad)) in frame.state.boost_pads.iter().enumerate() {
+                if pad.touching_car_idxs.len() > car_ids.len() {
+                    return Err(ProtocolError::InvalidData(
+                        "pad membership exceeds car count",
+                    ));
+                }
+                for car_idx in &pad.touching_car_idxs {
+                    let Ok(car_slot) = car_ids.binary_search(car_idx) else {
+                        return Err(ProtocolError::InvalidData(
+                            "pad membership has invalid car indices",
+                        ));
+                    };
+                    if member_pad[car_slot] == pad_idx + 1 {
+                        return Err(ProtocolError::InvalidData(
+                            "pad membership has duplicate car indices",
+                        ));
+                    }
+                    member_pad[car_slot] = pad_idx + 1;
+                }
             }
             if let Some(scene) = frame.scene.as_ref()
                 && (scene.game_mode != frame.state.game_mode() || !scene.validate())

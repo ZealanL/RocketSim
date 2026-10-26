@@ -60,6 +60,9 @@ fn dummy_state(n_cars: usize) -> ArenaState {
             BoostPadState::default(),
         ));
     }
+    for (car_idx, (_, pad)) in s.boost_pads.iter_mut().take(n_cars).enumerate() {
+        pad.touching_car_idxs.push(car_idx);
+    }
     s
 }
 
@@ -159,4 +162,37 @@ fn dropshot_tile_states_round_trip() {
     assert_eq!(back.state.game_mode(), GameMode::Dropshot);
     assert_eq!(back.state.num_cars(), 2);
     assert_eq!(back.state.tile_states, Some(TileStates::DEFAULT));
+}
+
+#[test]
+fn ordered_pad_membership_round_trips_and_rejects_bad_ids() {
+    let mut state = dummy_state(2);
+    state.cars[0].0.idx = 17;
+    state.cars[1].0.idx = 4;
+    state.boost_pads[0].1.touching_car_idxs = vec![4, 17];
+    state.boost_pads[1].1.touching_car_idxs = vec![17];
+    let bytes = encode_sim(&SimMsg::Frame(VisFrame::new(state, DT)));
+    let (SimMsg::Frame(frame), _) = decode_sim(&bytes).unwrap().unwrap() else {
+        panic!("expected frame")
+    };
+    assert_eq!(frame.state.boost_pads[0].1.touching_car_idxs, vec![4, 17]);
+    assert_eq!(frame.state.boost_pads[1].1.touching_car_idxs, vec![17]);
+
+    for invalid_ids in [vec![1, 1], vec![2], vec![0, 1, 0]] {
+        let mut state = dummy_state(2);
+        state.boost_pads[0].1.touching_car_idxs = invalid_ids;
+        let bytes = encode_sim(&SimMsg::Frame(VisFrame::new(state, DT)));
+        assert!(matches!(
+            decode_sim(&bytes),
+            Err(rocketsim_vis::proto::ProtocolError::InvalidData(_))
+        ));
+    }
+
+    let mut state = dummy_state(2);
+    state.cars[1].0.idx = state.cars[0].0.idx;
+    let bytes = encode_sim(&SimMsg::Frame(VisFrame::new(state, DT)));
+    assert!(matches!(
+        decode_sim(&bytes),
+        Err(rocketsim_vis::proto::ProtocolError::InvalidData(_))
+    ));
 }

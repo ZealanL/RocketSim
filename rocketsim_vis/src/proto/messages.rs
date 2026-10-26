@@ -1,6 +1,7 @@
 use rocketsim::{ArenaState, CarControls};
 
 /// Unreleased wire protocol. Keep this at 1 until the first release.
+/// Rebuild both ends when serialized state fields change.
 pub const PROTOCOL_VERSION: u32 = 1;
 
 /// Default TCP listener port for the detached viewer: `39201`.
