@@ -144,8 +144,12 @@ Select the controller in settings if the viewer chooses a different device.
 Follow mode keeps one car in view. Ball camera turns that view toward the
 ball. Free camera lets you move without following a car. Auto changes
 ball-camera behavior automatically. Director selects views based on predicted
-play, including possible shots and saves. It is an approximation, not Rocket
-League's Director implementation. Do not expect identical camera cuts.
+play, including possible shots and saves. At kickoff, Director uses a wide
+view from inside the arena. It uses the same view when no active cars remain.
+During other play, Director selects a random active car immediately, then
+changes cars when its scoring rules select a better view. It is an
+approximation, not Rocket League's Director implementation. Do not expect
+identical camera positions or cuts.
 
 ## Change a binding
 

@@ -1,14 +1,19 @@
 //! Broadcast director: picks overview or one car each frame.
 //!
-//! Candidates score every frame; the pick sticks through hold times and
-//! switches only for a clearly better shot — except hard goal threats,
-//! which cut in (rate-limited). All timing runs on caller `dt`; no RNG or
-//! wall-clock.
+//! The director shows [`DirectorTarget::Overview`] at kickoff and while no
+//! active (not demoed) car exists. Outside kickoff it follows one active car.
+//! When the current car is not valid, it selects a random active car
+//! immediately. After that the pick sticks through hold times and switches
+//! only for a clearly better car, except hard goal threats, which cut in
+//! (rate-limited).
 //!
 //! Per-car scores combine ball proximity, energy, activity, aerial focus,
 //! likely-shot attacker priority, and projected-save opportunity. Scores are
 //! heuristics. Scoring projections use simple motion and do not model arena
 //! collision meshes.
+//!
+//! All timing runs on caller `dt`; no wall-clock. Random selection uses
+//! `std::collections::hash_map::RandomState` once per invalid current car.
 
 use glam::Vec3A;
 use rocketsim::{ArenaState, consts::arena::get_aabb};
@@ -18,13 +23,16 @@ use crate::camera::{clamp_dt, smootherstep01};
 /// Auto-spectator target: fixed overview or following one car (ball-cam).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DirectorTarget {
-    /// Fixed spectator view of the whole field.
+    /// Fixed wide view for kickoff or an arena with no active cars.
     Overview,
     /// Follow `arena.cars[i]` with forced ball-cam.
     Car(usize),
 }
 
 /// Broadcast director: picks [`DirectorTarget`] from the arena state.
+///
+/// `current_car_id` holds RocketSim's stable car id. It keeps the selection
+/// across car list reorder and removal.
 pub struct DirectorState {
     current: DirectorTarget,
     current_car_id: Option<usize>,
@@ -75,7 +83,8 @@ impl DirectorState {
     const PROJECTION_STEP: f32 = 1.0 / 120.0;
     const REST_BOUNCE_SPEED: f32 = 40.0;
 
-    /// Starts on [`DirectorTarget::Overview`].
+    /// Starts with no selected car. The first regular-play update picks a
+    /// random active car.
     pub fn new() -> Self {
         Self {
             current: DirectorTarget::Overview,
@@ -87,7 +96,7 @@ impl DirectorState {
         }
     }
 
-    /// Reset target and timing state to a clean overview.
+    /// Reset target and timing state to the initial overview.
     pub fn reset(&mut self) {
         self.current = DirectorTarget::Overview;
         self.current_car_id = None;
@@ -260,6 +269,32 @@ impl DirectorState {
         if aimed { 1.0 } else { 0.0 }
     }
 
+    /// Pick a random active car index.
+    ///
+    /// Use a fresh hash seed only when the current car is unavailable.
+    fn random_active_car(arena_state: &ArenaState) -> Option<usize> {
+        use std::hash::{BuildHasher, Hasher};
+
+        let active_count = arena_state
+            .cars
+            .iter()
+            .filter(|(_, car)| !car.is_demoed)
+            .count();
+        if active_count == 0 {
+            return None;
+        }
+        let mut hasher = std::collections::hash_map::RandomState::new().build_hasher();
+        hasher.write_usize(active_count);
+        let pick = (hasher.finish() as usize) % active_count;
+        arena_state
+            .cars
+            .iter()
+            .enumerate()
+            .filter(|(_, (_, car))| !car.is_demoed)
+            .nth(pick)
+            .map(|(index, _)| index)
+    }
+
     fn switch_to(&mut self, target: DirectorTarget, forced: bool) {
         self.current = target;
         self.time_on_target = 0.0;
@@ -267,38 +302,67 @@ impl DirectorState {
         self.last_switch_forced = forced;
     }
 
+    fn switch_to_car(&mut self, arena_state: &ArenaState, index: usize, forced: bool) {
+        self.switch_to(DirectorTarget::Car(index), forced);
+        self.current_car_id = Some(arena_state.cars[index].0.idx);
+    }
+
     /// Advances the director by `dt` seconds and returns the target.
+    ///
+    /// The result is [`DirectorTarget::Overview`] at kickoff and while no
+    /// active (not demoed) car exists. Otherwise the result follows an active
+    /// car. If the current car is not valid, the method selects a random
+    /// active car immediately. After that it keeps the car until another car
+    /// scores clearly better.
     pub fn update(&mut self, arena_state: &ArenaState, dt: f32) -> DirectorTarget {
         let dt = clamp_dt(dt);
         self.time_on_target += dt;
         self.time_since_force += dt;
         self.blend_age += dt;
 
+        let kickoff = Self::is_kickoff(arena_state);
+        let active_count = arena_state
+            .cars
+            .iter()
+            .filter(|(_, car)| !car.is_demoed)
+            .count();
+
+        // Overview is the only valid target at kickoff or with no active car.
+        // Clear the stored id so that play start selects a new car.
+        if kickoff || active_count == 0 {
+            if self.current != DirectorTarget::Overview {
+                self.switch_to(DirectorTarget::Overview, false);
+            }
+            self.current_car_id = None;
+            return self.current;
+        }
+
         // `DirectorTarget::Car` is a vector index for the caller, but the
         // selected player is tracked by RocketSim's stable car id.
-        let selected_car_missing = self
-            .current_car_id
-            .is_some_and(|id| !arena_state.cars.iter().any(|(info, _)| info.idx == id));
-        if let Some(id) = self.current_car_id {
-            self.current = arena_state
+        let current_index = if let Some(index) = self.current_car_id.and_then(|id| {
+            arena_state
                 .cars
                 .iter()
-                .position(|(info, _)| info.idx == id)
-                .map(DirectorTarget::Car)
-                .unwrap_or(DirectorTarget::Overview);
-        }
+                .position(|(info, car)| info.idx == id && !car.is_demoed)
+        }) {
+            self.current = DirectorTarget::Car(index);
+            index
+        } else {
+            let Some(index) = Self::random_active_car(arena_state) else {
+                self.switch_to(DirectorTarget::Overview, false);
+                self.current_car_id = None;
+                return self.current;
+            };
+            self.switch_to_car(arena_state, index, false);
+            return self.current;
+        };
 
         let ball_speed = arena_state.ball.vel.length();
         let energy = (ball_speed / 3000.0).clamp(0.0, 1.0);
-        let kickoff = Self::is_kickoff(arena_state);
 
         // Score each player independently. A scoring event boosts only the
         // most plausible attacker and defenders close to its projected path.
-        let event = if kickoff {
-            None
-        } else {
-            Self::scoring_event(arena_state)
-        };
+        let event = Self::scoring_event(arena_state);
         let mut attacker = None;
         let mut attacker_value = 0.0_f32;
         let mut defender_best: Option<(usize, f32)> = None;
@@ -336,14 +400,12 @@ impl DirectorState {
         }
 
         let mut scores: Vec<Option<(f32, f32)>> = Vec::with_capacity(arena_state.num_cars());
-        let mut min_dist = f32::INFINITY;
         for (i, (_, car)) in arena_state.cars.iter().enumerate() {
             if car.is_demoed {
                 scores.push(None);
                 continue;
             }
             let d = (arena_state.ball.pos - car.pos).length();
-            min_dist = min_dist.min(d);
             let proximity = 1.0 / (1.0 + d / 1500.0);
             let is_attacker = attacker == Some(i);
             let save_weight = defender_best
@@ -367,55 +429,32 @@ impl DirectorState {
             scores.push(Some((score, threat)));
         }
 
-        let spread = if min_dist.is_finite() {
-            (min_dist / 3000.0).clamp(0.0, 1.0)
-        } else {
-            1.0
-        };
-        let overview_score = 0.55 + 0.3 * spread - 0.3 * energy;
-
-        let mut best = DirectorTarget::Overview;
-        let mut best_score = overview_score;
-        let mut best_threat = 0.0;
+        // Overview is never a competitor during regular play. Compare cars
+        // only, so an active car is always selected.
+        let mut best: Option<(usize, f32, f32)> = None;
         for (i, score) in scores.iter().enumerate() {
-            if let Some((score, threat)) = score
-                && *score > best_score
-            {
-                best = DirectorTarget::Car(i);
-                best_score = *score;
-                best_threat = *threat;
+            let Some((score, threat)) = *score else {
+                continue;
+            };
+            if best.is_none_or(|(_, best_score, _)| score > best_score) {
+                best = Some((i, score, threat));
             }
         }
-
-        let (current_valid, current_score) = if selected_car_missing {
-            (false, f32::NEG_INFINITY)
-        } else {
-            match self.current {
-                DirectorTarget::Overview => (true, overview_score),
-                DirectorTarget::Car(i) => match scores.get(i).copied().flatten() {
-                    Some((score, _)) => (true, score),
-                    None => (false, f32::NEG_INFINITY),
-                },
-            }
+        // `active_count` is positive here, so this fallback is defensive only.
+        let Some((best_index, best_score, best_threat)) = best else {
+            self.switch_to(DirectorTarget::Overview, false);
+            self.current_car_id = None;
+            return self.current;
         };
+        let current_score = scores[current_index].map_or(f32::NEG_INFINITY, |(score, _)| score);
 
-        if !current_valid {
-            self.switch_to(best, false);
-            self.current_car_id = match best {
-                DirectorTarget::Car(i) => Some(arena_state.cars[i].0.idx),
-                DirectorTarget::Overview => None,
-            };
-        } else if best != self.current {
+        if best_index != current_index {
             let force = best_threat >= Self::FORCE_T
                 && self.time_since_force >= Self::FORCE_CD
                 && self.time_on_target >= Self::MIN_SHOT;
             if force {
                 self.time_since_force = 0.0;
-                self.switch_to(best, true);
-                self.current_car_id = match best {
-                    DirectorTarget::Car(i) => Some(arena_state.cars[i].0.idx),
-                    DirectorTarget::Overview => None,
-                };
+                self.switch_to_car(arena_state, best_index, true);
             } else {
                 let hold = if self.last_switch_forced {
                     Self::MIN_SHOT
@@ -428,11 +467,7 @@ impl DirectorState {
                     Self::MARGIN
                 };
                 if self.time_on_target >= hold && best_score > current_score + margin {
-                    self.switch_to(best, false);
-                    self.current_car_id = match best {
-                        DirectorTarget::Car(i) => Some(arena_state.cars[i].0.idx),
-                        DirectorTarget::Overview => None,
-                    };
+                    self.switch_to_car(arena_state, best_index, false);
                 }
             }
         }
@@ -464,6 +499,19 @@ mod tests {
             },
             car,
         )
+    }
+
+    /// Places the ball outside the kickoff region with no motion or threat.
+    fn ball_in_play(arena: &mut ArenaState) {
+        arena.ball.pos = Vec3A::new(0.0, 3000.0, 500.0);
+        arena.ball.vel = Vec3A::ZERO;
+        assert!(!DirectorState::is_kickoff(arena));
+    }
+
+    fn selected_id(director: &DirectorState) -> usize {
+        director
+            .current_car_id
+            .expect("regular play must remember a stable car id")
     }
 
     #[test]
@@ -542,6 +590,147 @@ mod tests {
     }
 
     #[test]
+    fn start_mid_play_selects_an_active_car_immediately() {
+        let mut arena = ArenaState::new_empty(GameMode::Soccar);
+        arena.cars.push(car_at(3, Team::Blue, 0.0, 2500.0));
+        arena.cars.push(car_at(8, Team::Orange, 0.0, -2500.0));
+        arena.cars.push(car_at(11, Team::Blue, 3000.0, 0.0));
+        ball_in_play(&mut arena);
+
+        let mut director = DirectorState::new();
+        let target = director.update(&arena, 1.0 / 30.0);
+        let DirectorTarget::Car(index) = target else {
+            panic!("regular play must follow a car, got {target:?}");
+        };
+        assert!(!arena.cars[index].1.is_demoed);
+        assert_eq!(director.current_car_id, Some(arena.cars[index].0.idx));
+
+        // No candidate can take over inside the minimum hold.
+        for _ in 0..60 {
+            assert_eq!(director.update(&arena, 1.0 / 30.0), target);
+        }
+    }
+
+    #[test]
+    fn kickoff_entry_and_exit_switch_between_overview_and_a_car() {
+        let mut arena = ArenaState::new_empty(GameMode::Soccar);
+        arena.cars.push(car_at(0, Team::Blue, -2048.0, -2560.0));
+        arena.cars.push(car_at(1, Team::Orange, 2048.0, 2560.0));
+        arena.ball.pos = Vec3A::new(0.0, 0.0, rocketsim::consts::ball::REST_Z);
+        arena.ball.vel = Vec3A::ZERO;
+
+        let mut director = DirectorState::new();
+        assert_eq!(
+            director.update(&arena, 1.0 / 30.0),
+            DirectorTarget::Overview
+        );
+        assert_eq!(director.current_car_id, None);
+
+        ball_in_play(&mut arena);
+        let DirectorTarget::Car(index) = director.update(&arena, 1.0 / 30.0) else {
+            panic!("play start must select a car");
+        };
+        assert!(!arena.cars[index].1.is_demoed);
+
+        // A return to kickoff clears the car and shows the overview.
+        arena.ball.pos = Vec3A::new(0.0, 0.0, rocketsim::consts::ball::REST_Z);
+        arena.ball.vel = Vec3A::ZERO;
+        assert_eq!(
+            director.update(&arena, 1.0 / 30.0),
+            DirectorTarget::Overview
+        );
+        assert_eq!(director.current_car_id, None);
+
+        // Leaving kickoff selects a car again, without waiting for a hold.
+        ball_in_play(&mut arena);
+        let DirectorTarget::Car(index) = director.update(&arena, 1.0 / 30.0) else {
+            panic!("play restart must select a car");
+        };
+        assert!(!arena.cars[index].1.is_demoed);
+        assert_eq!(director.current_car_id, Some(arena.cars[index].0.idx));
+    }
+
+    #[test]
+    fn demo_and_removal_reselect_and_all_demoed_shows_overview() {
+        let mut arena = ArenaState::new_empty(GameMode::Soccar);
+        arena.cars.push(car_at(0, Team::Blue, 0.0, 2500.0));
+        arena.cars.push(car_at(1, Team::Orange, 0.0, 4800.0));
+        arena.cars.push(car_at(2, Team::Blue, -3000.0, -1000.0));
+        ball_in_play(&mut arena);
+
+        let mut director = DirectorState::new();
+        let DirectorTarget::Car(index) = director.update(&arena, 1.0 / 30.0) else {
+            panic!("regular play must follow a car");
+        };
+        let first_id = selected_id(&director);
+
+        // A demo of the followed car reselects at once.
+        arena.cars[index].1.is_demoed = true;
+        let DirectorTarget::Car(next) = director.update(&arena, 1.0 / 30.0) else {
+            panic!("a remaining active car must be followed");
+        };
+        assert_ne!(next, index);
+        assert!(!arena.cars[next].1.is_demoed);
+        let next_id = arena.cars[next].0.idx;
+        assert_ne!(next_id, first_id);
+        assert_eq!(director.current_car_id, Some(next_id));
+
+        // A removal of the followed car reselects at once.
+        arena.cars.remove(next);
+        let DirectorTarget::Car(third) = director.update(&arena, 1.0 / 30.0) else {
+            panic!("a remaining active car must be followed");
+        };
+        assert!(!arena.cars[third].1.is_demoed);
+        assert_eq!(director.current_car_id, Some(arena.cars[third].0.idx));
+
+        // All cars demoed or removed: overview.
+        for (_, car) in &mut arena.cars {
+            car.is_demoed = true;
+        }
+        assert_eq!(
+            director.update(&arena, 1.0 / 30.0),
+            DirectorTarget::Overview
+        );
+        assert_eq!(director.current_car_id, None);
+
+        arena.cars.clear();
+        assert_eq!(
+            director.update(&arena, 1.0 / 30.0),
+            DirectorTarget::Overview
+        );
+        assert_eq!(director.current_car_id, None);
+    }
+
+    #[test]
+    fn selection_is_stable_until_a_better_car_is_available() {
+        let mut arena = ArenaState::new_empty(GameMode::Soccar);
+        arena.cars.push(car_at(4, Team::Blue, 0.0, -5200.0));
+        ball_in_play(&mut arena);
+
+        // A lone far car stays selected for a long time. Overview is not a
+        // competitor during regular play.
+        let mut director = DirectorState::new();
+        for _ in 0..150 {
+            assert_eq!(director.update(&arena, 1.0 / 30.0), DirectorTarget::Car(0));
+        }
+
+        // A much closer car appears, but the minimum hold keeps the current
+        // car. The score margin is large enough to take over after the hold.
+        let mut director = DirectorState::new();
+        assert_eq!(director.update(&arena, 1.0 / 30.0), DirectorTarget::Car(0));
+        arena.cars.push(car_at(9, Team::Orange, 0.0, 2500.0));
+        for _ in 0..60 {
+            director.update(&arena, 1.0 / 30.0);
+            assert_eq!(director.target(), DirectorTarget::Car(0));
+        }
+        for _ in 0..60 {
+            director.update(&arena, 1.0 / 30.0);
+        }
+        assert_eq!(director.target(), DirectorTarget::Car(1));
+        assert_eq!(director.current_car_id, Some(9));
+    }
+
+    #[test]
     fn shot_threat_takes_over() {
         let mut arena = ArenaState::new_empty(GameMode::Soccar);
         arena.cars.push(car_at(0, Team::Blue, 0.0, 2500.0));
@@ -564,6 +753,8 @@ mod tests {
         arena.ball.pos = Vec3A::new(0.0, 3000.0, 500.0);
         arena.ball.vel = Vec3A::new(0.0, 3000.0, 0.0);
         let mut director = DirectorState::new();
+        // Mid-play start selects the only active car at once.
+        assert_eq!(director.update(&arena, 1.0 / 30.0), DirectorTarget::Car(0));
         for _ in 0..100 {
             director.update(&arena, 1.0 / 30.0);
         }
@@ -602,7 +793,8 @@ mod tests {
         arena.ball.pos = Vec3A::new(0.0, 3000.0, 500.0);
         arena.ball.vel = Vec3A::new(0.0, 3000.0, 0.0);
         let mut director = DirectorState::new();
-        for _ in 0..100 {
+        // Let MAX_HOLD remove the score margin if the random pick is the attacker.
+        for _ in 0..360 {
             director.update(&arena, 1.0 / 30.0);
         }
         assert_eq!(director.target(), DirectorTarget::Car(1));
@@ -656,37 +848,38 @@ mod tests {
 
     #[test]
     fn aerial_play_wins_the_cut() {
-        // High ball, one grounded car at 1211uu and one AIRBORNE car at
-        // 583uu: proximity alone (0.72 vs overview+margin 0.808) would hold
-        // Overview, but the aerial bonus (+0.25) cuts to the airborne car.
+        // High ball, one grounded car at 1211uu. The director starts on that
+        // car, then an AIRBORNE car appears at 583uu. Proximity alone (0.72 vs
+        // 0.553 + margin 0.753) would hold the current car, but the aerial
+        // bonus (+0.25) cuts to the airborne car.
         let mut arena = ArenaState::new_empty(GameMode::Soccar);
         arena.cars.push(car_at(0, Team::Blue, 0.0, -1000.0));
+        arena.ball.pos = Vec3A::new(0.0, 0.0, 700.0);
+        arena.ball.vel = Vec3A::ZERO;
+
+        let mut director = DirectorState::new();
+        assert_eq!(director.update(&arena, 1.0 / 30.0), DirectorTarget::Car(0));
         arena.cars.push(car_at(1, Team::Orange, 0.0, 300.0));
         arena.cars[1].1.pos.z = 200.0;
         arena.cars[1].1.set_contact_flags(false, [false; 4]);
-        arena.ball.pos = Vec3A::new(0.0, 0.0, 700.0);
-        arena.ball.vel = Vec3A::ZERO;
-
-        let mut director = DirectorState::new();
-        let mut target = DirectorTarget::Overview;
         for _ in 0..150 {
-            target = director.update(&arena, 1.0 / 30.0);
+            director.update(&arena, 1.0 / 30.0);
         }
-        assert_eq!(target, DirectorTarget::Car(1));
+        assert_eq!(director.target(), DirectorTarget::Car(1));
 
-        // Same geometry grounded: no bonus, Overview holds.
+        // Same geometry grounded: no bonus, so the margin holds car 0.
         let mut arena = ArenaState::new_empty(GameMode::Soccar);
         arena.cars.push(car_at(0, Team::Blue, 0.0, -1000.0));
-        arena.cars.push(car_at(1, Team::Orange, 0.0, 300.0));
-        arena.cars[1].1.pos.z = 200.0;
         arena.ball.pos = Vec3A::new(0.0, 0.0, 700.0);
         arena.ball.vel = Vec3A::ZERO;
 
         let mut director = DirectorState::new();
-        let mut target = DirectorTarget::Overview;
+        assert_eq!(director.update(&arena, 1.0 / 30.0), DirectorTarget::Car(0));
+        arena.cars.push(car_at(1, Team::Orange, 0.0, 300.0));
+        arena.cars[1].1.pos.z = 200.0;
         for _ in 0..150 {
-            target = director.update(&arena, 1.0 / 30.0);
+            director.update(&arena, 1.0 / 30.0);
         }
-        assert_eq!(target, DirectorTarget::Overview);
+        assert_eq!(director.target(), DirectorTarget::Car(0));
     }
 }

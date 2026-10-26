@@ -76,6 +76,19 @@ fn director_identity(target: DirectorTarget, state: &ArenaState) -> DirectorIden
     }
 }
 
+fn director_overview_pose(mode: GameMode) -> (Vec3A, Vec3A, f32) {
+    let bounds = rocketsim::consts::arena::get_aabb(mode);
+    // Keep the wide view inside the side wall and below the ceiling.
+    let eye = bounds.max * Vec3A::new(0.92, 0.0, 0.63);
+    let target = Vec3A::new(0.0, 0.0, 100.0);
+    let fov = if mode == GameMode::Hoops {
+        130.0
+    } else {
+        110.0
+    };
+    (eye, target, fov)
+}
+
 struct DirectorRig {
     director: DirectorState,
     smooth: CarCamSmoothing,
@@ -189,10 +202,10 @@ impl CameraState {
         }
         match target {
             DirectorTarget::Overview => {
-                let (eye, target, fov) = view::arena_pose();
+                let (eye, target, fov) = director_overview_pose(state.game_mode());
                 (
-                    Vec3A::from(eye),
-                    (Vec3A::from(target) - Vec3A::from(eye)).normalize_or_zero(),
+                    eye,
+                    (target - eye).normalize_or_zero(),
                     fov,
                     "director · wide view".to_string(),
                 )
@@ -512,10 +525,15 @@ impl CameraState {
                 }
             }
             None => {
-                let (eye, target, fov) = view::arena_pose();
+                let (eye, target, fov) = if self.mode == CamMode::Director {
+                    director_overview_pose(input.metadata_mode.unwrap_or(GameMode::Soccar))
+                } else {
+                    let (eye, target, fov) = view::arena_pose();
+                    (Vec3A::from(eye), Vec3A::from(target), fov)
+                };
                 (
-                    Vec3A::from(eye),
-                    (Vec3A::from(target) - Vec3A::from(eye)).normalize_or_zero(),
+                    eye,
+                    (target - eye).normalize_or_zero(),
                     fov,
                     "waiting for sim".to_string(),
                 )
@@ -583,6 +601,41 @@ mod tests {
 
     use super::*;
     use crate::input::Action;
+
+    #[test]
+    fn director_wide_view_is_inside_arena_and_frames_kickoff() {
+        use glam::Vec4Swizzles;
+        use rocketsim::consts::car::spawn::get_kickoff_spawn_locations;
+
+        let settings = ViewerSettings::default();
+        let mut camera = CameraState::new(StartMode::Director);
+        for mode in [GameMode::Soccar, GameMode::Hoops, GameMode::Dropshot] {
+            let arena = ArenaState::new_empty(mode);
+            let (eye, direction, fov, _) =
+                camera.director_pose(DirectorTarget::Overview, &arena, &settings, 0.0);
+            let bounds = rocketsim::consts::arena::get_aabb(mode);
+            assert!(eye.cmpgt(bounds.min).all() && eye.cmplt(bounds.max).all());
+            for aspect in [4.0 / 3.0, 16.0 / 9.0] {
+                let (view, proj) =
+                    view::view_proj(eye.into(), (eye + direction).into(), fov, aspect);
+                let mvp = proj * view;
+                let spawns = get_kickoff_spawn_locations(mode);
+                let points = spawns.iter().flat_map(|spawn| {
+                    let pos = Vec3A::new(spawn.x, spawn.y, 50.0);
+                    [pos, Vec3A::new(-pos.x, -pos.y, pos.z)]
+                });
+                for point in points.chain([arena.ball.pos]) {
+                    let clip = mvp * point.extend(1.0);
+                    assert!(clip.w > 0.0, "{mode:?}: {point:?} is behind the camera");
+                    let ndc = clip.xyz() / clip.w;
+                    assert!(
+                        ndc.abs().cmplt(glam::Vec3::ONE).all(),
+                        "{mode:?}: {point:?} is outside the wide view: {ndc:?}"
+                    );
+                }
+            }
+        }
+    }
 
     #[test]
     fn follow_look_signs_match_resulting_camera_direction_and_accept_remapped_sources() {
