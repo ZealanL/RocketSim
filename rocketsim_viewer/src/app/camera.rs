@@ -188,6 +188,21 @@ impl CameraState {
         self.director.director.update(state, dt)
     }
 
+    pub(super) fn watched_car(&self) -> Option<u32> {
+        match self.mode {
+            CamMode::Man => self
+                .manager
+                .as_ref()
+                .and_then(|manager| manager.car_cam())
+                .map(|car| car.car_idx as u32),
+            CamMode::Director => match self.director.director.target() {
+                DirectorTarget::Car(index) => Some(index as u32),
+                DirectorTarget::Overview => None,
+            },
+            CamMode::Free => None,
+        }
+    }
+
     pub(super) fn director_pose(
         &mut self,
         target: DirectorTarget,
@@ -601,6 +616,71 @@ mod tests {
 
     use super::*;
     use crate::input::Action;
+
+    #[test]
+    fn boost_meter_tracks_the_watched_car_without_changing_the_driving_target() {
+        use rocketsim::{CarInfo, CarState};
+
+        use crate::ui::hud::spectated_boost;
+
+        let mut arena = ArenaState::new_empty(GameMode::Soccar);
+        arena.ball.pos.y = 1000.0;
+        let mut state = CarState::DEFAULT;
+        state.boost = 87.0;
+        arena.cars.push((
+            CarInfo {
+                idx: 8,
+                ..CarInfo::default()
+            },
+            state,
+        ));
+        let mut camera = CameraState::new(StartMode::Director);
+        camera.director_target(&arena, 0.0);
+
+        state.boost = 25.0;
+        arena.cars.insert(
+            0,
+            (
+                CarInfo {
+                    idx: 3,
+                    ..CarInfo::default()
+                },
+                state,
+            ),
+        );
+        let mut manager = CameraMan::new(GameMode::Soccar, CameraConfig::default());
+        manager.follow_car(&arena, 0);
+        camera.manager = Some(manager);
+        camera.director_target(&arena, 0.0);
+
+        for (mode, expected) in [
+            (CamMode::Director, Some(87.0)),
+            (CamMode::Man, Some(25.0)),
+            (CamMode::Free, None),
+        ] {
+            camera.mode = mode;
+            assert_eq!(spectated_boost(&arena.cars, camera.watched_car()), expected);
+        }
+
+        camera.mode = CamMode::Director;
+        arena.cars[1].1.is_demoed = true;
+        camera.director_target(&arena, 0.0);
+        assert_eq!(
+            spectated_boost(&arena.cars, camera.watched_car()),
+            Some(25.0)
+        );
+        assert_eq!(
+            camera.manager.as_ref().unwrap().car_cam().unwrap().car_idx,
+            0
+        );
+
+        arena.ball.pos.y = 0.0;
+        camera.director_target(&arena, 0.0);
+        assert_eq!(spectated_boost(&arena.cars, camera.watched_car()), None);
+        arena.cars.clear();
+        camera.director_target(&arena, 0.0);
+        assert_eq!(spectated_boost(&arena.cars, camera.watched_car()), None);
+    }
 
     #[test]
     fn director_wide_view_is_inside_arena_and_frames_kickoff() {

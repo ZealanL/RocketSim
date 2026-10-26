@@ -56,7 +56,7 @@ impl DiscreteDynamicsWorld {
         for body in &mut self.collision_world.collision_objs {
             body.companion_id = None;
         }
-        
+
         self.collision_world.collision_objs.remove(body_idx);
         for (index, body) in self
             .collision_world
@@ -67,7 +67,7 @@ impl DiscreteDynamicsWorld {
         {
             body.world_array_idx = index;
         }
-        
+
         self.collision_world
             .broadphase_pair_cache
             .remap_client_indices(body_idx);
@@ -78,7 +78,7 @@ impl DiscreteDynamicsWorld {
                 *index -= 1;
             }
         }
-        
+
         self.island_manager = SimulationIslandManager::default();
         self.solver = SeqImpulseConstraintSolver::default();
     }

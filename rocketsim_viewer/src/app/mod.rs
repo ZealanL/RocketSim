@@ -436,11 +436,10 @@ impl eframe::App for ViewerApp {
         } else {
             buttons
         };
-        // Boost meter source: raw boost of the watched car; None (no follow
-        // view, bad index, demoed car) hides the meter.
+        // The watched car can differ from the driving target in Director mode.
         let meter = client_frame
             .as_ref()
-            .and_then(|frame| spectated_boost(&frame.state.cars, spectated))
+            .and_then(|frame| spectated_boost(&frame.state.cars, self.camera.watched_car()))
             .map(boost_meter);
         self.ctrl_seq += 1;
         self.listener.send_controls_for_generation(
