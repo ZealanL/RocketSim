@@ -8,12 +8,14 @@ layout (location = 1) in vec3 vs_pa;
 layout (location = 2) in vec3 vs_pb;
 layout (location = 3) in vec4 vs_color;
 layout (location = 4) in float vs_width;
+layout (location = 5) in float vs_ribbon;
 
 out vec3 fs_pos;
 out vec3 fs_pa;
 out vec3 fs_pb;
 out vec4 fs_color;
 out float fs_width;
+flat out float fs_ribbon;
 
 uniform mat4 u_view;
 uniform mat4 u_proj;
@@ -25,4 +27,5 @@ void main() {
     fs_pb = vs_pb;
     fs_color = vs_color;
     fs_width = vs_width;
+    fs_ribbon = vs_ribbon;
 }

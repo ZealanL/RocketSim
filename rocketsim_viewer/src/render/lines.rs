@@ -1,8 +1,8 @@
-//! Line quads: CPU-expanded, one dynamic VBO, one draw.
+//! Line quads and joined ribbons: one dynamic VBO and one draw.
 //!
-//! [`expand_segment`](crate::geometry::lines::expand_segment) builds camera-facing
-//! quads on CPU; the shaders only transform and discard-test. Fully
-//! transparent segments skip pre-cap (bit-exact no-op).
+//! [`LineBuffer`] builds camera-facing quads on the CPU. Ribbon sections share
+//! edges. Standalone lines use round end caps in the fragment shader.
+//! Fully transparent segments do not count against the segment cap.
 
 use glam::Mat4;
 use glow::HasContext;
@@ -18,7 +18,7 @@ pub const LINE_FRAG_SRC: &str = include_str!("../shaders/line_frag.glsl");
 
 /// Segment cap (draws beyond it are dropped; count reported for the HUD).
 pub const MAX_LINES: usize = 1024;
-/// Floats per corner: world(3) + pa(3) + pb(3) + color(4) + width(1).
+/// Floats per corner: world(3) + pa(3) + pb(3) + color(4) + width(1) + ribbon(1).
 const STRIDE_FLOATS: usize = LINE_VERTEX_FLOATS;
 
 /// Owned line pipeline. Create/upload/draw/destroy on the GL thread.
@@ -54,7 +54,7 @@ impl LinesGl {
             );
             let stride = (STRIDE_FLOATS * 4) as i32;
             let mut off = 0;
-            for (loc, size) in [(0u32, 3), (1, 3), (2, 3), (3, 4), (4, 1)] {
+            for (loc, size) in [(0u32, 3), (1, 3), (2, 3), (3, 4), (4, 1), (5, 1)] {
                 gl.vertex_attrib_pointer_f32(loc, size, glow::FLOAT, false, stride, off);
                 gl.enable_vertex_attrib_array(loc);
                 off += size * 4;

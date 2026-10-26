@@ -72,6 +72,9 @@ pub struct Segment {
     pub width_a: f32,
     /// End width (uu).
     pub width_b: f32,
+    /// Use a ribbon with shared edges instead of round end caps.
+    /// Adjacent ribbon segments join when their endpoint positions match.
+    pub ribbon: bool,
 }
 
 impl Segment {
@@ -84,6 +87,7 @@ impl Segment {
             color_b: color,
             width_a: width,
             width_b: width,
+            ribbon: false,
         }
     }
 
@@ -183,13 +187,93 @@ pub fn expand_segment(
     out
 }
 
+fn ribbon_offset(
+    point: Vec3A,
+    incoming: Vec3A,
+    outgoing: Vec3A,
+    width: f32,
+    eye: Vec3A,
+    view: &glam::Mat4,
+    pixel_scale: f32,
+) -> Vec3A {
+    let fallback = Vec3A::from(view.row(0).truncate());
+    let normal = |direction: Vec3A| {
+        direction
+            .cross(point - eye)
+            .try_normalize()
+            .unwrap_or(fallback)
+    };
+    let before = normal(incoming);
+    let after = normal(outgoing);
+    let miter = (before + after).try_normalize().unwrap_or(after);
+    // Limit the miter at sharp turns. Both sides still use the same edge.
+    let scale = miter.dot(after).abs().max(0.25);
+    let min_width = view.transform_point3a(point).z.abs() * pixel_scale;
+    let half_width = if width > 0.0 {
+        width.max(min_width) * 0.5
+    } else {
+        0.0
+    };
+    miter * (half_width / scale)
+}
+
+fn expand_ribbon(
+    segment: &Segment,
+    previous: Option<&Segment>,
+    next: Option<&Segment>,
+    eye: Vec3A,
+    view: &glam::Mat4,
+    proj11: f32,
+    screen_h: f32,
+) -> [LineCorner; 4] {
+    let direction = (segment.b - segment.a).normalize_or_zero();
+    let incoming = previous.map_or(direction, |segment| {
+        (segment.b - segment.a).normalize_or_zero()
+    });
+    let outgoing = next.map_or(direction, |segment| {
+        (segment.b - segment.a).normalize_or_zero()
+    });
+    let pixel_scale = 2.0 / (proj11 * screen_h);
+    let start = ribbon_offset(
+        segment.a,
+        incoming,
+        direction,
+        segment.width_a,
+        eye,
+        view,
+        pixel_scale,
+    );
+    let end = ribbon_offset(
+        segment.b,
+        direction,
+        outgoing,
+        segment.width_b,
+        eye,
+        view,
+        pixel_scale,
+    );
+    std::array::from_fn(|index| {
+        let (side, along) = CORNERS[index];
+        let (point, offset, color, width) = if along < 0.0 {
+            (segment.a, start, segment.color_a, segment.width_a)
+        } else {
+            (segment.b, end, segment.color_b, segment.width_b)
+        };
+        LineCorner {
+            world: point + offset * side,
+            color,
+            width,
+        }
+    })
+}
+
 /// Number of packed floats per line corner.
-pub const LINE_VERTEX_FLOATS: usize = 14;
+pub const LINE_VERTEX_FLOATS: usize = 15;
 
 /// Reusable CPU storage for expanded line quads.
 #[derive(Default)]
 pub struct LineBuffer {
-    /// Packed positions, endpoints, colors, and widths for GPU upload.
+    /// Packed positions, endpoints, colors, widths, and ribbon flags for GPU upload.
     pub vertices: Vec<f32>,
     /// Number of visible segments included in the buffer.
     pub drawn: usize,
@@ -199,6 +283,7 @@ pub struct LineBuffer {
 
 impl LineBuffer {
     /// Expand visible segments. Keep the allocation for the next frame.
+    /// Ribbon segments share edges at matching adjacent endpoints.
     pub fn prepare(
         &mut self,
         segments: &[Segment],
@@ -213,7 +298,7 @@ impl LineBuffer {
         self.truncated = 0;
         self.vertices
             .reserve(segments.len().min(limit) * 4 * LINE_VERTEX_FLOATS);
-        for segment in segments {
+        for (index, segment) in segments.iter().enumerate() {
             if segment.is_invisible() {
                 continue;
             }
@@ -223,12 +308,25 @@ impl LineBuffer {
             }
             let start = segment.a.to_array();
             let end = segment.b.to_array();
-            for corner in expand_segment(segment, eye, view, proj11, screen_h) {
+            let corners = if segment.ribbon {
+                let previous = index
+                    .checked_sub(1)
+                    .and_then(|index| segments.get(index))
+                    .filter(|previous| previous.ribbon && previous.b == segment.a);
+                let next = segments
+                    .get(index + 1)
+                    .filter(|next| next.ribbon && segment.b == next.a);
+                expand_ribbon(segment, previous, next, eye, view, proj11, screen_h)
+            } else {
+                expand_segment(segment, eye, view, proj11, screen_h)
+            };
+            for corner in corners {
                 self.vertices.extend_from_slice(&corner.world.to_array());
                 self.vertices.extend_from_slice(&start);
                 self.vertices.extend_from_slice(&end);
                 self.vertices.extend_from_slice(&corner.color.to_array());
                 self.vertices.push(corner.width);
+                self.vertices.push(if segment.ribbon { 1.0 } else { 0.0 });
             }
             self.drawn += 1;
         }
@@ -396,10 +494,10 @@ impl RibbonEmitter {
         self.points.is_empty()
     }
 
-    /// Line segments from the head (`emit_pos`) through all live points.
-    /// Disconnected heads emit nothing.
+    /// Ribbon segments from the head (`emit_pos`) through the live points.
+    /// Repeated positions share one cross-section. Disconnected points start a new strip.
     pub fn segments(&self, emit_pos: Vec3A) -> Vec<Segment> {
-        let mut segs = Vec::with_capacity(self.points.len());
+        let mut segs: Vec<Segment> = Vec::with_capacity(self.points.len());
         if self.points.is_empty() {
             return segs;
         }
@@ -428,6 +526,17 @@ impl RibbonEmitter {
                 0.0
             };
             if point.connected {
+                // Repeated snapshots can put several samples at the same position.
+                // Keep the head attributes until the centerline moves again.
+                if cur_pos == prev_pos {
+                    if let Some(last) = segs.last_mut() {
+                        last.color_b = cur_color;
+                        last.width_b = cur_width;
+                        prev_color = cur_color;
+                        prev_width = cur_width;
+                    }
+                    continue;
+                }
                 segs.push(Segment {
                     a: prev_pos,
                     b: cur_pos,
@@ -435,6 +544,7 @@ impl RibbonEmitter {
                     color_b: cur_color,
                     width_a: prev_width,
                     width_b: cur_width,
+                    ribbon: true,
                 });
             }
             prev_pos = cur_pos;
@@ -480,9 +590,14 @@ mod tests {
     #[test]
     fn segments_and_detach() {
         let mut ribbon = RibbonEmitter::new(RibbonConfig::ball_trail());
-        // Emit one point ahead, then read segments at the head.
-        for _ in 0..10 {
-            ribbon.update(true, Vec3A::new(100.0, 0.0, 0.0), Vec3A::ZERO, 1.0 / 120.0);
+        // Emit moving points, then read segments at the head.
+        for tick in 0..10 {
+            ribbon.update(
+                true,
+                Vec3A::new(100.0 + tick as f32, 0.0, 0.0),
+                Vec3A::ZERO,
+                1.0 / 120.0,
+            );
         }
         assert!(!ribbon.is_empty());
         let segs = ribbon.segments(Vec3A::ZERO);
@@ -493,6 +608,25 @@ mod tests {
         let live = ribbon.len();
         ribbon.update(false, Vec3A::ZERO, Vec3A::ZERO, 1.0 / 120.0);
         assert_eq!(ribbon.segments(Vec3A::ZERO).len(), live - 1);
+
+        ribbon.reset();
+        for _ in 0..120 {
+            ribbon.update(true, Vec3A::ZERO, Vec3A::ZERO, 1.0 / 120.0);
+        }
+        assert!(ribbon.segments(Vec3A::ZERO).is_empty());
+        let head = Vec3A::new(100.0, 0.0, 0.0);
+        let segments = ribbon.segments(head);
+        assert_eq!(
+            segments.len(),
+            1,
+            "repeated samples must share one cross-section"
+        );
+        assert_eq!(segments[0].a, head);
+        assert_eq!(segments[0].b, Vec3A::ZERO);
+        assert_eq!(
+            segments[0].width_b, 0.0,
+            "the collapsed tail must still taper"
+        );
     }
 
     fn test_view() -> (Vec3A, glam::Mat4, f32, f32) {
@@ -528,6 +662,51 @@ mod tests {
         assert!(mny <= 0.0 && mxy >= 0.0, "y-range {mny}..{mxy}");
         // Colors interpolate head->tail across the along axis.
         assert_eq!(corners[0].color, seg.color_a);
+    }
+
+    #[test]
+    fn ribbon_packing_shares_edges_through_turns_without_caps_or_width_steps() {
+        let (eye, view, proj11, height) = test_view();
+        let joint = Vec3A::new(0.0, 0.0, 100.0);
+        let incoming = Vec3A::X;
+        for outgoing in [Vec3A::X, Vec3A::Z, -Vec3A::X, (joint - eye).normalize()] {
+            let mut segments = [
+                Segment::flat(joint - incoming * 100.0, joint, Color::WHITE, 30.0),
+                Segment::flat(joint, joint + outgoing * 100.0, Color::WHITE, 20.0),
+            ];
+            segments[0].width_b = 20.0;
+            segments[0].color_b = Color::WHITE.with_alpha(0.2);
+            segments[1].color_a = segments[0].color_b;
+            segments[1].width_b = 0.0;
+            for segment in &mut segments {
+                segment.ribbon = true;
+            }
+            let mut packed = LineBuffer::default();
+            packed.prepare(&segments, eye, &view, proj11, height, 2);
+            assert_eq!(packed.drawn, 2);
+            for side in 0..2 {
+                let end = (2 + side) * LINE_VERTEX_FLOATS;
+                let start = (4 + side) * LINE_VERTEX_FLOATS;
+                assert_eq!(
+                    &packed.vertices[end..end + 3],
+                    &packed.vertices[start..start + 3]
+                );
+                assert_eq!(
+                    &packed.vertices[end + 9..end + 14],
+                    &packed.vertices[start + 9..start + 14]
+                );
+                let offset = Vec3A::from_slice(&packed.vertices[end..end + 3]) - joint;
+                assert!(offset.is_finite() && offset.length() <= 40.001);
+            }
+            for vertex in packed.vertices.as_chunks::<LINE_VERTEX_FLOATS>().0 {
+                assert_eq!(vertex[14], 1.0, "ribbons must not use the capsule shader");
+            }
+            let first = Vec3A::from_slice(&packed.vertices[..3]);
+            assert!(
+                (first - segments[0].a).dot(incoming).abs() < 1e-4,
+                "no round cap at the head"
+            );
+        }
     }
 
     #[test]

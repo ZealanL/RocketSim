@@ -165,6 +165,7 @@ fn ring_segments(ring: &Ring) -> Vec<Segment> {
             color_b: color,
             width_a: width,
             width_b: width,
+            ribbon: false,
         })
         .collect()
 }
@@ -338,6 +339,7 @@ impl CarFx {
                                 color_b: color,
                                 width_a: 2.5,
                                 width_b: 2.5,
+                                ribbon: false,
                             });
                             prev = cur;
                         }
@@ -365,6 +367,7 @@ impl CarFx {
                 color_b: p.color.with_alpha(0.0),
                 width_a: p.width * t,
                 width_b: 0.0,
+                ribbon: false,
             });
         }
 

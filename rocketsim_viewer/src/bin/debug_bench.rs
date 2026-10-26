@@ -20,9 +20,12 @@ mod native {
     };
 
     use clap::Parser;
-    use glam::{Mat4, Vec3};
+    use glam::{Mat4, Vec3, Vec3A};
     use glow::HasContext;
-    use rocketsim_viewer::render::debug::DebugGl;
+    use rocketsim_viewer::{
+        geometry::lines::{Color as LineColor, Segment},
+        render::{debug::DebugGl, lines::LinesGl, view::view_proj},
+    };
     use rocketsim_vis::debug::{
         BuiltinMesh, BuiltinTexture, Color, DebugItem, DebugRenderer, DebugScene, DepthMode,
         DrawList, GroupOptions, MeshInstanceItem, MeshResource, PointItem, PolylineItem, Width,
@@ -533,6 +536,7 @@ mod native {
             }
         }
         check_line_depth(gl, output, &renderer, &opaque, expected)?;
+        check_ribbon_rendering(gl, &renderer, &opaque, expected)?;
         check_transparent_ordering(gl, output)?;
         check_builtin_assets(gl)?;
         Ok(())
@@ -644,6 +648,211 @@ mod native {
         gpu.destroy(gl);
         Ok(())
     }
+
+    fn render_ribbon_frame(
+        gl: &glow::Context,
+        lines: &LinesGl,
+        debug: Option<(&mut DebugGl, &DebugScene)>,
+        view: &Mat4,
+        proj: &Mat4,
+    ) -> Result<Vec<u8>, String> {
+        unsafe {
+            gl.viewport(0, 0, W as i32, H as i32);
+            gl.depth_mask(true);
+            gl.clear_color(0.025, 0.035, 0.055, 1.0);
+            gl.clear(glow::COLOR_BUFFER_BIT | glow::DEPTH_BUFFER_BIT);
+        }
+        if let Some((debug, scene)) = debug {
+            debug.draw(gl, scene, None, view, proj, [W as f32, H as f32]);
+        }
+        lines.draw(gl, view, proj);
+        unsafe {
+            gl.finish();
+        }
+        let error = unsafe { gl.get_error() };
+        ensure(
+            error == glow::NO_ERROR,
+            &format!("OpenGL error 0x{error:04x} in ribbon fixture"),
+        )?;
+        let mut rgba = vec![0_u8; (W * H * 4) as usize];
+        unsafe {
+            gl.pixel_store_i32(glow::PACK_ALIGNMENT, 1);
+            gl.read_pixels(
+                0,
+                0,
+                W as i32,
+                H as i32,
+                glow::RGBA,
+                glow::UNSIGNED_BYTE,
+                glow::PixelPackData::Slice(Some(&mut rgba)),
+            );
+        }
+        ensure(
+            rgba.as_chunks::<4>().0.iter().all(|pixel| pixel[3] == 255),
+            "ribbon readback contains non-opaque alpha",
+        )?;
+        Ok(rgba)
+    }
+
+    fn check_ribbon_rendering(
+        gl: &glow::Context,
+        renderer: &DebugRenderer,
+        opaque: &DebugItem,
+        opaque_reference: [u8; 4],
+    ) -> Result<(), String> {
+        let eye = Vec3::new(0.0, -1000.0, 300.0);
+        let (view, proj) = view_proj(eye, Vec3::new(0.0, 0.0, 300.0), 90.0, W as f32 / H as f32);
+        let xy = |point: Vec3| {
+            let clip = proj * view * point.extend(1.0);
+            let ndc = clip.truncate() / clip.w;
+            (
+                (((ndc.x * 0.5 + 0.5) * W as f32).floor() as i32).clamp(0, W as i32 - 1) as usize,
+                (((ndc.y * 0.5 + 0.5) * H as f32).floor() as i32).clamp(0, H as i32 - 1) as usize,
+            )
+        };
+        let pixel = |rgba: &[u8], point: Vec3| {
+            let (x, y) = xy(point);
+            rgba.as_chunks::<4>().0[y * W as usize + x]
+        };
+        let upload = |lines: &mut LinesGl, segments: &[Segment]| {
+            lines.upload(
+                gl,
+                segments,
+                Vec3A::from(eye),
+                &view,
+                proj.y_axis.y,
+                H as f32,
+            );
+        };
+        let color = LineColor::new(1.0, 1.0, 1.0, 0.5);
+        let width = 60.0;
+        let segment = |a: Vec3, b: Vec3| Segment {
+            a: Vec3A::from(a),
+            b: Vec3A::from(b),
+            color_a: color,
+            color_b: color,
+            width_a: width,
+            width_b: width,
+            ribbon: true,
+        };
+        let segments = |points: &[Vec3]| {
+            points
+                .windows(2)
+                .map(|pair| segment(pair[0], pair[1]))
+                .collect::<Vec<_>>()
+        };
+        let straight_points = (0..=6)
+            .map(|index| Vec3::new(-300.0 + index as f32 * 100.0, 100.0, 300.0))
+            .collect::<Vec<_>>();
+        let bent_points = [
+            Vec3::new(-300.0, 100.0, 300.0),
+            Vec3::new(-100.0, 100.0, 300.0),
+            Vec3::new(100.0, 100.0, 380.0),
+            Vec3::new(300.0, 100.0, 380.0),
+        ];
+
+        let mut lines = LinesGl::new(gl);
+        let mut straight_reference = [0_u8; 4];
+        for (name, points) in [
+            ("straight", straight_points.as_slice()),
+            ("bent", bent_points.as_slice()),
+        ] {
+            let ribbon = segments(points);
+            upload(&mut lines, &ribbon);
+            let rgba = render_ribbon_frame(gl, &lines, None, &view, &proj)?;
+            let bg = [rgba[0], rgba[1], rgba[2]];
+            let reference = pixel(&rgba, points[0].lerp(points[1], 0.5));
+            ensure(
+                reference[0..3] != bg,
+                &format!("{name} ribbon did not render"),
+            )?;
+            if name == "straight" {
+                straight_reference = reference;
+            }
+            let joins = points.len() - 2;
+            for &point in &points[1..points.len() - 1] {
+                let (x, y) = xy(point);
+                for dy in -2_i32..=2 {
+                    for dx in -2_i32..=2 {
+                        let px = (x as i32 + dx).clamp(0, W as i32 - 1) as usize;
+                        let py = (y as i32 + dy).clamp(0, H as i32 - 1) as usize;
+                        let actual = rgba.as_chunks::<4>().0[py * W as usize + px];
+                        ensure(
+                            actual[3] == reference[3]
+                                && actual[0..3]
+                                    .iter()
+                                    .zip(&reference[0..3])
+                                    .all(|(a, b)| a.abs_diff(*b) <= 2),
+                            &format!(
+                                "{name} join at {point:?} has a seam at pixel ({px},{py}): {actual:?}, interior {reference:?}"
+                            ),
+                        )?;
+                    }
+                }
+            }
+            println!("PASS ribbon-{name}: {joins} joins match interior pixel {reference:?}");
+        }
+
+        let capped = Segment::flat(
+            Vec3A::new(-100.0, 100.0, 300.0),
+            Vec3A::new(100.0, 100.0, 300.0),
+            color,
+            width,
+        );
+        upload(&mut lines, &[capped]);
+        let capped_rgba = render_ribbon_frame(gl, &lines, None, &view, &proj)?;
+        let capped_bg = [capped_rgba[0], capped_rgba[1], capped_rgba[2]];
+        let cap_inside = pixel(&capped_rgba, Vec3::new(115.0, 100.0, 315.0));
+        let cap_outside = pixel(&capped_rgba, Vec3::new(128.0, 100.0, 328.0));
+        ensure(
+            cap_inside[0..3] != capped_bg,
+            "round cap point did not render",
+        )?;
+        ensure(
+            cap_outside[0..3] == capped_bg,
+            "round cap discard did not trim the padded quad",
+        )?;
+        println!("PASS line-round-cap: inside {cap_inside:?}, outside {cap_outside:?}");
+
+        renderer
+            .replace_group(
+                "ordering",
+                DrawList {
+                    items: vec![opaque.clone()],
+                },
+                GroupOptions::default(),
+            )
+            .map_err(|error| error.to_string())?;
+        let scene = renderer.snapshot();
+        let mut debug = DebugGl::new(gl);
+        debug.sync(gl, &scene);
+        upload(&mut lines, &segments(&straight_points));
+        let occluded = render_ribbon_frame(gl, &lines, Some((&mut debug, &scene)), &view, &proj)?;
+        let center_with_ribbon = pixel(&occluded, Vec3::new(0.0, 100.0, 300.0));
+        ensure(
+            center_with_ribbon[3] == opaque_reference[3]
+                && center_with_ribbon[0..3]
+                    .iter()
+                    .zip(&opaque_reference[0..3])
+                    .all(|(a, b)| a.abs_diff(*b) <= 2),
+            &format!(
+                "translucent ribbon changed the opaque occluder: {center_with_ribbon:?} vs {opaque_reference:?}"
+            ),
+        )?;
+        let exposed = pixel(&occluded, Vec3::new(-250.0, 100.0, 300.0));
+        ensure(
+            exposed == straight_reference,
+            &format!(
+                "exposed ribbon pixel {exposed:?} differs from ribbon-only reference {straight_reference:?}"
+            ),
+        )?;
+        println!("PASS ribbon-depth: occluded center {center_with_ribbon:?}, exposed {exposed:?}");
+
+        debug.destroy(gl);
+        lines.destroy(gl);
+        Ok(())
+    }
+
     fn check_transparent_ordering(gl: &glow::Context, output: &str) -> Result<(), String> {
         use rocketsim_vis::debug::{Anchor, Lifetime};
         let renderer = DebugRenderer::new_detached();

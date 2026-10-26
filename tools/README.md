@@ -146,7 +146,8 @@ cargo run --locked --release -p rocketsim_viewer \
 
 The checks cover mixed opaque and translucent instances, translucent source
 order, camera reversal, and depth-tested versus always-visible lines. They
-also check framebuffer alpha and OpenGL errors.
+also check ribbon joins, round line caps, and ribbon depth occlusion. All
+fixtures check framebuffer alpha and OpenGL errors.
 
 ## Capture a viewer screenshot
 
