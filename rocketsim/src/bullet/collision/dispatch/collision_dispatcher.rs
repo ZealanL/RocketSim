@@ -1,3 +1,5 @@
+use glam::Affine3A;
+
 use super::{
     collision_obj_wrapper::RigidBodyWrapper, compound_collision_alg, convex_concave_collision_alg,
     convex_plane_collision_alg, obb_obb_collision_alg, sphere_concave_collision_alg,
@@ -32,8 +34,49 @@ pub struct CollisionDispatcher {
     /// Zero means that the pair has no retained manifold.
     manifold_table: Vec<u32>,
     manifold_stride: usize,
-    raw_body_aabbs: Vec<Option<Aabb>>,
-    compound_child_aabbs: Vec<Option<Aabb>>,
+    raw_body_aabbs: Vec<Cached<Aabb>>,
+    /// Compound child AABB and world transform for the current dispatch.
+    /// One slot holds both, so a cached pair cannot split.
+    compound_child_bounds: Vec<Cached<CompoundChildBounds>>,
+    bounds_generation: u64,
+}
+
+#[derive(Clone, Copy)]
+struct CompoundChildBounds {
+    aabb: Aabb,
+    world_trans: Affine3A,
+}
+
+impl Default for CompoundChildBounds {
+    fn default() -> Self {
+        Self {
+            aabb: Aabb::ZERO,
+            world_trans: Affine3A::IDENTITY,
+        }
+    }
+}
+
+/// Generation-stamped cache entry for the current dispatch.
+///
+/// Entries stay in the vector between dispatches. A lookup compares the stamp
+/// with `CollisionDispatcher::bounds_generation`, so no per-tick clear or
+/// rewrite is needed. `INVALID_GENERATION` marks a slot that was never filled;
+/// the generation counter skips that value.
+#[derive(Clone, Copy)]
+struct Cached<T> {
+    generation: u64,
+    value: T,
+}
+
+const INVALID_GENERATION: u64 = u64::MAX;
+
+impl<T: Copy> Cached<T> {
+    const fn invalid(value: T) -> Self {
+        Self {
+            generation: INVALID_GENERATION,
+            value,
+        }
+    }
 }
 
 enum MeshCollision<'a> {
@@ -75,7 +118,8 @@ impl Default for CollisionDispatcher {
             manifold_table: Vec::new(),
             manifold_stride: 0,
             raw_body_aabbs: Vec::new(),
-            compound_child_aabbs: Vec::new(),
+            compound_child_bounds: Vec::new(),
+            bounds_generation: 0,
         }
     }
 }
@@ -101,7 +145,7 @@ impl CollisionDispatcher {
 
         self.active_manifolds.clear();
         self.raw_body_aabbs.clear();
-        self.compound_child_aabbs.clear();
+        self.compound_child_bounds.clear();
         self.manifold_table.clear();
         self.manifold_stride = 0;
 
@@ -240,19 +284,34 @@ impl CollisionDispatcher {
     }
 
     pub(crate) fn prepare_dispatch_bounds(&mut self, body_count: usize) {
-        self.raw_body_aabbs.clear();
-        self.raw_body_aabbs.resize(body_count, None);
-        self.compound_child_aabbs.clear();
-        self.compound_child_aabbs.resize(body_count, None);
+        self.bounds_generation = self.bounds_generation.wrapping_add(1);
+        if self.bounds_generation == INVALID_GENERATION {
+            // Reserved stamp wrapped. Drop every slot so no old entry can
+            // match generation 0.
+            self.raw_body_aabbs.clear();
+            self.compound_child_bounds.clear();
+            self.bounds_generation = 0;
+        }
+
+        // Keep existing entries and invalidate them lazily with the new
+        // generation. Only a changed body count touches the vectors.
+        self.raw_body_aabbs
+            .resize(body_count, Cached::invalid(Aabb::ZERO));
+        self.compound_child_bounds
+            .resize(body_count, Cached::invalid(CompoundChildBounds::default()));
     }
 
     fn cached_raw_body_aabb(&mut self, body_idx: usize, body: &RigidBody) -> Aabb {
-        if let Some(aabb) = self.raw_body_aabbs[body_idx] {
-            return aabb;
+        let cached = self.raw_body_aabbs[body_idx];
+        if cached.generation == self.bounds_generation {
+            return cached.value;
         }
 
         let aabb = body.get_collision_shape().get_aabb(body.get_world_trans());
-        self.raw_body_aabbs[body_idx] = Some(aabb);
+        self.raw_body_aabbs[body_idx] = Cached {
+            generation: self.bounds_generation,
+            value: aabb,
+        };
         aabb
     }
 
@@ -264,16 +323,26 @@ impl CollisionDispatcher {
         other_idx: usize,
         other_obj: &RigidBody,
     ) -> bool {
-        let child_aabb = match self.compound_child_aabbs[compound_idx] {
-            Some(aabb) => aabb,
-            None => {
-                let aabb = compound_collision_alg::child_world_aabb(compound_obj, compound_shape);
-                self.compound_child_aabbs[compound_idx] = Some(aabb);
-                aabb
-            }
+        let cached = self.compound_child_bounds[compound_idx];
+        let child_bounds = if cached.generation == self.bounds_generation {
+            cached.value
+        } else {
+            // The gate needs the child AABB, and the contact pass needs the
+            // child transform. Compute both here so the transform is
+            // composed once per compound per dispatch.
+            let world_trans =
+                compound_collision_alg::child_world_trans(compound_obj, compound_shape);
+            let aabb =
+                compound_collision_alg::child_world_aabb_from_trans(compound_shape, &world_trans);
+            let value = CompoundChildBounds { aabb, world_trans };
+            self.compound_child_bounds[compound_idx] = Cached {
+                generation: self.bounds_generation,
+                value,
+            };
+            value
         };
         let other_aabb = self.cached_raw_body_aabb(other_idx, other_obj);
-        child_aabb.intersects(&other_aabb)
+        child_bounds.aabb.intersects(&other_aabb)
     }
 
     fn empty_manifold_bodies<'a>(
@@ -597,15 +666,23 @@ impl CollisionDispatcher {
         }
 
         let compound_pair = Self::compound_child_pair(rb0, rb1);
+        let compound_idx = compound_pair.map(|(compound_obj, _, _)| {
+            if std::ptr::eq(compound_obj, rb0) {
+                rb0_idx
+            } else {
+                rb1_idx
+            }
+        });
+
         let compound_gate = compound_pair.map(|(compound_obj, compound, other_obj)| {
             if USE_CACHED_BOUNDS {
-                let (compound_idx, other_idx) = if std::ptr::eq(compound_obj, rb0) {
-                    (rb0_idx, rb1_idx)
+                let other_idx = if std::ptr::eq(compound_obj, rb0) {
+                    rb1_idx
                 } else {
-                    (rb1_idx, rb0_idx)
+                    rb0_idx
                 };
                 self.cached_compound_child_overlaps_other(
-                    compound_idx,
+                    compound_idx.expect("compound pair has a body index"),
                     compound_obj,
                     compound,
                     other_idx,
@@ -615,6 +692,7 @@ impl CollisionDispatcher {
                 compound_collision_alg::child_overlaps_other(compound_obj, compound, other_obj)
             }
         });
+
         if compound_gate == Some(false) {
             self.release_manifold(rb0_idx, rb1_idx);
             return;
@@ -651,9 +729,19 @@ impl CollisionDispatcher {
                         | CollisionShapes::ConvexHull(_)
                 ) =>
             {
+                let new_child_world_trans = if USE_CACHED_BOUNDS {
+                    let idx = compound_idx.expect("compound pair has a body index");
+                    let cached = self.compound_child_bounds[idx];
+                    debug_assert_eq!(cached.generation, self.bounds_generation);
+                    cached.value.world_trans
+                } else {
+                    compound_collision_alg::child_world_trans(compound_obj, compound_shape)
+                };
+
                 compound_collision_alg::process_collision_after_child_gate(
                     compound_obj,
                     compound_shape,
+                    new_child_world_trans,
                     other_obj,
                     contact_added_callback,
                     &mut fresh,

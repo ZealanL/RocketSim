@@ -83,10 +83,32 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
     }
 }
 
+/// World transform of the compound child shape.
+///
+/// This uses the same composition order as the gate AABB computation, so a
+/// caller can reuse one value for both the gate and the contact pass without
+/// changing rounding.
+#[inline]
+pub(crate) fn child_world_trans(
+    compound_obj: &RigidBody,
+    compound_shape: &CompoundShape,
+) -> Affine3A {
+    *compound_obj.get_world_trans() * compound_shape.child_trans
+}
+
+#[inline]
+pub(crate) fn child_world_aabb_from_trans(
+    compound_shape: &CompoundShape,
+    new_child_world_trans: &Affine3A,
+) -> Aabb {
+    compound_shape.child_shape.get_aabb(new_child_world_trans)
+}
+
 pub(crate) fn child_world_aabb(compound_obj: &RigidBody, compound_shape: &CompoundShape) -> Aabb {
-    let org_trans = *compound_obj.get_world_trans();
-    let new_child_world_trans = org_trans * compound_shape.child_trans;
-    compound_shape.child_shape.get_aabb(&new_child_world_trans)
+    child_world_aabb_from_trans(
+        compound_shape,
+        &child_world_trans(compound_obj, compound_shape),
+    )
 }
 
 pub(crate) fn child_overlaps_other(
@@ -101,6 +123,18 @@ pub(crate) fn child_overlaps_other(
     child_aabb.intersects(&other_aabb)
 }
 
+fn child_overlaps_other_with_trans(
+    compound_shape: &CompoundShape,
+    new_child_world_trans: &Affine3A,
+    other_obj: &RigidBody,
+) -> bool {
+    let child_aabb = child_world_aabb_from_trans(compound_shape, new_child_world_trans);
+    let other_aabb = other_obj
+        .get_collision_shape()
+        .get_aabb(other_obj.get_world_trans());
+    child_aabb.intersects(&other_aabb)
+}
+
 pub fn process_collision<T: ContactAddedCallback>(
     compound_obj: &RigidBody,
     compound_shape: &CompoundShape,
@@ -109,13 +143,15 @@ pub fn process_collision<T: ContactAddedCallback>(
     out: &mut Option<PersistentManifold>,
 ) {
     debug_assert!(out.is_none());
-    if !child_overlaps_other(compound_obj, compound_shape, other_obj) {
+    let new_child_world_trans = child_world_trans(compound_obj, compound_shape);
+    if !child_overlaps_other_with_trans(compound_shape, &new_child_world_trans, other_obj) {
         return;
     }
 
     process_collision_after_child_gate(
         compound_obj,
         compound_shape,
+        new_child_world_trans,
         other_obj,
         contact_added_callback,
         out,
@@ -125,15 +161,12 @@ pub fn process_collision<T: ContactAddedCallback>(
 pub(crate) fn process_collision_after_child_gate<T: ContactAddedCallback>(
     compound_obj: &RigidBody,
     compound_shape: &CompoundShape,
+    new_child_world_trans: Affine3A,
     other_obj: &RigidBody,
     contact_added_callback: &mut T,
     out: &mut Option<PersistentManifold>,
 ) {
     debug_assert!(out.is_none());
-
-    let org_trans = *compound_obj.get_world_trans();
-    let child_trans = &compound_shape.child_trans;
-    let new_child_world_trans = org_trans * child_trans;
 
     let box_shape = &compound_shape.child_shape;
     let other_col_shape = other_obj.get_collision_shape();
