@@ -559,8 +559,8 @@ impl Arena {
 
     /// Spawns a car, respawns it at a team respawn pad, and returns its index.
     ///
-    /// The index is the car's id for `get_car_*/set_car_*`. Cars can only be
-    /// added, never removed — build a fresh [`Arena`] to reset the lobby.
+    /// Use the index with `get_car_*/set_car_*`. Removing a car with
+    /// [`Arena::remove_car`] decreases the indices of all later cars by one.
     ///
     /// # Panics
     ///
@@ -595,6 +595,91 @@ impl Arena {
         self.cars.push(car);
         self.ball_only = false;
         idx
+    }
+
+    /// Removes a car and its physics body from the arena.
+    ///
+    /// Keeps the order of the remaining cars. Each car after `car_idx` gets
+    /// an index that is one less than its old index. Update any car indices
+    /// stored by your application. Old snapshots and copied events keep their
+    /// old indices; do not use those indices with the changed arena.
+    ///
+    /// Removes the car from boost-pad membership and bump cooldowns. Updates
+    /// stored physics indices and removes contacts with the car. Queries
+    /// exported wheel contacts again if they included a car. Clears the last
+    /// step's events. Does not advance time or reset the remaining bodies.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `car_idx` is out of bounds. The arena stays unchanged.
+    ///
+    /// ```
+    /// use rocketsim::{Arena, CarBodyConfig, GameMode, Team};
+    ///
+    /// let mut arena = Arena::new(GameMode::TheVoid);
+    /// let blue = arena.add_car(Team::Blue, CarBodyConfig::OCTANE);
+    /// let orange = arena.add_car(Team::Orange, CarBodyConfig::DOMINUS);
+    /// arena.remove_car(blue);
+    /// assert_eq!(arena.get_car_info(orange - 1).team, Team::Orange);
+    /// ```
+    pub fn remove_car(&mut self, car_idx: usize) {
+        let body_idx = self.cars[car_idx].rigid_body_idx;
+        self.bullet_world.remove_rigid_body(body_idx);
+        self.cars.remove(car_idx);
+
+        if self.ball.rigid_body_idx > body_idx {
+            self.ball.rigid_body_idx -= 1;
+        }
+        for (idx, car) in self.cars.iter_mut().enumerate() {
+            car.info.idx = idx;
+            if car.rigid_body_idx > body_idx {
+                car.rigid_body_idx -= 1;
+            }
+            self.bullet_world.bodies_mut()[car.rigid_body_idx].user_pointer = idx;
+            car.bullet_vehicle.remove_body(body_idx);
+            if let Some(victim) = &mut car.state.bump_cooldown_victim {
+                if *victim == car_idx {
+                    // None with a positive timer blocks bumps against all cars.
+                    car.state.bump_cooldown_victim = None;
+                    car.state.bump_cooldown_timer = 0.0;
+                } else if *victim > car_idx {
+                    *victim -= 1;
+                }
+            }
+        }
+
+        // Exported wheel hits store the body type, not the body index.
+        // Query these hits again without clearing unrelated suspension history.
+        if self.cars.iter().any(|car| {
+            car.state
+                .wheels_with_contact()
+                .iter()
+                .flatten()
+                .any(|hit| hit.user_info == UserInfoType::Car)
+        }) {
+            self.bullet_world.refresh_aabbs();
+            for car in &mut self.cars {
+                if car
+                    .state
+                    .wheels_with_contact()
+                    .iter()
+                    .flatten()
+                    .any(|hit| hit.user_info == UserInfoType::Car)
+                {
+                    car.refresh_contact_state(&self.bullet_world);
+                }
+            }
+        }
+        if let Some(grid) = &mut self.boost_pad_grid {
+            grid.remove_car(
+                car_idx,
+                &self.cars,
+                self.config.mutators.car_max_boost_amount,
+            );
+        }
+        self.contact_tracker.clear_records();
+        self.events.clear();
+        self.ball_only = self.cars.is_empty() && self.tile_states.is_none();
     }
 
     /// Advances the game one tick (`1/120` s) and returns that tick's events.
@@ -996,13 +1081,14 @@ impl Arena {
         self.bullet_world.num_persistent_manifolds()
     }
 
-    /// All cars in add order; index `i` is the id from [`Arena::add_car`].
+    /// All current cars in add order. Indices match the `get_car_*/set_car_*` APIs.
+    /// Removing a car shifts all later indices down by one.
     #[inline]
     pub const fn cars(&self) -> &Vec<Car> {
         &self.cars
     }
 
-    /// Number of cars added with [`Arena::add_car`].
+    /// Number of cars currently in the arena.
     #[inline]
     pub const fn num_cars(&self) -> usize {
         self.cars.len()
@@ -1385,7 +1471,8 @@ impl Arena {
 
     /// Events from the last [`Arena::step_tick`] (same slice `step_tick` returned).
     ///
-    /// Cleared at the start of each tick. See [`ArenaEvent`] for variants.
+    /// Cleared at the start of each tick and by [`Arena::remove_car`].
+    /// See [`ArenaEvent`] for variants.
     #[must_use]
     pub fn get_last_step_events(&self) -> &[ArenaEvent] {
         self.events.events()

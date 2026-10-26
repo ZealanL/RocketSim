@@ -303,6 +303,19 @@ impl GridBroadphase {
         new_handle_idx
     }
 
+    pub(crate) fn remove_proxy(&mut self, proxy_idx: usize) {
+        for cell in &mut self.cell_grid.cells {
+            cell.remove_dyn(proxy_idx);
+            cell.static_handles.retain(|&handle| handle != proxy_idx);
+        }
+        self.axis_sweep.remove_handle(proxy_idx);
+        self.island_dynamic_pairs.clear();
+    }
+
+    pub(crate) fn remap_client_indices(&mut self, removed_body: usize) {
+        self.axis_sweep.remap_client_indices(removed_body);
+    }
+
     pub fn overlapping_dynamic_body_pairs(&mut self) -> &[(usize, usize)] {
         self.island_dynamic_pairs.clear();
 

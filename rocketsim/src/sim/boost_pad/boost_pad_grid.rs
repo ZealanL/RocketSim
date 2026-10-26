@@ -156,6 +156,30 @@ impl BoostPadGrid {
         self.touching_pad_by_car.fill(None);
     }
 
+    pub(crate) fn remove_car(
+        &mut self,
+        car_idx: usize,
+        cars: &[crate::sim::car::Car],
+        max_boost: f32,
+    ) {
+        for pad in &mut self.all_pads {
+            pad.touching_car_idxs.retain_mut(|idx| {
+                if *idx == car_idx {
+                    return false;
+                }
+                if *idx > car_idx {
+                    *idx -= 1;
+                }
+                true
+            });
+        }
+        // Cars added since the last membership update have no cache entry yet.
+        if car_idx < self.touching_pad_by_car.len() {
+            self.touching_pad_by_car.remove(car_idx);
+        }
+        self.refresh_winners(cars, max_boost);
+    }
+
     pub fn update_membership(&mut self, cars: &[crate::sim::car::Car], max_boost: f32) {
         self.touching_pad_by_car.resize(cars.len(), None);
         self.touching_pad_by_car.fill(None);

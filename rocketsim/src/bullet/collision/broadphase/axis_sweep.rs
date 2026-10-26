@@ -177,6 +177,43 @@ impl AxisSweep3 {
         handle_index
     }
 
+    pub(super) fn remove_handle(&mut self, handle: usize) {
+        assert!(handle > 0 && handle < self.handles.len());
+        self.pair_cache.remove_handle(&self.handles, handle);
+        self.handles[handle] = BroadphaseProxy::default();
+        self.free_list.push(handle as u16);
+        self.num_handles -= 1;
+
+        for axis in 0..3 {
+            self.edges[axis].retain(|edge| edge.handle as usize != handle);
+            debug_assert_eq!(self.edges[axis].len(), self.num_handles as usize * 2 + 2);
+            for (index, edge) in self.edges[axis].iter().enumerate() {
+                let edges = &mut self.handle_edges[edge.handle as usize];
+                if edge.is_max() {
+                    edges.max[axis] = index as u16;
+                } else {
+                    edges.min[axis] = index as u16;
+                }
+            }
+            self.handle_edges[0].min[axis] = 0;
+            self.handle_edges[0].max[axis] = (self.edges[axis].len() - 1) as u16;
+        }
+        self.handle_edges[handle] = HandleEdges::default();
+    }
+
+    pub(super) fn remap_client_indices(&mut self, removed_body: usize) {
+        for proxy in self
+            .handles
+            .iter_mut()
+            .skip(1)
+            .filter(|proxy| proxy.unique_id != 0)
+        {
+            if proxy.client_obj_idx as usize > removed_body {
+                proxy.client_obj_idx -= 1;
+            }
+        }
+    }
+
     pub(super) fn set_aabb(
         &mut self,
         handle: usize,

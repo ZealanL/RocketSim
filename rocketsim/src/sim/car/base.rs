@@ -35,7 +35,8 @@ use crate::{
 
 /// A car in the arena (physics body + cached state).
 ///
-/// Get one via `Arena::cars()[idx]`; the id is stable for the arena's life.
+/// Get one via `Arena::cars()[idx]`. The index can change after
+/// [`crate::Arena::remove_car`].
 /// `Car` derefs to [`CarInfo`] (`car.idx/team/config`), while simulation
 /// state lives in `Car::get_state()` ([`CarState`]). Prefer the
 /// `Arena::get_car_*/set_car_*` accessors — they handle body sync for you.

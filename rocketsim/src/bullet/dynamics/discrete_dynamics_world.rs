@@ -46,6 +46,43 @@ impl DiscreteDynamicsWorld {
         self.gravity = gravity;
     }
 
+    pub(crate) fn remove_rigid_body(&mut self, body_idx: usize) {
+        assert!(body_idx < self.collision_world.collision_objs.len());
+
+        let proxy = self.collision_world.collision_objs[body_idx].get_broadphase_handle();
+        self.collision_world
+            .broadphase_pair_cache
+            .remove_proxy(proxy);
+        for body in &mut self.collision_world.collision_objs {
+            body.companion_id = None;
+        }
+        
+        self.collision_world.collision_objs.remove(body_idx);
+        for (index, body) in self
+            .collision_world
+            .collision_objs
+            .iter_mut()
+            .enumerate()
+            .skip(body_idx)
+        {
+            body.world_array_idx = index;
+        }
+        
+        self.collision_world
+            .broadphase_pair_cache
+            .remap_client_indices(body_idx);
+        self.collision_world.dispatcher1.remove_body(body_idx);
+        self.dynamic_body_idcs.retain(|&index| index != body_idx);
+        for index in &mut self.dynamic_body_idcs {
+            if *index > body_idx {
+                *index -= 1;
+            }
+        }
+        
+        self.island_manager = SimulationIslandManager::default();
+        self.solver = SeqImpulseConstraintSolver::default();
+    }
+
     pub(crate) fn update_body_properties(
         &mut self,
         body_idx: usize,

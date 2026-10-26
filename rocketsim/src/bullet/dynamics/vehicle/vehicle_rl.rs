@@ -34,6 +34,22 @@ impl VehicleRL {
         }
     }
 
+    pub(crate) fn remove_body(&mut self, body_idx: usize) {
+        debug_assert_ne!(self.chassis_body_idx, body_idx);
+        if self.chassis_body_idx > body_idx {
+            self.chassis_body_idx -= 1;
+        }
+        for wheel in &mut self.wheels {
+            if let Some(info) = &mut wheel.raycast_info {
+                if info.ground_body_idx == body_idx {
+                    wheel.reset_wheel_suspension();
+                } else if info.ground_body_idx > body_idx {
+                    info.ground_body_idx -= 1;
+                }
+            }
+        }
+    }
+
     /// Reset transient wheel contacts for planning reuse. Keeps config.
     pub(crate) fn reset_transient_contacts(&mut self) {
         for wheel in &mut self.wheels {

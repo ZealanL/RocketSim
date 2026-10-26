@@ -71,7 +71,8 @@ pub struct CarLandedEvent {
 /// One tick's contact/pickup notifications.
 ///
 /// Returned by [`crate::Arena::step_tick`] and
-/// [`crate::Arena::get_last_step_events`]; valid only until the next tick.
+/// [`crate::Arena::get_last_step_events`]. The arena clears these events at
+/// the next tick or when [`crate::Arena::remove_car`] changes car indices.
 #[derive(Debug, Copy, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ArenaEvent {

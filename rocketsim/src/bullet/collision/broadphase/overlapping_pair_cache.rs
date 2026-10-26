@@ -124,6 +124,19 @@ impl OverlappingPairCache {
         hi * (hi + 1) / 2 + lo
     }
 
+    pub(super) fn remove_handle(&mut self, handles: &[BroadphaseProxy], handle: usize) {
+        self.overlapping_pair_array
+            .retain(|pair| pair.proxy0 != handle && pair.proxy1 != handle);
+        self.pair_indices.fill(0);
+        for (index, pair) in self.overlapping_pair_array.iter().enumerate() {
+            let key = Self::table_index(
+                handles[pair.proxy0].unique_id,
+                handles[pair.proxy1].unique_id,
+            );
+            self.pair_indices[key] = u32::try_from(index + 1).expect("pair index overflow");
+        }
+    }
+
     /// Dispatch the retained pairs in array order.
     ///
     /// Pair add and removal already happened during `setAabb`. There is no

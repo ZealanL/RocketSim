@@ -81,6 +81,41 @@ impl Default for CollisionDispatcher {
 }
 
 impl CollisionDispatcher {
+    pub(crate) fn remove_body(&mut self, body_idx: usize) {
+        self.persistent_manifolds.retain_mut(|manifold| {
+            if manifold.body0_idx == body_idx || manifold.body1_idx == body_idx {
+                return false;
+            }
+
+            if manifold.body0_idx > body_idx {
+                manifold.body0_idx -= 1;
+            }
+
+            if manifold.body1_idx > body_idx {
+                manifold.body1_idx -= 1;
+            }
+
+            manifold.pair_key = pair_key(manifold.body0_idx, manifold.body1_idx);
+            true
+        });
+
+        self.active_manifolds.clear();
+        self.raw_body_aabbs.clear();
+        self.compound_child_aabbs.clear();
+        self.manifold_table.clear();
+        self.manifold_stride = 0;
+
+        let needed = self
+            .persistent_manifolds
+            .iter()
+            .map(|m| m.body0_idx.max(m.body1_idx) + 1)
+            .max()
+            .unwrap_or(0);
+        if needed > 0 {
+            self.grow_manifold_table(needed);
+        }
+    }
+
     /// Clear cached contacts after a teleport.
     ///
     /// Reused prediction arenas teleport to varied poses. Drop stale
