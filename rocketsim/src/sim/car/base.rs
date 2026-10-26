@@ -200,6 +200,20 @@ impl Car {
         }
     }
 
+    /// Refresh wheel suspension scales after the chassis mass changes.
+    pub(crate) fn refresh_mass_dependent_state(&mut self, mass: f32) {
+        let config = self.info.config;
+        let inv_mass = 1.0 / mass;
+        let strengths = Self::suspension_strengths(
+            inv_mass,
+            config.front_wheels.connection_point_offset.x * UU_TO_BT,
+            config.back_wheels.connection_point_offset.x * UU_TO_BT,
+        );
+        for (wheel, strength) in self.bullet_vehicle.wheels.iter_mut().zip(strengths) {
+            wheel.suspension_force_scale = strength;
+        }
+    }
+
     /// Keep the target's `f32` operation order to preserve rounding.
     /// Only negative axle distances use the equal split.
     /// Zero and NaN use the normal path.

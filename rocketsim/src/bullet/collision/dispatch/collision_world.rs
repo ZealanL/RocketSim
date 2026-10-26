@@ -10,7 +10,7 @@ use crate::{
             broadphase::GridBroadphase,
             narrowphase::persistent_manifold::{CONTACT_BREAKING_THRESHOLD, ContactAddedCallback},
         },
-        dynamics::rigid_body::RigidBody,
+        dynamics::rigid_body::{RigidBody, RigidBodyUpdateInfo},
         linear_math::AffineExt,
     },
     shared::QuadRayInfo,
@@ -61,6 +61,19 @@ impl CollisionWorld {
         collision_objs.push(obj);
 
         idx
+    }
+
+    pub(crate) fn update_body_properties(
+        &mut self,
+        body_idx: usize,
+        properties: RigidBodyUpdateInfo,
+    ) {
+        let invalidate_contacts = properties.invalidate_contacts;
+        self.collision_objs[body_idx].update_physical_properties(properties);
+        if invalidate_contacts {
+            self.dispatcher1.clear_persistent_manifolds();
+        }
+        self.update_aabbs();
     }
 
     pub fn update_aabbs(&mut self) {

@@ -2,6 +2,11 @@ use glam::Vec3A;
 
 use crate::{GameMode, sim::consts};
 
+#[cfg(feature = "serde")]
+fn default_boost_pads_enabled() -> bool {
+    true
+}
+
 /// How demos are awarded on car-car contact (see `Arena` bumper logic).
 #[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -15,8 +20,9 @@ pub enum DemoMode {
     Disabled,
 }
 
-/// Tunable game physics. Start from [`MutatorConfig::new`] for a game mode,
-/// then override individual fields via [`crate::ArenaConfig::with_mutators`].
+/// Tunable game physics. Start from [`MutatorConfig::new`] for a game mode.
+/// Set initial values with [`crate::ArenaConfig::with_mutators`].
+/// Change active values with [`crate::Arena::set_mutator_config`].
 ///
 /// Units are Unreal units (uu) and seconds unless noted; masses are Bullet
 /// units. `1.0` scales (`ball_hit_extra_force_scale`, `bump_force_scale`)
@@ -83,6 +89,11 @@ pub struct MutatorConfig {
     pub enable_team_demos: bool,
     /// Only used if the game mode has soccar goals (i.e. soccar, heatseeker, snowday)
     pub goal_base_threshold_y: f32,
+    /// Check car overlap with boost pads and grant boost (default `true`).
+    /// Disabled pads stay initialized. Their cooldown and membership state remain.
+    /// Re-enabling checks current membership before boost pickup.
+    #[cfg_attr(feature = "serde", serde(default = "default_boost_pads_enabled"))]
+    pub boost_pads_enabled: bool,
 }
 
 impl Default for MutatorConfig {
@@ -144,6 +155,7 @@ impl MutatorConfig {
             demo_mode: DemoMode::Normal,
             enable_team_demos: false,
             goal_base_threshold_y: consts::goal::SOCCAR_GOAL_SCORE_BASE_THRESHOLD_Y,
+            boost_pads_enabled: true,
         }
     }
 }

@@ -1,7 +1,8 @@
 //! Apply the drive example's supported live mutators to one car.
 //!
-//! [`rocketsim::MutatorConfig`] is fixed when an arena is created. This module
-//! implements four options through car-state updates before each physics tick:
+//! This module implements four per-car options through state updates before
+//! each physics tick. Use [`rocketsim::Arena::set_mutator_config`] for arena-wide
+//! physics and rule changes:
 //!
 //! - Unlimited boost refills the car's boost before the tick.
 //! - Boost recharge adds boost after the normal recharge delay.
@@ -12,7 +13,9 @@
 //! Call [`Mutators::apply_pre_tick`] before [`rocketsim::Arena::step_tick`].
 //! These updates do not replace the arena's configuration. They do not change
 //! gravity, masses, ball size, arena geometry, or boost-pad rules. Use
-//! [`rocketsim::ArenaConfig`] to set those values before arena creation.
+//! [`rocketsim::Arena::set_mutator_config`] to change supported physics and rules
+//! during play. Use [`rocketsim::ArenaConfig`] to select arena geometry and layout
+//! before arena creation.
 //!
 //! [`crate::proto::ControlMsg::mutators`] carries only boolean flags. The
 //! recharge rate remains local to the application. Your application decides

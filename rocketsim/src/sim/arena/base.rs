@@ -28,7 +28,9 @@ use crate::{
         },
         dynamics::{
             discrete_dynamics_world::DiscreteDynamicsWorld,
-            rigid_body::{CollisionFlags, RigidBody, RigidBodyConstructionInfo},
+            rigid_body::{
+                CollisionFlags, RigidBody, RigidBodyConstructionInfo, RigidBodyUpdateInfo,
+            },
         },
     },
     consts::{self, BT_TO_UU, TICK_RATE, TICK_TIME, UU_TO_BT},
@@ -228,7 +230,7 @@ impl Arena {
         }
     }
 
-    /// Borrow the config this arena was built with.
+    /// Borrow the current Arena configuration, including active mutators.
     #[must_use]
     pub const fn get_config(&self) -> &ArenaConfig {
         &self.config
@@ -742,7 +744,9 @@ impl Arena {
                 car.finish_physics_tick(rb);
             }
 
-            if let Some(grid) = self.boost_pad_grid.as_mut() {
+            if self.config.mutators.boost_pads_enabled
+                && let Some(grid) = self.boost_pad_grid.as_mut()
+            {
                 grid.update_membership(&self.cars, self.config.mutators.car_max_boost_amount);
 
                 for car_idx in 0..self.cars.len() {
@@ -804,10 +808,125 @@ impl Arena {
         self.config.game_mode
     }
 
-    /// Active mutators (physics/rules). Set at construction via `ArenaConfig`.
+    /// Current mutators (physics/rules). Initially set by `ArenaConfig`.
     #[inline]
     pub const fn mutator_config(&self) -> &MutatorConfig {
         &self.config.mutators
+    }
+
+    /// Replace active mutators without recreating this Arena.
+    ///
+    /// This keeps positions, velocities, timers, pad cooldown timestamps, and event
+    /// history. It updates gravity, body mass and inertia, ball geometry and drag,
+    /// and pad amount and cooldown values. A ball-radius or body-mass change clears
+    /// persistent contact manifolds because cached geometry or impulses are stale.
+    /// Other changes keep contact manifolds. A car mass change updates and wakes
+    /// cars. A ball mass, radius, or drag change updates and wakes the ball. Gravity
+    /// changes do not wake sleeping bodies. Body updates clear pending accumulators.
+    /// Changing pad cooldown durations keeps each pad's pickup tick and applies the
+    /// new duration to it. Pad membership is retained while disabled and refreshed
+    /// before the first pickup check after re-enabling.
+    ///
+    /// # Panics
+    ///
+    /// Panics if either the current or new mass is not finite and strictly
+    /// positive. The Arena remains unchanged when this validation fails.
+    pub fn set_mutator_config(&mut self, mutators: MutatorConfig) {
+        let old = self.config.mutators;
+        assert!(
+            old.car_mass.is_finite() && old.car_mass > 0.0,
+            "runtime updates require an Arena with a finite, positive car mass"
+        );
+        assert!(
+            old.ball_mass.is_finite() && old.ball_mass > 0.0,
+            "runtime updates require an Arena with a finite, positive ball mass"
+        );
+        assert!(
+            mutators.car_mass.is_finite() && mutators.car_mass > 0.0,
+            "runtime car mass must be finite and strictly positive"
+        );
+        assert!(
+            mutators.ball_mass.is_finite() && mutators.ball_mass > 0.0,
+            "runtime ball mass must be finite and strictly positive"
+        );
+
+        let car_mass_changed = old.car_mass != mutators.car_mass;
+        let ball_properties_changed = old.ball_radius != mutators.ball_radius
+            || old.ball_mass != mutators.ball_mass
+            || old.ball_drag != mutators.ball_drag;
+        let geometry_changed = old.ball_radius != mutators.ball_radius
+            || old.ball_mass != mutators.ball_mass
+            || car_mass_changed;
+
+        if old.gravity != mutators.gravity {
+            self.bullet_world.set_gravity(mutators.gravity * UU_TO_BT);
+        }
+
+        if car_mass_changed {
+            for car in &mut self.cars {
+                let config = car.info.config;
+                let child = BoxShape::new(config.hitbox_size * UU_TO_BT * 0.5);
+                let inertia = child.calculate_local_intertia(mutators.car_mass);
+                let offset = Affine3A {
+                    matrix3: Mat3A::IDENTITY,
+                    translation: config.hitbox_pos_offset * UU_TO_BT,
+                };
+                let shape = CollisionShapes::Compound(CompoundShape::new(child, offset));
+                self.bullet_world.update_body_properties(
+                    car.rigid_body_idx,
+                    RigidBodyUpdateInfo {
+                        shape,
+                        mass: mutators.car_mass,
+                        local_inertia: inertia,
+                        friction: crate::sim::consts::car::BASE_COEFS.friction,
+                        restitution: crate::sim::consts::car::BASE_COEFS.restitution,
+                        linear_damping: 0.0,
+                        invalidate_contacts: geometry_changed,
+                    },
+                );
+                car.refresh_mass_dependent_state(mutators.car_mass);
+                car.vel_impulse_cache = Vec3A::ZERO;
+            }
+        }
+
+        if ball_properties_changed {
+            let (ball_shape, ball_inertia) =
+                Ball::make_ball_collision_shape(self.config.game_mode, &mutators);
+            let ball_coefs = if self.config.game_mode == GameMode::Snowday {
+                crate::sim::consts::snowday::PUCK_COEFS
+            } else {
+                crate::sim::consts::ball::COEFS
+            };
+            self.bullet_world.update_body_properties(
+                self.ball.rigid_body_idx,
+                RigidBodyUpdateInfo {
+                    shape: ball_shape,
+                    mass: mutators.ball_mass,
+                    local_inertia: ball_inertia,
+                    friction: ball_coefs.friction,
+                    restitution: ball_coefs.restitution,
+                    linear_damping: mutators.ball_drag,
+                    invalidate_contacts: geometry_changed,
+                },
+            );
+        }
+
+        if let Some(grid) = self.boost_pad_grid.as_mut() {
+            for pad in &mut grid.all_pads {
+                pad.max_cooldown = if pad.config.is_big {
+                    mutators.boost_pad_cooldown_big
+                } else {
+                    mutators.boost_pad_cooldown_small
+                };
+                pad.boost_amount = if pad.config.is_big {
+                    mutators.boost_pad_amount_big
+                } else {
+                    mutators.boost_pad_amount_small
+                };
+            }
+        }
+
+        self.config.mutators = mutators;
     }
 
     /// Teleports the ball (position/velocity/rotation + mode state).
@@ -826,6 +945,19 @@ impl Arena {
             &mut self.bullet_world.bodies_mut()[self.ball.rigid_body_idx],
             ball_state,
         );
+    }
+
+    /// Set the ball's linear and angular velocity to zero, then put it to sleep.
+    /// The ball remains asleep until a collision or state update activates it.
+    pub fn sleep_ball(&mut self) {
+        let ball = &mut self.ball;
+        let rb = &mut self.bullet_world.bodies_mut()[ball.rigid_body_idx];
+        ball.state.phys.vel = Vec3A::ZERO;
+        ball.state.phys.ang_vel = Vec3A::ZERO;
+        rb.set_lin_vel(Vec3A::ZERO);
+        rb.set_ang_vel(Vec3A::ZERO);
+        rb.clear_accum_vels();
+        rb.set_activation_state(crate::bullet::dynamics::rigid_body::ActivationState::Sleeping);
     }
 
     /// Edit ball state in place. Synchronize its body as in [`Arena::set_ball_state`].

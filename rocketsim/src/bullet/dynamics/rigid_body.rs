@@ -25,6 +25,16 @@ pub struct RigidBodyConstructionInfo {
     pub angular_sleeping_threshold: f32,
 }
 
+pub(crate) struct RigidBodyUpdateInfo {
+    pub shape: CollisionShapes,
+    pub mass: f32,
+    pub local_inertia: Vec3A,
+    pub friction: f32,
+    pub restitution: f32,
+    pub linear_damping: f32,
+    pub invalidate_contacts: bool,
+}
+
 impl RigidBodyConstructionInfo {
     pub const fn new(mass: f32, collision_shape: CollisionShapes) -> Self {
         Self {
@@ -137,8 +147,7 @@ pub struct RigidBody {
     pub interp_world_trans: Affine3A,
     pub contact_processing_threshold: f32,
     /// Cached shape breaking threshold (`angular_disc * 0.02`).
-    /// Shapes never change after construction, so cache the disc math here
-    /// instead of recomputing two square roots per manifold creation.
+    /// Refresh this value when physical properties replace the shape.
     /// Read it via [`get_contact_breaking_threshold`](Self::get_contact_breaking_threshold).
     contact_breaking_threshold: f32,
 
@@ -193,8 +202,7 @@ impl RigidBody {
         let inv_inertia_tensor_world =
             Self::get_inertia_tensor(info.start_world_trans.matrix3, inv_inertia_local);
 
-        // Shapes are immutable after construction, so the angular-disc
-        // threshold never changes for this body. Cache it once.
+        // Cache the angular-disc threshold for manifold creation.
         let contact_breaking_threshold = info
             .collision_shape
             .get_contact_breaking_threshold(CONTACT_BREAKING_THRESHOLD);
@@ -234,8 +242,7 @@ impl RigidBody {
         }
     }
 
-    /// Cached breaking threshold for this body's shape (see field docs).
-    /// Shapes are immutable, so this never changes after construction.
+    /// Cached breaking threshold for this body's current shape (see field docs).
     #[inline]
     pub const fn get_contact_breaking_threshold(&self) -> f32 {
         self.contact_breaking_threshold
@@ -305,6 +312,33 @@ impl RigidBody {
         if self.activation != ActivationState::DisableSimulation {
             self.activation = new_state;
         }
+    }
+
+    pub(crate) fn update_physical_properties(&mut self, properties: RigidBodyUpdateInfo) {
+        self.shape = properties.shape;
+        self.mass = properties.mass;
+        self.inv_mass = if properties.mass == 0.0 {
+            0.0
+        } else {
+            1.0 / properties.mass
+        };
+        self.inv_mass_splat = Vec3A::splat(self.inv_mass);
+        self.inv_inertia_local = Vec3A::select(
+            properties.local_inertia.cmpeq(Vec3A::ZERO),
+            Vec3A::ZERO,
+            1.0 / properties.local_inertia,
+        );
+        self.update_inertia_tensor();
+        self.contact_breaking_threshold = self
+            .shape
+            .get_contact_breaking_threshold(CONTACT_BREAKING_THRESHOLD);
+        self.friction = properties.friction;
+        self.restitution = properties.restitution;
+        self.linear_damping = properties.linear_damping.clamp(0.0, 1.0);
+        self.cached_damping_time_step = 0.0;
+        self.cached_linear_damping_value = self.linear_damping;
+        self.clear_accum_vels();
+        self.force_activate();
     }
 
     pub const fn force_activate(&mut self) {

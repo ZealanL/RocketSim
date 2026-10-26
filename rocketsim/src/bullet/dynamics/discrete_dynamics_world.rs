@@ -2,7 +2,7 @@ use glam::Vec3A;
 
 use super::{
     constraint_solver::seq_impulse_constraint_solver::SeqImpulseConstraintSolver,
-    rigid_body::{ActivationState, RigidBody},
+    rigid_body::{ActivationState, RigidBody, RigidBodyUpdateInfo},
     simulation_island_manager::SimulationIslandManager,
 };
 use crate::{
@@ -40,6 +40,19 @@ impl DiscreteDynamicsWorld {
             gravity,
             ball_only: false,
         }
+    }
+
+    pub(crate) fn set_gravity(&mut self, gravity: Vec3A) {
+        self.gravity = gravity;
+    }
+
+    pub(crate) fn update_body_properties(
+        &mut self,
+        body_idx: usize,
+        properties: RigidBodyUpdateInfo,
+    ) {
+        self.collision_world
+            .update_body_properties(body_idx, properties);
     }
 
     #[inline]
