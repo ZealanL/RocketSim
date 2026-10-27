@@ -1946,26 +1946,24 @@ impl Arena {
             if is_demo {
                 victim.demolish(self.config.mutators.respawn_delay);
             } else {
+                use consts::curves;
+
                 let ground_hit = victim_state.cache.is_on_ground;
                 let attacker_speed = attacker_state.phys.vel.length().min(2200.0);
-                if ground_hit {
+                let bump_impulse = if ground_hit {
                     // Grounded victim: Ground and Z curves on total attacker speed.
-                    let base_scale =
-                        consts::curves::BUMP_VEL_AMOUNT_GROUND.get_output(attacker_speed);
-
+                    let base_scale = curves::BUMP_VEL_AMOUNT_GROUND.get_output(attacker_speed);
+                    let upward_force = curves::BUMP_UPWARD_VEL_AMOUNT.get_output(attacker_speed);
                     let hit_up_dir = victim_state.phys.rot_mat.z_axis;
 
-                    let upward_vel_curve = &consts::curves::BUMP_UPWARD_VEL_AMOUNT;
-                    let upward_force = upward_vel_curve.get_output(attacker_speed)
-                        * self.config.mutators.bump_force_scale;
-                    let bump_impulse = (vel_dir * base_scale) + (hit_up_dir * upward_force);
-                    victim.vel_impulse_cache += bump_impulse * UU_TO_BT;
+                    (vel_dir * base_scale) + (hit_up_dir * upward_force)
                 } else {
                     // Airborne victim: Air curve on total attacker speed; no up term.
-                    let base_scale = consts::curves::BUMP_VEL_AMOUNT_AIR.get_output(attacker_speed);
-                    let bump_impulse = vel_dir * base_scale;
-                    victim.vel_impulse_cache += bump_impulse * UU_TO_BT;
-                }
+                    vel_dir * curves::BUMP_VEL_AMOUNT_AIR.get_output(attacker_speed)
+                };
+
+                victim.vel_impulse_cache +=
+                    bump_impulse * self.config.mutators.bump_force_scale * UU_TO_BT;
             }
 
             attacker.state.bump_cooldown_timer = self.config.mutators.bump_cooldown_time;
