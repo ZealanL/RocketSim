@@ -571,29 +571,39 @@ fn kick_residual(prev_pos: Vec3A, cur_pos: Vec3A, cur_vel: Vec3A) -> Vec3A {
     (cur_pos - prev_pos) / rocketsim::consts::TICK_TIME - cur_vel
 }
 
-/// Collapse consecutive duplicate rows.
+/// Collapse verbatim duplicate rows.
 ///
-/// Drops a tick when it is exactly identical to its predecessor
-/// ([`tick_is_frozen`]): same positions and velocities for every body. Such
-/// rows carry zero information — no physics happened between them — but they
-/// shatter runs (frame and freeze breaks), void the neighboring transitions
-/// for contact-timing checks, and hand the sim a stale pose to re-fire
-/// from. Real pauses collapse to a single tick, which is all the information
-/// they hold.
+/// Drops a tick only when it is frozen relative to the previous kept row
+/// ([`tick_is_frozen`]) and every car and ball physics frame is equal
+/// ([`tick_frames_equal`]). A frame-advancing frozen row is a recorded step
+/// and stays. `split_segments` breaks runs at frozen transitions, so a kept
+/// freeze row cannot score a frozen step. Same-frame duplicate runs keep
+/// their first row, as before.
 ///
 /// This is metric preprocessing, not parsing: [`Recording::from_file`] keeps
-/// the file faithful. Some recorders emit thousands of repeated rows (the
-/// bundled captures have none; one 1v1 file has over seventeen thousand)
-/// while others never do, so the metric normalizes before scoring.
+/// the file faithful. Some recorders emit thousands of repeated rows while
+/// others never do, so the metric normalizes before scoring.
 pub fn collapse_duplicate_ticks(ticks: &[TickRecord]) -> Vec<TickRecord> {
     let mut out = Vec::with_capacity(ticks.len());
     for tick in ticks {
-        let duplicate = out.last().is_some_and(|prev| tick_is_frozen(prev, tick));
+        let duplicate = out
+            .last()
+            .is_some_and(|prev| tick_is_frozen(prev, tick) && tick_frames_equal(prev, tick));
         if !duplicate {
             out.push(tick.clone());
         }
     }
     out
+}
+
+/// True when all car and ball physics frames match.
+fn tick_frames_equal(a: &TickRecord, b: &TickRecord) -> bool {
+    a.car_records.len() == b.car_records.len()
+        && a.car_records
+            .iter()
+            .zip(&b.car_records)
+            .all(|(x, y)| x.phys.physics_frame == y.phys.physics_frame)
+        && a.ball_record.physics_frame == b.ball_record.physics_frame
 }
 
 /// Extra-hit firing state for one car on one tick: did RL apply the ball
@@ -2784,6 +2794,181 @@ mod tests {
         let ticks = vec![steady_tick(0, 0.0, 1200.0), dup];
         assert_eq!(collapse_duplicate_ticks(&ticks).len(), 2);
         let _ = dup;
+    }
+
+    fn advancing_freeze_ticks() -> Vec<TickRecord> {
+        let ball = (300.0, 0.0, 500.0);
+        vec![
+            make_tick(
+                0,
+                (0.0, 0.0, 100.0),
+                ball,
+                (100.0, 0.0, 0.0),
+                (0.0, 0.0, 0.0),
+                false,
+                false,
+                false,
+                false,
+            ),
+            make_tick(
+                1,
+                (20.0, 0.0, 100.0),
+                ball,
+                (0.0, 0.0, 0.0),
+                (0.0, 0.0, 0.0),
+                false,
+                false,
+                false,
+                false,
+            ),
+            make_tick(
+                2,
+                (20.0, 0.0, 100.0),
+                ball,
+                (0.0, 0.0, 0.0),
+                (0.0, 0.0, 0.0),
+                false,
+                false,
+                false,
+                false,
+            ),
+            make_tick(
+                3,
+                (20.0, 40.0, 100.0),
+                ball,
+                (0.0, 200.0, 0.0),
+                (0.0, 0.0, 0.0),
+                false,
+                false,
+                false,
+                false,
+            ),
+        ]
+    }
+
+    #[test]
+    fn collapse_preserves_advancing_frames_and_scores_both_steps() {
+        // P -> A -> B -> S, with A and B frozen but on advancing frames.
+        // Both the entering step P -> A and the resumed step B -> S score.
+        let ticks = advancing_freeze_ticks();
+        let collapsed = collapse_duplicate_ticks(&ticks);
+
+        assert_eq!(collapsed.len(), ticks.len());
+        let frames: Vec<u32> = collapsed
+            .iter()
+            .map(|tick| tick.ball_record.physics_frame)
+            .collect();
+        assert_eq!(frames, vec![0, 1, 2, 3]);
+
+        let segments = split_segments(&collapsed, config(8));
+        assert_eq!(
+            segments,
+            vec![Segment { start: 0, len: 2 }, Segment { start: 2, len: 2 }]
+        );
+        let scored_frames: Vec<u32> = segments
+            .iter()
+            .map(|segment| collapsed[segment.start + 1].ball_record.physics_frame)
+            .collect();
+        assert_eq!(scored_frames, vec![1, 3]);
+    }
+
+    #[test]
+    fn collapse_mixed_same_frame_then_advancing_keeps_both_steps() {
+        // P -> A(f1) -> B(f1) -> C(f2) -> S(f3). B is a verbatim duplicate.
+        // A and C are frame-advancing rows and must stay.
+        let ball = (300.0, 0.0, 500.0);
+        let p = make_tick(
+            0,
+            (0.0, 0.0, 100.0),
+            ball,
+            (100.0, 0.0, 0.0),
+            (0.0, 0.0, 0.0),
+            false,
+            false,
+            false,
+            false,
+        );
+        let a = make_tick(
+            1,
+            (20.0, 0.0, 100.0),
+            ball,
+            (0.0, 0.0, 0.0),
+            (0.0, 0.0, 0.0),
+            false,
+            false,
+            false,
+            false,
+        );
+        let b = a.clone();
+        let c = make_tick(
+            2,
+            (20.0, 0.0, 100.0),
+            ball,
+            (0.0, 0.0, 0.0),
+            (0.0, 0.0, 0.0),
+            false,
+            false,
+            false,
+            false,
+        );
+        let s = make_tick(
+            3,
+            (20.0, 40.0, 100.0),
+            ball,
+            (0.0, 200.0, 0.0),
+            (0.0, 0.0, 0.0),
+            false,
+            false,
+            false,
+            false,
+        );
+        let collapsed = collapse_duplicate_ticks(&[p, a, b, c, s]);
+
+        assert_eq!(collapsed.len(), 4);
+        let frames: Vec<u32> = collapsed
+            .iter()
+            .map(|tick| tick.ball_record.physics_frame)
+            .collect();
+        assert_eq!(frames, vec![0, 1, 2, 3]);
+
+        let segments = split_segments(&collapsed, config(8));
+        assert_eq!(
+            segments,
+            vec![Segment { start: 0, len: 2 }, Segment { start: 2, len: 2 }]
+        );
+        let scored_frames: Vec<u32> = segments
+            .iter()
+            .map(|segment| collapsed[segment.start + 1].ball_record.physics_frame)
+            .collect();
+        assert_eq!(scored_frames, vec![1, 3]);
+    }
+
+    #[test]
+    fn collapse_keeps_first_same_frame_duplicate_for_control_variants() {
+        // Same-frame rows carry no physics step. The current first-row
+        // behavior stays, even when the duplicate carries new controls.
+        for throttle in [0.0, 1.0] {
+            let a = quiet_tick(0, 0.0);
+            let mut b = quiet_tick(0, 0.0);
+            b.car_records[0].prev_controls.throttle = throttle;
+            let c = quiet_tick(1, 10.0);
+            let collapsed = collapse_duplicate_ticks(&[a, b, c]);
+
+            assert_eq!(collapsed.len(), 2);
+            assert_eq!(collapsed[0].ball_record.physics_frame, 0);
+            assert_eq!(collapsed[0].car_records[0].prev_controls.throttle, 0.0);
+        }
+    }
+
+    #[test]
+    fn collapse_does_not_merge_same_frame_state_change() {
+        // Different state is real data even when the frame is unchanged.
+        let a = quiet_tick(0, 0.0);
+        let b = quiet_tick(0, 10.0);
+        let c = quiet_tick(1, 20.0);
+        let collapsed = collapse_duplicate_ticks(&[a, b, c]);
+
+        assert_eq!(collapsed.len(), 3);
     }
 
     fn kickoff_pair(
