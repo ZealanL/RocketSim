@@ -158,9 +158,8 @@ bool SphereTriangleDetector::collide(const btVector3& sphereCenter, btVector3& p
 
 		if (distanceFromPlane < btScalar(0.))
 		{
-			//triangle facing the other way
-			distanceFromPlane *= btScalar(-1.);
-			normal *= btScalar(-1.);
+			// ROCKETSIM CHANGE: The game has no contact with the back of a triangle
+			return false;
 		}
 
 		bool isInsideContactPlane = distanceFromPlane < radiusWithThreshold;

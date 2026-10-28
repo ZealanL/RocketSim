@@ -38,7 +38,6 @@ public:
 	BoostPadConfig config;
 
 	Vec _posBT;
-	Vec _boxMinBT, _boxMaxBT;
 
 	BoostPadState _internalState;
 
@@ -49,7 +48,7 @@ public:
 	static BoostPad* _AllocBoostPad();
 	void _Setup(const BoostPadConfig& config);
 
-	void _CheckCollide(Car* car);
+	void _CheckCollide(Car* car, float tickTime);
 
 	void _PreTickUpdate(float tickTime);
 	void _PostTickUpdate(float tickTime, const MutatorConfig& mutatorConfig);

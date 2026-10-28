@@ -159,6 +159,16 @@ public:
 
 	int getCacheEntry(const btManifoldPoint& newPoint) const;
 
+	// ROCKETSIM CHANGE: The game's Bullet keeps the manifold of these pairs from tick to tick (the ball with an arena mesh,
+	// plane or car, and car-car); RocketSim's broadphase keeps them while their AABBs overlap
+	static bool isPersistentPair(const btCollisionObject* body0, const btCollisionObject* body1);
+	// For such a pair other than ball-mesh, last tick's points are refreshed and taken out (takePersistentPoints), this
+	// tick's points are found on the empty manifold, then merged into them (mergePersistentPoints: nearest local point within
+	// the breaking threshold replaced, else added, the max-area point evicted from a full manifold), as the game does
+	static bool isMergedPair(const btCollisionObject* body0, const btCollisionObject* body1);
+	int takePersistentPoints(btManifoldPoint* points);
+	void mergePersistentPoints(const btManifoldPoint* points, int numPoints);
+
 	int addManifoldPoint(const btManifoldPoint& newPoint, bool isPredictive = false);
 
 	void removeContactPoint(int index)

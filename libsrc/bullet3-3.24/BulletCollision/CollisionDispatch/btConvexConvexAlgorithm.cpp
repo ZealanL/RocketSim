@@ -300,6 +300,9 @@ void btConvexConvexAlgorithm ::processCollision(const btCollisionObjectWrapper* 
 		//TODO: if (dispatchInfo.m_useContinuous)
 		gjkPairDetector.setMinkowskiA(min0);
 		gjkPairDetector.setMinkowskiB(min1);
+		// ROCKETSIM CHANGE: The game's triangle face normal for car contacts
+		if (body0Wrap->getCollisionObject()->getCollisionFlags() & btCollisionObject::CF_ROCKETSIM_CAR)
+			gjkPairDetector.m_fixContactNormalDirection = 2;
 
 #ifdef USE_SEPDISTANCE_UTIL2
 		if (dispatchInfo.m_useConvexConservativeDistanceUtil) {

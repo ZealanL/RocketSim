@@ -102,7 +102,7 @@ void Ball::_BulletSetup(GameMode gameMode, btDynamicsWorld* bulletWorld, const M
 	_rigidBody.setUserPointer(this);
 
 	// Trigger the Arena::_BulletContactAddedCallback() when anything touches the ball
-	_rigidBody.m_collisionFlags |= btCollisionObject::CF_CUSTOM_MATERIAL_CALLBACK;
+	_rigidBody.m_collisionFlags |= btCollisionObject::CF_CUSTOM_MATERIAL_CALLBACK | btCollisionObject::CF_ROCKETSIM_BALL;
 
 	_rigidBody.m_rigidbodyFlags = 0;
 
@@ -123,6 +123,20 @@ void Ball::_FinishPhysicsTick(const MutatorConfig& mutatorConfig) {
 		_velocityImpulseCache = { 0,0,0 };
 	}
 
+	_internalState.tickCountSinceUpdate++;
+}
+
+// The game's rounding of a velocity component: truncated to 1 / scale, plus 0.1 / scale away from zero
+static float RoundVelocity(float val, float scale) {
+	const float invScale = 1.0f / scale;
+	const float rounded = (float)(int32_t)(val * scale) * invScale;
+	const float offset = 0.1f * invScale;
+	return rounded == 0.0f ? rounded : rounded + copysignf(offset, rounded);
+}
+
+void Ball::_TickStartUpdate(const MutatorConfig& mutatorConfig) {
+	using namespace RLConst;
+
 	{ // Limit velocities
 		btVector3
 			vel = _rigidBody.m_linearVelocity,
@@ -139,7 +153,19 @@ void Ball::_FinishPhysicsTick(const MutatorConfig& mutatorConfig) {
 		_rigidBody.m_angularVelocity = angVel;
 	}
 
-	_internalState.tickCountSinceUpdate++;
+	{ // Round the state as the game does
+		btVector3 pos = _rigidBody.getWorldTransform().m_origin * BT_TO_UU;
+		btVector3 vel = _rigidBody.m_linearVelocity * BT_TO_UU;
+		btVector3 angVel = _rigidBody.m_angularVelocity;
+		_rigidBody.getWorldTransform().m_origin =
+			btVector3(Math::RoundHalfUp(pos.x(), 100), Math::RoundHalfUp(pos.y(), 100), Math::RoundHalfUp(pos.z(), 100)) * UU_TO_BT;
+		_rigidBody.m_linearVelocity =
+			btVector3(RoundVelocity(vel.x(), 100), RoundVelocity(vel.y(), 100), RoundVelocity(vel.z(), 100)) * UU_TO_BT;
+		_rigidBody.m_angularVelocity =
+			btVector3(RoundVelocity(angVel.x(), 10000), RoundVelocity(angVel.y(), 10000), RoundVelocity(angVel.z(), 10000));
+	}
+
+	_startVel = _rigidBody.m_linearVelocity;
 }
 
 bool Ball::IsSphere() const {
@@ -264,7 +290,8 @@ void Ball::_OnHit(
 		ballHitInfo.tickCountWhenExtraImpulseApplied = tickCount;
 		Vec carForward = car->GetForwardDir();
 		Vec relPos = ballState.pos - carState.pos;
-		Vec relVel = ballState.vel - carState.vel;
+		// The game measures this with the velocities from the start of the tick
+		Vec relVel = Vec(_startVel * BT_TO_UU) - Vec(car->_startVel * BT_TO_UU);
 
 		float relSpeed = RS_MIN(relVel.Length(), BALL_CAR_EXTRA_IMPULSE_MAXDELTAVEL_UU);
 

@@ -36,4 +36,7 @@ namespace RocketSim {
 	RocketSimStage GetStage();
 
 	std::vector<btBvhTriangleMeshShape*>& GetArenaCollisionShapes(GameMode gameMode);
+
+	// Where each arena collision shape is placed, (0, 0, 0) for any not listed (the soccar goal meshes are in their own frame)
+	std::vector<btVector3>& GetArenaCollisionShapeOrigins(GameMode gameMode);
 }

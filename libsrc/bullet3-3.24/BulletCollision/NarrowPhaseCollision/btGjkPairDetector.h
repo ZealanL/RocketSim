@@ -44,6 +44,7 @@ public:
 	int m_curIter;
 	int m_degenerateSimplex;
 	int m_catchDegeneracies;
+	// ROCKETSIM CHANGE: 2 = the game's rule: when shape B is a btTriangleShape the normal is its face normal, else as 1
 	int m_fixContactNormalDirection;
 
 	btGjkPairDetector(const btConvexShape* objectA, const btConvexShape* objectB, btSimplexSolverInterface* simplexSolver, btConvexPenetrationDepthSolver* penetrationDepthSolver);

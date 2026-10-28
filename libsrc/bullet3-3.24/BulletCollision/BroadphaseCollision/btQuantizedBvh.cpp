@@ -92,10 +92,12 @@ void btQuantizedBvh::setQuantizationValues(const btVector3& bvhAabbMin, const bt
 			v = unQuantize(vecIn);
 			m_bvhAabbMin.setMin(v - clampValue);
 		}
-		aabbSize = m_bvhAabbMax - m_bvhAabbMin;
-		m_bvhQuantization = btVector3(btScalar(65533.0), btScalar(65533.0), btScalar(65533.0)) / aabbSize;
+		// ROCKETSIM CHANGE: As Bullet 2.82 (the game), the max bound is refined with the quantization from before the min
+		// bound grew, so it can overflow 16 bits and wrap (as x86 converts through a 32-bit int)
 		{
-			quantize(vecIn, m_bvhAabbMax, true);
+			btVector3 q = (m_bvhAabbMax - m_bvhAabbMin) * m_bvhQuantization;
+			for (int i = 0; i < 3; i++)
+				vecIn[i] = (unsigned short)(((unsigned short)(int)(q[i] + btScalar(1.))) | 1);
 			v = unQuantize(vecIn);
 			m_bvhAabbMax.setMax(v + clampValue);
 		}
@@ -316,7 +318,8 @@ void btQuantizedBvh::reportAabbOverlappingNodex(btNodeOverlapCallback* nodeCallb
 		quantizeWithClamp(quantizedQueryAabbMin, aabbMin, 0);
 		quantizeWithClamp(quantizedQueryAabbMax, aabbMax, 1);
 
-		walkStacklessQuantizedTreeCacheFriendly(nodeCallback, quantizedQueryAabbMin, quantizedQueryAabbMax);
+		// ROCKETSIM CHANGE: Walk the whole tree depth-first, as the game's Bullet does (the order decides which point a full manifold replaces)
+		walkStacklessQuantizedTree(nodeCallback, quantizedQueryAabbMin, quantizedQueryAabbMax, 0, m_curNodeIndex);
 	}
 	else
 	{

@@ -38,48 +38,38 @@ void BoostPad::_Setup(const BoostPadConfig& config) {
 	this->config = config;
 
 	this->_posBT = config.pos * UU_TO_BT;
-
-	{
-		using namespace RLConst::BoostPads;
-
-		float boxRad = (config.isBig ? BOX_RAD_BIG : BOX_RAD_SMALL) * UU_TO_BT;
-		this->_boxMinBT = this->_posBT - Vec(boxRad, boxRad, 0);
-		this->_boxMaxBT = this->_posBT + Vec(boxRad, boxRad, BOX_HEIGHT * UU_TO_BT);
-	}
 }
 
 void BoostPad::_PreTickUpdate(float tickTime) {
 
-	if (_internalState.cooldown > 0) {
-		_internalState.cooldown = RS_MAX(_internalState.cooldown - tickTime, 0);
+	// The game counts an inactive pad's timer down every tick, past zero, and brings the pad back on the tick after it
+	// reads -1/120: 481 / 1201 ticks after the pickup, in time for a car on the pad to take it again that tick
+	if (!_internalState.isActive || _internalState.cooldown > 0) {
+		if (_internalState.cooldown < -0.5f * tickTime) {
+			_internalState.cooldown = 0;
+			_internalState.isActive = true;
+		} else {
+			_internalState.cooldown -= tickTime;
+			_internalState.isActive = false;
+		}
 	}
-
-	_internalState.isActive = (_internalState.cooldown == 0);
 
 	_internalState.curLockedCar = NULL;
 }
 
-void BoostPad::_CheckCollide(Car* car) {
+void BoostPad::_CheckCollide(Car* car, float tickTime) {
 	using namespace RLConst::BoostPads;
 
-	Vec carPosBT = car->_rigidBody.getWorldTransform().m_origin;
+	// The game's pickups land on this tick or the next at random, about evenly when the car enters the pad's cylinder
+	// halfway through the tick, so test the car's position halfway through the tick
+	Vec carPosBT = car->_rigidBody.getWorldTransform().m_origin - car->_rigidBody.getLinearVelocity() * (0.5f * tickTime);
 
+	// The game's pad and car collision cylinders, for every car, every tick
 	bool colliding = false;
-	if (_internalState.prevLockedCarID == car->id) {
-		// Check with AABB-hitbox collision
-
-		btVector3 carMinBT, carMaxBT;
-		car->_rigidBody.getAabb(carMinBT, carMaxBT);
-
-		// TODO: Account for orientation
-		colliding = (_boxMaxBT > carMinBT) && (_boxMinBT < carMaxBT);
-	} else {
-		// Check with cylinder-origin collision
-
-		float rad = (config.isBig ? CYL_RAD_BIG : CYL_RAD_SMALL) * UU_TO_BT;
-		if (carPosBT.DistSq2D(this->_posBT) < (rad * rad))
-			colliding = abs(carPosBT.z - this->_posBT.z) < (CYL_HEIGHT * UU_TO_BT);
-	}
+	float rad = (config.isBig ? CYL_RAD_BIG + CAR_CYL_RAD : CYL_RAD_SMALL + CAR_CYL_RAD) * UU_TO_BT;
+	float padZBT = (config.pos.z - (config.isBig ? CYL_OFFSET_Z_BIG : CYL_OFFSET_Z_SMALL)) * UU_TO_BT;
+	if (carPosBT.DistSq2D(this->_posBT) < (rad * rad))
+		colliding = abs(carPosBT.z - padZBT) < ((CYL_HEIGHT + CAR_CYL_HEIGHT) * UU_TO_BT);
 
 	if (colliding)
 		_internalState.curLockedCar = car;
@@ -97,7 +87,8 @@ void BoostPad::_PostTickUpdate(float tickTime, const MutatorConfig& mutatorConfi
 			_internalState.curLockedCar->_internalState.boost = RS_MIN(_internalState.curLockedCar->_internalState.boost + boostToAdd, RLConst::BOOST_MAX);
 
 			_internalState.isActive = false;
-			_internalState.cooldown = config.isBig ? mutatorConfig.boostPadCooldown_Big : mutatorConfig.boostPadCooldown_Small;
+			// The pickup tick already counts once (the game's timer reads 4 - 1/120 there)
+			_internalState.cooldown = (config.isBig ? mutatorConfig.boostPadCooldown_Big : mutatorConfig.boostPadCooldown_Small) - tickTime;
 		}
 	}
 

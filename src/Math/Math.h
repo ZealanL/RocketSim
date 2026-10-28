@@ -24,6 +24,13 @@ namespace Math {
 
 	// Simulates aggressive UE3 rotator rounding when converting from a UE3 rotator to vector
 	Angle RoundAngleUE3(Angle ang);
+
+	// Rounds to the nearest 1 / scale, halves up
+	inline float RoundHalfUp(float val, float scale) {
+		float y = val * scale;
+		y = y + 0.5f; // (A separate statement, so it's never fused into a multiply-add)
+		return floorf(y) / scale;
+	}
 }
 
 RS_NS_END

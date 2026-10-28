@@ -2,7 +2,7 @@
 
 RS_NS_START
 
-void BoostPadGrid::CheckCollision(Car* car) {
+void BoostPadGrid::CheckCollision(Car* car, float tickTime) {
 	if (car->_internalState.isDemoed || car->_internalState.boost >= RLConst::BOOST_MAX)
 		return;
 
@@ -18,7 +18,7 @@ void BoostPadGrid::CheckCollision(Car* car) {
 		for (int j = RS_MAX(indexY - 1, 0); j <= RS_MIN(indexY + 1, CELLS_Y - 1); j++) {
 			BoostPad* pad = pads[i][j];
 			if (pad) {
-				pad->_CheckCollide(car);
+				pad->_CheckCollide(car, tickTime);
 			}
 		}
 	}

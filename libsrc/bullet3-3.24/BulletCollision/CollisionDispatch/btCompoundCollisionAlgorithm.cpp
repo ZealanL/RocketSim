@@ -179,7 +179,27 @@ public:
 				m_resultOut->setShapeIdentifiersB(-1, index);
 			}
 
+			// ROCKETSIM CHANGE: The game's manifold of this pair persists: last tick's points are taken out, this tick's
+			// points are found on the empty manifold and merged into them (see btPersistentManifold::isMergedPair)
+			btPersistentManifold* persistentManifold = 0;
+			btManifoldPoint persistentPoints[MANIFOLD_CACHE_SIZE];
+			int numPersistentPoints = 0;
+			if (!allocatedAlgorithm && btPersistentManifold::isMergedPair(m_compoundColObjWrap->getCollisionObject(), m_otherObjWrap->getCollisionObject()))
+			{
+				static thread_local btManifoldArray manifolds;
+				manifolds.resize(0);
+				algo->getAllContactManifolds(manifolds);
+				if (manifolds.size() == 1)
+				{
+					persistentManifold = manifolds[0];
+					numPersistentPoints = persistentManifold->takePersistentPoints(persistentPoints);
+				}
+			}
+
 			algo->processCollision(&compoundWrap, m_otherObjWrap, m_dispatchInfo, m_resultOut);
+
+			if (persistentManifold)
+				persistentManifold->mergePersistentPoints(persistentPoints, numPersistentPoints);
 
 #if 0
 			if (m_dispatchInfo.m_debugDraw && (m_dispatchInfo.m_debugDraw->getDebugMode() & btIDebugDraw::DBG_DrawAabb))

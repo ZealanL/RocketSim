@@ -910,7 +910,12 @@ void btSequentialImpulseConstraintSolver::setupContactConstraint(btSolverConstra
 
 		solverConstraint.m_friction = cp.m_combinedFriction;
 
-		restitution = restitutionCurve(rel_vel, cp.m_combinedRestitution, infoGlobal.m_restitutionVelocityThreshold);
+		// ROCKETSIM CHANGE: The game has no rest velocity threshold for car and ball contacts with the world
+		const int gameBodyFlags = btCollisionObject::CF_ROCKETSIM_CAR | btCollisionObject::CF_ROCKETSIM_BALL;
+		btScalar restitutionVelocityThreshold = infoGlobal.m_restitutionVelocityThreshold;
+		if ((rb0 && !rb1 && (rb0->getCollisionFlags() & gameBodyFlags)) || (rb1 && !rb0 && (rb1->getCollisionFlags() & gameBodyFlags)))
+			restitutionVelocityThreshold = 0;
+		restitution = restitutionCurve(rel_vel, cp.m_combinedRestitution, restitutionVelocityThreshold);
 		if (restitution <= btScalar(0.))
 		{
 			restitution = 0.f;
@@ -1019,9 +1024,14 @@ void btSequentialImpulseConstraintSolver::convertContact(btPersistentManifold* m
 	if (!solverBodyA || (solverBodyA->m_invMass.fuzzyZero() && (!solverBodyB || solverBodyB->m_invMass.fuzzyZero())))
 		return;
 
+	// ROCKETSIM CHANGE: The game doesn't warmstart these persistent pairs (it never writes the solved impulse back)
+	const bool noWarmstart = btPersistentManifold::isMergedPair(colObj0, colObj1);
+
 	int rollingFriction = 1;
 	for (int j = 0; j < manifold->getNumContacts(); j++) {
 		btManifoldPoint& cp = manifold->getContactPoint(j);
+		if (noWarmstart)
+			cp.m_appliedImpulse = 0;
 
 		if (cp.getDistance() <= manifold->getContactProcessingThreshold()) {
 			btVector3 rel_pos1;
@@ -1169,6 +1179,8 @@ void btSequentialImpulseConstraintSolver::convertContactSpecial(btCollisionObjec
 	// Calculate average distance and normal
 	float distance = obj.m_specialResolveInfo.m_totalDist / obj.m_specialResolveInfo.m_numSpecialCollisions;
 	btVector3 normal = obj.m_specialResolveInfo.m_totalNormal / obj.m_specialResolveInfo.m_numSpecialCollisions;
+	// ROCKETSIM CHANGE: The game resolves along the unit averaged normal
+	normal = normal.safeNormalize();
 
 	// Create a temporary manifold for this collision
 	btManifoldPoint specialTempManifold = {};

@@ -24,6 +24,12 @@ class btPersistentManifold;
 
 #include "../../LinearMath/btVector3.h"
 
+// ROCKETSIM CHANGE: RocketSim's broadphase rebuilds every pair each tick, so a car's plane manifolds are kept outside it: for
+// a car, processCollision loads the points its manifold with this plane had at the end of last tick into the new manifold
+// (store = false), and saves them at the end (store = true)
+typedef void (*btCarPlaneContactsCallback)(btPersistentManifold* manifold, const btCollisionObject* carObj, const btCollisionObject* planeObj, bool store);
+extern btCarPlaneContactsCallback gCarPlaneContactsCallback;
+
 /// btSphereBoxCollisionAlgorithm  provides sphere-box collision detection.
 /// Other features are frame-coherency (persistent data) and collision response.
 class btConvexPlaneCollisionAlgorithm : public btCollisionAlgorithm
