@@ -290,7 +290,8 @@ void Ball::_OnHit(
 		ballHitInfo.tickCountWhenExtraImpulseApplied = tickCount;
 		Vec carForward = car->GetForwardDir();
 		Vec relPos = ballState.pos - carState.pos;
-		Vec relVel = ballState.vel - carState.vel;
+		// The game measures this with the velocities from the start of the tick
+		Vec relVel = Vec(_startVel * BT_TO_UU) - Vec(car->_startVel * BT_TO_UU);
 
 		float relSpeed = RS_MIN(relVel.Length(), BALL_CAR_EXTRA_IMPULSE_MAXDELTAVEL_UU);
 
