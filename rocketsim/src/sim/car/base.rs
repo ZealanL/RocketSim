@@ -127,6 +127,7 @@ impl Car {
     ) -> Self {
         let child_hitbox_shape = BoxShape::new(config.hitbox_size * UU_TO_BT * 0.5);
         let local_inertia = child_hitbox_shape.calculate_local_intertia(mutator_config.car_mass);
+        let min_hit_dist_sq = wheel_ray_min_hit_dist_sq(config.hitbox_size.z);
 
         let hitbox_offset = Affine3A {
             matrix3: Mat3A::IDENTITY,
@@ -187,7 +188,7 @@ impl Car {
         Self {
             info: CarInfo { idx, team, config },
             rigid_body_idx,
-            bullet_vehicle: VehicleRL::new(rigid_body_idx, wheels),
+            bullet_vehicle: VehicleRL::new(rigid_body_idx, wheels, min_hit_dist_sq),
             vel_impulse_cache: Vec3A::ZERO,
             sticky_gate_prev: false,
             state: {
@@ -1163,4 +1164,15 @@ impl Car {
         self.state.phys.vel = rb.lin_vel * BT_TO_UU;
         self.state.phys.ang_vel = rb.ang_vel;
     }
+}
+
+/// Squared wheel-ray minimum hit distance, in `BT` squared, from a hitbox
+/// height in uu.
+///
+/// The result is the threshold compared against the squared distance from the
+/// wheel hard point to a ray hit. Equal distances pass: the comparison is
+/// strict, so only a smaller distance is rejected.
+fn wheel_ray_min_hit_dist_sq(hitbox_size_z: f32) -> f32 {
+    let min_hit_dist = (hitbox_size_z * 0.5 - 2.25) * UU_TO_BT;
+    min_hit_dist * min_hit_dist
 }

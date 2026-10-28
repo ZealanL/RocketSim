@@ -26,9 +26,16 @@ pub struct VehicleRL {
 }
 
 impl VehicleRL {
-    pub const fn new(chassis_body_idx: usize, wheels: [WheelInfo; NUM_WHEELS]) -> Self {
+    pub const fn new(
+        chassis_body_idx: usize,
+        wheels: [WheelInfo; NUM_WHEELS],
+        min_hit_dist_sq: f32,
+    ) -> Self {
         Self {
-            raycaster: VehicleRaycaster::new(CollisionFilterGroups::DropshotFloor as u8),
+            raycaster: VehicleRaycaster::new(
+                CollisionFilterGroups::DropshotFloor as u8,
+                min_hit_dist_sq,
+            ),
             chassis_body_idx,
             wheels,
         }

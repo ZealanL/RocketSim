@@ -15,21 +15,18 @@ pub struct VehicleRaycasterResult<'a> {
     pub rigid_body: &'a RigidBody,
 }
 
-/// Squared minimum distance from a wheel hard point to an accepted ray
-/// hit, BT^2. Live target closest-hit acceptance field. Rejects grazes
-/// off the contact patch (e.g. the extra wheel-on-ball hit in
-/// `cb_turtle_land` i39) during closest-hit selection, so a rejected near
-/// hit never hides a farther valid candidate on the same ray.
-pub const WHEEL_RAY_MIN_HIT_DIST_SQ: f32 = 0.116684;
-
 #[derive(Clone, Copy)]
 pub struct VehicleRaycaster {
     added_filter_mask: u8,
+    min_hit_dist_sq: f32,
 }
 
 impl VehicleRaycaster {
-    pub const fn new(added_filter_mask: u8) -> Self {
-        Self { added_filter_mask }
+    pub const fn new(added_filter_mask: u8, min_hit_dist_sq: f32) -> Self {
+        Self {
+            added_filter_mask,
+            min_hit_dist_sq,
+        }
     }
 
     pub fn cast_rays<'a>(
@@ -41,7 +38,7 @@ impl VehicleRaycaster {
     ) -> [Option<VehicleRaycasterResult<'a>>; 4] {
         let mut ray_callback = ClosestQuadRayResultCallback::new(from, to, Some(ignore_obj));
         ray_callback.base.collision_filter_group |= self.added_filter_mask;
-        ray_callback.base.min_hit_dist_sq = WHEEL_RAY_MIN_HIT_DIST_SQ;
+        ray_callback.base.min_hit_dist_sq = self.min_hit_dist_sq;
         collision_world.ray_test(from, to, &mut ray_callback);
 
         let mut results = [None; 4];
