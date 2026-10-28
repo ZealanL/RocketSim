@@ -137,7 +137,12 @@ void btCollisionShape::getBoundingSphere(btVector3& center, btScalar& radius) co
 		tr.setIdentity();
 		btVector3 aabbMin, aabbMax;
 
-		getAabb(tr, aabbMin, aabbMax);
+		// ROCKETSIM CHANGE: An arena mesh is shared by every arena, so its AABB cache stays on its world transform (a mesh
+		// placed off the origin would otherwise rewrite it here, racing arenas stepped on other threads)
+		if (m_shapeType == TRIANGLE_MESH_SHAPE_PROXYTYPE)
+			((btTriangleMeshShape*)this)->getAabb(tr, aabbMin, aabbMax);
+		else
+			getAabb(tr, aabbMin, aabbMax);
 
 		radius = (aabbMax - aabbMin).length() * btScalar(0.5);
 		center = (aabbMin + aabbMax) * btScalar(0.5);

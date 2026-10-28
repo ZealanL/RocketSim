@@ -148,7 +148,9 @@ void _UpdateCellsStatic(btRSBroadphase* _this, btRSBroadphaseProxy* proxy) {
 					btVector3 cellMax = cellMin + btVector3(_this->cellSize, _this->cellSize, _this->cellSize);
 
 					callbackInst.hit = false;
-					triMeshShape->processAllTriangles(&callbackInst, cellMin, cellMax);
+					// ROCKETSIM CHANGE: Meshes placed off the origin (the game's goal meshes) are queried in their own frame
+					const btVector3& meshOrigin = colObj->getWorldTransform().getOrigin();
+					triMeshShape->processAllTriangles(&callbackInst, cellMin - meshOrigin, cellMax - meshOrigin);
 
 					if (!callbackInst.hit) {
 						numSkipped++;

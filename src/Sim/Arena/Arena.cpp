@@ -993,6 +993,7 @@ void Arena::_SetupArenaCollisionShapes() {
 	bool isDropShot = gameMode == GameMode::DROPSHOT;
 
 	auto collisionMeshes = RocketSim::GetArenaCollisionShapes(gameMode);
+	auto& collisionMeshOrigins = RocketSim::GetArenaCollisionShapeOrigins(gameMode);
 
 	if (collisionMeshes.empty()) {
 		RS_ERR_CLOSE(
@@ -1021,7 +1022,7 @@ void Arena::_SetupArenaCollisionShapes() {
 
 		int mask = isHoopsNet ? CollisionMasks::HOOPS_NET : 0;
 		_worldCollisionBvhShapes.push_back(mesh);
-		_AddStaticCollisionShape(mesh, btVector3(0, 0, 0), mask, mask);
+		_AddStaticCollisionShape(mesh, (i < collisionMeshOrigins.size()) ? collisionMeshOrigins[i] : btVector3(0, 0, 0), mask, mask);
 
 		// Don't free the BVH when we deconstruct this arena
 		mesh->m_ownsBvh = false;

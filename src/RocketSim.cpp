@@ -59,6 +59,58 @@ std::vector<btBvhTriangleMeshShape*>& RocketSim::GetArenaCollisionShapes(GameMod
 	return arenaCollisionMeshes[gameMode];
 }
 
+std::vector<btVector3>& RocketSim::GetArenaCollisionShapeOrigins(GameMode gameMode) {
+	static std::map<GameMode, std::vector<btVector3>> arenaCollisionMeshOrigins;
+
+	switch (gameMode) {
+	case GameMode::SNOWDAY:
+	case GameMode::HEATSEEKER:
+		gameMode = GameMode::SOCCAR;
+	}
+
+	return arenaCollisionMeshOrigins[gameMode];
+}
+
+static btBvhTriangleMeshShape* MakeArenaCollisionShape(CollisionMeshFile& meshFile) {
+	btTriangleMesh* triMesh = meshFile.MakeBulletMesh();
+
+	auto bvtMesh = new btBvhTriangleMeshShape(triMesh, true);
+	btTriangleInfoMap* infoMap = new btTriangleInfoMap();
+	btGenerateInternalEdgeInfo(bvtMesh, infoMap);
+
+	// The game's triangle info has angle 0 (not 2 pi) on edges without a neighbouring triangle (every mesh boundary),
+	// so contacts there are treated as planar internal edges (the face normal)
+	for (int i = 0; i < infoMap->m_valueArray.size(); i++) {
+		btTriangleInfo& info = infoMap->m_valueArray[i];
+		if (info.m_edgeV0V1Angle == SIMD_2_PI) info.m_edgeV0V1Angle = 0;
+		if (info.m_edgeV1V2Angle == SIMD_2_PI) info.m_edgeV1V2Angle = 0;
+		if (info.m_edgeV2V0Angle == SIMD_2_PI) info.m_edgeV2V0Angle = 0;
+	}
+
+	bvtMesh->setTriangleInfoMap(infoMap);
+	return bvtMesh;
+}
+
+// The game's soccar goal meshes are in their own frame, placed at the goal (y = +-5120 uu). The mesh files are in world
+// space, so a mesh centered past the goal line is moved into the goal's frame. Returns where to place the mesh
+static btVector3 MoveGoalMeshToOwnFrame(CollisionMeshFile& meshFile) {
+	constexpr float GOAL_ORIGIN_Y_BT = 102.39998626708984f; // A float in BT units
+
+	float minY = FLT_MAX, maxY = -FLT_MAX;
+	for (auto& vert : meshFile.vertices) {
+		minY = RS_MIN(minY, vert.y);
+		maxY = RS_MAX(maxY, vert.y);
+	}
+	float centerY = (minY + maxY) / 2;
+	if (abs(centerY) <= GOAL_ORIGIN_Y_BT)
+		return btVector3(0, 0, 0);
+
+	float originY = centerY > 0 ? GOAL_ORIGIN_Y_BT : -GOAL_ORIGIN_Y_BT;
+	for (auto& vert : meshFile.vertices)
+		vert.y -= originY;
+	return btVector3(0, originY, 0);
+}
+
 void RocketSim::Init(std::filesystem::path collisionMeshesFolder, bool silent) {
 
 	std::map<GameMode, std::vector<FileData>> meshFileMap = {};
@@ -161,13 +213,9 @@ void RocketSim::InitFromMem(const std::map<GameMode, std::vector<FileData>>& mes
 				}
 				hashCount++;
 
-				btTriangleMesh* triMesh = meshFile.MakeBulletMesh();
-
-				auto bvtMesh = new btBvhTriangleMeshShape(triMesh, true);
-				btTriangleInfoMap* infoMap = new btTriangleInfoMap();
-				btGenerateInternalEdgeInfo(bvtMesh, infoMap);
-				bvtMesh->setTriangleInfoMap(infoMap);
-				meshes.push_back(bvtMesh);
+				if (gameMode == GameMode::SOCCAR)
+					GetArenaCollisionShapeOrigins(gameMode).push_back(MoveGoalMeshToOwnFrame(meshFile));
+				meshes.push_back(MakeArenaCollisionShape(meshFile));
 
 				idx++;
 			}
