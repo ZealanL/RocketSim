@@ -23,6 +23,8 @@ subject to the following restrictions:
 
 //#include <stdio.h>
 
+btCarPlaneContactsCallback gCarPlaneContactsCallback = 0;
+
 btConvexPlaneCollisionAlgorithm::btConvexPlaneCollisionAlgorithm(btPersistentManifold* mf, const btCollisionAlgorithmConstructionInfo& ci, const btCollisionObjectWrapper* col0Wrap, const btCollisionObjectWrapper* col1Wrap, bool isSwapped, int numPerturbationIterations, int minimumPointsPerturbationThreshold)
 	: btCollisionAlgorithm(ci),
 	  m_ownManifold(false),
@@ -105,6 +107,28 @@ void btConvexPlaneCollisionAlgorithm::processCollision(const btCollisionObjectWr
 	const btVector3& planeNormal = planeShape->getPlaneNormal();
 	const btScalar& planeConstant = planeShape->getPlaneConstant();
 
+	// ROCKETSIM CHANGE: The game keeps a car's plane manifold from tick to tick: last tick's points are loaded and
+	// refreshed against the current transforms before the new point merges in
+	const bool carPlane = m_ownManifold && gCarPlaneContactsCallback &&
+		(convexObjWrap->getCollisionObject()->getCollisionFlags() & btCollisionObject::CF_ROCKETSIM_CAR);
+	if (carPlane && m_manifoldPtr->getNumContacts() == 0)
+	{
+		gCarPlaneContactsCallback(m_manifoldPtr, convexObjWrap->getCollisionObject(), planeObjWrap->getCollisionObject(), false);
+		if (m_manifoldPtr->getNumContacts())
+		{
+			resultOut->setPersistentManifold(m_manifoldPtr);
+			resultOut->refreshContactPoints();
+		}
+	}
+
+	// ROCKETSIM CHANGE: The ball's plane manifold persists (see btPersistentManifold::isMergedPair)
+	const bool mergedPair = m_ownManifold && !carPlane &&
+		btPersistentManifold::isMergedPair(convexObjWrap->getCollisionObject(), planeObjWrap->getCollisionObject());
+	btManifoldPoint persistentPoints[MANIFOLD_CACHE_SIZE];
+	int numPersistentPoints = 0;
+	if (mergedPair)
+		numPersistentPoints = m_manifoldPtr->takePersistentPoints(persistentPoints);
+
 	btTransform planeInConvex;
 	btTransform convexInPlaneTrans;
 	planeInConvex = convexObjWrap->getWorldTransform().inverse() * planeObjWrap->getWorldTransform();
@@ -158,6 +182,12 @@ void btConvexPlaneCollisionAlgorithm::processCollision(const btCollisionObjectWr
 			resultOut->refreshContactPoints();
 		}
 	}
+
+	if (mergedPair)
+		m_manifoldPtr->mergePersistentPoints(persistentPoints, numPersistentPoints);
+
+	if (carPlane)
+		gCarPlaneContactsCallback(m_manifoldPtr, convexObjWrap->getCollisionObject(), planeObjWrap->getCollisionObject(), true);
 }
 
 btScalar btConvexPlaneCollisionAlgorithm::calculateTimeOfImpact(btCollisionObject* col0, btCollisionObject* col1, const btDispatcherInfo& dispatchInfo, btManifoldResult* resultOut)

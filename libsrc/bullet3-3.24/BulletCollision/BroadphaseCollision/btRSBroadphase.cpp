@@ -23,6 +23,7 @@ subject to the following restrictions:
 #include "../../LinearMath/btAabbUtil2.h"
 
 #include "../CollisionShapes/btBvhTriangleMeshShape.h"
+#include "../NarrowPhaseCollision/btPersistentManifold.h"
 
 #include <new>
 #include <string>
@@ -398,10 +399,18 @@ void btRSBroadphase::calculateOverlappingPairs(btCollisionDispatcher* dispatcher
 	bool shouldRemove = !m_pairCache->hasDeferredRemoval();
 
 	if (shouldRemove) {
+		// ROCKETSIM CHANGE: As in the game, a pair whose manifold persists (btPersistentManifold::isPersistentPair) is kept,
+		// with its algorithm and manifold, while the AABBs still overlap; kept pairs stay first in activePairs
+		size_t numKept = 0;
 		for (auto pair : activePairs) {
+			if (btPersistentManifold::isPersistentPair((btCollisionObject*)pair.first->m_clientObject, (btCollisionObject*)pair.second->m_clientObject)
+				&& aabbOverlap(pair.first, pair.second) && m_pairCache->findPair(pair.first, pair.second)) {
+				activePairs[numKept++] = pair;
+				continue;
+			}
 			m_pairCache->removeOverlappingPair(pair.first, pair.second, dispatcher);
 		}
-		activePairs.clear();
+		activePairs.resize(numKept);
 	} else {
 		THROW_ERR("Pair cache cannot have deferred removal");
 	}

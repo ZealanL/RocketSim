@@ -102,7 +102,7 @@ void Ball::_BulletSetup(GameMode gameMode, btDynamicsWorld* bulletWorld, const M
 	_rigidBody.setUserPointer(this);
 
 	// Trigger the Arena::_BulletContactAddedCallback() when anything touches the ball
-	_rigidBody.m_collisionFlags |= btCollisionObject::CF_CUSTOM_MATERIAL_CALLBACK;
+	_rigidBody.m_collisionFlags |= btCollisionObject::CF_CUSTOM_MATERIAL_CALLBACK | btCollisionObject::CF_ROCKETSIM_BALL;
 
 	_rigidBody.m_rigidbodyFlags = 0;
 

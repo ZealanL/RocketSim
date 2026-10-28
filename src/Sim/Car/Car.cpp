@@ -229,7 +229,7 @@ void Car::_BulletSetup(GameMode gameMode, btDynamicsWorld* bulletWorld, const Mu
 	_rigidBody.setUserIndex(BT_USERINFO_TYPE_CAR);
 	_rigidBody.setUserPointer(this);
 
-	_rigidBody.m_collisionFlags |= btCollisionObject::CF_CUSTOM_MATERIAL_CALLBACK;
+	_rigidBody.m_collisionFlags |= btCollisionObject::CF_CUSTOM_MATERIAL_CALLBACK | btCollisionObject::CF_ROCKETSIM_CAR;
 
 	_rigidBody.m_friction = RLConst::CAR_COLLISION_FRICTION;
 	_rigidBody.m_restitution = RLConst::CAR_COLLISION_RESTITUTION;

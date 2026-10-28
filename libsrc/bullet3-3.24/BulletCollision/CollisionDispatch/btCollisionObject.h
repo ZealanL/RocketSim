@@ -154,7 +154,10 @@ public:
 		CF_HAS_CONTACT_STIFFNESS_DAMPING = 128,
 		CF_HAS_CUSTOM_DEBUG_RENDERING_COLOR = 256,
 		CF_HAS_FRICTION_ANCHOR = 512,
-		CF_HAS_COLLISION_SOUND_TRIGGER = 1024
+		CF_HAS_COLLISION_SOUND_TRIGGER = 1024,
+		// ROCKETSIM CHANGE: RocketSim's cars and ball, whose contacts follow the game's rules
+		CF_ROCKETSIM_CAR = 1 << 20,
+		CF_ROCKETSIM_BALL = 1 << 21
 	};
 
 	enum CollisionObjectTypes

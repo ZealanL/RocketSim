@@ -15,6 +15,9 @@ subject to the following restrictions:
 
 #include "btPersistentManifold.h"
 #include "../../LinearMath/btTransform.h"
+#include "../CollisionDispatch/btCollisionObject.h"
+#include "../CollisionShapes/btCollisionShape.h"
+#include "../BroadphaseCollision/btBroadphaseProxy.h"
 
 #ifdef BT_USE_DOUBLE_PRECISION
 #define btCollisionObjectData btCollisionObjectDoubleData
@@ -188,11 +191,21 @@ int btPersistentManifold::sortCachedPoints(const btManifoldPoint& pt)
 	return biggestarea;
 }
 
+// ROCKETSIM CHANGE: Whether body0 is a car or the ball and body1 an arena mesh, an arena plane or a car
+static bool isGameContactPair(const btCollisionObject* body0, const btCollisionObject* body1)
+{
+	const int type1 = body1->getCollisionShape()->getShapeType();
+	return (body0->getCollisionFlags() & (btCollisionObject::CF_ROCKETSIM_CAR | btCollisionObject::CF_ROCKETSIM_BALL)) &&
+		(type1 == TRIANGLE_MESH_SHAPE_PROXYTYPE || type1 == STATIC_PLANE_PROXYTYPE || (body1->getCollisionFlags() & btCollisionObject::CF_ROCKETSIM_CAR));
+}
+
 int btPersistentManifold::getCacheEntry(const btManifoldPoint& newPoint) const
 {
 	// ROCKETSIM CHANGE: Don't overwrite old manifolds with new manifolds
 	// Disabling this return makes ball-arena collisions far less accurate to the game
-	return -1;
+	// ROCKETSIM CHANGE: Except for the car and ball contacts with the arena and cars, which merge like the game's Bullet
+	if (!isGameContactPair(m_body0, m_body1) && !isGameContactPair(m_body1, m_body0))
+		return -1;
 
 	btScalar shortestDist = getContactBreakingThreshold() * getContactBreakingThreshold();
 	int size = getNumContacts();
@@ -210,6 +223,113 @@ int btPersistentManifold::getCacheEntry(const btManifoldPoint& newPoint) const
 		}
 	}
 	return nearestPoint;
+}
+
+bool btPersistentManifold::isPersistentPair(const btCollisionObject* body0, const btCollisionObject* body1)
+{
+	const int flags0 = body0->getCollisionFlags(), flags1 = body1->getCollisionFlags();
+	if ((flags0 & btCollisionObject::CF_ROCKETSIM_CAR) && (flags1 & btCollisionObject::CF_ROCKETSIM_CAR))
+		return true;
+	return ((flags0 & btCollisionObject::CF_ROCKETSIM_BALL) && isGameContactPair(body0, body1)) ||
+		((flags1 & btCollisionObject::CF_ROCKETSIM_BALL) && isGameContactPair(body1, body0));
+}
+
+bool btPersistentManifold::isMergedPair(const btCollisionObject* body0, const btCollisionObject* body1)
+{
+	return isPersistentPair(body0, body1) && body0->getCollisionShape()->getShapeType() != TRIANGLE_MESH_SHAPE_PROXYTYPE &&
+		body1->getCollisionShape()->getShapeType() != TRIANGLE_MESH_SHAPE_PROXYTYPE;
+}
+
+int btPersistentManifold::takePersistentPoints(btManifoldPoint* retained)
+{
+	if (m_cachedPoints)
+		refreshContactPoints(m_body0->getWorldTransform(), m_body1->getWorldTransform());
+	int numRetained = m_cachedPoints;
+	for (int i = 0; i < numRetained; i++)
+		retained[i] = m_pointCache[i];
+	m_cachedPoints = 0;
+	return numRetained;
+}
+
+void btPersistentManifold::mergePersistentPoints(const btManifoldPoint* retained, int numRetained)
+{
+	// With no points kept from last tick the fresh points stay as they are
+	if (numRetained == 0)
+		return;
+
+	// Local points are compared on the ball's side in a ball pair, else on body 0's
+	const bool keyOnB = !(m_body0->getCollisionFlags() & btCollisionObject::CF_ROCKETSIM_BALL) &&
+		(m_body1->getCollisionFlags() & btCollisionObject::CF_ROCKETSIM_BALL);
+	auto key = [keyOnB](const btManifoldPoint& pt) -> const btVector3& { return keyOnB ? pt.m_localPointB : pt.m_localPointA; };
+
+	const int numFresh = m_cachedPoints;
+	btManifoldPoint fresh[MANIFOLD_CACHE_SIZE];
+	for (int i = 0; i < numFresh; i++)
+		fresh[i] = m_pointCache[i];
+	for (int i = 0; i < numRetained; i++)
+		m_pointCache[i] = retained[i];
+	m_cachedPoints = numRetained;
+
+	const btScalar thresholdSq = getContactBreakingThreshold() * getContactBreakingThreshold();
+	for (int f = 0; f < numFresh; f++)
+	{
+		const btManifoldPoint& pt = fresh[f];
+
+		btScalar shortestDist = thresholdSq;
+		int nearestPoint = -1;
+		for (int i = 0; i < m_cachedPoints; i++)
+		{
+			btVector3 diff = key(m_pointCache[i]) - key(pt);
+			const btScalar distToManiPoint = diff.dot(diff);
+			if (distToManiPoint < shortestDist)
+			{
+				shortestDist = distToManiPoint;
+				nearestPoint = i;
+			}
+		}
+
+		if (nearestPoint >= 0)
+		{
+			// Only the old applied impulse is kept
+			btScalar appliedImpulse = m_pointCache[nearestPoint].m_appliedImpulse;
+			m_pointCache[nearestPoint] = pt;
+			m_pointCache[nearestPoint].m_appliedImpulse = appliedImpulse;
+		}
+		else if (m_cachedPoints < MANIFOLD_CACHE_SIZE)
+		{
+			m_pointCache[m_cachedPoints++] = pt;
+		}
+		else
+		{
+			// sortCachedPoints (with gContactCalcArea3Points), on the compared side
+			int maxPenetrationIndex = -1;
+			btScalar maxPenetration = pt.getDistance();
+			for (int i = 0; i < 4; i++)
+			{
+				if (m_pointCache[i].getDistance() < maxPenetration)
+				{
+					maxPenetrationIndex = i;
+					maxPenetration = m_pointCache[i].getDistance();
+				}
+			}
+			const btVector3& p0 = key(m_pointCache[0]);
+			const btVector3& p1 = key(m_pointCache[1]);
+			const btVector3& p2 = key(m_pointCache[2]);
+			const btVector3& p3 = key(m_pointCache[3]);
+			const btVector3& l = key(pt);
+			btScalar res0(0), res1(0), res2(0), res3(0);
+			if (maxPenetrationIndex != 0)
+				res0 = (l - p1).cross(p3 - p2).length2();
+			if (maxPenetrationIndex != 1)
+				res1 = (l - p0).cross(p3 - p2).length2();
+			if (maxPenetrationIndex != 2)
+				res2 = (l - p0).cross(p3 - p1).length2();
+			if (maxPenetrationIndex != 3)
+				res3 = (l - p0).cross(p2 - p1).length2();
+			btVector4 maxvec(res0, res1, res2, res3);
+			m_pointCache[maxvec.closestAxis4()] = pt;
+		}
+	}
 }
 
 int btPersistentManifold::addManifoldPoint(const btManifoldPoint& newPoint, bool isPredictive)

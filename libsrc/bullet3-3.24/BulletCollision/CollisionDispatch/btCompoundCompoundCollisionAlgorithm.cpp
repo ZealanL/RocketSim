@@ -197,7 +197,27 @@ struct btCompoundCompoundLeafCallback : btDbvt::ICollide
 			m_resultOut->setShapeIdentifiersA(-1, childIndex0);
 			m_resultOut->setShapeIdentifiersB(-1, childIndex1);
 
+			// ROCKETSIM CHANGE: The game's manifold of this pair persists: last tick's points are taken out, this tick's
+			// points are found on the empty manifold and merged into them (see btPersistentManifold::isMergedPair)
+			btPersistentManifold* persistentManifold = 0;
+			btManifoldPoint persistentPoints[MANIFOLD_CACHE_SIZE];
+			int numPersistentPoints = 0;
+			if (!removePair && btPersistentManifold::isMergedPair(m_compound0ColObjWrap->getCollisionObject(), m_compound1ColObjWrap->getCollisionObject()))
+			{
+				static thread_local btManifoldArray manifolds;
+				manifolds.resize(0);
+				colAlgo->getAllContactManifolds(manifolds);
+				if (manifolds.size() == 1)
+				{
+					persistentManifold = manifolds[0];
+					numPersistentPoints = persistentManifold->takePersistentPoints(persistentPoints);
+				}
+			}
+
 			colAlgo->processCollision(&compoundWrap0, &compoundWrap1, m_dispatchInfo, m_resultOut);
+
+			if (persistentManifold)
+				persistentManifold->mergePersistentPoints(persistentPoints, numPersistentPoints);
 
 			m_resultOut->setBody0Wrap(tmpWrap0);
 			m_resultOut->setBody1Wrap(tmpWrap1);
@@ -347,6 +367,8 @@ void btCompoundCompoundCollisionAlgorithm::processCollision(const btCollisionObj
 
 	//remove non-overlapping child pairs
 
+	// ROCKETSIM CHANGE: The game releases a car-car manifold only when the broadphase drops the pair
+	if (!btPersistentManifold::isMergedPair(col0ObjWrap->getCollisionObject(), col1ObjWrap->getCollisionObject()))
 	{
 		btAssert(m_removePairs.size() == 0);
 

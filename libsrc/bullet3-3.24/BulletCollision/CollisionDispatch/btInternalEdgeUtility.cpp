@@ -377,6 +377,27 @@ void btNearestPointInLineSegment(const btVector3& point, const btVector3& line0,
 	}
 }
 
+// ROCKETSIM CHANGE: The game clamps the segment parameter to [1e-5, 1 - 1e-5] in btAdjustInternalEdgeContacts'
+// closest-edge search
+static void btNearestPointInLineSegmentClamped(const btVector3& point, const btVector3& line0, const btVector3& line1, btVector3& nearestPoint)
+{
+	btVector3 lineDelta = line1 - line0;
+	if (lineDelta.fuzzyZero())
+	{
+		nearestPoint = line0;
+	}
+	else
+	{
+		btScalar delta = (point - line0).dot(lineDelta) / (lineDelta).dot(lineDelta);
+		const btScalar lo = btScalar(1e-5), hi = btScalar(1) - btScalar(1e-5);
+		if (delta < lo)
+			delta = lo;
+		else if (delta > hi)
+			delta = hi;
+		nearestPoint = line0 + lineDelta * delta;
+	}
+}
+
 bool btClampNormal(const btVector3& edge, const btVector3& tri_normal_org, const btVector3& localContactNormalOnB, btScalar correctedEdgeAngle, btVector3& clampedLocalNormal)
 {
 	btVector3 tri_normal = tri_normal_org;
@@ -476,13 +497,17 @@ void btAdjustInternalEdgeContacts(btManifoldPoint& cp, const btCollisionObjectWr
 	// Get closest edge
 	int bestedge = -1;
 	btScalar disttobestedge = BT_LARGE_FLOAT;
+	// ROCKETSIM CHANGE: As the game, the search is clamped, and an edge the contact lies on is processed too
+	bool onEdge[3] = {false, false, false};
 	//
 	// Edge 0 -> 1
 	if (btFabs(info->m_edgeV0V1Angle) < triangleInfoMapPtr->m_maxEdgeAngleThreshold)
 	{
 		btVector3 nearest;
-		btNearestPointInLineSegment(cp.m_localPointB, v0, v1, nearest);
+		btNearestPointInLineSegmentClamped(cp.m_localPointB, v0, v1, nearest);
 		btScalar len = (contact - nearest).length();
+		if (len < SIMD_EPSILON)
+			onEdge[0] = true;
 		//
 		if (len < disttobestedge)
 		{
@@ -494,8 +519,10 @@ void btAdjustInternalEdgeContacts(btManifoldPoint& cp, const btCollisionObjectWr
 	if (btFabs(info->m_edgeV1V2Angle) < triangleInfoMapPtr->m_maxEdgeAngleThreshold)
 	{
 		btVector3 nearest;
-		btNearestPointInLineSegment(cp.m_localPointB, v1, v2, nearest);
+		btNearestPointInLineSegmentClamped(cp.m_localPointB, v1, v2, nearest);
 		btScalar len = (contact - nearest).length();
+		if (len < SIMD_EPSILON)
+			onEdge[1] = true;
 		//
 		if (len < disttobestedge)
 		{
@@ -507,8 +534,10 @@ void btAdjustInternalEdgeContacts(btManifoldPoint& cp, const btCollisionObjectWr
 	if (btFabs(info->m_edgeV2V0Angle) < triangleInfoMapPtr->m_maxEdgeAngleThreshold)
 	{
 		btVector3 nearest;
-		btNearestPointInLineSegment(cp.m_localPointB, v2, v0, nearest);
+		btNearestPointInLineSegmentClamped(cp.m_localPointB, v2, v0, nearest);
 		btScalar len = (contact - nearest).length();
+		if (len < SIMD_EPSILON)
+			onEdge[2] = true;
 		//
 		if (len < disttobestedge)
 		{
@@ -528,7 +557,7 @@ void btAdjustInternalEdgeContacts(btManifoldPoint& cp, const btCollisionObjectWr
 #endif
 		btScalar len = (contact - nearest).length();
 		if (len < triangleInfoMapPtr->m_edgeDistanceThreshold)
-			if (bestedge == 0)
+			if (bestedge == 0 || onEdge[0])
 			{
 				btVector3 edge(v0 - v1);
 				isNearEdge = true;
@@ -606,7 +635,7 @@ void btAdjustInternalEdgeContacts(btManifoldPoint& cp, const btCollisionObjectWr
 
 		btScalar len = (contact - nearest).length();
 		if (len < triangleInfoMapPtr->m_edgeDistanceThreshold)
-			if (bestedge == 1)
+			if (bestedge == 1 || onEdge[1])
 			{
 				isNearEdge = true;
 #ifdef BT_INTERNAL_EDGE_DEBUG_DRAW
@@ -690,7 +719,7 @@ void btAdjustInternalEdgeContacts(btManifoldPoint& cp, const btCollisionObjectWr
 
 		btScalar len = (contact - nearest).length();
 		if (len < triangleInfoMapPtr->m_edgeDistanceThreshold)
-			if (bestedge == 2)
+			if (bestedge == 2 || onEdge[2])
 			{
 				isNearEdge = true;
 #ifdef BT_INTERNAL_EDGE_DEBUG_DRAW

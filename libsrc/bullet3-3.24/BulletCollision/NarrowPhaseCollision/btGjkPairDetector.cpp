@@ -17,6 +17,7 @@ subject to the following restrictions:
 #include "../CollisionShapes/btConvexShape.h"
 #include "../NarrowPhaseCollision/btSimplexSolverInterface.h"
 #include "../NarrowPhaseCollision/btConvexPenetrationDepthSolver.h"
+#include "../CollisionShapes/btTriangleShape.h"
 
 #if defined(DEBUG) || defined(_DEBUG)
 //#define TEST_NON_VIRTUAL 1
@@ -927,7 +928,15 @@ void btGjkPairDetector::getClosestPointsNonVirtual(const ClosestPointInput &inpu
 
 	if (isValid && ((distance < 0) || (distance * distance < input.m_maximumDistanceSquared))) {
 
-		if (m_fixContactNormalDirection) {
+		if (m_fixContactNormalDirection == 2 && m_minkowskiB->getShapeType() == TRIANGLE_SHAPE_PROXYTYPE) {
+			// ROCKETSIM CHANGE: The game's btGjkPairDetector replaces the normal of a convex-vs-triangle result with the
+			// triangle's front face normal, keeping the distance and the point on B (a car pushed through a triangle is
+			// pushed back out to the front)
+			const btTriangleShape* tri = static_cast<const btTriangleShape*>(m_minkowskiB);
+			btVector3 faceNormal = localTransB.getBasis() * (tri->m_vertices1[1] - tri->m_vertices1[0]).cross(tri->m_vertices1[2] - tri->m_vertices1[0]);
+			btScalar invLen = btScalar(1.) / btSqrt(faceNormal.length2());
+			normalInB = faceNormal * invLen;
+		} else if (m_fixContactNormalDirection) {
 			///@workaround for sticky convex collisions
 			//in some degenerate cases (usually when the use uses very small margins) 
 			//the contact normal is pointing the wrong direction
