@@ -187,6 +187,14 @@ void btCollisionWorld::updateAabbs()
 		//only update aabb of active objects
 		if (m_forceUpdateAllAabbs || colObj->isActive())
 		{
+			// ROCKETSIM CHANGE: A static object's AABB only changes with a new transform or shape, which bump its update
+			// revision, so it isn't recomputed every tick (speed)
+			if (colObj->isStaticObject())
+			{
+				if (colObj->m_staticAabbRevision == colObj->getUpdateRevisionInternal())
+					continue;
+				colObj->m_staticAabbRevision = colObj->getUpdateRevisionInternal();
+			}
 			updateSingleAabb(colObj);
 		}
 	}
@@ -268,9 +276,6 @@ void btCollisionWorld::rayTestSingleInternal(const btTransform& rayFromTrans, co
 											 const btCollisionObjectWrapper* collisionObjectWrap,
 											 RayResultCallback& resultCallback)
 {
-	btSphereShape pointShape(btScalar(0.0));
-	pointShape.setMargin(0.f);
-	const btConvexShape* castShape = &pointShape;
 	const btCollisionShape* collisionShape = collisionObjectWrap->getCollisionShape();
 	const btTransform& colObjWorldTransform = collisionObjectWrap->getWorldTransform();
 
@@ -280,6 +285,10 @@ void btCollisionWorld::rayTestSingleInternal(const btTransform& rayFromTrans, co
 		btConvexCast::CastResult castResult;
 		castResult.m_fraction = resultCallback.m_closestHitFraction;
 
+		// ROCKETSIM CHANGE: The point shape is only built where it's used (speed)
+		btSphereShape pointShape(btScalar(0.0));
+		pointShape.setMargin(0.f);
+		const btConvexShape* castShape = &pointShape;
 		btConvexShape* convexShape = (btConvexShape*)collisionShape;
 		btVoronoiSimplexSolver simplexSolver;
 		btSubsimplexConvexCast subSimplexConvexCaster(castShape, convexShape, &simplexSolver);
@@ -379,6 +388,24 @@ void btCollisionWorld::rayTestSingleInternal(const btTransform& rayFromTrans, co
 			{
 				//generic (slower) case
 				btConcaveShape* concaveShape = (btConcaveShape*)collisionShape;
+
+				// ROCKETSIM CHANGE: A ray with both ends clearly on one side of a plane can't hit it (speed)
+				// The plane's two triangles reject such a ray (dist_a * dist_b >= 0 in btTriangleRaycastCallback), and the
+				// margin T is far above that test's float error at arena scale, so the result is unchanged
+				if (collisionShape->getShapeType() == STATIC_PLANE_PROXYTYPE)
+				{
+					const btStaticPlaneShape* planeShape = (const btStaticPlaneShape*)collisionShape;
+					const btVector3 planeNormal = colObjWorldTransform.getBasis() * planeShape->getPlaneNormal();
+					const btVector3 from = rayFromTrans.getOrigin() - colObjWorldTransform.getOrigin();
+					const btVector3 to = rayToTrans.getOrigin() - colObjWorldTransform.getOrigin();
+					const btScalar distFrom = planeNormal.dot(from) - planeShape->getPlaneConstant();
+					const btScalar distTo = planeNormal.dot(to) - planeShape->getPlaneConstant();
+					const btVector3 absFrom = from.absolute(), absTo = to.absolute();
+					const btScalar extent = btMax(btMax(btMax(absFrom.x(), absFrom.y()), absFrom.z()), btMax(btMax(absTo.x(), absTo.y()), absTo.z()));
+					const btScalar T = btScalar(0.01) * (btScalar(1) + extent * btScalar(0.01));
+					if ((distFrom > T && distTo > T) || (distFrom < -T && distTo < -T))
+						return;
+				}
 
 				btTransform worldTocollisionObject = colObjWorldTransform.inverse();
 

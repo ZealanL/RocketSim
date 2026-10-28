@@ -421,7 +421,7 @@ btCollisionObject* btVehicleRL::castWheelRay(const btVector3& from, const btVect
 }
 
 float btVehicleRL::rayCast(btWheelInfoRL& wheel) {
-	updateWheelTransformsWS(wheel);
+	// (updateVehicleFirst has just updated the wheel's world transforms)
 
 	float depth = -1;
 

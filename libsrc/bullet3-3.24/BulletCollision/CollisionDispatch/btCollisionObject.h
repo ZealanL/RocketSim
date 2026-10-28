@@ -124,6 +124,8 @@ public:
 
 	///internal update revision number. It will be increased when the object changes. This allows some subsystems to perform lazy evaluation.
 	int m_updateRevision;
+	// ROCKETSIM CHANGE: m_updateRevision when btCollisionWorld::updateAabbs last updated this static object's AABB
+	int m_staticAabbRevision = -1;
 
 	btVector3 m_customDebugColorRGB;
 
