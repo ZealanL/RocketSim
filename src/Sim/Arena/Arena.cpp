@@ -910,10 +910,10 @@ void Arena::Step(int ticksToSimulate) {
 				if (_config.useCustomBoostPads) {
 					// TODO: This is quite slow, we should use a sorting method of some sort
 					for (auto& boostPad : _boostPads) {
-						boostPad->_CheckCollide(car);
+						boostPad->_CheckCollide(car, tickTime);
 					}
 				} else {
-					_boostPadGrid.CheckCollision(car);
+					_boostPadGrid.CheckCollision(car, tickTime);
 				}
 			}
 		}

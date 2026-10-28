@@ -42,19 +42,27 @@ void BoostPad::_Setup(const BoostPadConfig& config) {
 
 void BoostPad::_PreTickUpdate(float tickTime) {
 
-	if (_internalState.cooldown > 0) {
-		_internalState.cooldown = RS_MAX(_internalState.cooldown - tickTime, 0);
+	// The game counts an inactive pad's timer down every tick, past zero, and brings the pad back on the tick after it
+	// reads -1/120: 481 / 1201 ticks after the pickup, in time for a car on the pad to take it again that tick
+	if (!_internalState.isActive || _internalState.cooldown > 0) {
+		if (_internalState.cooldown < -0.5f * tickTime) {
+			_internalState.cooldown = 0;
+			_internalState.isActive = true;
+		} else {
+			_internalState.cooldown -= tickTime;
+			_internalState.isActive = false;
+		}
 	}
-
-	_internalState.isActive = (_internalState.cooldown == 0);
 
 	_internalState.curLockedCar = NULL;
 }
 
-void BoostPad::_CheckCollide(Car* car) {
+void BoostPad::_CheckCollide(Car* car, float tickTime) {
 	using namespace RLConst::BoostPads;
 
-	Vec carPosBT = car->_rigidBody.getWorldTransform().m_origin;
+	// The game's pickups land on this tick or the next at random, about evenly when the car enters the pad's cylinder
+	// halfway through the tick, so test the car's position halfway through the tick
+	Vec carPosBT = car->_rigidBody.getWorldTransform().m_origin - car->_rigidBody.getLinearVelocity() * (0.5f * tickTime);
 
 	// The game's pad and car collision cylinders, for every car, every tick
 	bool colliding = false;
@@ -79,7 +87,8 @@ void BoostPad::_PostTickUpdate(float tickTime, const MutatorConfig& mutatorConfi
 			_internalState.curLockedCar->_internalState.boost = RS_MIN(_internalState.curLockedCar->_internalState.boost + boostToAdd, RLConst::BOOST_MAX);
 
 			_internalState.isActive = false;
-			_internalState.cooldown = config.isBig ? mutatorConfig.boostPadCooldown_Big : mutatorConfig.boostPadCooldown_Small;
+			// The pickup tick already counts once (the game's timer reads 4 - 1/120 there)
+			_internalState.cooldown = (config.isBig ? mutatorConfig.boostPadCooldown_Big : mutatorConfig.boostPadCooldown_Small) - tickTime;
 		}
 	}
 
