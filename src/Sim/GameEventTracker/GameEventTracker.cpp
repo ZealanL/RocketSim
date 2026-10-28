@@ -6,7 +6,8 @@ bool GetShooterPasser(Arena* arena, Team team, Car*& shooterOut, bool findPasser
 	shooterOut = passerOut = NULL;
 	// TODO: Instead of looping over cars to find who hit it last, use persistent info
 
-	for (Car* car : arena->_cars) {
+	for (auto& idCar : arena->_carIDMap) { // (Ties go to the lower ID)
+		Car* car = idCar.second;
 		if (car->team != team)
 			continue;
 
@@ -24,7 +25,8 @@ bool GetShooterPasser(Arena* arena, Team team, Car*& shooterOut, bool findPasser
 		uint64_t shootTick = shooterOut->_internalState.ballHitInfo.tickCountWhenHit;
 
 		// TODO: Repetitive code
-		for (Car* car : arena->_cars) {
+		for (auto& idCar : arena->_carIDMap) {
+			Car* car = idCar.second;
 			if (car->team != team)
 				continue;
 

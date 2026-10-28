@@ -87,7 +87,7 @@ namespace RLConst {
 		STOPPING_FORWARD_VEL = 25.f, // If we are costing with less than this forward vel, we full-brake
 		COASTING_BRAKE_FACTOR = 0.15f, // How much the brake is applied when costing
 		BRAKING_NO_THROTTLE_SPEED_THRESH = 0.01f, // If we are braking and moving faster than this, disable throttle
-		THROTTLE_DEADZONE = 0.001f, // Throttle input of less than this is ignored
+		THROTTLE_DEADZONE = 0.01f, // Throttle input of this or less is ignored
 		
 		THROTTLE_AIR_ACCEL = 200/3.f,
 
@@ -103,7 +103,7 @@ namespace RLConst {
 		FLIP_Z_DAMP_START = 0.15f,
 		FLIP_Z_DAMP_END = 0.21f,
 		FLIP_TORQUE_TIME = 0.65f,
-		FLIP_TORQUE_MIN_TIME = 0.41f,
+		FLIP_TORQUE_MIN_TIME = 0.041f, // Flip cancel is ignored before this
 		FLIP_PITCHLOCK_TIME = 1.f,
 		FLIP_PITCHLOCK_EXTRA_TIME = 0.3f,
 		FLIP_INITIAL_VEL_SCALE = 500.f,
@@ -128,6 +128,7 @@ namespace RLConst {
 		CAR_AUTOFLIP_TIME = 0.4f,
 		CAR_AUTOFLIP_NORMZ_THRESH = M_SQRT1_2,
 		CAR_AUTOFLIP_ROLL_THRESH = 2.8f,
+		CAR_AUTOFLIP_UP_DOT_THRESH = -0.966f, // Max dot of the car's up axis with the contact normal
 
 		CAR_AUTOROLL_FORCE = 100,
 		CAR_AUTOROLL_TORQUE = 80,

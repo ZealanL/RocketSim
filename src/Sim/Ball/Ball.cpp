@@ -123,6 +123,20 @@ void Ball::_FinishPhysicsTick(const MutatorConfig& mutatorConfig) {
 		_velocityImpulseCache = { 0,0,0 };
 	}
 
+	_internalState.tickCountSinceUpdate++;
+}
+
+// The game's rounding of a velocity component: truncated to 1 / scale, plus 0.1 / scale away from zero
+static float RoundVelocity(float val, float scale) {
+	const float invScale = 1.0f / scale;
+	const float rounded = (float)(int32_t)(val * scale) * invScale;
+	const float offset = 0.1f * invScale;
+	return rounded == 0.0f ? rounded : rounded + copysignf(offset, rounded);
+}
+
+void Ball::_TickStartUpdate(const MutatorConfig& mutatorConfig) {
+	using namespace RLConst;
+
 	{ // Limit velocities
 		btVector3
 			vel = _rigidBody.m_linearVelocity,
@@ -139,7 +153,19 @@ void Ball::_FinishPhysicsTick(const MutatorConfig& mutatorConfig) {
 		_rigidBody.m_angularVelocity = angVel;
 	}
 
-	_internalState.tickCountSinceUpdate++;
+	{ // Round the state as the game does
+		btVector3 pos = _rigidBody.getWorldTransform().m_origin * BT_TO_UU;
+		btVector3 vel = _rigidBody.m_linearVelocity * BT_TO_UU;
+		btVector3 angVel = _rigidBody.m_angularVelocity;
+		_rigidBody.getWorldTransform().m_origin =
+			btVector3(Math::RoundHalfUp(pos.x(), 100), Math::RoundHalfUp(pos.y(), 100), Math::RoundHalfUp(pos.z(), 100)) * UU_TO_BT;
+		_rigidBody.m_linearVelocity =
+			btVector3(RoundVelocity(vel.x(), 100), RoundVelocity(vel.y(), 100), RoundVelocity(vel.z(), 100)) * UU_TO_BT;
+		_rigidBody.m_angularVelocity =
+			btVector3(RoundVelocity(angVel.x(), 10000), RoundVelocity(angVel.y(), 10000), RoundVelocity(angVel.z(), 10000));
+	}
+
+	_startVel = _rigidBody.m_linearVelocity;
 }
 
 bool Ball::IsSphere() const {

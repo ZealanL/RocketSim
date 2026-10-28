@@ -7,6 +7,7 @@
 #include "../../../libsrc/bullet3-3.24/BulletCollision/BroadphaseCollision/btRSBroadphase.h"
 #include "../../../libsrc/bullet3-3.24/BulletCollision/BroadphaseCollision/btOverlappingPairCache.h"
 #include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionDispatch/btDefaultCollisionConfiguration.h"
+#include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionDispatch/btConvexPlaneCollisionAlgorithm.h"
 #include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionDispatch/btInternalEdgeUtility.h"
 #include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btBoxShape.h"
 #include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btSphereShape.h"
@@ -148,8 +149,8 @@ void Arena::ResetToRandomKickoff(int seed) {
 	}
 
 	std::vector<Car*> blueCars, orangeCars;
-	for (Car* car : _cars)
-		((car->team == Team::BLUE) ? blueCars : orangeCars).push_back(car);
+	for (auto& idCar : _carIDMap)
+		((idCar.second->team == Team::BLUE) ? blueCars : orangeCars).push_back(idCar.second);
 
 	int numCarsAtRespawnPos[CAR_RESPAWN_LOCATION_AMOUNT] = {};
 
@@ -537,6 +538,7 @@ Arena::Arena(GameMode gameMode, const ArenaConfig& config, float tickRate) : _mu
 	_bulletWorld.setWorldUserInfo(this);
 
 	gContactAddedCallback = &Arena::_BulletContactAddedCallback;
+	gCarPlaneContactsCallback = &Car::_PlaneContactsCallback;
 }
 
 Arena* Arena::Create(GameMode gameMode, const ArenaConfig& arenaConfig, float tickRate) {
@@ -550,7 +552,8 @@ void Arena::Serialize(DataStreamOut& out) const {
 
 	{ // Serialize cars
 		out.Write<uint32_t>(_cars.size());
-		for (auto car : _cars) {
+		for (auto& idCar : _carIDMap) {
+			Car* car = idCar.second;
 			out.Write(car->team);
 			out.Write(car->id);
 			car->Serialize(out);
@@ -654,11 +657,12 @@ Arena* Arena::Clone(bool copyCallbacks) {
 	newArena->ball->SetState(this->ball->GetState());
 	newArena->ball->_velocityImpulseCache = this->ball->_velocityImpulseCache;
 
-	for (Car* car : this->_cars) {
+	for (auto& idCar : this->_carIDMap) {
+		Car* car = idCar.second;
+		newArena->_lastCarID = car->id - 1; // So the new car gets the same ID
 		Car* newCar = newArena->AddCar(car->team, car->config);
 		
 		newCar->SetState(car->GetState());
-		newCar->id = car->id;
 		newCar->controls = car->controls;
 		newCar->_velocityImpulseCache = car->_velocityImpulseCache;
 	}
@@ -686,25 +690,44 @@ Car* Arena::DeserializeNewCar(DataStreamIn& in, Team team) {
 	return car;
 }
 
+// The respawn location of a car respawning this tick, from the tick count, the car's ID and the ball's position (so it's
+// deterministic, and differs between arenas in different states)
+int Arena::_GetRespawnPosIndex(Car* car) const {
+	const btVector3& ballPos = ball->_rigidBody.getWorldTransform().m_origin;
+	uint64_t h = tickCount * 0x9E3779B97F4A7C15ull + car->id;
+	for (int i = 0; i < 3; i++) {
+		uint32_t bits;
+		float f = ballPos[i];
+		memcpy(&bits, &f, sizeof(bits));
+		h = (h ^ bits) * 0xBF58476D1CE4E5B9ull;
+		h ^= h >> 31;
+	}
+	h ^= h >> 30; h *= 0xBF58476D1CE4E5B9ull; h ^= h >> 27; h *= 0x94D049BB133111EBull; h ^= h >> 31;
+	return (int)(h % RLConst::CAR_RESPAWN_LOCATION_AMOUNT);
+}
+
 void Arena::Step(int ticksToSimulate) {
 	for (int i = 0; i < ticksToSimulate; i++) {
 
 		_bulletWorld.setWorldUserInfo(this);
 
-		{ // Ball zero-vel sleeping
-			if (ball->_rigidBody.m_linearVelocity.length2() == 0 && ball->_rigidBody.m_angularVelocity.length2() == 0) {
-				ball->_rigidBody.setActivationState(ISLAND_SLEEPING);
-			} else {
-				ball->_rigidBody.setActivationState(ACTIVE_TAG);
-			}
-		}
+		// The game limits and rounds every body's state at the start of the tick
+		ball->_TickStartUpdate(_mutatorConfig);
+		for (auto& idCar : _carIDMap)
+			idCar.second->_TickStartUpdate(tickTime);
+
+		// The game never puts a still ball to sleep
+		ball->_rigidBody.setActivationState(ACTIVE_TAG);
 
 		bool ballOnly = _cars.empty();
 
 		bool hasArenaStuff = (gameMode != GameMode::THE_VOID);
 		
-		for (Car* car : _cars)
-			car->_PreTickUpdate(gameMode, tickTime, _mutatorConfig);
+		// Cars update in ID order, as in the game
+		for (auto& idCar : _carIDMap) {
+			Car* car = idCar.second;
+			car->_PreTickUpdate(gameMode, tickTime, _mutatorConfig, car->_internalState.isDemoed ? _GetRespawnPosIndex(car) : -1);
+		}
 
 		if (hasArenaStuff && !ballOnly) {
 			for (BoostPad* pad : _boostPads)
@@ -714,10 +737,20 @@ void Arena::Step(int ticksToSimulate) {
 		// Update ball
 		ball->_PreTickUpdate(gameMode, tickTime);
 
+		// The game also clamps each car's speed at the start of the physics step, after the pre-tick impulses
+		for (Car* car : _cars) {
+			if (car->_internalState.isDemoed)
+				continue;
+			btVector3 vel = car->_rigidBody.m_linearVelocity;
+			if (vel.length2() > (RLConst::CAR_MAX_SPEED * UU_TO_BT) * (RLConst::CAR_MAX_SPEED * UU_TO_BT))
+				car->_rigidBody.m_linearVelocity = vel.normalized() * (RLConst::CAR_MAX_SPEED * UU_TO_BT);
+		}
+
 		// Update world
 		_bulletWorld.stepSimulation(tickTime, 0, tickTime);
 
-		for (Car* car : _cars) {
+		for (auto& idCar : _carIDMap) {
+			Car* car = idCar.second;
 			car->_PostTickUpdate(gameMode, tickTime, _mutatorConfig);
 			car->_FinishPhysicsTick(_mutatorConfig);
 			if (hasArenaStuff) {

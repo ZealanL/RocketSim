@@ -10,6 +10,7 @@
 #include "../../../libsrc/bullet3-3.24/BulletDynamics/Vehicle/btDefaultVehicleRaycaster.h"
 #include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btBoxShape.h"
 #include "../../../libsrc/bullet3-3.24/BulletCollision/CollisionShapes/btCompoundShape.h"
+#include "../../../libsrc/bullet3-3.24/BulletCollision/NarrowPhaseCollision/btPersistentManifold.h"
 #include "../../../src/Sim/btVehicleRL/btVehicleRL.h"
 
 RS_NS_START
@@ -155,6 +156,7 @@ public:
 
 	// Respawn the car, called after we have been demolished and waited for the respawn timer
 	void Respawn(GameMode gameMode, int seed = -1, float boostAmount = RLConst::BOOST_SPAWN_AMOUNT);
+	void _RespawnAt(GameMode gameMode, int spawnPosIndex, float boostAmount);
 
 	btVehicleRL _bulletVehicle;
 	btDefaultVehicleRaycaster _bulletVehicleRaycaster;
@@ -181,11 +183,41 @@ public:
 		return _internalState.rotMat.up;
 	}
 
-	void _PreTickUpdate(GameMode gameMode, float tickTime, const MutatorConfig& mutatorConfig);
+	// Limits and rounds the car's state and applies the flip z-damping, before any car's _PreTickUpdate
+	void _TickStartUpdate(float tickTime);
+	// respawnPosIndex: the respawn location if the car respawns this tick
+	void _PreTickUpdate(GameMode gameMode, float tickTime, const MutatorConfig& mutatorConfig, int respawnPosIndex);
 	void _PostTickUpdate(GameMode gameMode, float tickTime, const MutatorConfig& mutatorConfig);
 
 	Vec _velocityImpulseCache = { 0,0,0 };
 	void _FinishPhysicsTick(const MutatorConfig& mutatorConfig);
+
+	// The car's velocity at the start of the tick (BT units), which the game's car-ball and car-car hits use
+	btVector3 _startVel = { 0,0,0 };
+
+	// The game's jump bookkeeping (Car_TA bJumped, bDoubleJumped, its cached bOnGround, and how long the jump has been inactive)
+	bool _gameJumped = false, _gameDoubleJumped = false, _gameOnGround = false;
+	float _jumpInactiveTime = 0;
+
+	// Last tick's wheels in contact with the world, and the sum of their contact normals
+	int _prevWorldWheels = 0;
+	btVector3 _prevWorldWheelNormalSum = { 0,0,0 };
+
+	// The arena tick on which this car was demolished by another car, and that car's id
+	uint64_t _demoTick = UINT64_MAX;
+	uint32_t _demoerID = 0;
+
+	// This car's manifold points with each arena plane at the end of a tick, loaded into the next tick's manifolds
+	// (see gCarPlaneContactsCallback)
+	struct PlaneContacts {
+		const btCollisionObject* plane = nullptr;
+		uint32_t tick = 0;
+		int numPoints = 0;
+		btManifoldPoint points[MANIFOLD_CACHE_SIZE];
+	};
+	PlaneContacts _planeContacts[6];
+	uint32_t _planeContactsTick = 0;
+	static void _PlaneContactsCallback(btPersistentManifold* manifold, const btCollisionObject* carObj, const btCollisionObject* planeObj, bool store);
 
 	void _BulletSetup(GameMode gameMode, class btDynamicsWorld* bulletWorld, const MutatorConfig& mutatorConfig);
 	
@@ -201,13 +233,18 @@ public:
 	~Car() {}
 
 private:
-	void _UpdateWheels(float tickTime, const MutatorConfig& mutatorConfig, int numWheelsInContact, float forwardSpeed_UU);
+	void _LimitVelocities();
+	void _UpdateHandbrakeAndSteering(float tickTime, float absForwardSpeed_UU);
+	void _UpdateWheels(float tickTime, const MutatorConfig& mutatorConfig, int numWheelsInContact, float forwardSpeed_UU,
+		int prevWorldWheels, const btVector3& prevWorldWheelNormalSum, float rawThrottle);
 	void _UpdateBoost(float tickTime, const MutatorConfig& mutatorConfig, float forwardSpeed_UU);
+	void _StartJump(const MutatorConfig& mutatorConfig);
 	void _UpdateJump(float tickTime, const MutatorConfig& mutatorConfig, bool jumpPressed);
-	void _UpdateAirTorque(float tickTime, const MutatorConfig& mutatorConfig, bool doAirControl);
-	void _UpdateDoubleJumpOrFlip(float tickTime, const MutatorConfig& mutatorConfig, bool jumpPressed, float forwardSpeed_UU);
+	void _UpdateAirTorque(float tickTime, const MutatorConfig& mutatorConfig, bool doAirControl, float rawPitch, float pitchLockRestartTime);
+	void _UpdateDoubleJumpOrFlip(float tickTime, const MutatorConfig& mutatorConfig, bool jumpPressed, float forwardSpeed_UU, float rawPitch);
+	float _GetFlipRestartTime(float tickTime) const;
 	void _UpdateAutoFlip(float tickTime, const MutatorConfig& mutatorConfig, bool jumpPressed);
-	void _UpdateAutoRoll(float tickTime, const MutatorConfig& mutatorConfig, int numWheelsInContact);
+	void _UpdateAutoRoll(float tickTime, const MutatorConfig& mutatorConfig, int numWheelsInContact, const btVector3& wheelNormalSum);
 
 	Car() {}
 };

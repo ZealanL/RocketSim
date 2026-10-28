@@ -82,6 +82,10 @@ public:
 	bool _groundStickApplied = false;
 	Vec _velocityImpulseCache = { 0,0,0 };
 	void _FinishPhysicsTick(const MutatorConfig& mutatorConfig);
+	// Limits and rounds the ball's state, at the start of the tick
+	void _TickStartUpdate(const MutatorConfig& mutatorConfig);
+	// The ball's velocity at the start of the tick (BT units)
+	btVector3 _startVel = { 0,0,0 };
 
 	bool IsSphere() const;
 

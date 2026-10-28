@@ -35,7 +35,7 @@ public:
 	std::unordered_set<Car*> _cars;
 	bool ownsCars = true; // If true, deleting this arena instance deletes all cars
 
-	std::unordered_map<uint32_t, Car*> _carIDMap;
+	std::map<uint32_t, Car*> _carIDMap; // Ordered by ID, the order cars update in
 	
 	Ball* ball;
 	bool ownsBall = true; // If true, deleting this arena instance deletes the ball
@@ -165,6 +165,7 @@ public:
 	void _BtCallback_OnCarBallCollision(Car* car, Ball* ball, btManifoldPoint& manifoldPoint, bool ballIsBodyA);
 	void _BtCallback_OnCarCarCollision(Car* car1, Car* car2, btManifoldPoint& manifoldPoint);
 	void _BtCallback_OnCarWorldCollision(Car* car, btCollisionObject* worldObject, btManifoldPoint& manifoldPoint);
+	int _GetRespawnPosIndex(Car* car) const;
 
 	const ArenaConfig& GetArenaConfig() const {
 		return _config;

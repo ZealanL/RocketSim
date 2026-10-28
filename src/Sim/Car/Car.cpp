@@ -43,9 +43,13 @@ void Car::Demolish(float respawnDelay) {
 void Car::Respawn(GameMode gameMode, int seed, float boostAmount) {
 	using namespace RLConst;
 
-	CarState newState = CarState();
+	_RespawnAt(gameMode, Math::RandInt(0, CAR_RESPAWN_LOCATION_AMOUNT, seed), boostAmount);
+}
 
-	int spawnPosIndex = Math::RandInt(0, CAR_RESPAWN_LOCATION_AMOUNT, seed);
+void Car::_RespawnAt(GameMode gameMode, int spawnPosIndex, float boostAmount) {
+	using namespace RLConst;
+
+	CarState newState = CarState();
 
 	const CarSpawnPos* spawnPosArray;
 	switch (gameMode) {
@@ -68,7 +72,17 @@ void Car::Respawn(GameMode gameMode, int seed, float boostAmount) {
 	this->SetState(newState);
 }
 
-void Car::_PreTickUpdate(GameMode gameMode, float tickTime, const MutatorConfig& mutatorConfig) {
+// The game's 8-bit axis input (negatives /128, positives /127)
+static float QuantizeAxisInput(float x) {
+	float c = RS_CLAMP(x, -1.f, 1.f);
+	float y = c < 0 ? RS_MAX(c * 128.f, -128.f) : RS_MIN(c * 127.f, 127.f);
+	float w = ((y + 128.f) + (y + 128.f)) + 0.5f;
+	int byte = ((int)rintf(w) >> 1) & 0xFF;
+	float s = (float)byte - 128.f;
+	return byte < 0x80 ? s * (1.f / 128.f) : s / 127.f;
+}
+
+void Car::_PreTickUpdate(GameMode gameMode, float tickTime, const MutatorConfig& mutatorConfig, int respawnPosIndex) {
 	using namespace RLConst;
 
 #ifndef RS_MAX_SPEED
@@ -82,7 +96,7 @@ void Car::_PreTickUpdate(GameMode gameMode, float tickTime, const MutatorConfig&
 		if (_internalState.isDemoed) {
 			_internalState.demoRespawnTimer = RS_MAX(_internalState.demoRespawnTimer - tickTime, 0);
 			if (_internalState.demoRespawnTimer == 0)
-				Respawn(gameMode, -1, mutatorConfig.carSpawnBoostAmount);
+				_RespawnAt(gameMode, respawnPosIndex, mutatorConfig.carSpawnBoostAmount);
 
 			// Disable rigidbody simulation
 			_rigidBody.m_activationState1 = DISABLE_SIMULATION;
@@ -96,15 +110,93 @@ void Car::_PreTickUpdate(GameMode gameMode, float tickTime, const MutatorConfig&
 		}
 	}
 
+	_planeContactsTick++;
+
 	if (_internalState.isDemoed)
 		return; // No other updates need to occur
 
-	// Do first part of the btVehicleRL update (update wheel transforms, do traces, calculate friction impulses) 
-	_bulletVehicle.updateVehicleFirst(tickTime);
+	// The physics reads the game's quantized inputs; the raw controls come back at the end of the tick
+	const CarControls rawControls = controls;
+	controls.throttle = QuantizeAxisInput(controls.throttle);
+	controls.steer = QuantizeAxisInput(controls.steer);
+	controls.pitch = QuantizeAxisInput(controls.pitch);
+	controls.yaw = QuantizeAxisInput(controls.yaw);
+	controls.roll = QuantizeAxisInput(controls.roll);
 
-	btMatrix3x3 basis = _rigidBody.getWorldTransform().m_basis;
+	{ // Update supersonic, as the game does before the physics step: supersonic at the start speed, then until the speed
+		// drops below the maintain speed or the car has spent SUPERSONIC_MAINTAIN_MAX_TIME below the start speed
+		float speedSquared = (_rigidBody.m_linearVelocity * BT_TO_UU).length2();
+		if (speedSquared >= SUPERSONIC_START_SPEED * SUPERSONIC_START_SPEED) {
+			_internalState.isSupersonic = true;
+			_internalState.supersonicTime = 0;
+		} else if (_internalState.isSupersonic) {
+			_internalState.supersonicTime += tickTime;
+			if (_internalState.supersonicTime >= SUPERSONIC_MAINTAIN_MAX_TIME
+				|| speedSquared < SUPERSONIC_MAINTAIN_MIN_SPEED * SUPERSONIC_MAINTAIN_MIN_SPEED) {
+				_internalState.isSupersonic = false;
+				_internalState.supersonicTime = 0;
+			}
+		}
+	}
+
+	// Last tick's wheel contacts
+	int prevNumWheels = 0;
+	for (int i = 0; i < _bulletVehicle.m_wheelInfo.size(); i++)
+		prevNumWheels += _internalState.wheelsWithContact[i] ? 1 : 0;
+	const bool wasOnGround = prevNumWheels >= 3;
 
 	bool jumpPressed = controls.jump && !_internalState.lastControls.jump;
+
+	// The game's jump availability: a jump needs the car on the ground (last tick's wheel contacts) and bJumped clear,
+	// a dodge or double jump needs it off the ground. bJumped clears when the car lands, or on the ground once the
+	// jump has been inactive for 0.125 s
+	const bool wasJumping = _internalState.isJumping;
+	const bool airJumpUsedBefore = _internalState.hasDoubleJumped || _internalState.hasFlipped;
+	if (_internalState.tickCountSinceUpdate == 0) {
+		_gameJumped = _internalState.hasJumped;
+		_gameDoubleJumped = _internalState.hasDoubleJumped || _internalState.hasFlipped;
+		_gameOnGround = wasOnGround;
+		_jumpInactiveTime = _internalState.isJumping ? 0 : _internalState.jumpTime;
+	}
+	if (wasOnGround && !_gameOnGround)
+		_gameJumped = _gameDoubleJumped = false;
+	_gameOnGround = wasOnGround;
+	if (_gameJumped && wasOnGround && !_internalState.isJumping && _jumpInactiveTime >= 0.125f)
+		_gameJumped = _gameDoubleJumped = false;
+	// The dodge window closes after a double jump or dodge, or once the jump has been inactive for DOUBLEJUMP_MAX_DELAY
+	const bool airJumpWindowClosed = _gameDoubleJumped || (_gameJumped && _jumpInactiveTime > DOUBLEJUMP_MAX_DELAY);
+	const bool airJumpPressed = jumpPressed && !wasOnGround && !airJumpWindowClosed;
+
+	// The game starts the jump before the wheel pass, from last tick's ground state
+	bool jumpStarted = false;
+	if (jumpPressed && _internalState.isOnGround && !_internalState.isJumping && !_gameJumped) {
+		_StartJump(mutatorConfig);
+		jumpStarted = true;
+	}
+
+	// Last tick's world-contact wheels and their normals (on the first tick after a state set, this tick's, below)
+	int prevWorldWheels = 0;
+	btVector3 prevWorldWheelNormalSum = btVector3(0, 0, 0);
+	if (_internalState.tickCountSinceUpdate != 0) {
+		prevWorldWheels = _prevWorldWheels;
+		prevWorldWheelNormalSum = _prevWorldWheelNormalSum;
+	}
+
+	const bool hasFlippedAtStart = _internalState.hasFlipped;
+	// With no flip active, the game locks air pitch until the flip restart timer reaches FLIP_PITCHLOCK_EXTRA_TIME (a zero
+	// timer means unknown: no lock)
+	const float pitchLockRestartTime = (!_internalState.hasFlipped && !_internalState.isFlipping && _internalState.flipTime > 0) ?
+		_internalState.flipTime : -1.f;
+
+	// The game updates the dodge and double jump before the wheels, with the start-of-tick forward speed
+	float forwardSpeed_UU = _bulletVehicle.getForwardSpeed() * BT_TO_UU;
+	_UpdateDoubleJumpOrFlip(tickTime, mutatorConfig, airJumpPressed && !jumpStarted, forwardSpeed_UU, rawControls.pitch);
+
+	// This tick's handbrake and steer angle go into the wheel transforms
+	_UpdateHandbrakeAndSteering(tickTime, abs(forwardSpeed_UU));
+
+	// Do first part of the btVehicleRL update (update wheel transforms, do traces)
+	_bulletVehicle.updateVehicleFirst(tickTime);
 
 	// Update wheelsWithContact
 	int numWheelsInContact = 0;
@@ -114,33 +206,84 @@ void Car::_PreTickUpdate(GameMode gameMode, float tickTime, const MutatorConfig&
 		numWheelsInContact += inContact;
 	}
 
+	{ // This tick's world-contact wheels and normals, for the next tick
+		btVector3 sum = btVector3(0, 0, 0);
+		int worldWheels = 0;
+		for (int i = 0; i < _bulletVehicle.m_wheelInfo.size(); i++)
+			if (_bulletVehicle.m_wheelInfo[i].m_raycastInfo.m_isInContact && _bulletVehicle.m_wheelInfo[i].m_isInContactWithWorld) {
+				sum += _bulletVehicle.m_wheelInfo[i].m_raycastInfo.m_contactNormalWS;
+				worldWheels++;
+			}
+		_prevWorldWheelNormalSum = sum;
+		_prevWorldWheels = worldWheels;
+		if (_internalState.tickCountSinceUpdate == 0) {
+			prevWorldWheels = worldWheels;
+			prevWorldWheelNormalSum = sum;
+		}
+	}
+
 	{ // Update isOnGround
 		_internalState.isOnGround = numWheelsInContact >= 3;
 	}
 
-	float forwardSpeed_UU = _bulletVehicle.getForwardSpeed() * BT_TO_UU;
-	_UpdateWheels(tickTime, mutatorConfig, numWheelsInContact, forwardSpeed_UU);
+	_UpdateWheels(tickTime, mutatorConfig, numWheelsInContact, forwardSpeed_UU, prevWorldWheels, prevWorldWheelNormalSum, rawControls.throttle);
 
-	if (numWheelsInContact < 3) {
-		_UpdateAirTorque(tickTime, mutatorConfig, numWheelsInContact == 0);
+	// The game's air control and air throttle need no wheel contact last tick (on the first tick after a state set, the
+	// state's or this tick's contacts)
+	int airControlPrevWheels = prevNumWheels;
+	if (_internalState.tickCountSinceUpdate == 0)
+		airControlPrevWheels = RS_MAX(numWheelsInContact, prevNumWheels);
+
+	// The game's air-control and dodge-torque stage counts last tick's wheel contacts, except on the first tick after a
+	// state set and on the tick a dodge starts
+	int airWheelsInContact = RS_MAX(numWheelsInContact, prevNumWheels);
+	if (_internalState.tickCountSinceUpdate != 0 && !(_internalState.hasFlipped && !hasFlippedAtStart))
+		airWheelsInContact = prevNumWheels;
+
+	const bool wasFlipping = _internalState.isFlipping;
+	if (airWheelsInContact < 3) {
+		_UpdateAirTorque(tickTime, mutatorConfig, airControlPrevWheels == 0, rawControls.pitch, pitchLockRestartTime);
 	} else {
 		_internalState.isFlipping = false;
+		if (airControlPrevWheels == 0) // Touchdown on 3 or 4 wheels: still in the air last tick
+			_UpdateAirTorque(tickTime, mutatorConfig, true, rawControls.pitch, pitchLockRestartTime);
 	}
+
+	// The game applies no auto-roll on the tick the flip ends
+	const bool flipEnded = airWheelsInContact < 3 && wasFlipping && !_internalState.isFlipping;
 
 	_UpdateJump(tickTime, mutatorConfig, jumpPressed);
 	_UpdateAutoFlip(tickTime, mutatorConfig, jumpPressed);
 
-	_UpdateDoubleJumpOrFlip(tickTime, mutatorConfig, jumpPressed, forwardSpeed_UU);
+	{ // A started jump, dodge or double jump sets bJumped
+		bool airJumpUsed = !airJumpUsedBefore && (_internalState.hasDoubleJumped || _internalState.hasFlipped);
+		if ((_internalState.isJumping && !wasJumping) || airJumpUsed)
+			_gameJumped = true;
+		if (airJumpUsed)
+			_gameDoubleJumped = true;
+		_jumpInactiveTime = _internalState.isJumping ? 0 : _jumpInactiveTime + tickTime;
+	}
 
-	if (controls.throttle && ((numWheelsInContact > 0 && numWheelsInContact < 4) || _internalState.worldContact.hasContact))
-		_UpdateAutoRoll(tickTime, mutatorConfig, numWheelsInContact);
+	// The game's auto-roll counts and aims with last tick's world-contact wheels, and not while dodging. On the first tick
+	// after a state set with 1-3 wheel contacts, it uses the state's contacts
+	int autoRollWheels = prevWorldWheels;
+	bool autoRollActive = autoRollWheels < 4 && (autoRollWheels > 0 || _internalState.worldContact.hasContact);
+	if (_internalState.tickCountSinceUpdate == 0 && prevNumWheels > 0 && prevNumWheels < 4) {
+		const bool sticky = prevWorldWheels > 0;
+		autoRollActive = sticky || _internalState.worldContact.hasContact;
+		autoRollWheels = sticky ? prevNumWheels : 0;
+	}
+	if (controls.throttle && !_internalState.isFlipping && !flipEnded && autoRollActive)
+		_UpdateAutoRoll(tickTime, mutatorConfig, autoRollWheels, prevWorldWheelNormalSum);
 
 	_internalState.worldContact.hasContact = false;
 
-	// Complete the btVehicleRL update (does suspension and applies wheel forces)
+	// Complete the btVehicleRL update (does suspension, then computes and applies wheel friction)
 	_bulletVehicle.updateVehicleSecond(tickTime);
 
 	_UpdateBoost(tickTime, mutatorConfig, forwardSpeed_UU);
+
+	controls = rawControls;
 }
 
 void Car::_PostTickUpdate(GameMode gameMode, float tickTime, const MutatorConfig& mutatorConfig) {
@@ -149,24 +292,6 @@ void Car::_PostTickUpdate(GameMode gameMode, float tickTime, const MutatorConfig
 		return;
 
 	_internalState.rotMat = _rigidBody.getWorldTransform().m_basis;
-
-	{ // Update supersonic
-		float speedSquared = (_rigidBody.m_linearVelocity * BT_TO_UU).length2();
-
-		if (_internalState.isSupersonic && _internalState.supersonicTime < RLConst::SUPERSONIC_MAINTAIN_MAX_TIME) {
-			_internalState.isSupersonic =
-				(speedSquared >= RLConst::SUPERSONIC_MAINTAIN_MIN_SPEED * RLConst::SUPERSONIC_MAINTAIN_MIN_SPEED);
-		} else {
-			_internalState.isSupersonic =
-				(speedSquared >= RLConst::SUPERSONIC_START_SPEED * RLConst::SUPERSONIC_START_SPEED);
-		}
-
-		if (_internalState.isSupersonic) {
-			_internalState.supersonicTime += tickTime;
-		} else {
-			_internalState.supersonicTime = 0;
-		}
-	}
 
 	// Update car contact cooldown timer
 	if (_internalState.carContact.cooldownTimer > 0)
@@ -187,27 +312,102 @@ void Car::_FinishPhysicsTick(const MutatorConfig& mutatorConfig) {
 		_velocityImpulseCache = { 0,0,0 };
 	}
 
-	{ // Limit velocities
-		btVector3
-			vel = _rigidBody.m_linearVelocity,
-			angVel = _rigidBody.m_angularVelocity;
+	_internalState.tickCountSinceUpdate++;
+}
 
-		if (vel.length2() > (CAR_MAX_SPEED * UU_TO_BT) * (CAR_MAX_SPEED * UU_TO_BT))
-			vel = vel.normalized() * (CAR_MAX_SPEED * UU_TO_BT);
+void Car::_LimitVelocities() {
+	using namespace RLConst;
 
-		if (angVel.length2() > (CAR_MAX_ANG_SPEED * CAR_MAX_ANG_SPEED))
-			angVel = angVel.normalized() * CAR_MAX_ANG_SPEED;
+	btVector3
+		vel = _rigidBody.m_linearVelocity,
+		angVel = _rigidBody.m_angularVelocity;
 
-		_rigidBody.m_linearVelocity = vel;
-		_rigidBody.m_angularVelocity = angVel;
+	if (vel.length2() > (CAR_MAX_SPEED * UU_TO_BT) * (CAR_MAX_SPEED * UU_TO_BT))
+		vel = vel.normalized() * (CAR_MAX_SPEED * UU_TO_BT);
+
+	if (angVel.length2() > (CAR_MAX_ANG_SPEED * CAR_MAX_ANG_SPEED))
+		angVel = angVel.normalized() * CAR_MAX_ANG_SPEED;
+
+	_rigidBody.m_linearVelocity = vel;
+	_rigidBody.m_angularVelocity = angVel;
+}
+
+// The game's rounding of a velocity component: truncated to 1 / scale, plus 0.1 / scale away from zero
+static float RoundVelocity(float val, float scale) {
+	float k = truncf(val * scale);
+	return k == 0.0f ? 0.0f : (k + copysignf(0.1f, k)) / scale;
+}
+
+void Car::_TickStartUpdate(float tickTime) {
+	using namespace RLConst;
+
+	if (_internalState.isDemoed)
+		return;
+
+	{ // The game limits and rounds the car's state at the start of every tick
+		_LimitVelocities();
+
+		btVector3 pos = _rigidBody.getWorldTransform().m_origin * BT_TO_UU;
+		btVector3 vel = _rigidBody.m_linearVelocity * BT_TO_UU;
+		btVector3 angVel = _rigidBody.m_angularVelocity;
+		_rigidBody.getWorldTransform().m_origin =
+			btVector3(Math::RoundHalfUp(pos.x(), 100), Math::RoundHalfUp(pos.y(), 100), Math::RoundHalfUp(pos.z(), 100)) * UU_TO_BT;
+		_rigidBody.m_linearVelocity =
+			btVector3(RoundVelocity(vel.x(), 100), RoundVelocity(vel.y(), 100), RoundVelocity(vel.z(), 100)) * UU_TO_BT;
+		_rigidBody.m_angularVelocity =
+			btVector3(RoundVelocity(angVel.x(), 10000), RoundVelocity(angVel.y(), 10000), RoundVelocity(angVel.z(), 10000));
 	}
 
-	_internalState.tickCountSinceUpdate++;
+	_startVel = _rigidBody.m_linearVelocity;
+
+	// The game's flip z-damping runs before any car's update, while airborne (last tick's ground state) with the flip
+	// time in [FLIP_Z_DAMP_START, FLIP_TORQUE_TIME] (our flip time advances in the dodge update, so it trails by a tick)
+	if (_internalState.isOnGround || !_internalState.isFlipping)
+		return;
+	float flipTime = _internalState.flipTime + tickTime;
+	if (!(flipTime >= FLIP_Z_DAMP_START && flipTime <= FLIP_TORQUE_TIME))
+		return;
+	if (_rigidBody.m_linearVelocity.z() < 0 || flipTime < FLIP_Z_DAMP_END)
+		_rigidBody.m_linearVelocity.z() *= powf(1 - FLIP_Z_DAMP_120, tickTime / (1 / 120.f));
+}
+
+void Car::_PlaneContactsCallback(btPersistentManifold* manifold, const btCollisionObject* carObj, const btCollisionObject* planeObj, bool store) {
+	if (carObj->getUserIndex() != BT_USERINFO_TYPE_CAR)
+		return;
+	Car* car = (Car*)carObj->getUserPointer();
+
+	// One slot per plane
+	PlaneContacts* slot = nullptr;
+	for (auto& entry : car->_planeContacts) {
+		if (entry.plane == planeObj || !entry.plane) {
+			slot = &entry;
+			break;
+		}
+	}
+	if (!slot)
+		return;
+
+	if (store) {
+		slot->plane = planeObj;
+		slot->tick = car->_planeContactsTick;
+		slot->numPoints = manifold->getNumContacts();
+		for (int i = 0; i < slot->numPoints; i++)
+			slot->points[i] = manifold->getContactPoint(i);
+	} else if (slot->plane == planeObj && slot->tick + 1 == car->_planeContactsTick) {
+		// Only last tick's points: a pair not processed last tick starts empty
+		for (int i = 0; i < slot->numPoints; i++)
+			manifold->addManifoldPoint(slot->points[i], true);
+	}
 }
 
 void Car::_BulletSetup(GameMode gameMode, btDynamicsWorld* bulletWorld, const MutatorConfig& mutatorConfig) {
 	// Set up rigidbody and collision shapes
-	_childHitboxShape = btBoxShape((config.hitboxSize * UU_TO_BT) / 2);
+	btVector3 halfExtents = (config.hitboxSize * UU_TO_BT) / 2;
+	_childHitboxShape = btBoxShape(halfExtents);
+	{ // The game's box keeps its full half extents with the lowered margin
+		float margin = _childHitboxShape.getMargin();
+		_childHitboxShape.setImplicitShapeDimensions(halfExtents - btVector3(margin, margin, margin));
+	}
 	_compoundShape = btCompoundShape(false, 1);
 
 	btTransform hitboxOffsetTransform = btTransform();
@@ -369,14 +569,8 @@ void Car::_Deserialize(DataStreamIn& in) {
 	_internalState = newState;
 }
 
-void Car::_UpdateWheels(float tickTime, const MutatorConfig& mutatorConfig, int numWheelsInContact, float forwardSpeed_UU) {
+void Car::_UpdateHandbrakeAndSteering(float tickTime, float absForwardSpeed_UU) {
 	using namespace RLConst;
-
-	float absForwardSpeed_UU = abs(forwardSpeed_UU);
-
-	bool wheelsHaveWorldContact = false;
-	for (int i = 0; i < _bulletVehicle.m_wheelInfo.size(); i++)
-		wheelsHaveWorldContact |= _bulletVehicle.m_wheelInfo[i].m_isInContactWithWorld;
 
 	{ // Increase/decrease handbrake value from input
 		if (controls.handbrake) {
@@ -387,11 +581,30 @@ void Car::_UpdateWheels(float tickTime, const MutatorConfig& mutatorConfig, int 
 		_internalState.handbrakeVal = RS_CLAMP(_internalState.handbrakeVal, 0, 1);
 	}
 
+	{ // Update steering
+		float steerAngle = (config.threeWheels ? STEER_ANGLE_FROM_SPEED_CURVE_THREEWHEEL : STEER_ANGLE_FROM_SPEED_CURVE).GetOutput(absForwardSpeed_UU);
+
+		if (_internalState.handbrakeVal) {
+			steerAngle +=
+				(POWERSLIDE_STEER_ANGLE_FROM_SPEED_CURVE.GetOutput(absForwardSpeed_UU) - steerAngle)
+				* _internalState.handbrakeVal;
+		}
+
+		steerAngle *= controls.steer;
+		_bulletVehicle.m_wheelInfo[0].m_steerAngle = steerAngle;
+		_bulletVehicle.m_wheelInfo[1].m_steerAngle = steerAngle;
+	}
+}
+
+void Car::_UpdateWheels(float tickTime, const MutatorConfig& mutatorConfig, int numWheelsInContact, float forwardSpeed_UU,
+	int prevWorldWheels, const btVector3& prevWorldWheelNormalSum, float rawThrottle) {
+	using namespace RLConst;
+
+	float absForwardSpeed_UU = abs(forwardSpeed_UU);
+
+	// The game's drive reads the throttle input (boosting doesn't set it)
 	float realThrottle = controls.throttle;
 	float realBrake = 0;
-
-	if (controls.boost && _internalState.boost > 0)
-		realThrottle = 1;
 
 	{ // Update throttle/brake forces
 		float driveSpeedScale = DRIVE_SPEED_TORQUE_FACTOR_CURVE.GetOutput(absForwardSpeed_UU);
@@ -403,7 +616,7 @@ void Car::_UpdateWheels(float tickTime, const MutatorConfig& mutatorConfig, int 
 		} else {
 			float absThrottle = abs(realThrottle);
 
-			if (absThrottle >= THROTTLE_DEADZONE) {
+			if (absThrottle > THROTTLE_DEADZONE) {
 				if (absForwardSpeed_UU > STOPPING_FORWARD_VEL && RS_SGN(realThrottle) != RS_SGN(forwardSpeed_UU)) {
 					// Full brake is applied if we are trying to drive in the opposite direction
 					realBrake = 1;
@@ -432,20 +645,6 @@ void Car::_UpdateWheels(float tickTime, const MutatorConfig& mutatorConfig, int 
 			_bulletVehicle.m_wheelInfo[i].m_engineForce = driveEngineForce;
 			_bulletVehicle.m_wheelInfo[i].m_brake = driveBrakeForce;
 		}
-	}
-
-	{ // Update steering
-		float steerAngle = (config.threeWheels ? STEER_ANGLE_FROM_SPEED_CURVE_THREEWHEEL : STEER_ANGLE_FROM_SPEED_CURVE).GetOutput(absForwardSpeed_UU);
-
-		if (_internalState.handbrakeVal) {
-			steerAngle +=
-				(POWERSLIDE_STEER_ANGLE_FROM_SPEED_CURVE.GetOutput(absForwardSpeed_UU) - steerAngle)
-				* _internalState.handbrakeVal;
-		}
-
-		steerAngle *= controls.steer;
-		_bulletVehicle.m_wheelInfo[0].m_steerAngle = steerAngle;
-		_bulletVehicle.m_wheelInfo[1].m_steerAngle = steerAngle;
 	}
 
 	{ // Update friction
@@ -485,7 +684,8 @@ void Car::_UpdateWheels(float tickTime, const MutatorConfig& mutatorConfig, int 
 					longFriction = 1; // If we aren't powersliding, it's not scaled down
 				}
 
-				bool isContactSticky = realThrottle != 0;
+				// (A wheel on a car or the ball is never sticky)
+				bool isContactSticky = realThrottle != 0 && wheel.m_isInContactWithWorld;
 
 				if (isContactSticky) {
 					// Keep current friction values
@@ -502,11 +702,11 @@ void Car::_UpdateWheels(float tickTime, const MutatorConfig& mutatorConfig, int 
 		}
 	}
 
-	// Update sticky forces if at least 1 wheel has world contact
-	if (wheelsHaveWorldContact) {
-		btVector3 upwardsDir = _bulletVehicle.getUpwardsDirFromWheelContacts();
+	// Update sticky forces if at least 1 wheel had world contact last tick, along those wheels' contact normals
+	if (prevWorldWheels > 0) {
+		btVector3 upwardsDir = (prevWorldWheelNormalSum == btVector3(0, 0, 0)) ? _bulletVehicle.getUpVector() : prevWorldWheelNormalSum.safeNormalized();
 
-		bool fullStick = (realThrottle != 0) || (absForwardSpeed_UU > STOPPING_FORWARD_VEL);
+		bool fullStick = (rawThrottle != 0) || (absForwardSpeed_UU > STOPPING_FORWARD_VEL);
 
 		float stickyForceScale = config.threeWheels ? 0 : 0.5f;
 		if (fullStick)
@@ -519,41 +719,26 @@ void Car::_UpdateWheels(float tickTime, const MutatorConfig& mutatorConfig, int 
 void Car::_UpdateBoost(float tickTime, const MutatorConfig& mutatorConfig, float forwardSpeed_UU) {
 	using namespace RLConst;
 
-	bool hasBoost = _internalState.boost > 0;
-
-	if (hasBoost) { // Update boosting timer
-		if (_internalState.isBoosting) {
-			if (controls.boost || _internalState.boostingTime < BOOST_MIN_TIME) {
-				// Keep boosting
-				_internalState.isBoosting = true;
-			} else {
-				_internalState.isBoosting = false;
-			}
-		} else {
-			if (controls.boost) {
-				// Start boosting
-				_internalState.isBoosting = controls.boost;
-			}
-		}
-	} else {
-		_internalState.isBoosting = false;
-	}
-
-	if (_internalState.isBoosting) {
-		_internalState.boostingTime += tickTime;
-	} else {
-		_internalState.boostingTime = 0;
-	}
-
-	// Apply boosting force and consume boost
+	// As the game, the first boost tick is free, and while boosting the boost is paid first, stopping without pushing
+	// once the tank is empty
+	bool push;
 	if (_internalState.isBoosting) {
 		_internalState.boost = RS_MAX(_internalState.boost - mutatorConfig.boostUsedPerSecond * tickTime, 0);
-		_rigidBody.applyCentralForce(
-			(_internalState.isOnGround ? mutatorConfig.boostAccelGround : mutatorConfig.boostAccelAir) * UU_TO_BT
-			* GetForwardDir() * CAR_MASS_BT
-		);
+		bool minTimeDone = !controls.boost && _internalState.boostingTime >= BOOST_MIN_TIME;
+		push = !(_internalState.boost == 0 || minTimeDone);
+	} else {
+		push = controls.boost && _internalState.boost > 0;
+	}
+	_internalState.isBoosting = push;
+
+	if (push) {
+		// In the air, the game's air control throttle adds THROTTLE_AIR_ACCEL to the boost (see _UpdateAirTorque)
+		float boostAccel = _internalState.isOnGround ? mutatorConfig.boostAccelGround : mutatorConfig.boostAccelAir - THROTTLE_AIR_ACCEL;
+		_rigidBody.applyCentralForce(boostAccel * UU_TO_BT * GetForwardDir() * CAR_MASS_BT);
+		_internalState.boostingTime += tickTime;
 		_internalState.timeSinceBoosted = 0;
 	} else {
+		_internalState.boostingTime = 0;
 		_internalState.timeSinceBoosted += tickTime;
 
 		// Recharge boost
@@ -562,7 +747,16 @@ void Car::_UpdateBoost(float tickTime, const MutatorConfig& mutatorConfig, float
 				_internalState.boost += mutatorConfig.rechargeBoostPerSecond * tickTime;
 	}
 
-	_internalState.boost = RS_MIN(_internalState.boost, RLConst::BOOST_MAX);
+	_internalState.boost = RS_MIN(RS_MAX(_internalState.boost, 0), RLConst::BOOST_MAX);
+}
+
+void Car::_StartJump(const MutatorConfig& mutatorConfig) {
+	using namespace RLConst;
+	_internalState.isJumping = true;
+	_internalState.jumpTime = 0;
+	btVector3 jumpStartForce = GetUpDir() * mutatorConfig.jumpImmediateForce * UU_TO_BT * CAR_MASS_BT;
+	_rigidBody.applyCentralImpulse(jumpStartForce);
+	_LimitVelocities(); // The game limits the velocities after the jump impulse
 }
 
 void Car::_UpdateJump(float tickTime, const MutatorConfig& mutatorConfig, bool jumpPressed) {
@@ -586,12 +780,6 @@ void Car::_UpdateJump(float tickTime, const MutatorConfig& mutatorConfig, bool j
 			// We can't keep jumping any longer
 			_internalState.isJumping = false;
 		}
-	} else if (_internalState.isOnGround && jumpPressed) {
-		// Start jumping
-		_internalState.isJumping = true;
-		_internalState.jumpTime = 0;
-		btVector3 jumpStartForce = GetUpDir() * mutatorConfig.jumpImmediateForce * UU_TO_BT * CAR_MASS_BT;
-		_rigidBody.applyCentralImpulse(jumpStartForce);
 	}
 
 	if (_internalState.isJumping) {
@@ -599,12 +787,6 @@ void Car::_UpdateJump(float tickTime, const MutatorConfig& mutatorConfig, bool j
 
 		// Apply extra long-jump force
 		btVector3 totalJumpForce = GetUpDir() * mutatorConfig.jumpAccel;
-
-		if (_internalState.jumpTime < JUMP_MIN_TIME) {
-			// TODO: Either move to RLConst or preferably don't use this system at all
-			constexpr float JUMP_PRE_MIN_ACCEL_SCALE = 0.62f;
-			totalJumpForce *= JUMP_PRE_MIN_ACCEL_SCALE;
-		}
 
 		_rigidBody.applyCentralForce(totalJumpForce * UU_TO_BT * CAR_MASS_BT);
 	}
@@ -614,7 +796,7 @@ void Car::_UpdateJump(float tickTime, const MutatorConfig& mutatorConfig, bool j
 	}
 }
 
-void Car::_UpdateAirTorque(float tickTime, const MutatorConfig& mutatorConfig, bool updateAirControl) {
+void Car::_UpdateAirTorque(float tickTime, const MutatorConfig& mutatorConfig, bool updateAirControl, float rawPitch, float pitchLockRestartTime) {
 	using namespace RLConst;
 
 	btVector3
@@ -622,7 +804,6 @@ void Car::_UpdateAirTorque(float tickTime, const MutatorConfig& mutatorConfig, b
 		dirYaw_up = GetUpDir(),
 		dirRoll_forward = -GetForwardDir();
 
-	bool doAirControl = false;
 	if (_internalState.isFlipping)
 		_internalState.isFlipping = _internalState.hasFlipped && _internalState.flipTime < FLIP_TORQUE_TIME;
 
@@ -631,17 +812,18 @@ void Car::_UpdateAirTorque(float tickTime, const MutatorConfig& mutatorConfig, b
 		btVector3 relDodgeTorque = _internalState.flipRelTorque;
 
 		if (!_internalState.flipRelTorque.IsZero()) {
-			// Flip cancel check
+			// Flip cancel check: the game cancels once the dodge has run for FLIP_TORQUE_MIN_TIME, with its quantization of
+			// the negated raw pitch
+			const float cancelPitch = (_internalState.flipTime >= FLIP_TORQUE_MIN_TIME) ? -QuantizeAxisInput(-rawPitch) : 0;
 			float pitchScale = 1;
-			if (relDodgeTorque.y() != 0 && controls.pitch != 0) {
-				if (RS_SGN(relDodgeTorque.y()) == RS_SGN(controls.pitch)) {
+			if (relDodgeTorque.y() != 0 && cancelPitch != 0) {
+				if (RS_SGN(relDodgeTorque.y()) == RS_SGN(cancelPitch)) {
 
 #ifndef RS_MAX_SPEED
-					pitchScale = 1 - RS_MIN(abs(controls.pitch), 1); // Sanity clamp
+					pitchScale = 1 - RS_MIN(abs(cancelPitch), 1); // Sanity clamp
 #else
-					pitchScale = 1 - abs(controls.pitch); // No sanity check
+					pitchScale = 1 - abs(cancelPitch); // No sanity check
 #endif
-					doAirControl = true;
 				}
 			}
 
@@ -649,16 +831,11 @@ void Car::_UpdateAirTorque(float tickTime, const MutatorConfig& mutatorConfig, b
 
 			btVector3 dodgeTorque = relDodgeTorque * btVector3(FLIP_TORQUE_X, FLIP_TORQUE_Y, 0);
 			_rigidBody.applyTorque(_rigidBody.m_invInertiaTensorWorld.inverse() * _rigidBody.getWorldTransform().m_basis * dodgeTorque);
-		} else {
-			// Stall, allow air control
-			doAirControl = true;
 		}
-	} else {
-		doAirControl = true;
 	}
 
-	doAirControl &= !_internalState.isAutoFlipping;
-	doAirControl &= updateAirControl;
+	// The game keeps air control running during a dodge
+	bool doAirControl = !_internalState.isAutoFlipping && updateAirControl;
 	if (doAirControl) {
 
 		float pitchTorqueScale = 1;
@@ -673,6 +850,8 @@ void Car::_UpdateAirTorque(float tickTime, const MutatorConfig& mutatorConfig, b
 				if (_internalState.flipTime < FLIP_TORQUE_TIME + FLIP_PITCHLOCK_EXTRA_TIME)
 					pitchTorqueScale = 0;
 			}
+			if (pitchLockRestartTime >= 0 && pitchLockRestartTime < FLIP_PITCHLOCK_EXTRA_TIME)
+				pitchTorqueScale = 0;
 
 			// TODO: Use actual dot product operator functions (?)
 			torque = (controls.pitch * dirPitch_right * pitchTorqueScale * CAR_AIR_CONTROL_TORQUE.x) +
@@ -697,22 +876,48 @@ void Car::_UpdateAirTorque(float tickTime, const MutatorConfig& mutatorConfig, b
 		_rigidBody.applyTorque(_rigidBody.m_invInertiaTensorWorld.inverse() * (torque - damping) * CAR_TORQUE_SCALE);
 	}
 
-	if (controls.throttle != 0)
-		_rigidBody.applyCentralForce(GetForwardDir() * controls.throttle * THROTTLE_AIR_ACCEL * UU_TO_BT * CAR_MASS_BT);
+	// While boosting (last tick's state), the game's air throttle is full forward
+	float airThrottle = _internalState.isBoosting ? 1.f : controls.throttle;
+	if (airThrottle != 0 && updateAirControl)
+		_rigidBody.applyCentralForce(GetForwardDir() * airThrottle * THROTTLE_AIR_ACCEL * UU_TO_BT * CAR_MASS_BT);
 }
 
-void Car::_UpdateDoubleJumpOrFlip(float tickTime, const MutatorConfig& mutatorConfig, bool jumpPressed, float forwardSpeed_UU) {
+// The flip time as the game's flip restart timer, once a landing clears hasFlipped: a mid-flip landing restarts it at 0,
+// otherwise it counts from the end of the flip. A zero timer with no flip active stays zero and means unknown
+float Car::_GetFlipRestartTime(float tickTime) const {
+	using namespace RLConst;
+	if (!_internalState.hasFlipped)
+		return _internalState.flipTime;
+	if (_internalState.isFlipping)
+		return 0;
+	if (_internalState.flipTime < FLIP_TORQUE_TIME)
+		return 0;
+	int k = (int)rintf(_internalState.flipTime / tickTime) - (int)rintf(FLIP_TORQUE_TIME / tickTime);
+	if (k < 1)
+		k = 1;
+	if (k > 64)
+		return (float)k * tickTime;
+	float t = 0;
+	for (int i = 0; i < k; i++)
+		t += tickTime;
+	return t;
+}
+
+void Car::_UpdateDoubleJumpOrFlip(float tickTime, const MutatorConfig& mutatorConfig, bool jumpPressed, float forwardSpeed_UU, float rawPitch) {
 	using namespace RLConst;
 
 	float tickTimeScale = tickTime / (1 / 120.f);
 
 	if (_internalState.isOnGround) {
 		_internalState.hasDoubleJumped = false;
+		_internalState.flipTime = _GetFlipRestartTime(tickTime);
 		_internalState.hasFlipped = false;
 		_internalState.airTime = 0;
 		_internalState.airTimeSinceJump = 0;
-		_internalState.flipTime = 0;
-	} else {
+	}
+
+	// A press while the game's car is off the ground (by last tick's contacts) takes the air branch
+	if (!_internalState.isOnGround || jumpPressed) {
 		_internalState.airTime += tickTime;
 
 		if (_internalState.hasJumped && !_internalState.isJumping) {
@@ -722,6 +927,9 @@ void Car::_UpdateDoubleJumpOrFlip(float tickTime, const MutatorConfig& mutatorCo
 		}
 
 		if (jumpPressed && _internalState.airTimeSinceJump < DOUBLEJUMP_MAX_DELAY) {
+			// The game's dodge input quantizes the negated raw pitch
+			CarControls controls = this->controls;
+			controls.pitch = -QuantizeAxisInput(-rawPitch);
 			float inputMagnitude = abs(controls.yaw) + abs(controls.pitch) + abs(controls.roll);
 			bool isFlipInput = inputMagnitude >= config.dodgeDeadzone;
 
@@ -787,6 +995,7 @@ void Car::_UpdateDoubleJumpOrFlip(float tickTime, const MutatorConfig& mutatorCo
 							Vec finalDeltaVel = initalDodgeVel.x * forwardDir2D + initalDodgeVel.y * rightDir2D;
 
 							_rigidBody.applyCentralImpulse(finalDeltaVel * UU_TO_BT * CAR_MASS_BT);
+							_LimitVelocities(); // The game limits the velocities after the dodge impulse
 						}
 					}
 
@@ -794,22 +1003,21 @@ void Car::_UpdateDoubleJumpOrFlip(float tickTime, const MutatorConfig& mutatorCo
 					// Double jump, add upwards velocity
 					btVector3 jumpStartForce = GetUpDir() * JUMP_IMMEDIATE_FORCE * UU_TO_BT * CAR_MASS_BT;
 					_rigidBody.applyCentralImpulse(jumpStartForce);
+					_LimitVelocities(); // The game limits the velocities after the double jump impulse
 
 					_internalState.hasDoubleJumped = true;
 				}
 			}
+
+			// The game's flip clock reads 0 on the dodge tick
+			if (_internalState.isFlipping && _internalState.flipTime == 0)
+				_internalState.flipTime = -tickTime;
 		}
 	}
 
-	if (_internalState.isFlipping) {
-		_internalState.flipTime += tickTime;
-		if (_internalState.flipTime <= FLIP_TORQUE_TIME) {
-			if (_internalState.flipTime >= FLIP_Z_DAMP_START && (_rigidBody.m_linearVelocity.z() < 0 || _internalState.flipTime < FLIP_Z_DAMP_END)) {
-				_rigidBody.m_linearVelocity.z() *= powf(1 - FLIP_Z_DAMP_120, tickTimeScale);
-			}
-		}
-	} else if (_internalState.hasFlipped) {
-		// Increment flip time even after we are done flipping
+	// (The z-damping is in _TickStartUpdate)
+	if (_internalState.isFlipping || _internalState.hasFlipped || _internalState.flipTime != 0) {
+		// Increment flip time even after we are done flipping, as the game's flip restart timer
 		// We need to count the time after for FLIP_PITCHLOCK_EXTRA_TIME to work
 		_internalState.flipTime += tickTime;
 	}
@@ -829,8 +1037,9 @@ void Car::_UpdateAutoFlip(float tickTime, const MutatorConfig& mutatorConfig, bo
 		// TODO: Slow :(
 		Angle angles = Angle::FromRotMat(_internalState.rotMat);
 
+		// The game gates on the car's up axis against the contact normal, not the roll
 		float absRoll = abs(angles.roll);
-		if (absRoll > CAR_AUTOFLIP_ROLL_THRESH) {
+		if (_internalState.worldContact.contactNormal.Dot(GetUpDir()) < CAR_AUTOFLIP_UP_DOT_THRESH) {
 			_internalState.autoFlipTimer = CAR_AUTOFLIP_TIME * (absRoll / M_PI);
 			_internalState.autoFlipTorqueScale = (angles.roll > 0) ? 1 : -1;
 			_internalState.isAutoFlipping = true;
@@ -851,12 +1060,12 @@ void Car::_UpdateAutoFlip(float tickTime, const MutatorConfig& mutatorConfig, bo
 	}
 }
 
-void Car::_UpdateAutoRoll(float tickTime, const MutatorConfig& mutatorConfig, int numWheelsInContact) {
+void Car::_UpdateAutoRoll(float tickTime, const MutatorConfig& mutatorConfig, int numWheelsInContact, const btVector3& wheelNormalSum) {
 	using namespace RLConst;
 
 	btVector3 groundUpDir;
 	if (numWheelsInContact > 0) {
-		groundUpDir = _bulletVehicle.getUpwardsDirFromWheelContacts();
+		groundUpDir = (wheelNormalSum == btVector3(0, 0, 0)) ? _bulletVehicle.getUpVector() : wheelNormalSum.safeNormalized();
 	} else {
 		groundUpDir = _internalState.worldContact.contactNormal;
 	}
