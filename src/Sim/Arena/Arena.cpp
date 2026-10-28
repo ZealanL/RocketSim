@@ -321,6 +321,140 @@ void Arena::_BtCallback_OnCarBallCollision(Car* car, Ball* ball, btManifoldPoint
 	ball->_OnHit(car, relBallPos, manifoldPoint.m_combinedFriction, manifoldPoint.m_combinedRestitution, gameMode, _mutatorConfig, tickCount);
 }
 
+// The car's pose integrated over t seconds with its velocity and angular velocity
+static void IntegratePose(CarState& s, const Vec& vel, float t) {
+	s.pos = s.pos + vel * t;
+	float w = s.angVel.Length();
+	float th = w * t;
+	if (w > 0 && th != 0) {
+		Vec k = s.angVel / w;
+		float c = cosf(th), sn = sinf(th);
+		auto rot = [&](const Vec& x) { return x * c + k.Cross(x) * sn + k * (k.Dot(x) * (1 - c)); };
+		s.rotMat = RotMat(rot(s.rotMat.forward), rot(s.rotMat.right), rot(s.rotMat.up));
+	}
+}
+
+static float HitboxSeparation(const CarState& a, const CarConfig& aConfig, const CarState& b, const CarConfig& bConfig) {
+	const Vec* ra = &a.rotMat.forward;
+	const Vec* rb = &b.rotMat.forward;
+	Vec ha = aConfig.hitboxSize * 0.5f, hb = bConfig.hitboxSize * 0.5f;
+	float hA[3] = { ha.x, ha.y, ha.z }, hB[3] = { hb.x, hb.y, hb.z };
+	Vec ca = a.pos + ra[0] * aConfig.hitboxPosOffset.x + ra[1] * aConfig.hitboxPosOffset.y + ra[2] * aConfig.hitboxPosOffset.z;
+	Vec cb = b.pos + rb[0] * bConfig.hitboxPosOffset.x + rb[1] * bConfig.hitboxPosOffset.y + rb[2] * bConfig.hitboxPosOffset.z;
+	Vec d = cb - ca;
+	float best = -1e30f;
+	auto test = [&](const Vec& L) {
+		float s = fabsf(d.Dot(L));
+		for (int i = 0; i < 3; i++)
+			s -= fabsf(ra[i].Dot(L)) * hA[i] + fabsf(rb[i].Dot(L)) * hB[i];
+		best = RS_MAX(best, s);
+	};
+	for (int i = 0; i < 3; i++) {
+		test(ra[i]);
+		test(rb[i]);
+	}
+	for (int i = 0; i < 3; i++) {
+		for (int j = 0; j < 3; j++) {
+			Vec L = ra[i].Cross(rb[j]);
+			float n = L.Length();
+			if (n > 1e-6f)
+				test(L / n);
+		}
+	}
+	return best;
+}
+
+// The game evaluates the demolition cone at the time of impact: both hitboxes are swept from their start-of-tick poses
+// integrated one tick back to one tick ahead, and the hit is where they overlap by 1.95 uu (allowed penetration 0.04 BT);
+// with no hit, the start-of-tick poses. Here the overlap is the boxes' separating-axis depth, and the time is found by
+// bisection. a and v are replaced by the poses at the time of impact
+static void GetTimeOfImpactPoses(CarState& a, const CarConfig& aConfig, const Vec& aVel,
+	CarState& v, const CarConfig& vConfig, const Vec& vVel, float tickTime) {
+	constexpr float PENETRATION = 0.039f * 50.f; // allowed penetration 0.04 BT - btContinuousConvexCollision's 0.001 BT
+	auto sep = [&](float lambda) {
+		float t = (2 * lambda - 1) * tickTime;
+		CarState ai = a, vi = v;
+		IntegratePose(ai, aVel, t);
+		IntegratePose(vi, vVel, t);
+		return HitboxSeparation(ai, aConfig, vi, vConfig) + PENETRATION;
+	};
+	float lambda;
+	if (sep(0) <= 0) {
+		lambda = 0;
+	} else if (sep(1) > 0) {
+		return; // sweep check missed: the start-of-tick transforms
+	} else {
+		float lo = 0, hi = 1;
+		for (int i = 0; i < 24; i++) {
+			float m = (lo + hi) * 0.5f;
+			if (sep(m) > 0)
+				lo = m;
+			else
+				hi = m;
+		}
+		lambda = hi;
+	}
+	float t = (2 * lambda - 1) * tickTime;
+	IntegratePose(a, aVel, t);
+	IntegratePose(v, vVel, t);
+}
+
+// Whether v's hitbox centre is in a's forward cone, as the game checks it: the direction between the hitbox centres within
+// maxYawDeg of yaw and 36.87 deg of pitch of a's forward (reversed if reverse), each angle measured after removing the
+// other axis' component scaled by 1/1.01 (or 1.01 when negative)
+static bool IsInForwardCone(const CarState& a, const CarConfig& aConfig, const CarState& v, const CarConfig& vConfig,
+	bool reverse, float maxYawDeg) {
+	Vec fwd = a.rotMat.forward;
+	Vec pa = a.pos + a.rotMat.Dot(aConfig.hitboxPosOffset);
+	Vec pv = v.pos + v.rotMat.Dot(vConfig.hitboxPosOffset);
+	Vec d = pv - pa;
+	float d2 = d.LengthSq();
+	if (d2 != 1) {
+		if (d2 < 1e-8f)
+			d = Vec(0, 0, 0);
+		else
+			d = d * (1 / sqrtf(d2));
+	}
+	Vec f = reverse ? fwd * -1 : fwd;
+
+	auto angleDeg = [&](const Vec& axis) {
+		float k = d.Dot(axis);
+		k = (k >= 0) ? (k / 1.01f) : (k * 1.01f);
+		Vec p = d - axis * k;
+		float p2 = p.LengthSq();
+		if (p2 != 1) {
+			if (p2 < 1e-8f)
+				p = Vec(0, 0, 0);
+			else
+				p = p * (1 / sqrtf(p2));
+		}
+		float c = f.Dot(p);
+		return acosf(RS_CLAMP(c, -1.f, 1.f)) * 57.29578f;
+	};
+
+	if (angleDeg(a.rotMat.right) > 36.8698959f) // pitch
+		return false;
+	return angleDeg(a.rotMat.up) <= maxYawDeg; // yaw
+}
+
+// The game's demolition rule: the attacker is supersonic, moving at least SUPERSONIC_MAINTAIN_MIN_SPEED along its forward
+// axis (either way), and the victim is in its 45.573 deg forward cone (reversed when moving backwards) at the time of impact
+static bool ShouldDemolish(Car* attacker, const CarState& a, Car* victim, const CarState& v, float tickTime) {
+	using namespace RLConst;
+	if (!a.isSupersonic)
+		return false;
+
+	Vec startVel = attacker->_startVel * BT_TO_UU;
+	float forwardSpeed = startVel.Dot(a.rotMat.forward);
+	bool reverse = forwardSpeed < 0;
+	if (fabsf(forwardSpeed) < SUPERSONIC_MAINTAIN_MIN_SPEED)
+		return false;
+
+	CarState ai = a, vi = v;
+	GetTimeOfImpactPoses(ai, attacker->config, startVel, vi, victim->config, victim->_startVel * BT_TO_UU, tickTime);
+	return IsInForwardCone(ai, attacker->config, vi, victim->config, reverse, 45.5729942f);
+}
+
 void Arena::_BtCallback_OnCarCarCollision(Car* car1, Car* car2, btManifoldPoint& manifoldPoint) {
 	using namespace RLConst;
 
@@ -339,69 +473,88 @@ void Arena::_BtCallback_OnCarCarCollision(Car* car1, Car* car2, btManifoldPoint&
 			state = car1->GetState(),
 			otherState = car2->GetState();
 
-		if (state.isDemoed || otherState.isDemoed)
-			return;
+		// A car demolished by the other car earlier in this tick can still demolish it, but not bump it
+		bool demoOnly = false;
+		if (state.isDemoed || otherState.isDemoed) {
+			if (otherState.isDemoed || car1->_demoTick != tickCount || car1->_demoerID != car2->id)
+				continue;
+			demoOnly = true;
+		}
+
+		// Going towards the other car faster than it is going away, with both cars' start-of-tick velocities
+		Vec vel = car1->_startVel * BT_TO_UU;
+		float speed = vel.Length();
+		if (!(speed > 0))
+			continue;
+		Vec hitDir = (otherState.pos - state.pos).Normalized();
+		float speedTowardsOtherCar = hitDir.Dot(vel);
+		if (speedTowardsOtherCar <= 0)
+			continue;
+		Vec velDir = vel / speed;
+		if (Vec(car2->_startVel * BT_TO_UU).Dot(velDir) >= speedTowardsOtherCar)
+			continue;
+
+		// Demolitions are checked before the bump cooldown
+		bool isDemo;
+		switch (_mutatorConfig.demoMode) {
+		case DemoMode::ON_CONTACT:
+			isDemo = true; // BOOM
+			break;
+		case DemoMode::DISABLED:
+			isDemo = false;
+			break;
+		default:
+			isDemo = ShouldDemolish(car1, state, car2, otherState, tickTime);
+		}
+
+		if (isDemo && !_mutatorConfig.enableTeamDemos)
+			isDemo = car1->team != car2->team;
+
+		if (isDemo) {
+			car2->Demolish(_mutatorConfig.respawnDelay);
+			car2->_demoTick = tickCount;
+			car2->_demoerID = car1->id;
+			if (_carBumpCallback.func)
+				_carBumpCallback.func(this, car1, car2, true, _carBumpCallback.userInfo);
+			continue;
+		}
+		if (demoOnly)
+			continue;
 
 		if ((state.carContact.otherCarID == car2->id) && (state.carContact.cooldownTimer > 0))
 			continue; // In cooldown
 
-		Vec deltaPos = (otherState.pos - state.pos);
-		if (state.vel.Dot(deltaPos) > 0) { // Going towards other car
+		// The game bumps only when the other car's hitbox centre is in the bumper's 70 deg forward cone; outside it the hit
+		// gives no impulse, but still starts the cooldown
+		bool bumper = IsInForwardCone(state, car1->config, otherState, car2->config, false, 70.f);
+		if (bumper) {
+			// The game's bump curves (knots at 0, 1400 and 2200 uu/s, clamped), as impulses
+			auto curve = [speed](float y0, float y1, float y2) {
+				if (speed <= 0.f)
+					return y0;
+				if (speed < 1400.f)
+					return y0 + (y1 - y0) * (speed / 1400.f);
+				if (speed < 2200.f)
+					return y1 + (y2 - y1) * ((speed - 1400.f) / 800.f);
+				return y2;
+			};
 
-			Vec velDir = state.vel.Normalized();
-			Vec dirToOtherCar = deltaPos.Normalized();
-
-			float speedTowardsOtherCar = state.vel.Dot(dirToOtherCar);
-			float otherCarAwaySpeed = otherState.vel.Dot(velDir);
-
-			if (speedTowardsOtherCar > otherCarAwaySpeed) { // Going towards other car faster than they are going away
-
-				Vec localPoint = isSwapped ? manifoldPoint.m_localPointB : manifoldPoint.m_localPointA;
-				bool hitWithBumper = (localPoint.x * BT_TO_UU) > BUMP_MIN_FORWARD_DIST;
-				if (hitWithBumper) {
-
-					bool isDemo;
-					switch (_mutatorConfig.demoMode) {
-					case DemoMode::ON_CONTACT:
-						isDemo = true; // BOOM
-						break;
-					case DemoMode::DISABLED:
-						isDemo = false;
-						break;
-					default:
-						isDemo = state.isSupersonic;
-					}
-
-					if (isDemo && !_mutatorConfig.enableTeamDemos)
-						isDemo = car1->team != car2->team;
-
-					if (isDemo) {
-						car2->Demolish(_mutatorConfig.respawnDelay);
-					} else {
-						bool groundHit = car2->_internalState.isOnGround;
-
-						float baseScale =
-							(groundHit ? BUMP_VEL_AMOUNT_GROUND_CURVE : BUMP_VEL_AMOUNT_AIR_CURVE).GetOutput(speedTowardsOtherCar);
-
-						Vec hitUpDir =
-							(otherState.isOnGround ? (Vec)car2->GetUpDir() : Vec(0, 0, 1));
-
-						Vec bumpImpulse =
-							velDir * baseScale +
-							hitUpDir * BUMP_UPWARD_VEL_AMOUNT_CURVE.GetOutput(speedTowardsOtherCar)
-							* _mutatorConfig.bumpForceScale;
-
-						car2->_velocityImpulseCache += bumpImpulse * UU_TO_BT;
-					}
-
-					car1->_internalState.carContact.otherCarID = car2->id;
-					car1->_internalState.carContact.cooldownTimer = _mutatorConfig.bumpCooldownTime;
-
-					if (_carBumpCallback.func)
-						_carBumpCallback.func(this, car1, car2, isDemo, _carBumpCallback.userInfo);
-				}
+			// A car on the ground is also pushed up along its up axis
+			Vec impulse;
+			if (car2->_internalState.isOnGround) {
+				impulse = velDir * curve(150.f, 200000.f, 275000.f) + otherState.rotMat.up * curve(50.f, 50000.f, 75000.f);
+			} else {
+				impulse = velDir * curve(150.f, 250000.f, 350000.f);
 			}
+			car2->_velocityImpulseCache += impulse * (_mutatorConfig.bumpForceScale * (UU_TO_BT / CAR_MASS_BT));
 		}
+
+		// (The game's next bump needs the physics time strictly past the cooldown: half a tick longer)
+		car1->_internalState.carContact.otherCarID = car2->id;
+		car1->_internalState.carContact.cooldownTimer = _mutatorConfig.bumpCooldownTime + tickTime * 0.5f;
+
+		if (bumper && _carBumpCallback.func)
+			_carBumpCallback.func(this, car1, car2, false, _carBumpCallback.userInfo);
 	}
 }
 
