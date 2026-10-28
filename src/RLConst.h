@@ -162,6 +162,7 @@ namespace RLConst {
 			WHEELS_DAMPING_COMPRESSION = 25.f,
 			WHEELS_DAMPING_RELAXATION = 40.f,
 			MAX_SUSPENSION_TRAVEL = 12.f, // TODO: Are we sure this is the same for all cars?
+			SUSPENSION_TRAVEL_LIMIT = 14.5f, // How far the suspension can actually compress or extend
 			SUSPENSION_SUBTRACTION = 0.05f;
 	}
 

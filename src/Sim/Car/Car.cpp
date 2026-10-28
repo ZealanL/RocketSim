@@ -292,13 +292,33 @@ void Car::_BulletSetup(GameMode gameMode, btDynamicsWorld* bulletWorld, const Mu
 					wheelInfo.m_suspensionStiffness = SUSPENSION_STIFFNESS;
 					wheelInfo.m_wheelsDampingCompression = WHEELS_DAMPING_COMPRESSION;
 					wheelInfo.m_wheelsDampingRelaxation = WHEELS_DAMPING_RELAXATION;
-					wheelInfo.m_maxSuspensionTravelCm = (MAX_SUSPENSION_TRAVEL * UU_TO_BT) * 100; // Same for all cars (hopefully)
+					wheelInfo.m_maxSuspensionTravelCm = (SUSPENSION_TRAVEL_LIMIT * UU_TO_BT) * 100; // Same for all cars (hopefully)
 					wheelInfo.m_maxSuspensionForce = FLT_MAX; // Don't think there's a limit
 					wheelInfo.m_bIsFrontWheel = front;
-					wheelInfo.m_suspensionForceScale = front ? SUSPENSION_FORCE_SCALE_FRONT : SUSPENSION_FORCE_SCALE_BACK;
 				}
 			}
 		}
+
+		{ // The game's suspension force scale is half the car's mass times the other axle's share of the wheelbase
+			float mass = 1.f / _rigidBody.getInvMass();
+			float frontX = _bulletVehicle.m_wheelInfo[0].m_chassisConnectionPointCS.x();
+			float backX = -_bulletVehicle.m_wheelInfo[2].m_chassisConnectionPointCS.x();
+			float front, back;
+			if (frontX < 0 || backX < 0) {
+				front = back = (mass * 0.5f) * 0.5f;
+			} else {
+				float backShare = (frontX / (backX + frontX)) * mass;
+				front = (mass - backShare) * 0.5f;
+				back = backShare * 0.5f;
+			}
+			for (int i = 0; i < _bulletVehicle.m_wheelInfo.size(); i++)
+				_bulletVehicle.m_wheelInfo[i].m_suspensionForceScale = _bulletVehicle.m_wheelInfo[i].m_bIsFrontWheel ? front : back;
+		}
+
+		// The game ignores wheel hits closer to the hardpoint than half the car's body box height minus 1 uu (the body box
+		// is the hitbox 1.25 uu thinner on each face)
+		float minHitDist = (config.hitboxSize.z * 0.5f - 2.25f) * UU_TO_BT;
+		_bulletVehicle.m_minHitDistSq = minHitDist * minHitDist;
 	}
 
 	_internalState.boost = mutatorConfig.carSpawnBoostAmount;

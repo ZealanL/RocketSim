@@ -40,6 +40,9 @@ public:
 	int m_userConstraintType;
 	int m_userConstraintId;
 
+	// The game ignores wheel ray hits closer than this to the hardpoint (squared, BT units)
+	float m_minHitDistSq = 0;
+
 
 	class btVehicleTuning
 	{
@@ -87,6 +90,7 @@ public:
 
 	const btTransform& getChassisWorldTransform() const;
 
+	btCollisionObject* castWheelRay(const btVector3& from, const btVector3& to, btVehicleRaycaster::btVehicleRaycasterResult& result);
 	float rayCast(btWheelInfoRL& wheel);
 
 	void updateVehicleFirst(float step);
