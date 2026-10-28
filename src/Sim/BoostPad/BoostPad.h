@@ -38,7 +38,6 @@ public:
 	BoostPadConfig config;
 
 	Vec _posBT;
-	Vec _boxMinBT, _boxMaxBT;
 
 	BoostPadState _internalState;
 

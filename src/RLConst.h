@@ -254,9 +254,16 @@ namespace RLConst {
 		// Mostly from a Rocket Science video: https://www.youtube.com/watch?v=xgfa-qZyInw
 		
 		constexpr float
-			CYL_HEIGHT = 95,
-			CYL_RAD_BIG = 208,
-			CYL_RAD_SMALL = 144,
+			// The game's pad collision cylinders, whose bases are CYL_OFFSET_Z below the pad position
+			CYL_HEIGHT = 64,
+			CYL_RAD_BIG = 160,
+			CYL_RAD_SMALL = 128,
+			CYL_OFFSET_Z_BIG = 1,
+			CYL_OFFSET_Z_SMALL = 5.92f,
+
+			// The car's collision cylinder, which touches pads
+			CAR_CYL_HEIGHT = 32,
+			CAR_CYL_RAD = 48,
 
 			BOX_HEIGHT = 64,
 			BOX_RAD_BIG = 160,
