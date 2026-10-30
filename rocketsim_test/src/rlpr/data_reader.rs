@@ -19,6 +19,10 @@ impl<'a> DataReader<'a> {
         self.bytes.read_u32::<LittleEndian>()
     }
 
+    pub fn read_u64(&mut self) -> io::Result<u64> {
+        self.bytes.read_u64::<LittleEndian>()
+    }
+
     pub fn read_bool(&mut self) -> io::Result<bool> {
         let byte = self.bytes.read_u8()?;
         if byte > 1 {

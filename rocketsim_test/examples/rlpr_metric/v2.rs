@@ -60,7 +60,11 @@ fn v2_bump_callback(
 /// with each car on its own body.
 pub struct V2Backend {
     arena: rocketsim_rs::cxx::UniquePtr<Arena>,
-    car_ids: Vec<u32>,
+    /// Arena car id per recording slot. `None` means the slot is unavailable
+    /// in the current partial arena.
+    car_ids: Vec<Option<u32>>,
+    /// Availability mask the current arena was built with.
+    arena_mask: Option<Vec<bool>>,
     /// Body preset index per car slot, in [`BODY_PRESET_NAMES`] order.
     bodies: Vec<usize>,
     /// Presets the current arena was built with, to detect roster changes.
@@ -105,7 +109,7 @@ impl V2Backend {
         capture_events: bool,
     ) -> Self {
         let (arena, car_ids) = fresh_arena(
-            1,
+            &[true],
             &[OCTANE_PRESET],
             dodge_deadzone,
             mem_weight_mode,
@@ -115,6 +119,7 @@ impl V2Backend {
         Self {
             arena,
             car_ids,
+            arena_mask: None,
             bodies: vec![OCTANE_PRESET],
             arena_body: None,
             dodge_deadzone,
@@ -154,18 +159,65 @@ impl V2Backend {
         self.bodies.get(slot).copied().unwrap_or(OCTANE_PRESET)
     }
 
-    /// Rebuild the arena when the car count or the body roster changes.
+    /// Arena car id for one recording slot, or `None` when unavailable.
+    fn car_id_opt(&self, car_idx: usize) -> Option<u32> {
+        self.car_ids.get(car_idx).copied().flatten()
+    }
+
+    /// Arena car id for one available recording slot.
     ///
-    /// The roster check matters when consecutive recordings hold the same car
-    /// count with different bodies: the ids would still line up, but the
-    /// hitbox and wheels would stay wrong without a rebuild.
-    fn ensure_cars(&mut self, num_cars: usize) {
-        let roster: Vec<usize> = (0..num_cars)
+    /// Panics as `<caller> needs car <index>` on a missing or unavailable
+    /// slot. Callers that may see an unavailable slot use [`Self::car_id_opt`].
+    #[track_caller]
+    fn car_id(&self, car_idx: usize, caller: &str) -> u32 {
+        match self.car_id_opt(car_idx) {
+            Some(id) => id,
+            None => panic!("{caller} needs car {car_idx}"),
+        }
+    }
+
+    /// Recording slot for one arena car id.
+    fn slot_for_arena_car(&self, arena_car: u32) -> Option<usize> {
+        self.car_ids
+            .iter()
+            .position(|stored| *stored == Some(arena_car))
+    }
+
+    /// Team per frozen recording slot: Blue first, then alternating.
+    fn team_for_slot(slot: usize) -> Team {
+        if slot.is_multiple_of(2) {
+            Team::Blue
+        } else {
+            Team::Orange
+        }
+    }
+
+    /// Availability mask for a tick, one bit per frozen car slot.
+    fn tick_mask(tick: &TickRecord) -> Vec<bool> {
+        (0..tick.car_records.len())
+            .map(|slot| tick.car_available(slot))
+            .collect()
+    }
+
+    /// Rebuild the arena when the availability mask, car count, or body
+    /// roster changes.
+    ///
+    /// Only available slots get an arena car. The team comes from the frozen
+    /// recording slot, not the compact arena index. The roster check matters
+    /// when consecutive recordings hold the same car count with different
+    /// bodies: the ids would still line up, but the hitbox and wheels would
+    /// stay wrong without a rebuild.
+    fn ensure_cars(&mut self, mask: &[bool]) {
+        let roster: Vec<usize> = (0..mask.len())
             .map(|slot| self.preset_for_slot(slot))
             .collect();
-        if self.car_ids.len() != num_cars || self.arena_body.as_ref() != Some(&roster) {
+        let mask_vec = mask.to_vec();
+        if self.car_ids.len() != mask.len()
+            || self.arena_body.as_ref() != Some(&roster)
+            || self.arena_mask.as_ref() != Some(&mask_vec)
+        {
             let (arena, car_ids) = fresh_arena(
-                num_cars,
+                mask,
                 &roster,
                 self.dodge_deadzone,
                 self.mem_weight_mode,
@@ -174,20 +226,28 @@ impl V2Backend {
             self.arena = arena;
             self.car_ids = car_ids;
             self.arena_body = Some(roster);
-            self.last_ball_hit = vec![0; num_cars];
+            self.arena_mask = Some(mask_vec);
+            self.last_ball_hit = vec![0; mask.len()];
         }
+    }
+
+    /// Test helper: build an arena with `num_cars` available slots.
+    #[cfg(test)]
+    fn ensure_all_cars(&mut self, num_cars: usize) {
+        self.ensure_cars(&vec![true; num_cars]);
     }
 
     /// Step the arena without callbacks, event scans, or metric allocations.
     #[allow(dead_code)]
     pub fn benchmark_step(&mut self, controls: &[CarControls]) {
         for (slot, controls) in controls.iter().enumerate() {
-            if let Some(&car_id) = self.car_ids.get(slot) {
-                self.arena
-                    .pin_mut()
-                    .set_car_controls(car_id, *controls)
-                    .expect("v2 car id is valid");
-            }
+            let Some(car_id) = self.car_id_opt(slot) else {
+                continue;
+            };
+            self.arena
+                .pin_mut()
+                .set_car_controls(car_id, *controls)
+                .expect("v2 car id is valid");
         }
         self.arena.pin_mut().step(1);
     }
@@ -206,9 +266,10 @@ impl V2Backend {
     /// segment seed sizes the arena. Panics on a missing slot. Harness only.
     pub fn reset_motion(&mut self, state_tick: &TickRecord) {
         for (slot, car) in state_tick.car_records.iter().enumerate() {
-            let Some(&car_id) = self.car_ids.get(slot) else {
-                panic!("reset_motion needs car {slot}");
-            };
+            if !car.is_available() {
+                continue;
+            }
+            let car_id = self.car_id(slot, "reset_motion");
             let mut live = self.arena.pin_mut().get_car(car_id);
             live.pos = record_vec(car.phys.pos);
             live.vel = record_vec(car.phys.lin_vel);
@@ -217,6 +278,9 @@ impl V2Backend {
                 .pin_mut()
                 .set_car(car_id, live)
                 .expect("v2 car id is valid");
+        }
+        if !state_tick.ball_available() {
+            return;
         }
         let mut ball = self.arena.pin_mut().get_ball();
         ball.pos = record_vec(state_tick.ball_record.pos);
@@ -234,7 +298,11 @@ impl Default for V2Backend {
 
 impl ReplayBackend for V2Backend {
     fn reset(&mut self, start: &TickRecord) {
-        self.ensure_cars(start.car_records.len());
+        assert!(
+            start.has_physics() && start.ball_available(),
+            "v2 reset needs a physics row with an available ball"
+        );
+        self.ensure_cars(&Self::tick_mask(start));
         self.set_state(start);
     }
 
@@ -243,11 +311,16 @@ impl ReplayBackend for V2Backend {
     }
 
     fn set_state(&mut self, state_tick: &TickRecord) {
-        self.ensure_cars(state_tick.car_records.len());
+        assert!(
+            state_tick.has_physics() && state_tick.ball_available(),
+            "v2 set_state needs a physics row with an available ball"
+        );
+        self.ensure_cars(&Self::tick_mask(state_tick));
         for (slot, car) in state_tick.car_records.iter().enumerate() {
-            let Some(&car_id) = self.car_ids.get(slot) else {
-                panic!("state has more cars than the arena");
-            };
+            if !car.is_available() {
+                continue;
+            }
+            let car_id = self.car_id(slot, "set_state");
             let mut state = self.arena.pin_mut().get_car(car_id);
             apply_car_record(&mut state, car);
             self.arena
@@ -266,8 +339,8 @@ impl ReplayBackend for V2Backend {
     }
 
     fn set_boost_state(&mut self, car_idx: usize, armed: bool, time: f32) {
-        let Some(&car_id) = self.car_ids.get(car_idx) else {
-            panic!("set_boost_state needs car {car_idx}");
+        let Some(car_id) = self.car_id_opt(car_idx) else {
+            return;
         };
         let mut state = self.arena.pin_mut().get_car(car_id);
         state.is_boosting = armed;
@@ -279,8 +352,8 @@ impl ReplayBackend for V2Backend {
     }
 
     fn set_handbrake_value(&mut self, car_idx: usize, value: f32) {
-        let Some(&car_id) = self.car_ids.get(car_idx) else {
-            panic!("set_handbrake_value needs car {car_idx}");
+        let Some(car_id) = self.car_id_opt(car_idx) else {
+            return;
         };
         let mut state = self.arena.pin_mut().get_car(car_id);
         state.handbrake_val = value.clamp(0.0, 1.0);
@@ -299,8 +372,8 @@ impl ReplayBackend for V2Backend {
         // scope is intentionally ignored here; v2 keeps its legacy
         // broad suppression. The v3 gate metric is scored on the v3 backend.
         let _ = victim_idx;
-        let Some(&car_id) = self.car_ids.get(car_idx) else {
-            panic!("set_bump_cooldown needs car {car_idx}");
+        let Some(car_id) = self.car_id_opt(car_idx) else {
+            return;
         };
         let mut state = self.arena.pin_mut().get_car(car_id);
         state.car_contact.cooldown_timer = seconds.max(0.0);
@@ -312,12 +385,13 @@ impl ReplayBackend for V2Backend {
 
     fn step(&mut self, controls: &[ControlsRecord]) -> Vec<SimContactEvents> {
         for (slot, controls) in controls.iter().enumerate() {
-            if let Some(&car_id) = self.car_ids.get(slot) {
-                self.arena
-                    .pin_mut()
-                    .set_car_controls(car_id, v2_controls(controls))
-                    .expect("v2 car id is valid");
-            }
+            let Some(car_id) = self.car_id_opt(slot) else {
+                continue;
+            };
+            self.arena
+                .pin_mut()
+                .set_car_controls(car_id, v2_controls(controls))
+                .expect("v2 car id is valid");
         }
         self.arena.pin_mut().step(1);
         // Drain bump events collected by v2_bump_callback during the step.
@@ -325,7 +399,7 @@ impl ReplayBackend for V2Backend {
         V2_BUMP_EVENTS.with(|events| {
             for (bumper, victim) in events.borrow_mut().drain(..) {
                 for arena_car in [bumper, victim] {
-                    if let Some(slot) = self.car_ids.iter().position(|&id| id == arena_car) {
+                    if let Some(slot) = self.slot_for_arena_car(arena_car) {
                         observed[slot].car_car = true;
                     }
                 }
@@ -334,7 +408,10 @@ impl ReplayBackend for V2Backend {
         // Car/ball and chassis/world contacts come from sim state:
         // ball_hit_info is per-touch (change-detected against latching),
         // world_contact reflects the current tick.
-        for (slot, &car_id) in self.car_ids.iter().enumerate() {
+        for (slot, car_id) in self.car_ids.iter().enumerate() {
+            let Some(car_id) = *car_id else {
+                continue;
+            };
             let state = self.arena.pin_mut().get_car(car_id);
             let hit = state.ball_hit_info;
             if hit.is_valid && hit.tick_count_when_hit != self.last_ball_hit[slot] {
@@ -349,9 +426,7 @@ impl ReplayBackend for V2Backend {
     }
 
     fn snapshot(&mut self, car_idx: usize) -> Snapshot {
-        let Some(&car_id) = self.car_ids.get(car_idx) else {
-            panic!("snapshot needs car {car_idx}");
-        };
+        let car_id = self.car_id(car_idx, "snapshot");
         let car = self.arena.pin_mut().get_car(car_id);
         let ball = self.arena.pin_mut().get_ball();
         Snapshot {
@@ -411,12 +486,12 @@ fn v2_preset_bounds() -> [HitboxBounds; NUM_BODY_PRESETS] {
 /// `roster` holds one preset index per car slot; a short roster pads with
 /// Octane.
 fn fresh_arena(
-    num_cars: usize,
+    mask: &[bool],
     roster: &[usize],
     dodge_deadzone: f32,
     mem_weight_mode: ArenaMemWeightMode,
     capture_events: bool,
-) -> (rocketsim_rs::cxx::UniquePtr<Arena>, Vec<u32>) {
+) -> (rocketsim_rs::cxx::UniquePtr<Arena>, Vec<Option<u32>>) {
     let config = ArenaConfig {
         mem_weight_mode,
         no_ball_rot: false,
@@ -426,16 +501,17 @@ fn fresh_arena(
     if capture_events {
         arena.pin_mut().set_car_bump_callback(v2_bump_callback, 0);
     }
-    let car_ids = (0..num_cars.max(1))
-        .map(|slot| {
-            let team = if slot.is_multiple_of(2) {
-                Team::Blue
-            } else {
-                Team::Orange
-            };
-            let mut car_config = *v2_preset(roster.get(slot).copied().unwrap_or(OCTANE_PRESET));
-            car_config.dodge_deadzone = dodge_deadzone;
-            arena.pin_mut().add_car(team, &car_config)
+    let car_ids = mask
+        .iter()
+        .enumerate()
+        .map(|(slot, &available)| {
+            available.then(|| {
+                let mut car_config = *v2_preset(roster.get(slot).copied().unwrap_or(OCTANE_PRESET));
+                car_config.dodge_deadzone = dodge_deadzone;
+                arena
+                    .pin_mut()
+                    .add_car(V2Backend::team_for_slot(slot), &car_config)
+            })
         })
         .collect();
     (arena, car_ids)
@@ -647,11 +723,11 @@ mod tests {
         init();
         let mut backend = V2Backend::new();
         backend.set_body_from_info(&octane_info()).unwrap();
-        backend.ensure_cars(2);
+        backend.ensure_all_cars(2);
         // The v2 arena hands out the same ids on every rebuild, so a planted
         // state is what proves whether the arena was replaced.
         let sentinel = Vec3::new(1234.0, 567.0, 89.0);
-        let first_id = backend.car_ids[0];
+        let first_id = backend.car_ids[0].expect("slot 0 available");
         let mut planted = backend.arena.pin_mut().get_car(first_id);
         planted.pos = sentinel;
         backend
@@ -660,11 +736,11 @@ mod tests {
             .set_car(first_id, planted)
             .expect("car id is valid");
         // Same body, same count: no rebuild, so the planted state survives.
-        backend.ensure_cars(2);
+        backend.ensure_all_cars(2);
         assert_eq!(backend.arena.pin_mut().get_car(first_id).pos, sentinel);
         // Same count, new body: rebuild, so the planted state is gone.
         assert_eq!(backend.set_body_from_info(&daizen_info()).unwrap(), "Plank");
-        backend.ensure_cars(2);
+        backend.ensure_all_cars(2);
         assert_eq!(backend.car_ids.len(), 2);
         assert_ne!(backend.arena.pin_mut().get_car(first_id).pos, sentinel);
         assert_eq!(backend.arena_body, Some(vec![2, 2]));
@@ -680,7 +756,7 @@ mod tests {
             up: V2Vec3::new(0.0, 0.0, 1.0),
         };
         for slot in 0..2 {
-            let car_id = backend.car_ids[slot];
+            let car_id = backend.car_ids[slot].expect("slot available");
             let mut live = backend.arena.pin_mut().get_car(car_id);
             live.rot_mat = yaw90;
             live.last_controls.throttle = 1.0;
@@ -689,7 +765,7 @@ mod tests {
             live.handbrake_val = 0.7;
             live.boost = 50.0;
             live.car_contact.cooldown_timer = 0.4;
-            live.car_contact.other_car_id = backend.car_ids[1 - slot];
+            live.car_contact.other_car_id = backend.car_ids[1 - slot].expect("slot available");
             live.ball_hit_info.is_valid = true;
             live.ball_hit_info.tick_count_when_hit = 42;
             live.is_on_ground = false;
@@ -719,7 +795,7 @@ mod tests {
         target.ball_record.ang_vel = motion_vec(4.0, 5.0, 6.0);
         backend.reset_motion(&target);
         for slot in 0..2 {
-            let car_id = backend.car_ids[slot];
+            let car_id = backend.car_ids[slot].expect("slot available");
             let live = backend.arena.pin_mut().get_car(car_id);
             for (got, want) in [
                 (live.pos, record_vec(target.car_records[slot].phys.pos)),
@@ -744,7 +820,10 @@ mod tests {
             assert_eq!(live.handbrake_val, 0.7);
             assert_eq!(live.boost, 50.0);
             assert_eq!(live.car_contact.cooldown_timer, 0.4);
-            assert_eq!(live.car_contact.other_car_id, backend.car_ids[1 - slot]);
+            assert_eq!(
+                live.car_contact.other_car_id,
+                backend.car_ids[1 - slot].expect("slot available")
+            );
             assert!(live.ball_hit_info.is_valid);
             assert_eq!(live.ball_hit_info.tick_count_when_hit, 42);
             assert!(!live.is_on_ground);
@@ -785,7 +864,7 @@ mod tests {
         let mut backend = V2Backend::new();
         // Plank against Octane, as in the bundled london_vs_nexto capture.
         backend.set_bodies(&[2, 0]);
-        backend.ensure_cars(2);
+        backend.ensure_all_cars(2);
         assert_eq!(backend.arena_body, Some(vec![2, 0]));
         assert_eq!(
             vec_to_glam(v2_preset(2).hitbox_size),
@@ -804,7 +883,7 @@ mod tests {
         init();
         let mut backend = V2Backend::new();
         backend.set_bodies(&[2]);
-        backend.ensure_cars(3);
+        backend.ensure_all_cars(3);
         assert_eq!(backend.arena_body, Some(vec![2, 0, 0]));
     }
 
@@ -813,10 +892,10 @@ mod tests {
         init();
         let mut backend = V2Backend::new();
         backend.set_bodies(&[0, 0]);
-        backend.ensure_cars(2);
+        backend.ensure_all_cars(2);
         let before = backend.arena_body.clone();
         backend.set_bodies(&[2, 0]);
-        backend.ensure_cars(2);
+        backend.ensure_all_cars(2);
         assert_ne!(backend.arena_body, before);
     }
 
@@ -894,6 +973,9 @@ mod tests {
             boosting_time: 0.0,
             handbrake_val: 0.0,
             last_ball_touch_frame: rocketsim_test::rlpr::TOUCH_FRAME_UNKNOWN,
+            last_demolish_frame: rocketsim_test::rlpr::DEMOLISH_FRAME_UNKNOWN,
+            physics_available: 1,
+            _availability_pad: [0; 3],
         }
     }
 
@@ -903,11 +985,214 @@ mod tests {
         ball: (f32, f32, f32),
     ) -> TickRecord {
         TickRecord {
+            level_tick: 0,
+            row_flags: rocketsim_test::rlpr::ROW_FLAGS_BALL_AVAILABLE,
+            reserved0: 0,
             car_records: vec![
                 motion_car(car0, (0.0, 0.0, 0.0), (0.0, 0.0, 0.0)),
                 motion_car(car1, (10.0, 0.0, 0.0), (0.1, 0.0, 0.0)),
             ],
             ball_record: motion_phys(ball, (0.0, 0.0, 0.0), (0.0, 0.0, 0.0)),
         }
+    }
+
+    /// Build a tick with an explicit per-slot availability mask.
+    fn mask_tick(mask: &[bool]) -> TickRecord {
+        let car_records = mask
+            .iter()
+            .enumerate()
+            .map(|(slot, &available)| {
+                let mut car = motion_car(
+                    (100.0 * slot as f32, 0.0, 100.0),
+                    (0.0, 0.0, 0.0),
+                    (0.0, 0.0, 0.0),
+                );
+                car.physics_available = u8::from(available);
+                car
+            })
+            .collect();
+        TickRecord {
+            level_tick: 0,
+            row_flags: rocketsim_test::rlpr::ROW_FLAGS_BALL_AVAILABLE,
+            reserved0: 0,
+            car_records,
+            ball_record: motion_phys((0.0, 0.0, 200.0), (0.0, 0.0, 0.0), (0.0, 0.0, 0.0)),
+        }
+    }
+
+    fn assert_teams_follow_frozen_slots(backend: &mut V2Backend) {
+        for (slot, id) in backend.car_ids.clone().iter().enumerate() {
+            let Some(id) = id else {
+                continue;
+            };
+            assert_eq!(
+                backend.arena.pin_mut().get_car_info(*id).team,
+                V2Backend::team_for_slot(slot),
+                "slot {slot} team"
+            );
+        }
+    }
+
+    #[test]
+    fn partial_arena_maps_active_ids_and_frozen_teams() {
+        init();
+        let mut backend = V2Backend::new();
+        backend.set_bodies(&[0; 6]);
+        for mask in [
+            [true, false, false, true, false, false],
+            [false, true, true, false, true, true],
+            [true; 6],
+        ] {
+            backend.ensure_cars(&mask);
+            assert_eq!(backend.car_ids.len(), 6);
+            for (slot, available) in mask.iter().enumerate() {
+                assert_eq!(
+                    backend.car_ids[slot].is_some(),
+                    *available,
+                    "slot {slot} availability"
+                );
+            }
+            assert_teams_follow_frozen_slots(&mut backend);
+        }
+    }
+
+    #[test]
+    fn repeated_mask_same_count_different_active_slots_rebuilds() {
+        init();
+        let mut backend = V2Backend::new();
+        backend.set_bodies(&[0; 4]);
+        backend.ensure_cars(&[true, true, false, false]);
+        let first_id = backend.car_ids[0].expect("slot 0 available");
+        let sentinel = Vec3::new(1234.0, 567.0, 89.0);
+        let mut planted = backend.arena.pin_mut().get_car(first_id);
+        planted.pos = sentinel;
+        backend
+            .arena
+            .pin_mut()
+            .set_car(first_id, planted)
+            .expect("car id is valid");
+
+        // Same active count, different active slots: the arena must rebuild.
+        backend.ensure_cars(&[false, false, true, true]);
+        assert!(backend.car_ids[0].is_none());
+        assert!(backend.car_ids[1].is_none());
+        assert!(backend.car_ids[2].is_some());
+        assert!(backend.car_ids[3].is_some());
+        let new_id = backend.car_ids[2].expect("slot 2 available");
+        assert_ne!(backend.arena.pin_mut().get_car(new_id).pos, sentinel);
+        assert_teams_follow_frozen_slots(&mut backend);
+    }
+
+    #[test]
+    fn snapshot_uses_frozen_slot() {
+        init();
+        let mut backend = V2Backend::new();
+        backend.set_bodies(&[0; 4]);
+        let tick = mask_tick(&[false, true, false, true]);
+        backend.reset(&tick);
+        for slot in [1usize, 3] {
+            let snap = backend.snapshot(slot);
+            let want = vec_to_glam(record_vec(tick.car_records[slot].phys.pos));
+            assert!((snap.car.pos - want).length() < 1.0e-3, "slot {slot} pos");
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "snapshot needs car 1")]
+    fn snapshot_unavailable_slot_panics() {
+        init();
+        let mut backend = V2Backend::new();
+        backend.set_bodies(&[0; 3]);
+        backend.ensure_cars(&[true, false, true]);
+        backend.snapshot(1);
+    }
+
+    #[test]
+    fn full_mask_after_partial_restores_six_slots() {
+        init();
+        let mut backend = V2Backend::new();
+        backend.set_bodies(&[0; 6]);
+        backend.ensure_cars(&[true, false, true, false, true, false]);
+        assert_eq!(backend.car_ids.iter().filter(|id| id.is_some()).count(), 3);
+        backend.ensure_cars(&[true; 6]);
+        assert_eq!(backend.car_ids.len(), 6);
+        assert!(backend.car_ids.iter().all(|id| id.is_some()));
+        assert_teams_follow_frozen_slots(&mut backend);
+    }
+
+    fn controls_for(throttle: f32) -> ControlsRecord {
+        ControlsRecord {
+            throttle,
+            steer: 0.0,
+            pitch: 0.0,
+            yaw: 0.0,
+            roll: 0.0,
+            jump: false,
+            boost: false,
+            handbrake: false,
+        }
+    }
+
+    #[test]
+    fn bump_callback_maps_only_active_frozen_slots() {
+        init();
+        // Frozen slots 1 and 3 are active. The compact arena ids are 0 and 1,
+        // so a compact-index mapping would mark slots 0 and 1 instead.
+        let mask = [false, true, false, true, false, false];
+        let mut backend = V2Backend::new();
+        backend.set_bodies(&[0; 6]);
+        backend.ensure_cars(&mask);
+        assert_eq!(
+            backend.car_ids.iter().flatten().count(),
+            2,
+            "only the two active frozen slots get a car"
+        );
+        // Compact order is slot 1 then slot 3. A compact-index mapping would
+        // mark events[0] and events[1], so the slot assertions below would
+        // fail. The mapping must use the frozen slot, not the compact index.
+
+        // Drain any stale queue from another test. This is a drain, not a
+        // synthetic event.
+        V2_BUMP_EVENTS.with(|events| events.borrow_mut().clear());
+
+        let mut tick = mask_tick(&mask);
+        // Head-on contact at slots 1 and 3, below demo speed.
+        tick.car_records[1].phys.pos = motion_vec(0.0, 0.0, 100.0);
+        tick.car_records[1].phys.lin_vel = motion_vec(800.0, 0.0, 0.0);
+        tick.car_records[3].phys.pos = motion_vec(120.0, 0.0, 100.0);
+        tick.car_records[3].phys.lin_vel = motion_vec(-800.0, 0.0, 0.0);
+        // Keep the ball far away so only car-car contacts can fire.
+        tick.ball_record.pos = motion_vec(0.0, 5000.0, 100.0);
+        tick.ball_record.lin_vel = motion_vec(0.0, 0.0, 0.0);
+        backend.reset(&tick);
+
+        let controls = [
+            controls_for(0.0),
+            controls_for(1.0),
+            controls_for(0.0),
+            controls_for(1.0),
+            controls_for(0.0),
+            controls_for(0.0),
+        ];
+
+        let mut observed = None;
+        for _ in 0..30 {
+            let events = backend.step(&controls);
+            if events[1].car_car || events[3].car_car {
+                observed = Some(events);
+                break;
+            }
+        }
+        let events = observed.expect("the C++ bump callback must fire within 30 steps");
+
+        assert!(events[1].car_car, "frozen slot 1 must be marked");
+        assert!(events[3].car_car, "frozen slot 3 must be marked");
+        for slot in [0usize, 2, 4, 5] {
+            assert!(
+                !events[slot].car_car,
+                "inactive frozen slot {slot} must not be marked"
+            );
+        }
+        assert!(!events[1].car_ball && !events[3].car_ball);
     }
 }

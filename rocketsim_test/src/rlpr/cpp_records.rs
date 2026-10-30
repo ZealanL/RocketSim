@@ -153,6 +153,13 @@ pub struct PhysRecord {
     num_impulse_records: u32,
 }
 impl PhysRecord {
+    /// Byte offset of `impulse_records_data` inside `PhysRecord`.
+    pub(crate) const IMPULSE_RECORDS_OFFSET: usize =
+        std::mem::offset_of!(PhysRecord, impulse_records_data);
+    /// Byte offset of `num_impulse_records` inside `PhysRecord`.
+    pub(crate) const NUM_IMPULSE_RECORDS_OFFSET: usize =
+        std::mem::offset_of!(PhysRecord, num_impulse_records);
+
     pub fn impulse_records(&self) -> &[ImpulseRecord] {
         &self.impulse_records_data[..self.num_impulse_records as usize]
     }
@@ -246,6 +253,24 @@ pub struct CarRecord {
     /// `is_touching_ball` bool. [`TOUCH_FRAME_UNKNOWN`](super::TOUCH_FRAME_UNKNOWN)
     /// for v2-v8: unknown, not frame 0.
     pub last_ball_touch_frame: u32,
+    /// RLPR v10 raw frame of the latest accepted demolition event for this
+    /// slot before this row was captured. This is event metadata, not an
+    /// active demolition state. [`DEMOLISH_FRAME_UNKNOWN`](super::DEMOLISH_FRAME_UNKNOWN)
+    /// for v2-v9 and for v10 rows with no observed resolved event. The value
+    /// proves only that the event was accepted under the writer contract.
+    pub last_demolish_frame: u32,
+    /// RLPR v11 physics availability. `1` for v2-v10 and for an available v11
+    /// car. `0` means the car slot is a placeholder and must never be scored.
+    pub physics_available: u8,
+    /// Reserved. Always zero.
+    pub _availability_pad: [u8; 3],
+}
+impl CarRecord {
+    /// True when this slot carries real physics for the row.
+    #[inline]
+    pub fn is_available(&self) -> bool {
+        self.physics_available != 0
+    }
 }
 impl From<CarRecord> for CarState {
     fn from(record: CarRecord) -> Self {

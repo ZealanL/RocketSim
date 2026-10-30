@@ -67,12 +67,16 @@ struct Args {
 /// Bundled captures evaluated when no file is passed on the CLI, in order.
 /// Missing files are skipped with a warning so the metric keeps working
 /// before every capture has been recorded.
-const DEFAULT_RECORDINGS: [&str; 5] = [
+///
+/// Both backends replay the same set, including sparse v11 captures.
+/// Unavailable physics is never scored.
+const DEFAULT_RECORDINGS: [&str; 6] = [
     "wisp_3v3_300s.rlpr.zst",
     "daizen_2v2_300s.rlpr.zst",
     "partycannon_3v3_300s.rlpr.zst",
     "nexto_1v1_300s.rlpr.zst",
-    "veai_3v3_320wall.rlpr.zst",
+    "veai_3v3_320s_rl278.rlpr.zst",
+    "ripple_3v3_600s_rl278.rlpr.zst",
 ];
 
 fn parse_car_bodies(value: &str) -> Result<Vec<usize>, String> {
@@ -123,6 +127,7 @@ fn resolve_recordings(cli_files: &[PathBuf]) -> Result<Vec<PathBuf>, Box<dyn std
     if !cli_files.is_empty() {
         return Ok(cli_files.to_vec());
     }
+
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("recordings");
     let mut files = Vec::new();
     for name in DEFAULT_RECORDINGS {
@@ -162,6 +167,44 @@ fn print_skip_counts(kickoff_stasis: usize) {
         common::KICKOFF_STASIS_RULE,
         kickoff_stasis,
     );
+}
+
+/// Print one availability line with an explicit unit name.
+///
+/// `kind` is `capture` for the recording rows before duplicate collapse, or
+/// `evaluated` for the deduplicated ticks that segmentation sees. v2-v10
+/// never call this, so their output is unchanged.
+fn print_availability_counts(kind: &str, label: &str, counts: &common::AvailabilityCounts) {
+    let car_ticks = counts.available_car_ticks + counts.unavailable_car_ticks;
+    println!(
+        "{label}: {kind} availability rows {} car-ticks {} available {} unavailable {} no-physics {} ball-unavailable {} mask-changes {} coverage {:.4}%",
+        counts.rows,
+        car_ticks,
+        counts.available_car_ticks,
+        counts.unavailable_car_ticks,
+        counts.no_physics_rows,
+        counts.ball_unavailable_rows,
+        counts.mask_changes,
+        counts.coverage_percent(),
+    );
+}
+
+/// Print raw capture availability for an RLPR v11 recording.
+///
+/// These counts come from the recording rows before duplicate collapse, so
+/// they describe the file. Coverage is available car-ticks over all raw
+/// car-ticks. Do not report this value as evaluated or scored coverage.
+fn print_capture_availability(label: &str, counts: &common::AvailabilityCounts) {
+    print_availability_counts("capture", label, counts);
+}
+
+/// Print evaluated availability for an RLPR v11 recording.
+///
+/// These counts come from the deduplicated ticks that segmentation sees.
+/// Coverage is available car-ticks over all evaluated car-ticks. This value
+/// is not the capture coverage.
+fn print_evaluated_availability(label: &str, counts: &common::AvailabilityCounts) {
+    print_availability_counts("evaluated", label, counts);
 }
 
 /// Print the table header. `first_fail` adds the "First fail" column, which
@@ -293,6 +336,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(feature = "v2")]
     let mut combined_v2 = common::EvalReport::default();
     let mut skipped_transitions = 0usize;
+    let mut combined_availability = common::AvailabilityCounts::default();
+    let mut combined_capture_availability = common::AvailabilityCounts::default();
+    let mut any_availability = false;
 
     for rlpr_file in rlpr_files.iter() {
         let recording = Recording::from_file(rlpr_file)
@@ -388,6 +434,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
         combined_v3.merge(&v3_outcome.report);
         skipped_transitions += v3_outcome.skipped_transitions;
+        if rocketsim_test::rlpr::recording_has_availability(recording.version) {
+            let label = rlpr_file.display().to_string();
+            // Raw capture counts: the rows as written, before duplicate
+            // collapse. These describe the file, not the scored set.
+            let capture_availability = common::availability_counts(&recording.ticks);
+            print_capture_availability(&label, &capture_availability);
+            // Evaluated counts: the deduplicated ticks segmentation sees.
+            print_evaluated_availability(&label, &v3_outcome.availability);
+            combined_capture_availability.merge(&capture_availability);
+            combined_availability.merge(&v3_outcome.availability);
+            any_availability = true;
+        }
 
         #[cfg(feature = "v2")]
         let v2_outcome = if reset_mode == common::ResetMode::ResetMotionEachTick {
@@ -433,6 +491,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("Combined recordings:");
     }
     print_skip_counts(skipped_transitions);
+    if any_availability {
+        print_capture_availability("Combined", &combined_capture_availability);
+        print_evaluated_availability("Combined", &combined_availability);
+    }
     print_table_header(false);
     print_report("v3", &combined_v3, false);
     #[cfg(feature = "v2")]
@@ -534,6 +596,17 @@ mod tests {
                 .unwrap();
         assert!(selected.per_recording);
         assert_eq!(selected.rlpr_files.len(), 2);
+    }
+
+    #[test]
+    fn default_recordings_match_backend_capability() {
+        let has_v11 = DEFAULT_RECORDINGS
+            .iter()
+            .any(|name| name.starts_with("ripple_3v3_600s"));
+        assert_eq!(DEFAULT_RECORDINGS.len(), 6);
+        assert!(has_v11, "both backends include the sparse v11 capture");
+        let explicit = vec![PathBuf::from("selected.rlpr")];
+        assert_eq!(resolve_recordings(&explicit).unwrap(), explicit);
     }
 
     #[test]

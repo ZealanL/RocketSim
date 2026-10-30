@@ -387,8 +387,17 @@ fn body_from_parts(
 }
 
 /// Read ground truth for one car from a tick. `None` without that car.
+///
+/// A no-physics row, an unavailable car, or an unavailable ball yields
+/// `None`. Callers must never score a placeholder.
 pub fn snapshot_from_tick(tick: &TickRecord, car_idx: usize) -> Option<Snapshot> {
+    if !tick.has_physics() || !tick.ball_available() {
+        return None;
+    }
     let car = tick.car_records.get(car_idx)?;
+    if !car.is_available() {
+        return None;
+    }
     let car_forward = Vec3A::from(car.phys.rot.column(0));
     let car_up = Vec3A::from(car.phys.rot.column(2));
     let ball_forward = Vec3A::from(tick.ball_record.rot.column(0));
@@ -443,11 +452,97 @@ pub fn tick_car_count(tick: &TickRecord) -> usize {
     tick.car_records.len()
 }
 
+/// Capture-coverage counts for one recording's rows.
+///
+/// These describe what the file contains. They are not scoring support:
+/// scoring still counts one sample per available car-tick, and
+/// [`snapshot_from_tick`] drops every unavailable slot. v2-v10 rows carry
+/// every car and the ball, so the unavailable, no-physics, and
+/// ball-unavailable counts stay zero and the old output is unchanged.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct AvailabilityCounts {
+    /// Rows the metric read, after duplicate collapse.
+    pub rows: usize,
+    /// Car-tick pairs with real physics.
+    pub available_car_ticks: usize,
+    /// Car-tick pairs marked unavailable (placeholder physics).
+    pub unavailable_car_ticks: usize,
+    /// Rows that carry a timestamp but no physics at all.
+    pub no_physics_rows: usize,
+    /// Rows whose shared ball is unavailable.
+    pub ball_unavailable_rows: usize,
+    /// Changes of the per-car availability mask between rows.
+    pub mask_changes: usize,
+}
+
+impl AvailabilityCounts {
+    /// Fold another recording's counts into this one.
+    pub fn merge(&mut self, other: &AvailabilityCounts) {
+        self.rows += other.rows;
+        self.available_car_ticks += other.available_car_ticks;
+        self.unavailable_car_ticks += other.unavailable_car_ticks;
+        self.no_physics_rows += other.no_physics_rows;
+        self.ball_unavailable_rows += other.ball_unavailable_rows;
+        self.mask_changes += other.mask_changes;
+    }
+
+    /// Available car-tick share, in percent. Zero when there are no car-ticks.
+    pub fn coverage_percent(&self) -> f64 {
+        let total = self.available_car_ticks + self.unavailable_car_ticks;
+        if total == 0 {
+            0.0
+        } else {
+            100.0 * self.available_car_ticks as f64 / total as f64
+        }
+    }
+}
+
+/// Count row availability across one recording's ticks.
+pub fn availability_counts(ticks: &[TickRecord]) -> AvailabilityCounts {
+    let mut counts = AvailabilityCounts::default();
+    let mut prev_mask: Option<u32> = None;
+    for tick in ticks {
+        counts.rows += 1;
+        let mask = tick.availability_mask();
+        for car in &tick.car_records {
+            if car.is_available() {
+                counts.available_car_ticks += 1;
+            } else {
+                counts.unavailable_car_ticks += 1;
+            }
+        }
+        if !tick.has_physics() {
+            counts.no_physics_rows += 1;
+        }
+        if !tick.ball_available() {
+            counts.ball_unavailable_rows += 1;
+        }
+        if prev_mask.is_some_and(|prev| prev != mask) {
+            counts.mask_changes += 1;
+        }
+        prev_mask = Some(mask);
+    }
+    counts
+}
+
 /// Max cars scored per tick.
 pub const MAX_SCORED_CARS: usize = 8;
 
-/// Physics frames advance by one for every car and the ball.
+/// Physics frames advance by one for every available car and the ball.
+///
+/// A mask change, a no-physics row, or an unavailable ball breaks the run.
+/// For v2-v10 every car and the ball are available, so the old behavior is
+/// unchanged.
 pub fn frame_is_contiguous(from: &TickRecord, to: &TickRecord) -> bool {
+    if !from.has_physics() || !to.has_physics() {
+        return false;
+    }
+    if !from.ball_available() || !to.ball_available() {
+        return false;
+    }
+    if from.availability_mask() != to.availability_mask() {
+        return false;
+    }
     let n = from.car_records.len();
     if n == 0 || n > MAX_SCORED_CARS || to.car_records.len() != n {
         return false;
@@ -455,7 +550,7 @@ pub fn frame_is_contiguous(from: &TickRecord, to: &TickRecord) -> bool {
     from.car_records
         .iter()
         .zip(to.car_records.iter())
-        .all(|(a, b)| b.phys.physics_frame == a.phys.physics_frame + 1)
+        .all(|(a, b)| !a.is_available() || b.phys.physics_frame == a.phys.physics_frame + 1)
         && to.ball_record.physics_frame == from.ball_record.physics_frame + 1
 }
 
@@ -469,6 +564,7 @@ pub fn tick_is_frozen(from: &TickRecord, to: &TickRecord) -> bool {
         .car_records
         .iter()
         .zip(to.car_records.iter())
+        .filter(|(a, _)| a.is_available())
         .all(|(a, b)| {
             a.phys.pos == b.phys.pos
                 && a.phys.lin_vel == b.phys.lin_vel
@@ -525,6 +621,7 @@ pub fn tick_is_kickoff_stasis(from: &TickRecord, to: &TickRecord) -> bool {
     from.car_records
         .iter()
         .zip(to.car_records.iter())
+        .filter(|(a, _)| a.is_available())
         .all(|(a, b)| {
             let pa: Vec3A = a.phys.pos.into();
             let pb: Vec3A = b.phys.pos.into();
@@ -684,6 +781,9 @@ pub fn compute_extra_firings(ticks: &[TickRecord], has_touch_state: bool) -> Vec
         }
         let mut recent = Vec::new();
         for (slot, car) in tick.car_records.iter().enumerate() {
+            if !car.is_available() {
+                continue;
+            }
             if touch_recent(car.last_ball_touch_frame, car.phys.physics_frame) {
                 recent.push(slot);
             }
@@ -798,7 +898,7 @@ pub fn compute_bump_events(ticks: &[TickRecord]) -> Vec<BumpEvent> {
         // (victim, attacker, kick) candidates this tick.
         let mut cands: Vec<(usize, usize, f32)> = Vec::new();
         for (slot, car) in tick.car_records.iter().enumerate() {
-            if !car.is_touching_car {
+            if !car.is_available() || !car.is_touching_car {
                 continue;
             }
             let kick = kick_residual(
@@ -816,7 +916,11 @@ pub fn compute_bump_events(ticks: &[TickRecord]) -> Vec<BumpEvent> {
             }
             let victim_pos: Vec3A = car.phys.pos.into();
             let attacker = (0..count)
-                .filter(|&other| other != slot && tick.car_records[other].is_touching_car)
+                .filter(|&other| {
+                    other != slot
+                        && tick.car_records[other].is_available()
+                        && tick.car_records[other].is_touching_car
+                })
                 .min_by(|&a, &b| {
                     let da: Vec3A = tick.car_records[a].phys.pos.into();
                     let db: Vec3A = tick.car_records[b].phys.pos.into();
@@ -912,6 +1016,10 @@ pub fn split_segments(ticks: &[TickRecord], config: SegmentConfig) -> Vec<Segmen
     };
 
     for (index, tick) in ticks.iter().enumerate() {
+        if !tick.has_physics() || !tick.ball_available() {
+            flush_run(index, &mut run_start);
+            continue;
+        }
         let count = tick_car_count(tick);
         if count == 0 || count > MAX_SCORED_CARS {
             flush_run(index, &mut run_start);
@@ -924,6 +1032,7 @@ pub fn split_segments(ticks: &[TickRecord], config: SegmentConfig) -> Vec<Segmen
             Some(_) => {
                 let prev = &ticks[index - 1];
                 if tick_car_count(prev) != count
+                    || prev.availability_mask() != tick.availability_mask()
                     || !frame_is_contiguous(prev, tick)
                     || tick_is_frozen(prev, tick)
                     || any_teleport(prev, tick)
@@ -947,6 +1056,7 @@ pub fn any_teleport(from: &TickRecord, to: &TickRecord) -> bool {
     from.car_records
         .iter()
         .zip(to.car_records.iter())
+        .filter(|(a, _)| a.is_available())
         .any(|(a, b)| {
             let pa: Vec3A = a.phys.pos.into();
             let pb: Vec3A = b.phys.pos.into();
@@ -975,6 +1085,9 @@ pub fn run_start(ticks: &[TickRecord], segment_start: usize) -> usize {
         let from = &ticks[start - 1];
         let to = &ticks[start];
         if tick_car_count(from) != tick_car_count(to)
+            || !to.has_physics()
+            || !to.ball_available()
+            || from.availability_mask() != to.availability_mask()
             || !frame_is_contiguous(from, to)
             || tick_is_frozen(from, to)
             || any_teleport(from, to)
@@ -1476,6 +1589,8 @@ pub struct EvalOutcome {
     pub report: EvalReport,
     pub skipped_transitions: usize,
     pub skipped_car_ticks: usize,
+    /// Row availability coverage. Reporting only; never changes scoring.
+    pub availability: AvailabilityCounts,
 }
 
 /// Run each segment open-loop and aggregate every car-tick into one report.
@@ -1508,7 +1623,10 @@ pub fn evaluate<B: ReplayBackend>(
     has_handbrake_state: bool,
     has_touch_state: bool,
 ) -> EvalOutcome {
-    let mut outcome = EvalOutcome::default();
+    let mut outcome = EvalOutcome {
+        availability: availability_counts(ticks),
+        ..EvalOutcome::default()
+    };
     let report = &mut outcome.report;
     let tol = Tolerances::for_mode(reset_each_tick);
     let firings = compute_extra_firings(ticks, has_touch_state);
@@ -1569,7 +1687,7 @@ pub fn evaluate<B: ReplayBackend>(
             let sim_events = backend.step(&controls);
             if target_index > 0 && tick_is_kickoff_stasis(&ticks[target_index - 1], target) {
                 outcome.skipped_transitions += 1;
-                outcome.skipped_car_ticks += controls.len();
+                outcome.skipped_car_ticks += target.availability_mask().count_ones() as usize;
                 continue;
             }
             for car_idx in 0..controls.len() {
@@ -1608,7 +1726,10 @@ pub fn evaluate_motion_each_tick<B: ReplayBackend>(
     has_handbrake_state: bool,
     has_touch_state: bool,
 ) -> EvalOutcome {
-    let mut outcome = EvalOutcome::default();
+    let mut outcome = EvalOutcome {
+        availability: availability_counts(ticks),
+        ..EvalOutcome::default()
+    };
     let report = &mut outcome.report;
     let tol = Tolerances::for_reset_mode(ResetMode::ResetMotionEachTick);
     let firings = compute_extra_firings(ticks, has_touch_state);
@@ -1645,7 +1766,7 @@ pub fn evaluate_motion_each_tick<B: ReplayBackend>(
             let sim_events = backend.step(&controls);
             if target_index > 0 && tick_is_kickoff_stasis(&ticks[target_index - 1], target) {
                 outcome.skipped_transitions += 1;
-                outcome.skipped_car_ticks += controls.len();
+                outcome.skipped_car_ticks += target.availability_mask().count_ones() as usize;
                 continue;
             }
             for car_idx in 0..controls.len() {
@@ -1732,6 +1853,9 @@ mod tests {
             boosting_time: 0.0,
             handbrake_val: 0.0,
             last_ball_touch_frame: rocketsim_test::rlpr::TOUCH_FRAME_UNKNOWN,
+            last_demolish_frame: rocketsim_test::rlpr::DEMOLISH_FRAME_UNKNOWN,
+            physics_available: 1,
+            _availability_pad: [0; 3],
         }
     }
 
@@ -1760,6 +1884,9 @@ mod tests {
         ball.lin_vel = vec(ball_vel.0, ball_vel.1, ball_vel.2);
         ball.has_world_contact = ball_world;
         TickRecord {
+            level_tick: u64::from(frame),
+            row_flags: rocketsim_test::rlpr::ROW_FLAGS_BALL_AVAILABLE,
+            reserved0: 0,
             car_records: vec![car],
             ball_record: ball,
         }
@@ -1784,6 +1911,203 @@ mod tests {
 
     fn config(segment_ticks: usize) -> SegmentConfig {
         SegmentConfig { segment_ticks }
+    }
+
+    /// One tick with `count` cars. Slots outside `mask` are placeholders.
+    fn multi_tick(frame: u32, base_x: f32, count: usize, mask: u32) -> TickRecord {
+        let mut tick = quiet_tick(frame, base_x);
+        tick.car_records = (0..count)
+            .map(|slot| {
+                let available = mask & (1 << slot) != 0;
+                let mut car = blank_car();
+                car.physics_available = u8::from(available);
+                car.phys.physics_frame = if available {
+                    frame
+                } else {
+                    rocketsim_test::rlpr::NATIVE_FRAME_UNKNOWN
+                };
+                car.phys.pos = vec(base_x + slot as f32 * 10.0, 0.0, 100.0);
+                car.phys.lin_vel = vec(1200.0, 0.0, 0.0);
+                car
+            })
+            .collect();
+        tick
+    }
+
+    /// A guard row: timestamp only, no physics for any slot or the ball.
+    fn guard_tick(level_tick: u64, count: usize) -> TickRecord {
+        let mut tick = multi_tick(0, 0.0, count, 0);
+        tick.level_tick = level_tick;
+        tick.row_flags = rocketsim_test::rlpr::ROW_FLAGS_NO_PHYSICS;
+        tick.ball_record = blank_phys();
+        tick.ball_record.physics_frame = rocketsim_test::rlpr::NATIVE_FRAME_UNKNOWN;
+        for car in &mut tick.car_records {
+            car.phys = blank_phys();
+            car.phys.physics_frame = rocketsim_test::rlpr::NATIVE_FRAME_UNKNOWN;
+        }
+        tick
+    }
+
+    #[test]
+    fn availability_counts_track_mask_and_guard_rows() {
+        let ticks = vec![
+            multi_tick(0, 0.0, 6, 0b11_1111),
+            guard_tick(1, 6),
+            multi_tick(2, 60.0, 6, 0b11_0111),
+            multi_tick(3, 70.0, 6, 0b11_1111),
+        ];
+        let counts = availability_counts(&ticks);
+        assert_eq!(counts.rows, 4);
+        assert_eq!(counts.available_car_ticks, 6 + 0 + 5 + 6);
+        assert_eq!(counts.unavailable_car_ticks, 0 + 6 + 1 + 0);
+        assert_eq!(counts.no_physics_rows, 1);
+        assert_eq!(counts.ball_unavailable_rows, 1);
+        assert_eq!(counts.mask_changes, 3);
+        assert!((counts.coverage_percent() - 100.0 * 17.0 / 24.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn split_segments_breaks_at_guard_and_mask_change() {
+        let ticks = vec![
+            multi_tick(0, 0.0, 6, 0b11_1111),
+            multi_tick(1, 10.0, 6, 0b11_1111),
+            multi_tick(2, 20.0, 6, 0b11_1111),
+            guard_tick(3, 6),
+            multi_tick(5, 50.0, 6, 0b11_0111),
+            multi_tick(6, 60.0, 6, 0b11_0111),
+            multi_tick(7, 70.0, 6, 0b11_1111),
+            multi_tick(8, 80.0, 6, 0b11_1111),
+        ];
+        let segments = split_segments(&ticks, config(100));
+        assert_eq!(
+            segments,
+            vec![
+                Segment { start: 0, len: 3 },
+                Segment { start: 4, len: 2 },
+                Segment { start: 6, len: 2 },
+            ]
+        );
+        // No segment spans a guard row or an availability change.
+        for segment in &segments {
+            let mask = ticks[segment.start].availability_mask();
+            for i in segment.start..segment.end() {
+                assert_eq!(ticks[i].availability_mask(), mask);
+                assert!(ticks[i].has_physics());
+                assert!(ticks[i].ball_available());
+                if i > segment.start {
+                    assert!(frame_is_contiguous(&ticks[i - 1], &ticks[i]));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn snapshot_from_tick_skips_unavailable_slots() {
+        let tick = multi_tick(5, 0.0, 6, 0b11_0111);
+        assert!(snapshot_from_tick(&tick, 2).is_some());
+        assert!(snapshot_from_tick(&tick, 3).is_none());
+        assert!(snapshot_from_tick(&tick, 5).is_some());
+        assert!(snapshot_from_tick(&guard_tick(6, 6), 0).is_none());
+        let mut no_ball = multi_tick(7, 0.0, 6, 0b11_1111);
+        no_ball.row_flags = 0;
+        assert!(snapshot_from_tick(&no_ball, 0).is_none());
+    }
+
+    #[test]
+    fn evaluate_scores_only_available_car_ticks() {
+        let ticks: Vec<_> = (0..5)
+            .map(|frame| multi_tick(frame, frame as f32 * 10.0, 6, 0b11_0111))
+            .collect();
+        let segments = split_segments(&ticks, config(100));
+        assert_eq!(segments, vec![Segment { start: 0, len: 5 }]);
+        let mut backend = MirrorBackend::new(&ticks);
+        let outcome = evaluate(
+            &mut backend,
+            &ticks,
+            &segments,
+            false,
+            false,
+            false,
+            false,
+            false,
+        );
+        // Four scored ticks, five available cars each. The unavailable slot
+        // is never support and never counted as a skip.
+        assert_eq!(outcome.report.total.support, 20);
+        assert_eq!(outcome.report.total.passed, 20);
+        assert_eq!(outcome.availability.available_car_ticks, 25);
+        assert_eq!(outcome.availability.unavailable_car_ticks, 5);
+        assert_eq!(outcome.availability.no_physics_rows, 0);
+        assert_eq!(outcome.skipped_car_ticks, 0);
+    }
+
+    /// Backend with no history. Support counts still increment; passes do not.
+    struct ConstantBackend;
+
+    impl ReplayBackend for ConstantBackend {
+        fn reset(&mut self, _start: &TickRecord) {}
+        fn set_state(&mut self, _state: &TickRecord) {}
+        fn step(&mut self, controls: &[ControlsRecord]) -> Vec<SimContactEvents> {
+            vec![SimContactEvents::default(); controls.len()]
+        }
+        fn snapshot(&mut self, _car_idx: usize) -> Snapshot {
+            let body = BodySnapshot {
+                pos: Vec3A::ZERO,
+                vel: Vec3A::ZERO,
+                ang_vel: Vec3A::ZERO,
+                forward: Vec3A::X,
+                up: Vec3A::Z,
+            };
+            Snapshot {
+                car: body,
+                ball: body,
+            }
+        }
+    }
+
+    #[test]
+    fn long_no_physics_run_keeps_raw_counts_but_scores_available_only() {
+        let mut ticks = Vec::new();
+        for level in 0..50u64 {
+            ticks.push(guard_tick(level, 6));
+        }
+        for frame in 0..5u32 {
+            ticks.push(multi_tick(frame, frame as f32 * 10.0, 6, 0b11_1111));
+        }
+
+        // Raw counts describe the file. The long guard run stays in them.
+        let raw = availability_counts(&ticks);
+        assert_eq!(raw.rows, 55);
+        assert_eq!(raw.no_physics_rows, 50);
+        assert_eq!(raw.available_car_ticks, 30);
+        assert_eq!(raw.unavailable_car_ticks, 300);
+
+        // The guard run collapses to one row. Evaluated counts differ.
+        let collapsed = collapse_duplicate_ticks(&ticks);
+        assert_eq!(collapsed.len(), 6, "50 guard rows collapse to one");
+        let evaluated = availability_counts(&collapsed);
+        assert_eq!(evaluated.rows, 6);
+        assert_eq!(evaluated.no_physics_rows, 1);
+        assert_eq!(evaluated.available_car_ticks, 30);
+        assert_eq!(evaluated.unavailable_car_ticks, 6);
+
+        // Only the five physics rows form a segment. The guard row flushes
+        // the run and is never scored.
+        let segments = split_segments(&collapsed, config(100));
+        assert_eq!(segments, vec![Segment { start: 1, len: 5 }]);
+        let mut backend = ConstantBackend;
+        let outcome = evaluate(
+            &mut backend,
+            &collapsed,
+            &segments,
+            false,
+            false,
+            false,
+            false,
+            false,
+        );
+        assert_eq!(outcome.report.total.support, 4 * 6);
+        assert_eq!(outcome.availability, evaluated);
     }
 
     #[test]
@@ -1827,6 +2151,9 @@ mod tests {
         ticks.push(quiet_tick(10, 40.0));
         ticks.push(quiet_tick(11, 50.0));
         ticks.push(TickRecord {
+            level_tick: 0,
+            row_flags: rocketsim_test::rlpr::ROW_FLAGS_BALL_AVAILABLE,
+            reserved0: 0,
             car_records: vec![],
             ball_record: ticks.last().unwrap().ball_record,
         });
