@@ -646,6 +646,14 @@ impl Arena {
                     *victim -= 1;
                 }
             }
+            if let Some(demoer) = car.state.cache.demoer_idx {
+                if demoer == car_idx {
+                    car.state.cache.demoer_idx = None;
+                    car.state.cache.demo_tick = u64::MAX;
+                } else if demoer > car_idx {
+                    car.state.cache.demoer_idx = Some(demoer - 1);
+                }
+            }
         }
 
         // Exported wheel hits store the body type, not the body index.
@@ -1111,6 +1119,7 @@ impl Arena {
 
     /// Re-syncs the sticky wheel-contact gate after externally teleporting a car.
     ///
+    /// Also updates the cached previous world-wheel count.
     /// Call after [`Arena::set_car_state_full`] when you restore snapshots mid-drive,
     /// otherwise the next tick may apply a one-tick sticking artifact.
     /// Normal `set_car_controls` + `step_tick` loops don't need this.
@@ -1120,8 +1129,8 @@ impl Arena {
 
     /// Refresh wheel contacts at the current car pose without advancing time.
     ///
-    /// Updates Bullet wheel contacts, exported wheel hits, grounding, and the
-    /// sticky gate. Clears the stale world-contact normal; wheel queries do not
+    /// Updates Bullet wheel contacts, exported wheel hits, grounding, the cached
+    /// previous world-wheel count, and the sticky gate. Clears the stale world-contact normal; wheel queries do not
     /// reconstruct body contact manifolds. Applies no forces and keeps physics,
     /// tuning, and previous controls unchanged. Demoed cars keep empty contacts.
     /// Place all cars and the ball before refreshing contacts after a reset.
@@ -1183,7 +1192,8 @@ impl Arena {
     /// Clamps boost to `0..100` and sets jump/flip flags required by active phases.
     /// Sets previous controls to the supplied controls. Contacts are unknown until
     /// the next tick or [`Arena::refresh_car_contacts`]. Resets wheel contacts,
-    /// cached impulses, and the sticky gate.
+    /// the previous world-wheel count, cached impulses, the sticky gate, and demo
+    /// attribution.
     /// For far teleports, also call [`Arena::clear_persistent_manifolds`].
     /// Use [`Arena::set_car_state_full`] to preserve tuning for replay or cloning.
     pub fn set_car_state(&mut self, car_idx: usize, core: CarCore) {
@@ -1194,7 +1204,9 @@ impl Arena {
     /// Restore an exact car snapshot. Use only for replay or cloning.
     ///
     /// Copies core, tuning, and cache without validation or normalization.
-    /// Clears cached body impulses. Hidden wheel contacts and the sticky gate
+    /// The cache includes the previous world-wheel count and demo attribution,
+    /// so a full snapshot restores both gates exactly.
+    /// Clears cached body impulses. Hidden Bullet wheel contacts and the sticky gate
     /// carry over. For replay corrections, call [`Arena::refresh_car_sticky_gate`].
     /// For planning reuse, call [`Arena::reset_car_transient_contacts`] instead.
     /// Also call [`Arena::clear_persistent_manifolds`] for far teleports.
@@ -1210,6 +1222,8 @@ impl Arena {
     /// Edit full car state in place. Use only for replay or cloning.
     ///
     /// Keeps unedited fields unchanged. Does not validate or normalize values.
+    /// Cache fields, including the previous world-wheel count and demo
+    /// attribution, stay unchanged.
     /// Body and contact handling match [`Arena::set_car_state_full`].
     /// If the callback panics, completed edits remain. The body is synchronized
     /// during unwinding.
@@ -1694,69 +1708,260 @@ impl ContactAddedCallback for NopContactAddedCallback {
     }
 }
 
-fn is_within_rect_cone(
-    forward: Vec3A,
-    right: Vec3A,
-    up: Vec3A,
-    delta: Vec3A,
-    b_reverse: bool,
-    yaw_limit_deg: f32,
-    pitch_limit_deg: f32,
-) -> bool {
-    debug_assert!(yaw_limit_deg < 90.0 && pitch_limit_deg < 90.0);
+/// Keep a vector whose squared length is already 1 bit-exact,
+/// and use a zero vector below the small guard.
+fn normalize_unless_one(v: Vec3A) -> Vec3A {
+    let len_sq = v.length_squared();
+    if len_sq != 1.0 {
+        if len_sq < 1e-8 {
+            Vec3A::ZERO
+        } else {
+            v * (1.0 / len_sq.sqrt())
+        }
+    } else {
+        v
+    }
+}
 
-    let fwd = if b_reverse { -forward } else { forward };
-    let Some(d) = delta.try_normalize() else {
-        return false;
+fn hitbox_center(state: &CarState, config: &CarBodyConfig) -> Vec3A {
+    let rot_mat = state.phys.rot_mat;
+    let offset = config.hitbox_pos_offset;
+    state.phys.pos + rot_mat.mul_transpose_vec3a(offset)
+}
+
+/// The victim's hitbox center direction is measured in the attacker's frame.
+/// Each angle removes the other axis component scaled by 1/1.01 (1.01 when negative).
+///
+/// Pitch is the angle off the forward/up plane;
+/// yaw is the angle off the forward/right plane.
+/// The caller supplies both limits so the bump and demo gates cannot drift apart.
+fn is_within_forward_cone(
+    attacker: &CarState,
+    attacker_config: &CarBodyConfig,
+    victim: &CarState,
+    victim_config: &CarBodyConfig,
+    reverse: bool,
+    max_yaw_deg: f32,
+    max_pitch_deg: f32,
+) -> bool {
+    let fwd = attacker.phys.get_forward_dir();
+    let delta = normalize_unless_one(
+        hitbox_center(victim, victim_config) - hitbox_center(attacker, attacker_config),
+    );
+    let fwd = if reverse { -fwd } else { fwd };
+
+    let angle_deg = |axis: Vec3A| {
+        let mut k = delta.dot(axis);
+        k = if k >= 0.0 { k / 1.01 } else { k * 1.01 };
+        let projected = normalize_unless_one(delta - axis * k);
+        fwd.dot(projected).clamp(-1.0, 1.0).acos() * 57.29578
     };
 
-    let f = d.dot(fwd);
-    if f <= 0.0 {
+    // Pitch first: the PR helper rejects on pitch before it reads yaw.
+    if angle_deg(attacker.phys.get_right_dir()) > max_pitch_deg {
+        return false;
+    }
+    angle_deg(attacker.phys.get_up_dir()) <= max_yaw_deg
+}
+
+/// Result of the same-tick demolition gate for one contact direction.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum DemoGate {
+    /// Neither car is demolished. The contact may demolish or bump.
+    Normal,
+    /// The contact must be ignored.
+    Skip,
+    /// The attacker was demolished earlier in this tick by this victim. It may
+    /// still demolish the victim, but it must not bump it.
+    DemoOnly,
+}
+
+impl DemoGate {
+    /// Only an undemolished pair may bump.
+    const fn may_bump(self) -> bool {
+        matches!(self, Self::Normal)
+    }
+}
+
+/// The same-tick demolition gate.
+fn demo_gate(
+    attacker_demoed: bool,
+    victim_demoed: bool,
+    attacker_demoed_by_victim_this_tick: bool,
+) -> DemoGate {
+    if !(attacker_demoed || victim_demoed) {
+        DemoGate::Normal
+    } else if victim_demoed || !attacker_demoed_by_victim_this_tick {
+        DemoGate::Skip
+    } else {
+        DemoGate::DemoOnly
+    }
+}
+
+/// Integrate a car pose over `t` seconds with a constant velocity and
+/// angular velocity.
+fn integrate_pose(state: &mut CarState, vel: Vec3A, t: f32) {
+    state.phys.pos += vel * t;
+
+    let ang_vel = state.phys.ang_vel;
+    let ang_speed = ang_vel.length();
+    let theta = ang_speed * t;
+    if ang_speed > 0.0 && theta != 0.0 {
+        let axis = ang_vel / ang_speed;
+        let c = theta.cos();
+        let s = theta.sin();
+        let rot = |x: Vec3A| x * c + axis.cross(x) * s + axis * (axis.dot(x) * (1.0 - c));
+        let rot_mat = state.phys.rot_mat;
+        state.phys.rot_mat = Mat3A::from_cols(
+            rot(rot_mat.x_axis),
+            rot(rot_mat.y_axis),
+            rot(rot_mat.z_axis),
+        );
+    }
+}
+
+/// Separating-axis depth of two oriented hitboxes, in uu.
+/// Positive values are separated;
+/// the depth is the largest gap over the 15 candidate axes.
+fn hitbox_separation(
+    a: &CarState,
+    a_config: &CarBodyConfig,
+    b: &CarState,
+    b_config: &CarBodyConfig,
+) -> f32 {
+    let a_rot = a.phys.rot_mat;
+    let b_rot = b.phys.rot_mat;
+    let a_half = a_config.hitbox_size * 0.5;
+    let b_half = b_config.hitbox_size * 0.5;
+
+    let a_center = a.phys.pos + a_rot * a_config.hitbox_pos_offset;
+    let b_center = b.phys.pos + b_rot * b_config.hitbox_pos_offset;
+    let delta = b_center - a_center;
+
+    let mut best = -1e30f32;
+    let mut test = |axis: Vec3A| {
+        // Reach of each box along `axis`:
+        // the row-dot projections onto its own axes,
+        // scaled by the half extents.
+        let a_reach = a_rot.mul_transpose_vec3a(axis).abs();
+        let b_reach = b_rot.mul_transpose_vec3a(axis).abs();
+
+        let mut depth = delta.dot(axis).abs();
+        for i in 0..3 {
+            depth -= a_reach[i] * a_half[i] + b_reach[i] * b_half[i];
+        }
+
+        best = best.max(depth);
+    };
+
+    let a_cols = [a_rot.x_axis, a_rot.y_axis, a_rot.z_axis];
+    let b_cols = [b_rot.x_axis, b_rot.y_axis, b_rot.z_axis];
+    for col in a_cols.into_iter().chain(b_cols) {
+        test(col);
+    }
+
+    for a_col in a_cols {
+        for b_col in b_cols {
+            let axis = a_col.cross(b_col);
+            let len = axis.length();
+            if len > 1e-6 {
+                test(axis / len);
+            }
+        }
+    }
+
+    best
+}
+
+/// Replace both poses with the time-of-impact poses that the game uses for
+/// the demolition cone.
+///
+/// Both hitboxes are swept from one tick before to one tick after their
+/// start-of-tick poses. The hit is where they overlap by the allowed
+/// penetration. With no hit, the start-of-tick poses stay.
+fn get_time_of_impact_poses(
+    a: &mut CarState,
+    a_config: &CarBodyConfig,
+    a_vel: Vec3A,
+    b: &mut CarState,
+    b_config: &CarBodyConfig,
+    b_vel: Vec3A,
+    tick_time: f32,
+) {
+    /// Allowed penetration 0.04 BT minus btContinuousConvexCollision's 0.001 BT.
+    const PENETRATION: f32 = 0.039 * 50.0;
+
+    let separation = |lambda: f32| {
+        let t = (2.0 * lambda - 1.0) * tick_time;
+        let mut ai = *a;
+        let mut bi = *b;
+        integrate_pose(&mut ai, a_vel, t);
+        integrate_pose(&mut bi, b_vel, t);
+        hitbox_separation(&ai, a_config, &bi, b_config) + PENETRATION
+    };
+
+    let lambda = if separation(0.0) <= 0.0 {
+        0.0
+    } else if separation(1.0) > 0.0 {
+        return;
+    } else {
+        let mut lo = 0.0f32;
+        let mut hi = 1.0f32;
+        for _ in 0..24 {
+            let mid = (lo + hi) * 0.5;
+            if separation(mid) > 0.0 {
+                lo = mid;
+            } else {
+                hi = mid;
+            }
+        }
+        hi
+    };
+
+    let t = (2.0 * lambda - 1.0) * tick_time;
+    integrate_pose(a, a_vel, t);
+    integrate_pose(b, b_vel, t);
+}
+
+fn should_demolish(
+    attacker: &CarState,
+    attacker_config: &CarBodyConfig,
+    victim: &CarState,
+    victim_config: &CarBodyConfig,
+    tick_time: f32,
+) -> bool {
+    use consts::car::{demo, supersonic};
+
+    if !attacker.is_supersonic {
         return false;
     }
 
-    // angle = atan2(|component|, f) <= limit  <=>  |component| <= f * tan(limit)
-    d.dot(right).abs() <= f * yaw_limit_deg.to_radians().tan()
-        && d.dot(up).abs() <= f * pitch_limit_deg.to_radians().tan()
-}
+    let start_vel = attacker.phys.vel;
+    let forward_speed = start_vel.dot(attacker.phys.get_forward_dir());
+    if forward_speed.abs() < supersonic::MAINTAIN_MIN_SPEED {
+        return false;
+    }
 
-fn is_within_demo_cone(
-    forward: Vec3A,
-    right: Vec3A,
-    up: Vec3A,
-    delta: Vec3A,
-    b_reverse: bool,
-) -> bool {
-    use consts::car::demo;
+    let mut attacker_pose = *attacker;
+    let mut victim_pose = *victim;
+    get_time_of_impact_poses(
+        &mut attacker_pose,
+        attacker_config,
+        start_vel,
+        &mut victim_pose,
+        victim_config,
+        victim.phys.vel,
+        tick_time,
+    );
 
-    is_within_rect_cone(
-        forward,
-        right,
-        up,
-        delta,
-        b_reverse,
+    is_within_forward_cone(
+        &attacker_pose,
+        attacker_config,
+        &victim_pose,
+        victim_config,
+        forward_speed < 0.0,
         demo::YAW_LIMIT_DEG,
         demo::PITCH_LIMIT_DEG,
-    )
-}
-
-fn is_within_bump_cone(
-    forward: Vec3A,
-    right: Vec3A,
-    up: Vec3A,
-    delta: Vec3A,
-    b_reverse: bool,
-) -> bool {
-    use consts::car::bump;
-
-    is_within_rect_cone(
-        forward,
-        right,
-        up,
-        delta,
-        b_reverse,
-        bump::YAW_LIMIT_DEG,
-        bump::PITCH_LIMIT_DEG,
     )
 }
 
@@ -1849,11 +2054,6 @@ impl Arena {
 
         let (mut attacker, mut victim) = both_cars.into();
 
-        // NOTE: Checking the victim first, because in many use-cases, repeat-demo-victims are more likely
-        if victim.state.is_demoed || attacker.state.is_demoed {
-            return;
-        }
-
         // Test collision both ways
         for is_swapped in [false, true] {
             let mut attacker_idx = car_1_idx;
@@ -1866,12 +2066,15 @@ impl Arena {
             let attacker_state = &attacker.state;
             let victim_state = &victim.state;
 
-            if attacker_state.bump_cooldown_timer > 0.0
-                && attacker_state
-                    .bump_cooldown_victim
-                    .is_none_or(|v| v == victim_idx)
-            {
-                // In cooldown for this victim pair (None = all victims)
+            // A car demolished by the other car earlier in this tick can still demolish it,
+            // but not bump it.
+            let gate = demo_gate(
+                attacker_state.is_demoed,
+                victim_state.is_demoed,
+                attacker.state.cache.demo_tick == self.tick_count
+                    && attacker.state.cache.demoer_idx == Some(victim_idx),
+            );
+            if gate == DemoGate::Skip {
                 continue;
             }
 
@@ -1891,61 +2094,66 @@ impl Arena {
                 continue;
             }
 
-            let center_in_cone = is_within_bump_cone(
-                attacker_state.phys.get_forward_dir(),
-                attacker_state.phys.get_right_dir(),
-                attacker_state.phys.get_up_dir(),
-                delta_pos,
+            // The game bumps only when the other car's hitbox center is in the
+            // bumper's 70 deg forward cone.
+            let bumper = is_within_forward_cone(
+                attacker_state,
+                &attacker.info.config,
+                victim_state,
+                &victim.info.config,
                 false,
+                consts::car::bump::YAW_LIMIT_DEG,
+                consts::car::bump::PITCH_LIMIT_DEG,
             );
 
-            // Contact-relative residual
-            let (contact_on_attacker, contact_on_victim) = if is_swapped {
-                (manifold_point.pos_world_on_b, manifold_point.pos_world_on_a)
-            } else {
-                (manifold_point.pos_world_on_a, manifold_point.pos_world_on_b)
-            };
-            let gate_vec = (victim_state.phys.pos - contact_on_victim * BT_TO_UU)
-                - (attacker_state.phys.pos - contact_on_attacker * BT_TO_UU);
-            let residual_in_cone = is_within_bump_cone(
-                attacker_state.phys.get_forward_dir(),
-                attacker_state.phys.get_right_dir(),
-                attacker_state.phys.get_up_dir(),
-                gate_vec,
-                false,
-            );
-
-            if !center_in_cone && !residual_in_cone {
-                continue;
-            }
-
+            // Demolitions are checked before the bump cooldown.
             let mut is_demo = match self.config.mutators.demo_mode {
                 DemoMode::OnContact => true,
                 DemoMode::Disabled => false,
-                DemoMode::Normal => {
-                    attacker_state.is_supersonic && {
-                        let fwd_speed = attacker_state
-                            .phys
-                            .vel
-                            .dot(attacker_state.phys.get_forward_dir());
-                        fwd_speed.abs() >= consts::car::supersonic::MAINTAIN_MIN_SPEED
-                            && is_within_demo_cone(
-                                attacker_state.phys.get_forward_dir(),
-                                attacker_state.phys.get_right_dir(),
-                                attacker_state.phys.get_up_dir(),
-                                delta_pos,
-                                fwd_speed < 0.0,
-                            )
-                    }
-                }
+                DemoMode::Normal => should_demolish(
+                    attacker_state,
+                    &attacker.info.config,
+                    victim_state,
+                    &victim.info.config,
+                    TICK_TIME,
+                ),
             };
             if is_demo && !self.config.mutators.enable_team_demos {
                 is_demo = attacker.team != victim.team;
             }
 
+            let contact_point = if is_swapped {
+                manifold_point.pos_world_on_b
+            } else {
+                manifold_point.pos_world_on_a
+            } * BT_TO_UU;
+
             if is_demo {
                 victim.demolish(self.config.mutators.respawn_delay);
-            } else {
+                victim.state.cache.demo_tick = self.tick_count;
+                victim.state.cache.demoer_idx = Some(attacker_idx);
+                self.events.push(ArenaEvent::CarHitCar(CarHitCarEvent {
+                    bumper_car_idx: attacker_idx,
+                    victim_car_idx: victim_idx,
+                    contact_point,
+                    is_demo: true,
+                }));
+                continue;
+            }
+            if !gate.may_bump() {
+                continue;
+            }
+
+            if attacker_state.bump_cooldown_timer > 0.0
+                && attacker_state
+                    .bump_cooldown_victim
+                    .is_none_or(|v| v == victim_idx)
+            {
+                // In cooldown for this victim pair (None = all victims)
+                continue;
+            }
+
+            if bumper {
                 use consts::curves;
 
                 let ground_hit = victim_state.cache.is_on_ground;
@@ -1966,21 +2174,260 @@ impl Arena {
                     bump_impulse * self.config.mutators.bump_force_scale * UU_TO_BT;
             }
 
-            attacker.state.bump_cooldown_timer = self.config.mutators.bump_cooldown_time;
+            // The game's next bump needs the physics time strictly past the cooldown: half a tick longer.
+            // It also starts without a bump.
+            attacker.state.bump_cooldown_timer =
+                self.config.mutators.bump_cooldown_time + TICK_TIME * 0.5;
             attacker.state.bump_cooldown_victim = Some(victim_idx);
 
-            let contact_point = if is_swapped {
-                manifold_point.pos_world_on_b
-            } else {
-                manifold_point.pos_world_on_a
-            } * BT_TO_UU;
-
-            self.events.push(ArenaEvent::CarHitCar(CarHitCarEvent {
-                bumper_car_idx: attacker_idx,
-                victim_car_idx: victim_idx,
-                contact_point,
-                is_demo,
-            }));
+            if bumper {
+                self.events.push(ArenaEvent::CarHitCar(CarHitCarEvent {
+                    bumper_car_idx: attacker_idx,
+                    victim_car_idx: victim_idx,
+                    contact_point,
+                    is_demo: false,
+                }));
+            }
         }
+    }
+}
+
+#[cfg(test)]
+mod bump_demo_tests {
+    use std::sync::Once;
+
+    use super::*;
+
+    fn ensure_init() {
+        static INIT: Once = Once::new();
+        INIT.call_once(|| {
+            crate::init(
+                concat!(env!("CARGO_MANIFEST_DIR"), "/../collision_meshes"),
+                true,
+            )
+            .expect("load collision meshes");
+        });
+    }
+
+    fn tilted_arena() -> (Arena, usize) {
+        let mut arena = Arena::new(GameMode::Soccar);
+        let car = arena.add_car(Team::Blue, CarBodyConfig::OCTANE);
+        let mut state = CarState::DEFAULT;
+        state.phys.pos = Vec3A::new(200.0, 0.0, 35.0);
+        state.phys.rot_mat = Mat3A::from_rotation_x(50.0f32.to_radians());
+        state.phys.vel = Vec3A::ZERO;
+        state.phys.ang_vel = Vec3A::ZERO;
+        arena.set_car_state_full(car, state);
+        arena.refresh_car_contacts(car);
+        (arena, car)
+    }
+
+    /// A full snapshot must restore the cached world-wheel count. The count is
+    /// populated by a contact refresh, then changed before the restore. The
+    /// next tick must match an arena that never changed it.
+    #[test]
+    fn full_snapshot_restores_the_world_wheel_count() {
+        ensure_init();
+        let (mut arena, car) = tilted_arena();
+        let (mut control, control_car) = tilted_arena();
+        assert_eq!(arena.cars[car].state.cache.world_wheels_prev, 2);
+
+        let snapshot = *arena.get_car_state(car);
+        arena.cars[car].state.cache.world_wheels_prev = 0;
+        arena.set_car_state_full(car, snapshot);
+
+        let controls = CarControls::DEFAULT.with_throttle(1.0);
+        for (arena, car) in [(&mut arena, car), (&mut control, control_car)] {
+            arena.set_car_controls(car, controls);
+            arena.edit_car_state_full(car, |state| state.set_prev_controls(controls));
+        }
+
+        arena.step_tick();
+        control.step_tick();
+
+        assert_eq!(
+            arena.get_car_state(car).phys,
+            control.get_car_state(control_car).phys
+        );
+    }
+
+    fn car_state(pos: Vec3A, rot_mat: Mat3A, vel: Vec3A) -> CarState {
+        CarState::from(CarCore::grounded(
+            PhysState {
+                pos,
+                rot_mat,
+                vel,
+                ang_vel: Vec3A::ZERO,
+            },
+            0.0,
+        ))
+    }
+
+    #[test]
+    fn hitbox_center_uses_the_row_dot_convention() {
+        let config = CarBodyConfig::OCTANE;
+        let yaw_90 = Mat3A::from_euler(EulerRot::ZYX, PI / 2.0, 0.0, 0.0);
+        let state = car_state(Vec3A::new(1.0, 2.0, 3.0), yaw_90, Vec3A::ZERO);
+
+        // Yaw 90: forward = +Y, right = -X, up = +Z. The PR transform is
+        // (offset . forward, offset . right, offset . up), not the direct
+        // local-to-world product.
+        let expected = Vec3A::new(
+            1.0,
+            2.0 - config.hitbox_pos_offset.x,
+            3.0 + config.hitbox_pos_offset.z,
+        );
+        assert!((hitbox_center(&state, &config) - expected).length() < 1e-4);
+    }
+
+    #[test]
+    fn forward_cone_uses_the_pr_yaw_and_pitch_limits() {
+        let config = CarBodyConfig::OCTANE;
+        let attacker = car_state(Vec3A::ZERO, Mat3A::IDENTITY, Vec3A::new(2300.0, 0.0, 0.0));
+
+        let yaw_46 = 46.0f32.to_radians();
+        let victim = car_state(
+            Vec3A::new(200.0 * yaw_46.cos(), 200.0 * yaw_46.sin(), 0.0),
+            Mat3A::IDENTITY,
+            Vec3A::ZERO,
+        );
+        assert!(is_within_forward_cone(
+            &attacker,
+            &config,
+            &victim,
+            &config,
+            false,
+            consts::car::bump::YAW_LIMIT_DEG,
+            consts::car::bump::PITCH_LIMIT_DEG
+        ));
+        assert!(!is_within_forward_cone(
+            &attacker,
+            &config,
+            &victim,
+            &config,
+            false,
+            consts::car::demo::YAW_LIMIT_DEG,
+            consts::car::demo::PITCH_LIMIT_DEG
+        ));
+
+        let pitch_40 = 40.0f32.to_radians();
+        let above = car_state(
+            Vec3A::new(200.0 * pitch_40.cos(), 0.0, 200.0 * pitch_40.sin()),
+            Mat3A::IDENTITY,
+            Vec3A::ZERO,
+        );
+        assert!(!is_within_forward_cone(
+            &attacker,
+            &config,
+            &above,
+            &config,
+            false,
+            consts::car::bump::YAW_LIMIT_DEG,
+            consts::car::bump::PITCH_LIMIT_DEG
+        ));
+    }
+
+    #[test]
+    fn forward_cone_uses_both_hitbox_offsets() {
+        let mut flat = CarBodyConfig::OCTANE;
+        flat.hitbox_pos_offset = Vec3A::ZERO;
+        let mut shifted = CarBodyConfig::OCTANE;
+        shifted.hitbox_pos_offset = Vec3A::new(0.0, 0.0, -25.0);
+
+        let attacker = car_state(Vec3A::ZERO, Mat3A::IDENTITY, Vec3A::new(2300.0, 0.0, 0.0));
+        // Raw position pitch is 37.95 degrees: outside the 36.87 pitch limit.
+        let victim = car_state(Vec3A::new(100.0, 0.0, 78.0), Mat3A::IDENTITY, Vec3A::ZERO);
+
+        assert!(!is_within_forward_cone(
+            &attacker,
+            &flat,
+            &victim,
+            &flat,
+            false,
+            consts::car::bump::YAW_LIMIT_DEG,
+            consts::car::bump::PITCH_LIMIT_DEG
+        ));
+        // The victim offset lowers its center by 25 uu, so the center pitch
+        // is about 27.95 degrees: inside the limit.
+        assert!(is_within_forward_cone(
+            &attacker,
+            &flat,
+            &victim,
+            &shifted,
+            false,
+            consts::car::bump::YAW_LIMIT_DEG,
+            consts::car::bump::PITCH_LIMIT_DEG
+        ));
+    }
+
+    #[test]
+    fn same_tick_demo_gate_rejects_a_different_demoer_and_blocks_bumps() {
+        use DemoGate::{DemoOnly, Normal, Skip};
+
+        assert_eq!(demo_gate(false, false, false), Normal);
+        // A victim that is already demolished never takes a second demo.
+        assert_eq!(demo_gate(false, true, false), Skip);
+        assert_eq!(demo_gate(false, true, true), Skip);
+        // A different demoer in the same tick is rejected.
+        assert_eq!(demo_gate(true, false, false), Skip);
+        // Both cars already demolished: skip, even with the same demoer.
+        assert_eq!(demo_gate(true, true, true), Skip);
+        // The same demoer can still demolish the car that demolished it, but
+        // that contact may not bump.
+        assert_eq!(demo_gate(true, false, true), DemoOnly);
+
+        assert!(Normal.may_bump());
+        assert!(!DemoOnly.may_bump());
+        assert!(!Skip.may_bump());
+    }
+
+    #[test]
+    fn time_of_impact_moves_both_cars_toward_the_overlap() {
+        let config = CarBodyConfig::OCTANE;
+        let a_vel = Vec3A::new(2300.0, 0.0, 0.0);
+        let b_vel = Vec3A::new(-2300.0, 0.0, 0.0);
+        let mut a = car_state(Vec3A::ZERO, Mat3A::IDENTITY, a_vel);
+        let mut b = car_state(Vec3A::new(120.0, 0.0, 0.0), Mat3A::IDENTITY, b_vel);
+
+        get_time_of_impact_poses(&mut a, &config, a_vel, &mut b, &config, b_vel, TICK_TIME);
+
+        assert!(a.phys.pos.x > 0.0);
+        assert!(b.phys.pos.x < 120.0);
+        // Both cars stop at the allowed penetration, not at the sweep end.
+        let gap = b.phys.pos.x - a.phys.pos.x;
+        assert!(gap < 120.0 && gap > 100.0, "gap {gap}");
+    }
+
+    #[test]
+    fn should_demolish_needs_supersonic_speed_and_cone() {
+        let config = CarBodyConfig::OCTANE;
+        let front = car_state(Vec3A::new(120.0, 0.0, 0.0), Mat3A::IDENTITY, Vec3A::ZERO);
+
+        let mut attacker = car_state(Vec3A::ZERO, Mat3A::IDENTITY, Vec3A::new(2300.0, 0.0, 0.0));
+        attacker.is_supersonic = true;
+        assert!(should_demolish(
+            &attacker, &config, &front, &config, TICK_TIME
+        ));
+
+        attacker.is_supersonic = false;
+        assert!(!should_demolish(
+            &attacker, &config, &front, &config, TICK_TIME
+        ));
+
+        attacker.is_supersonic = true;
+        attacker.phys.vel = Vec3A::new(2000.0, 0.0, 0.0);
+        assert!(!should_demolish(
+            &attacker, &config, &front, &config, TICK_TIME
+        ));
+
+        // Reverse uses the forward speed sign and the reversed cone.
+        let behind = car_state(Vec3A::new(-120.0, 0.0, 0.0), Mat3A::IDENTITY, Vec3A::ZERO);
+        attacker.phys.vel = Vec3A::new(-2300.0, 0.0, 0.0);
+        assert!(should_demolish(
+            &attacker, &config, &behind, &config, TICK_TIME
+        ));
+        assert!(!should_demolish(
+            &attacker, &config, &front, &config, TICK_TIME
+        ));
     }
 }

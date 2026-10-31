@@ -281,6 +281,9 @@ impl Car {
         // Fresh spawn must not inherit pre-demo/drive wheel contacts
         self.bullet_vehicle.reset_transient_contacts();
         self.sticky_gate_prev = false;
+        self.state.cache.world_wheels_prev = 0;
+        self.state.cache.demo_tick = u64::MAX;
+        self.state.cache.demoer_idx = None;
     }
 
     /// Current simulation state (same as `Arena::get_car_state(idx)`).
@@ -296,6 +299,7 @@ impl Car {
             &bullet_world.bodies()[self.rigid_body_idx],
             TICK_TIME,
         );
+        self.state.cache.world_wheels_prev = self.bullet_vehicle.num_world_contacts() as u8;
     }
 
     pub(crate) fn refresh_contacts(&mut self, world: &DiscreteDynamicsWorld) {
@@ -309,6 +313,7 @@ impl Car {
             &world.bodies()[self.rigid_body_idx],
             TICK_TIME,
         );
+        self.state.cache.world_wheels_prev = self.bullet_vehicle.num_world_contacts() as u8;
         self.update_contact_state(world);
         self.state.cache.world_contact_normal = None;
     }
@@ -326,6 +331,7 @@ impl Car {
     pub(crate) fn reset_transient_contacts(&mut self) {
         self.bullet_vehicle.reset_transient_contacts();
         self.sticky_gate_prev = false;
+        self.state.cache.world_wheels_prev = 0;
         self.state.cache.is_on_ground = false;
         self.state.cache.wheels_with_contact = [None; 4];
         self.state.cache.world_contact_normal = None;
@@ -626,13 +632,8 @@ impl Car {
 
     fn update_auto_flip(&mut self, rb: &mut RigidBody, jump_pressed: bool) {
         if jump_pressed
-            && self
-                .state
-                .cache
-                .world_contact_normal
-                .is_some_and(|world_contact_normal| {
-                    world_contact_normal.z > car_consts::autoflip::NORM_Z_THRESH
-                })
+            && let Some(world_contact_normal) = self.state.cache.world_contact_normal
+            && world_contact_normal.z > car_consts::autoflip::NORM_Z_THRESH
         {
             let rot_mat = self.state.phys.rot_mat;
             let y_z = rot_mat.y_axis.z;
@@ -645,7 +646,9 @@ impl Car {
             };
 
             let abs_roll = roll.abs();
-            if abs_roll > car_consts::autoflip::ROLL_THRESH {
+            if world_contact_normal.dot(self.state.get_up_dir())
+                < car_consts::autoflip::UP_DOT_THRESH
+            {
                 self.state.auto_flip_timer = car_consts::autoflip::TIME * (abs_roll / PI);
                 self.state.auto_flip_torque_scale = autoflip_impulse_sign(&self.state.phys.rot_mat);
                 self.state.is_auto_flipping = true;
@@ -1016,15 +1019,17 @@ impl Car {
 
         let quant_throttle = quantize_axis_input(self.state.controls.throttle);
 
-        // Skip auto-roll on the tick a flip ends. The car still counts as
-        // flipping for auto-roll on its last flip tick.
+        // Skip auto-roll on the tick a flip ends.
+        // The car still counts as flipping for auto-roll on its last flip tick.
+        // Auto-roll counts last tick's world-contact wheels only.
+        let world_wheels = usize::from(self.state.cache.world_wheels_prev);
         if quant_throttle != 0.0
             && !self.state.is_flipping
             && !flip_ended
-            && ((0 < num_wheels_in_contact && num_wheels_in_contact < 4)
-                || self.state.cache.world_contact_normal.is_some())
+            && world_wheels < 4
+            && (world_wheels > 0 || self.state.cache.world_contact_normal.is_some())
         {
-            self.update_auto_roll(rb, num_wheels_in_contact, &mut cached_upwards_dir);
+            self.update_auto_roll(rb, world_wheels, &mut cached_upwards_dir);
         }
 
         self.state.cache.world_contact_normal = None;
@@ -1052,6 +1057,7 @@ impl Car {
                 .as_ref()
                 .is_some_and(|info| info.is_in_contact_with_world)
         });
+        self.state.cache.world_wheels_prev = self.bullet_vehicle.num_world_contacts() as u8;
     }
 
     fn update_contact_state(&mut self, world: &DiscreteDynamicsWorld) {

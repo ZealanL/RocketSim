@@ -39,9 +39,9 @@ pub struct CarCore {
     pub auto_flip_timer: f32,
     /// Roll direction sign for auto-flip angular velocity.
     pub auto_flip_torque_scale: f32,
-    /// Seconds until this car can bump or demo again.
+    /// Seconds until this car can bump the same victim again. Does not block demolition.
     pub bump_cooldown_timer: f32,
-    /// Arena index of the last bumped or demoed car.
+    /// Arena index of the last car that started the bump cooldown.
     pub bump_cooldown_victim: Option<usize>,
     /// Last arena tick when this car added a ball-hit impulse.
     pub last_extra_hit_tick: Option<u64>,
@@ -244,7 +244,9 @@ impl Default for CarTuning {
     }
 }
 
-/// Collision and previous-control data. Read this data with the cache getters.
+/// Collision, previous-control, and hidden per-tick data.
+/// A full car snapshot retains these fields. Read contact data with the cache
+/// getters.
 #[derive(Clone, Copy, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub(crate) struct CarCache {
@@ -252,6 +254,20 @@ pub(crate) struct CarCache {
     pub wheels_with_contact: [Option<RaycastHitInfo>; 4],
     pub world_contact_normal: Option<Vec3A>,
     pub prev_controls: CarControls,
+    /// Number of wheels with world contact on the previous tick.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub world_wheels_prev: u8,
+    /// Tick on which another car demolished this car, or `u64::MAX`.
+    #[cfg_attr(feature = "serde", serde(default = "default_demo_tick"))]
+    pub demo_tick: u64,
+    /// Arena index of the car that demolished this car on `demo_tick`.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub demoer_idx: Option<usize>,
+}
+
+#[cfg(feature = "serde")]
+const fn default_demo_tick() -> u64 {
+    u64::MAX
 }
 
 impl Default for CarCache {
@@ -261,6 +277,9 @@ impl Default for CarCache {
             wheels_with_contact: [None; 4],
             world_contact_normal: None,
             prev_controls: CarControls::DEFAULT,
+            world_wheels_prev: 0,
+            demo_tick: u64::MAX,
+            demoer_idx: None,
         }
     }
 }
@@ -348,9 +367,9 @@ pub struct CarState {
     pub auto_flip_timer: f32,
     /// Roll direction sign for auto-flip angular velocity.
     pub auto_flip_torque_scale: f32,
-    /// Seconds until this car can bump or demo again.
+    /// Seconds until this car can bump the same victim again. Does not block demolition.
     pub bump_cooldown_timer: f32,
-    /// Arena index of the last bumped or demoed car.
+    /// Arena index of the last car that started the bump cooldown.
     pub bump_cooldown_victim: Option<usize>,
     /// Last arena tick when this car added a ball-hit impulse.
     pub last_extra_hit_tick: Option<u64>,
@@ -402,6 +421,9 @@ impl CarState {
             wheels_with_contact: [None; 4],
             world_contact_normal: None,
             prev_controls: CarControls::DEFAULT,
+            world_wheels_prev: 0,
+            demo_tick: u64::MAX,
+            demoer_idx: None,
         },
     };
 
@@ -613,6 +635,9 @@ impl From<CarCore> for CarState {
                 wheels_with_contact: [None; 4],
                 world_contact_normal: None,
                 prev_controls: core.controls,
+                world_wheels_prev: 0,
+                demo_tick: u64::MAX,
+                demoer_idx: None,
             },
         }
     }

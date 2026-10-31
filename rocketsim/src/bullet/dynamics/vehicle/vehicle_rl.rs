@@ -185,6 +185,19 @@ impl VehicleRL {
         self.wheels.len()
     }
 
+    /// Number of wheels whose last raycast hit a world body.
+    pub(crate) fn num_world_contacts(&self) -> usize {
+        self.wheels
+            .iter()
+            .filter(|wheel| {
+                wheel
+                    .raycast_info
+                    .as_ref()
+                    .is_some_and(|info| info.is_in_contact_with_world)
+            })
+            .count()
+    }
+
     /// Apply victim impulses before the next wheel reads the victim velocity.
     /// Keep chassis suspension and friction deferred.
     fn apply_single_wheel_dynamic_effects(

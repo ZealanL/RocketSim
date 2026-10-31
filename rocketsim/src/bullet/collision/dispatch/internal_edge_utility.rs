@@ -1,4 +1,7 @@
-use std::{f32::consts::PI, mem};
+use std::{
+    f32::consts::{PI, TAU},
+    mem,
+};
 
 use glam::{Quat, Vec3, Vec3A};
 
@@ -176,6 +179,21 @@ pub fn generate_internal_edge_info(bvh: &Tree, mesh_interface: &TriangleMesh) ->
         let mut my_node_callback =
             NodeOverlapCallback::new(mesh_interface, &mut connectivity_processor);
         bvh.report_aabb_overlapping_node(&mut my_node_callback, &triangle_a.aabb());
+    }
+
+    // Treats an edge with no neighbouring triangle as planar by storing angle 0 instead of 2 PI
+    for info in triangle_info_map.iter_mut() {
+        if info.edge_v0_v1_angle == TAU {
+            info.edge_v0_v1_angle = 0.0;
+        }
+
+        if info.edge_v1_v2_angle == TAU {
+            info.edge_v1_v2_angle = 0.0;
+        }
+
+        if info.edge_v2_v0_angle == TAU {
+            info.edge_v2_v0_angle = 0.0;
+        }
     }
 
     triangle_info_map

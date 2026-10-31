@@ -1,5 +1,7 @@
+use glam::Vec3A;
+
 use crate::{
-    BoostPad, BoostPadConfig, CarState, MutatorConfig,
+    BoostPad, BoostPadConfig, Car, CarState, MutatorConfig,
     consts::{TICK_TIME, boost_pads},
     shared::{Aabb, bvh},
 };
@@ -8,7 +10,7 @@ struct MembershipProcessor<'a> {
     all_pads: &'a mut [BoostPad],
     touching_pad_by_car: &'a mut [Option<usize>],
     car_idx: usize,
-    car_pos: glam::Vec3A,
+    car_pos: Vec3A,
 }
 
 impl bvh::ProcessNode for MembershipProcessor<'_> {
@@ -27,12 +29,12 @@ impl bvh::ProcessNode for MembershipProcessor<'_> {
     }
 }
 
-fn overlaps_values(pad_pos: glam::Vec3A, radius: f32, pos: glam::Vec3A) -> bool {
+fn overlaps_values(pad_pos: Vec3A, radius: f32, pos: Vec3A) -> bool {
     let dist_sq_2d = pad_pos.truncate().distance_squared(pos.truncate());
     dist_sq_2d < radius.powi(2) && (pos.z - pad_pos.z).abs() <= boost_pads::CYL_HEIGHT
 }
 
-fn can_receive_boost(car: &crate::sim::car::Car, max_boost: f32) -> bool {
+fn can_receive_boost(car: &Car, max_boost: f32) -> bool {
     !car.state.is_demoed
         && matches!(
             car.state.boost.partial_cmp(&max_boost),
@@ -40,19 +42,15 @@ fn can_receive_boost(car: &crate::sim::car::Car, max_boost: f32) -> bool {
         )
 }
 
-fn hitbox_overlaps_pad_box(
-    pad_pos: glam::Vec3A,
-    box_radius: f32,
-    car: &crate::sim::car::Car,
-) -> bool {
+fn hitbox_overlaps_pad_box(pad_pos: Vec3A, box_radius: f32, car_center: Vec3A, car: &Car) -> bool {
     let rot = car.state.phys.rot_mat;
     let config = car.info.config;
-    let center = car.state.pos + rot * config.hitbox_pos_offset;
+    let center = car_center + rot * config.hitbox_pos_offset;
     let car_axes = [rot.x_axis, rot.y_axis, rot.z_axis];
     let car_half = config.hitbox_size * 0.5;
-    let pad_half = glam::Vec3A::new(box_radius, box_radius, boost_pads::BOX_HEIGHT);
+    let pad_half = Vec3A::new(box_radius, box_radius, boost_pads::BOX_HEIGHT);
     let delta = center - pad_pos;
-    let world_axes = [glam::Vec3A::X, glam::Vec3A::Y, glam::Vec3A::Z];
+    let world_axes = [Vec3A::X, Vec3A::Y, Vec3A::Z];
 
     for axis in world_axes
         .into_iter()
@@ -67,12 +65,12 @@ fn hitbox_overlaps_pad_box(
             continue;
         }
 
-        let pad_radius = pad_half.dot(glam::Vec3A::new(
+        let pad_radius = pad_half.dot(Vec3A::new(
             world_axes[0].dot(axis).abs(),
             world_axes[1].dot(axis).abs(),
             world_axes[2].dot(axis).abs(),
         ));
-        let car_radius = car_half.dot(glam::Vec3A::new(
+        let car_radius = car_half.dot(Vec3A::new(
             car_axes[0].dot(axis).abs(),
             car_axes[1].dot(axis).abs(),
             car_axes[2].dot(axis).abs(),
@@ -156,12 +154,7 @@ impl BoostPadGrid {
         self.touching_pad_by_car.fill(None);
     }
 
-    pub(crate) fn remove_car(
-        &mut self,
-        car_idx: usize,
-        cars: &[crate::sim::car::Car],
-        max_boost: f32,
-    ) {
+    pub(crate) fn remove_car(&mut self, car_idx: usize, cars: &[Car], max_boost: f32) {
         for pad in &mut self.all_pads {
             pad.touching_car_idxs.retain_mut(|idx| {
                 if *idx == car_idx {
@@ -180,11 +173,17 @@ impl BoostPadGrid {
         self.refresh_winners(cars, max_boost);
     }
 
-    pub fn update_membership(&mut self, cars: &[crate::sim::car::Car], max_boost: f32) {
+    pub fn update_membership(&mut self, cars: &[Car], max_boost: f32) {
         self.touching_pad_by_car.resize(cars.len(), None);
         self.touching_pad_by_car.fill(None);
-        let touching_pad_by_car = &mut self.touching_pad_by_car;
+
+        // Tests the car's position halfway through the tick,
+        // so a pickup can land on this tick or the next.
+        // Keep the native pad volumes, but probe at the same phase.
+        let probe = |car: &Car| car.state.pos - car.state.vel * (0.5 * TICK_TIME);
+
         // Pad order resolves duplicate restored membership deterministically.
+        let touching_pad_by_car = &mut self.touching_pad_by_car;
         for (pad_idx, pad) in self.all_pads.iter_mut().enumerate() {
             let pad_pos = pad.config().pos;
             let radius = pad.cyl_radius;
@@ -194,8 +193,10 @@ impl BoostPadGrid {
                     if car.state.is_demoed || touching_pad_by_car[idx].is_some() {
                         return false;
                     }
-                    if overlaps_values(pad_pos, radius, car.state.pos)
-                        || hitbox_overlaps_pad_box(pad_pos, box_radius, car)
+
+                    let car_pos = probe(car);
+                    if overlaps_values(pad_pos, radius, car_pos)
+                        || hitbox_overlaps_pad_box(pad_pos, box_radius, car_pos, car)
                     {
                         touching_pad_by_car[idx] = Some(pad_idx);
                         true
@@ -210,17 +211,19 @@ impl BoostPadGrid {
             if car.state.is_demoed || car.state.pos.z > self.max_pad_z {
                 continue;
             }
+
             // One car can touch one pad. Retention makes discovery unnecessary.
             if self.touching_pad_by_car[car_idx].is_some() {
                 continue;
             }
 
-            let car_aabb = Aabb::new(car.state.pos, car.state.pos);
+            let car_pos = probe(car);
+            let car_aabb = Aabb::new(car_pos, car_pos);
             let mut processor = MembershipProcessor {
                 all_pads: &mut self.all_pads,
                 touching_pad_by_car: &mut self.touching_pad_by_car,
                 car_idx,
-                car_pos: car.state.pos,
+                car_pos,
             };
 
             self.bvh_tree
@@ -229,7 +232,7 @@ impl BoostPadGrid {
         self.refresh_winners(cars, max_boost);
     }
 
-    pub fn refresh_winners(&mut self, cars: &[crate::sim::car::Car], max_boost: f32) {
+    pub fn refresh_winners(&mut self, cars: &[Car], max_boost: f32) {
         for (pad_idx, pad) in self.all_pads.iter().enumerate() {
             let winner = pad.touching_car_idxs.iter().copied().find(|&idx| {
                 cars.get(idx)
@@ -239,12 +242,7 @@ impl BoostPadGrid {
         }
     }
 
-    pub fn refresh_winner(
-        &mut self,
-        pad_idx: usize,
-        cars: &[crate::sim::car::Car],
-        max_boost: f32,
-    ) {
+    pub fn refresh_winner(&mut self, pad_idx: usize, cars: &[Car], max_boost: f32) {
         self.winners[pad_idx] = self.all_pads[pad_idx]
             .touching_car_idxs
             .iter()

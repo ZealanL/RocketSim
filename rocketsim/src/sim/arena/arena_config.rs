@@ -46,7 +46,7 @@ pub struct ArenaConfig {
     /// Use this boost-pad list instead of the mode's default layout.
     /// Pads are re-sorted to RLBot/RLGym order (Y, then X). Their XY
     /// acquisition circles must not overlap. Their radii are 208 uu for big
-    /// pads and 144 uu for small pads. A car can touch only one pad at a time.
+    /// pads and 176 uu for small pads. A car can touch only one pad at a time.
     /// Do not place pads so one configured car hitbox can overlap multiple
     /// pad volumes.
     pub custom_boost_pads: Option<Vec<BoostPadConfig>>,
@@ -131,7 +131,7 @@ impl ArenaConfig {
     ///
     /// Keep the pads' XY acquisition circles separate. Overlapping acquisition
     /// circles are unsupported. Big-pad radius is 208 uu. Small-pad radius is
-    /// 144 uu. A car can touch only one pad at a time. Do not place pads so one
+    /// 176 uu. A car can touch only one pad at a time. Do not place pads so one
     /// configured car hitbox can overlap multiple pad volumes.
     #[must_use]
     pub fn with_custom_boost_pads(mut self, custom_boost_pads: Vec<BoostPadConfig>) -> Self {

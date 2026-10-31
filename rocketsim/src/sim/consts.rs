@@ -207,13 +207,12 @@ pub mod car {
     }
 
     pub mod autoflip {
-        use std::f32::consts::FRAC_1_SQRT_2;
-
         pub const IMPULSE: f32 = 200.0;
         pub const ANG_VEL_DELTA: f32 = 1000.0;
         pub const TIME: f32 = 0.4;
-        pub const NORM_Z_THRESH: f32 = FRAC_1_SQRT_2;
+        pub const NORM_Z_THRESH: f32 = 0.707;
         pub const ROLL_THRESH: f32 = 2.8;
+        pub const UP_DOT_THRESH: f32 = -0.966;
     }
 
     pub mod autoroll {
@@ -558,7 +557,7 @@ pub mod boost_pads {
     /// Pad trigger cylinder height (uu).
     pub const CYL_HEIGHT: f32 = 95.0;
     pub const CYL_RAD_BIG: f32 = 208.0;
-    pub const CYL_RAD_SMALL: f32 = 144.0;
+    pub const CYL_RAD_SMALL: f32 = 176.0;
     pub const BOX_HEIGHT: f32 = 64.0;
     pub const BOX_RAD_BIG: f32 = 160.0;
     pub const BOX_RAD_SMALL: f32 = 96.0;
