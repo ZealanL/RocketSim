@@ -201,6 +201,7 @@ fn run_rlpr_replay(path: &Path, cli: &Args) -> Result<(), Box<dyn std::error::Er
         stats.total_simulation_ticks()
     );
     println!("Elapsed: {:.6}", stats.elapsed.as_secs_f64());
+    println!("Skipped unavailable ticks: {}", stats.skipped_ticks);
     println!("TPS: {:.0}", stats.ticks_per_second());
     Ok(())
 }
