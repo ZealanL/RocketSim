@@ -78,7 +78,7 @@ jobs:
             test-args: --test-threads=1
           - os: windows-2022
             test-args: ""
-          - os: macos-14
+          - os: macos-15
             test-args: ""
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
