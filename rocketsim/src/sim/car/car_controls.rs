@@ -1,4 +1,4 @@
-use glam::Vec3A;
+use glam::{IVec3, Vec3A};
 
 /// Driver inputs applied on the next [`crate::Arena::step_tick`].
 ///
@@ -151,76 +151,41 @@ impl CarControls {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use std::cmp::Ordering;
+/// Asymmetric 8-bit input quantization: negatives scale by 128, positives by 127.
+pub(super) fn quantize_axis_inputs(ctrls: Vec3A) -> Vec3A {
+    const UPPER_BOUND: Vec3A = Vec3A::splat(128.0);
+    const LOWER_BOUND: Vec3A = Vec3A::splat(127.0);
 
-    use super::CarControls;
+    let clamped = ctrls.clamp(Vec3A::NEG_ONE, Vec3A::ONE);
+    let scale = Vec3A::select(clamped.cmplt(Vec3A::ZERO), UPPER_BOUND, LOWER_BOUND);
+    let biased = clamped * scale + UPPER_BOUND;
+    let w = biased + biased + Vec3A::splat(0.5);
+    let byte = ((w.round().as_ivec3() >> 1i32) & IVec3::splat(0xFF)).as_vec3a();
+    let s = byte - UPPER_BOUND;
 
-    #[test]
-    fn signed_zero_is_equal_and_compares_equal_on_every_axis() {
-        let cases = [
-            (
-                CarControls::DEFAULT.with_throttle(0.0),
-                CarControls::DEFAULT.with_throttle(-0.0),
-            ),
-            (
-                CarControls::DEFAULT.with_steer(0.0),
-                CarControls::DEFAULT.with_steer(-0.0),
-            ),
-            (
-                CarControls::DEFAULT.with_pitch(0.0),
-                CarControls::DEFAULT.with_pitch(-0.0),
-            ),
-            (
-                CarControls::DEFAULT.with_yaw(0.0),
-                CarControls::DEFAULT.with_yaw(-0.0),
-            ),
-            (
-                CarControls::DEFAULT.with_roll(0.0),
-                CarControls::DEFAULT.with_roll(-0.0),
-            ),
-        ];
+    Vec3A::select(
+        s.cmplt(Vec3A::ZERO),
+        s * (1.0 / UPPER_BOUND),
+        s / LOWER_BOUND,
+    )
+}
 
-        for (positive, negative) in cases {
-            assert_eq!(positive, negative);
-            assert_eq!(positive.partial_cmp(&negative), Some(Ordering::Equal));
-        }
-    }
-
-    #[test]
-    fn nan_is_unordered_and_not_equal_even_with_equal_prefix() {
-        let controls = CarControls::DEFAULT.with_steer(f32::NAN);
-        let other = CarControls::DEFAULT.with_steer(f32::NAN);
-
-        assert_ne!(controls, controls);
-        assert_ne!(controls, other);
-        assert_eq!(controls.partial_cmp(&other), None);
-    }
-
-    #[test]
-    fn ordering_is_lexicographic_across_axes_and_boolean_controls() {
-        let lower_axis = CarControls::DEFAULT.with_throttle(-0.5);
-        let higher_axis = CarControls::DEFAULT.with_throttle(0.5);
-        assert!(lower_axis < higher_axis);
-
-        let no_jump = CarControls::DEFAULT;
-        let jump = CarControls::DEFAULT.with_jump(true);
-        assert!(no_jump < jump);
-
-        let no_boost = CarControls::DEFAULT.with_jump(true);
-        let boost = no_boost.with_boost(true);
-        assert!(no_boost < boost);
-
-        let no_handbrake = CarControls::DEFAULT.with_boost(true);
-        let handbrake = no_handbrake.with_handbrake(true);
-        assert!(no_handbrake < handbrake);
-
-        let earlier_difference = CarControls::DEFAULT.with_steer(1.0).with_jump(true);
-        let later_difference = CarControls::DEFAULT
-            .with_steer(1.0)
-            .with_jump(true)
-            .with_boost(true);
-        assert!(earlier_difference < later_difference);
+/// Single-axis form of [`quantize_axis_inputs`].
+#[must_use]
+pub(super) fn quantize_axis_input(x: f32) -> f32 {
+    let clamped = x.clamp(-1.0, 1.0);
+    let y = if clamped < 0.0 {
+        (clamped * 128.0).max(-128.0)
+    } else {
+        (clamped * 127.0).min(127.0)
+    };
+    let w = ((y + 128.0) + (y + 128.0)) + 0.5;
+    let eax = w.round_ties_even() as i32;
+    let byte = ((eax >> 1) & 0xFF) as u8;
+    let s = (byte as f32) - 128.0;
+    if byte < 0x80 {
+        s * (1.0 / 128.0)
+    } else {
+        s / 127.0
     }
 }

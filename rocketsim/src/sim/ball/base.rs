@@ -21,8 +21,8 @@ use crate::{
     },
     consts::{BT_TO_UU, TICK_TIME, UU_TO_BT, dropshot, heatseeker, snowday},
     get_neighbor_indices_1, get_neighbor_indices_2, get_tile_pos,
-    shared::{Angle, ue3},
-    sim::{UserInfoType, consts},
+    shared::Angle,
+    sim::{UserInfoType, consts, ue3},
 };
 
 #[derive(Clone, Copy)]

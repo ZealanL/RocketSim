@@ -1,6 +1,9 @@
 use glam::Vec3A;
 
-use crate::sim::{consts::curves, linear_piece_curve::LinearPieceCurve};
+use crate::{
+    shared::LinearPieceCurve,
+    sim::consts::{UU_TO_BT, curves},
+};
 
 /// Full hitbox sizes in uu for the 7 presets
 /// (Octane, Dominus, Plank, Breakout, Hybrid, Merc, Psyclops).
@@ -100,6 +103,15 @@ impl Default for CarBodyConfig {
 }
 
 impl CarBodyConfig {
+    /// Return the wheel-ray minimum hit distance in `BT` squared.
+    ///
+    /// The hitbox height is in uu. The value is squared after conversion to BT.
+    /// Wheel rays reject only smaller squared distances. Equal distances pass.
+    pub(super) fn wheel_ray_min_hit_dist_sq(&self) -> f32 {
+        let min_hit_dist = (self.hitbox_size.z * 0.5 - 2.25) * UU_TO_BT;
+        min_hit_dist * min_hit_dist
+    }
+
     const fn make_car_config(idx: usize, three_wheels: bool) -> Self {
         Self {
             hitbox_size: HITBOX_SIZES[idx],

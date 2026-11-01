@@ -55,4 +55,4 @@ mod sim;
 pub use base::*;
 pub use glam_inc::*;
 
-pub use crate::sim::*;
+pub use crate::{shared::LinearPieceCurve, sim::*};

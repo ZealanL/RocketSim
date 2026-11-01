@@ -3,6 +3,8 @@ mod arena_contact_tracker;
 mod arena_events;
 mod arena_state;
 mod base;
+mod bump_demo;
+mod contacts;
 mod user_raycast;
 
 pub use arena_config::*;

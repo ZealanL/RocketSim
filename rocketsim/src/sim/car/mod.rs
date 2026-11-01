@@ -1,3 +1,4 @@
+mod auto_flip;
 mod base;
 mod car_body_config;
 mod car_controls;

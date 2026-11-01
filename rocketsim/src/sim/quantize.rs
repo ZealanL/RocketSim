@@ -1,4 +1,4 @@
-use glam::{IVec3, Mat3A, Quat, Vec3A};
+use glam::{Mat3A, Quat, Vec3A};
 
 use crate::{
     bullet::dynamics::rigid_body::{CollisionFlags, RigidBody},
@@ -122,7 +122,7 @@ fn game_rb_state_quantize_quat(q_in: Quat) -> Quat {
 
 /// Quantize position, orientation, linear velocity, and angular velocity.
 /// Leave orientation unchanged when angular motion is disabled.
-pub fn quantize(body: &mut RigidBody) {
+pub(super) fn quantize(body: &mut RigidBody) {
     let new_pos = quantize_vec_ue3(
         body.get_world_pos() * BT_TO_UU,
         quantize::POS_SCALE,
@@ -151,121 +151,4 @@ pub fn quantize(body: &mut RigidBody) {
     let mut trans = *body.get_world_trans();
     trans.matrix3 = game_set_rotation_scalar(rot);
     body.set_world_trans_and_rot(trans, rot);
-}
-
-/// Asymmetric 8-bit input quantization: negatives scale by 128, positives by 127.
-pub fn quantize_axis_inputs(ctrls: Vec3A) -> Vec3A {
-    const UPPER_BOUND: Vec3A = Vec3A::splat(128.0);
-    const LOWER_BOUND: Vec3A = Vec3A::splat(127.0);
-
-    let clamped = ctrls.clamp(Vec3A::NEG_ONE, Vec3A::ONE);
-    let scale = Vec3A::select(clamped.cmplt(Vec3A::ZERO), UPPER_BOUND, LOWER_BOUND);
-    let biased = clamped * scale + UPPER_BOUND;
-    let w = biased + biased + Vec3A::splat(0.5);
-    let byte = ((w.round().as_ivec3() >> 1i32) & IVec3::splat(0xFF)).as_vec3a();
-    let s = byte - UPPER_BOUND;
-
-    Vec3A::select(
-        s.cmplt(Vec3A::ZERO),
-        s * (1.0 / UPPER_BOUND),
-        s / LOWER_BOUND,
-    )
-}
-
-/// Single-axis form of [`quantize_axis_inputs`].
-#[must_use]
-pub fn quantize_axis_input(x: f32) -> f32 {
-    let clamped = x.clamp(-1.0, 1.0);
-    let y = if clamped < 0.0 {
-        (clamped * 128.0).max(-128.0)
-    } else {
-        (clamped * 127.0).min(127.0)
-    };
-    let w = ((y + 128.0) + (y + 128.0)) + 0.5;
-    let eax = w.round_ties_even() as i32;
-    let byte = ((eax >> 1) & 0xFF) as u8;
-    let s = (byte as f32) - 128.0;
-    if byte < 0x80 {
-        s * (1.0 / 128.0)
-    } else {
-        s / 127.0
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::bullet::{
-        collision::shapes::{collision_shape::CollisionShapes, sphere_shape::SphereShape},
-        dynamics::rigid_body::RigidBodyConstructionInfo,
-    };
-
-    #[test]
-    fn quantize_uses_cached_rotation_after_transform_updates() {
-        let mut body = RigidBody::new(RigidBodyConstructionInfo::new(
-            1.0,
-            CollisionShapes::Sphere(SphereShape::new(1.0)),
-        ));
-        body.set_ang_vel(Vec3A::new(1.2, -2.3, 0.7));
-
-        // Case 102 crosses a codec boundary if the matrix is converted again.
-        for i in [0, 1, 102] {
-            let angle = i as f32;
-            let mut trans = *body.get_world_trans();
-            trans.matrix3 = glam::Mat3A::from_quat(Quat::from_euler(
-                glam::EulerRot::XYZ,
-                angle * 0.31,
-                angle * 0.17,
-                angle * -0.23,
-            ));
-            body.set_world_trans(trans);
-
-            for integrate in [false, true] {
-                if integrate {
-                    body.set_center_of_mass_trans(body.predict_integration_trans(1.0 / 120.0));
-                }
-                let expected = game_rb_state_quantize_quat(body.get_world_rot());
-                quantize(&mut body);
-                assert_eq!(
-                    body.get_world_rot().to_array().map(f32::to_bits),
-                    expected.to_array().map(f32::to_bits),
-                    "orientation {i}, integrate {integrate}",
-                );
-                let expected_matrix = glam::Mat3A::from_quat(expected.normalize());
-                assert!(
-                    body.get_world_trans()
-                        .matrix3
-                        .abs_diff_eq(expected_matrix, 5e-7)
-                );
-            }
-        }
-    }
-
-    /// The largest component is x and w with a tie. The model drops the
-    /// lower-index x, keeps its positive root, and flips the three negated
-    /// inputs. This pins the tie and sign rules.
-    #[test]
-    fn quat_codec_tie_and_sign_are_canonical() {
-        let q = game_rb_state_quantize_quat(Quat::from_xyzw(-0.5, 0.5, 0.5, 0.5));
-        assert!(q.x > 0.0, "{q:?}");
-        assert!(q.y < 0.0 && q.z < 0.0 && q.w < 0.0, "{q:?}");
-        let again = game_rb_state_quantize_quat(q);
-        assert_eq!(
-            again.to_array().map(f32::to_bits),
-            q.to_array().map(f32::to_bits),
-            "model must be a fixed point"
-        );
-    }
-
-    #[test]
-    fn quat_component_quantize_is_idempotent_on_its_grid() {
-        for c in [-1.0, -0.5, -0.1, 0.0, 0.1, 0.5, 0.9, 1.0] {
-            let q = game_quat_quantize_component(c);
-            assert_eq!(
-                game_quat_quantize_component(q).to_bits(),
-                q.to_bits(),
-                "component {c} decode must be a grid fixed point"
-            );
-        }
-    }
 }

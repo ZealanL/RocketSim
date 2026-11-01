@@ -5,7 +5,7 @@
 
 use glam::Vec3A;
 
-use crate::{GameMode, sim::linear_piece_curve::LinearPieceCurve};
+use crate::{GameMode, shared::LinearPieceCurve};
 
 /// Friction/restitution pair for a physics interaction.
 pub struct PhysicsCoefs {
