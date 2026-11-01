@@ -83,6 +83,26 @@ impl DiscreteDynamicsWorld {
         self.solver = SeqImpulseConstraintSolver::default();
     }
 
+    pub(crate) fn truncate_rigid_bodies(&mut self, len: usize) {
+        let bodies = &mut self.collision_world.collision_objs;
+        assert!(len <= bodies.len());
+        if len == bodies.len() {
+            return;
+        }
+
+        self.collision_world
+            .broadphase_pair_cache
+            .remove_proxies(&bodies[len..]);
+        bodies.truncate(len);
+        for body in bodies {
+            body.companion_id = None;
+        }
+        self.collision_world.dispatcher1.truncate_bodies(len);
+        self.dynamic_body_idcs.retain(|&index| index < len);
+        self.island_manager = SimulationIslandManager::default();
+        self.solver = SeqImpulseConstraintSolver::default();
+    }
+
     pub(crate) fn update_body_properties(
         &mut self,
         body_idx: usize,

@@ -48,7 +48,7 @@ pub fn resolve_single_bilateral_fake_ground(body1: &RigidBody, pos: Vec3A, norma
     // has non-zero mass). Skip them instead of computing them per wheel.
     let a_j = body1_comt
         .matrix3
-        .mul_transpose_vec3a(rel_pos1.cross(normal));
+        .transpose_mul_vec3a(rel_pos1.cross(normal));
     let jac_diag_ab = body1.inv_mass + (body1.inv_inertia_local * a_j).dot(a_j);
     let jac_diag_ab_inv = 1.0 / jac_diag_ab;
     let rel_vel = normal.dot(vel1);

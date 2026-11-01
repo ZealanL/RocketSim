@@ -312,6 +312,18 @@ impl GridBroadphase {
         self.island_dynamic_pairs.clear();
     }
 
+    pub(crate) fn remove_proxies(&mut self, bodies: &[RigidBody]) {
+        self.axis_sweep.remove_handles(bodies);
+        let handles = self.axis_sweep.handles();
+        for cell in &mut self.cell_grid.cells {
+            cell.dyn_handles
+                .retain(|&handle| handles[handle].unique_id != 0);
+            cell.static_handles
+                .retain(|&handle| handles[handle].unique_id != 0);
+        }
+        self.island_dynamic_pairs.clear();
+    }
+
     pub(crate) fn remap_client_indices(&mut self, removed_body: usize) {
         self.axis_sweep.remap_client_indices(removed_body);
     }

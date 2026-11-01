@@ -27,7 +27,7 @@ impl<'a> MinkowskiDiff<'a> {
     }
 
     pub fn support0<const ENABLE_MAGIN: bool>(&self, dir_world: Vec3A) -> Vec3A {
-        let dir_local = self.trans_a.matrix3.mul_transpose_vec3a(dir_world);
+        let dir_local = self.trans_a.matrix3.transpose_mul_vec3a(dir_world);
         let local_support = if ENABLE_MAGIN {
             // Bullet `btGjkEpa2` margined path uses `NonVirtual` (sphere
             // expansion for boxes), not the virtual per-axis padding.
@@ -42,7 +42,7 @@ impl<'a> MinkowskiDiff<'a> {
     }
 
     pub fn support1<const ENABLE_MAGIN: bool>(&self, dir_world: Vec3A) -> Vec3A {
-        let dir_local = self.trans_b.matrix3.mul_transpose_vec3a(dir_world);
+        let dir_local = self.trans_b.matrix3.transpose_mul_vec3a(dir_world);
         let local_support = if ENABLE_MAGIN {
             self.shape_b
                 .local_get_supporting_vertex_nonvirtual(dir_local)

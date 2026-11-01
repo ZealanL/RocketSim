@@ -184,8 +184,33 @@ impl AxisSweep3 {
         self.free_list.push(handle as u16);
         self.num_handles -= 1;
 
+        for edges in &mut self.edges {
+            edges.retain(|edge| edge.handle as usize != handle);
+        }
+        self.rebuild_edge_indices();
+        self.handle_edges[handle] = HandleEdges::default();
+    }
+
+    pub(super) fn remove_handles(&mut self, bodies: &[RigidBody]) {
+        // Keep the same handle reuse order as reverse single-body removal.
+        for body in bodies.iter().rev() {
+            let handle = body.get_broadphase_handle();
+            self.handles[handle] = BroadphaseProxy::default();
+            self.handle_edges[handle] = HandleEdges::default();
+            self.free_list.push(handle as u16);
+            self.num_handles -= 1;
+        }
+        self.pair_cache.retain_live_handles(&self.handles);
+        for edges in &mut self.edges {
+            edges.retain(|edge| {
+                edge.handle == 0 || self.handles[edge.handle as usize].unique_id != 0
+            });
+        }
+        self.rebuild_edge_indices();
+    }
+
+    fn rebuild_edge_indices(&mut self) {
         for axis in 0..3 {
-            self.edges[axis].retain(|edge| edge.handle as usize != handle);
             debug_assert_eq!(self.edges[axis].len(), self.num_handles as usize * 2 + 2);
             for (index, edge) in self.edges[axis].iter().enumerate() {
                 let edges = &mut self.handle_edges[edge.handle as usize];
@@ -198,7 +223,6 @@ impl AxisSweep3 {
             self.handle_edges[0].min[axis] = 0;
             self.handle_edges[0].max[axis] = (self.edges[axis].len() - 1) as u16;
         }
-        self.handle_edges[handle] = HandleEdges::default();
     }
 
     pub(super) fn remap_client_indices(&mut self, removed_body: usize) {

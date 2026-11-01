@@ -521,7 +521,7 @@ impl RigidBody {
         let c0 = r0.cross(normal);
         let vec = self
             .inv_inertia_tensor_world
-            .mul_transpose_vec3a(c0)
+            .transpose_mul_vec3a(c0)
             .cross(r0);
 
         self.inv_mass + normal.dot(vec)

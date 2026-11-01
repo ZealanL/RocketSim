@@ -50,7 +50,7 @@ impl<'a, T: ContactAddedCallback> ConvexTriangleCallback<'a, T> {
         let convex_trans = self.convex_obj.get_world_trans();
 
         let local_pt = convex
-            .local_get_supporting_vertex(convex_trans.matrix3.mul_transpose_vec3a(world_normal));
+            .local_get_supporting_vertex(convex_trans.matrix3.transpose_mul_vec3a(world_normal));
         let world_pt = convex_trans.transform_point3a(local_pt);
 
         let proj_dist_pt = world_normal.dot(world_pt);

@@ -173,6 +173,14 @@ impl BoostPadGrid {
         self.refresh_winners(cars, max_boost);
     }
 
+    pub(crate) fn remove_cars(&mut self) {
+        for pad in &mut self.all_pads {
+            pad.touching_car_idxs.clear();
+        }
+        self.winners.fill(None);
+        self.touching_pad_by_car.clear();
+    }
+
     pub fn update_membership(&mut self, cars: &[Car], max_boost: f32) {
         self.touching_pad_by_car.resize(cars.len(), None);
         self.touching_pad_by_car.fill(None);

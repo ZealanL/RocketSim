@@ -176,10 +176,10 @@ impl GjkPairDetector {
         for _ in 0..MAX_ITERATIONS {
             let separating_axis_in_a = transform_a
                 .matrix3
-                .mul_transpose_vec3a(-self.separating_axis);
+                .transpose_mul_vec3a(-self.separating_axis);
             let separating_axis_in_b = transform_b
                 .matrix3
-                .mul_transpose_vec3a(self.separating_axis);
+                .transpose_mul_vec3a(self.separating_axis);
 
             let p_in_a = shape_a.local_get_support_vertex_without_margin(separating_axis_in_a);
             let p_world = transform_a.transform_point3a(p_in_a);

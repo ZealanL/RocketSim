@@ -143,6 +143,16 @@ impl CollisionDispatcher {
             true
         });
 
+        self.rebuild_body_caches();
+    }
+
+    pub(crate) fn truncate_bodies(&mut self, len: usize) {
+        self.persistent_manifolds
+            .retain(|manifold| manifold.body0_idx < len && manifold.body1_idx < len);
+        self.rebuild_body_caches();
+    }
+
+    fn rebuild_body_caches(&mut self) {
         self.active_manifolds.clear();
         self.raw_body_aabbs.clear();
         self.compound_child_bounds.clear();

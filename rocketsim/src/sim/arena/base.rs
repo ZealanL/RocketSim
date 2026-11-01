@@ -708,6 +708,45 @@ impl Arena {
         self.ball_only = self.cars.is_empty() && self.tile_states.is_none();
     }
 
+    /// Removes all cars and their physics bodies in one batch.
+    ///
+    /// Removes car contacts and boost-pad membership. Clears the last step's
+    /// events, even if there are no cars. Keeps the ball, arena geometry,
+    /// boost-pad cooldowns, tile states, tick count, and random generator state.
+    /// Does not advance time. Retains storage for later cars.
+    ///
+    /// All previous car indices become invalid. The next [`Arena::add_car`]
+    /// returns `0`. Old snapshots and copied events keep their old indices.
+    ///
+    /// ```
+    /// use rocketsim::{Arena, CarBodyConfig, GameMode, Team};
+    ///
+    /// let mut arena = Arena::new(GameMode::TheVoid);
+    /// arena.add_car(Team::Blue, CarBodyConfig::OCTANE);
+    /// arena.add_car(Team::Orange, CarBodyConfig::DOMINUS);
+    /// arena.remove_cars();
+    /// assert_eq!(arena.num_cars(), 0);
+    /// assert_eq!(arena.add_car(Team::Blue, CarBodyConfig::OCTANE), 0);
+    /// ```
+    pub fn remove_cars(&mut self) {
+        if let Some(first_car) = self.cars.first() {
+            // Arena geometry and the ball precede the contiguous car bodies.
+            let body_count = first_car.rigid_body_idx;
+            debug_assert_eq!(
+                self.bullet_world.bodies().len(),
+                body_count + self.cars.len()
+            );
+            self.bullet_world.truncate_rigid_bodies(body_count);
+            self.cars.clear();
+        }
+        if let Some(grid) = &mut self.boost_pad_grid {
+            grid.remove_cars();
+        }
+        self.contact_tracker.clear_records();
+        self.events.clear();
+        self.ball_only = self.tile_states.is_none();
+    }
+
     /// Advances the game one tick (`1/120` s) and returns that tick's events.
     ///
     /// Set inputs with [`Arena::set_car_controls`] before calling. The
@@ -1747,7 +1786,7 @@ fn normalize_unless_one(v: Vec3A) -> Vec3A {
 fn hitbox_center(state: &CarState, config: &CarBodyConfig) -> Vec3A {
     let rot_mat = state.phys.rot_mat;
     let offset = config.hitbox_pos_offset;
-    state.phys.pos + rot_mat.mul_transpose_vec3a(offset)
+    state.phys.pos + rot_mat.transpose_mul_vec3a(offset)
 }
 
 /// The victim's hitbox center direction is measured in the attacker's frame.
@@ -1864,8 +1903,8 @@ fn hitbox_separation(
         // Reach of each box along `axis`:
         // the row-dot projections onto its own axes,
         // scaled by the half extents.
-        let a_reach = a_rot.mul_transpose_vec3a(axis).abs();
-        let b_reach = b_rot.mul_transpose_vec3a(axis).abs();
+        let a_reach = a_rot.transpose_mul_vec3a(axis).abs();
+        let b_reach = b_rot.transpose_mul_vec3a(axis).abs();
 
         let mut depth = delta.dot(axis).abs();
         for i in 0..3 {

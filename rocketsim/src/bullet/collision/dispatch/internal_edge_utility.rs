@@ -292,7 +292,7 @@ pub fn adjust_internal_edge_contacts(
     let local_contact_normal_on_b = tri_mesh_col_obj
         .get_world_trans()
         .matrix3
-        .mul_transpose_vec3a(cp.normal_world_on_b);
+        .transpose_mul_vec3a(cp.normal_world_on_b);
     debug_assert!(local_contact_normal_on_b.is_normalized());
 
     let mut best_edge = BestEdge::None;
@@ -419,7 +419,7 @@ pub fn adjust_internal_edge_contacts(
                 let local_contact_normal_on_b = tri_mesh_col_obj
                     .get_world_trans()
                     .matrix3
-                    .mul_transpose_vec3a(cp.normal_world_on_b);
+                    .transpose_mul_vec3a(cp.normal_world_on_b);
                 debug_assert!(local_contact_normal_on_b.is_normalized());
 
                 if let Some(clamped_local_normal) = clamp_normal(
@@ -474,7 +474,7 @@ pub fn adjust_internal_edge_contacts(
                 let local_contact_normal_on_b = tri_mesh_col_obj
                     .get_world_trans()
                     .matrix3
-                    .mul_transpose_vec3a(cp.normal_world_on_b);
+                    .transpose_mul_vec3a(cp.normal_world_on_b);
                 debug_assert!(local_contact_normal_on_b.is_normalized());
 
                 if let Some(clamped_local_normal) = clamp_normal(

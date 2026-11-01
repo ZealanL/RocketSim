@@ -416,3 +416,180 @@ fn wheel_support_contacts_refresh_and_grounded_survivor_jumps_after_removal() {
         assert!(arena.get_ball_state().phys.pos.is_finite());
     }
 }
+
+#[test]
+fn bulk_removal_matches_reverse_removal_across_modes() {
+    for mode in [GameMode::TheVoid, GameMode::Soccar, GameMode::Dropshot] {
+        ensure_init();
+        let config = ArenaConfig::new(mode).with_rng_seed(0x5eed);
+        let mut bulk = Arena::new_with_config(config);
+        for i in 0..3 {
+            let idx = bulk.add_car(
+                if i % 2 == 0 { Team::Blue } else { Team::Orange },
+                CarBodyConfig::OCTANE,
+            );
+            place(
+                &mut bulk,
+                idx,
+                Vec3A::new(500.0 * i as f32, 0.0, 150.0),
+                20.0,
+            );
+        }
+        bulk.remove_car(1);
+        let recycled = bulk.add_car(Team::Orange, CarBodyConfig::DOMINUS);
+        place(&mut bulk, recycled, Vec3A::new(500.0, 0.0, 150.0), 20.0);
+        let mut ball = *bulk.get_ball_state();
+        ball.phys.pos = Vec3A::new(0.0, 0.0, 150.0);
+        bulk.set_ball_state(ball);
+        bulk.step_tick();
+        if mode != GameMode::TheVoid {
+            let mut resting_ball = *bulk.get_ball_state();
+            resting_ball.phys.pos = Vec3A::new(0.0, 0.0, 90.0);
+            resting_ball.phys.vel = Vec3A::ZERO;
+            bulk.set_ball_state(resting_ball);
+            let mut car = *bulk.get_car_state(0);
+            car.phys.pos = Vec3A::new(-2000.0, 2000.0, 500.0);
+            car.phys.vel = Vec3A::ZERO;
+            bulk.set_car_state_full(0, car);
+            let world_events = bulk.step_tick();
+            assert!(
+                world_events
+                    .iter()
+                    .any(|event| matches!(event, rocketsim::ArenaEvent::BallHitWorld(_))),
+                "{mode:?} setup must create ball-world contact"
+            );
+        }
+
+        let mut sequential = bulk.clone();
+        let tick = bulk.tick_count();
+        let ball_before = *bulk.get_ball_state();
+        let pad_cooldowns: Vec<_> = (0..bulk.num_boost_pads())
+            .map(|i| bulk.get_boost_pad_state(i).cooldown)
+            .collect();
+        bulk.remove_cars();
+        for idx in (0..sequential.num_cars()).rev() {
+            sequential.remove_car(idx);
+        }
+        assert_eq!(bulk.num_cars(), 0);
+        assert_eq!(bulk.tick_count(), tick);
+        assert_eq!(bulk.get_ball_state().phys, ball_before.phys);
+        assert!(bulk.get_last_step_events().is_empty());
+        assert_eq!(
+            bulk.num_persistent_manifolds(),
+            sequential.num_persistent_manifolds()
+        );
+        for (i, &cooldown) in pad_cooldowns.iter().enumerate() {
+            assert_eq!(bulk.get_boost_pad_state(i).cooldown, cooldown);
+            let a = bulk.get_boost_pad_state(i);
+            let b = sequential.get_boost_pad_state(i);
+            assert_eq!(a.cooldown, b.cooldown);
+            assert_eq!(a.touching_car_idxs, b.touching_car_idxs);
+        }
+        if mode == GameMode::Dropshot {
+            assert_eq!(bulk.get_tile_states(), sequential.get_tile_states());
+        }
+
+        for tick_offset in 0..10 {
+            let a_events = format!("{:?}", bulk.step_tick());
+            let b_events = format!("{:?}", sequential.step_tick());
+            assert_eq!(
+                bulk.get_ball_state().phys,
+                sequential.get_ball_state().phys,
+                "{mode:?} ball at {tick_offset}"
+            );
+            assert_eq!(a_events, b_events, "{mode:?} events at {tick_offset}");
+        }
+        for arena in [&mut bulk, &mut sequential] {
+            arena.remove_cars();
+            for (i, x) in [-100.0, 0.0, 100.0].into_iter().enumerate() {
+                let idx = arena.add_car(
+                    if i % 2 == 0 { Team::Blue } else { Team::Orange },
+                    CarBodyConfig::OCTANE,
+                );
+                let mut state = *arena.get_car_state(idx);
+                state.phys.pos = Vec3A::new(x, 0.0, 100.0);
+                state.phys.vel = Vec3A::new(if i == 0 { 500.0 } else { -500.0 }, 0.0, 0.0);
+                arena.set_car_state_full(idx, state);
+            }
+        }
+        for tick_offset in 0..10 {
+            let a_events = format!("{:?}", bulk.step_tick());
+            let b_events = format!("{:?}", sequential.step_tick());
+            assert_eq!(
+                bulk.get_ball_state().phys,
+                sequential.get_ball_state().phys,
+                "{mode:?} ball after re-add at {tick_offset}"
+            );
+            for i in 0..bulk.num_cars() {
+                assert_eq!(
+                    bulk.get_car_state(i).phys,
+                    sequential.get_car_state(i).phys,
+                    "{mode:?} car {i} at {tick_offset}"
+                );
+            }
+            assert_eq!(
+                a_events, b_events,
+                "{mode:?} re-added events at {tick_offset}"
+            );
+        }
+    }
+}
+
+#[test]
+fn bulk_removal_clears_pad_membership_and_queries_only_remaining_world() {
+    ensure_init();
+    let mut mutators = MutatorConfig::new(GameMode::Soccar);
+    let mut arena =
+        Arena::new_with_config(ArenaConfig::new(GameMode::Soccar).with_mutators(mutators));
+    let pad_idx = (0..arena.num_boost_pads())
+        .find(|&i| arena.get_boost_pad_config(i).is_big)
+        .unwrap();
+    let car = arena.add_car(Team::Blue, CarBodyConfig::OCTANE);
+    let pad_pos = arena.get_boost_pad_config(pad_idx).pos;
+    place(&mut arena, car, pad_pos + Vec3A::new(0.0, 0.0, 17.01), 0.0);
+    arena.edit_boost_pad_state(pad_idx, |state| state.cooldown = 1.25);
+    arena.step_tick();
+    assert_eq!(
+        arena.get_boost_pad_state(pad_idx).touching_car_idxs,
+        vec![0]
+    );
+    let cooldown = arena.get_boost_pad_state(pad_idx).cooldown;
+    assert!(cooldown > 0.0);
+
+    let query = |x, y| RaycastQuery {
+        from: Vec3A::new(x, y, 300.0),
+        to: Vec3A::new(x, y, -1000.0),
+        include_dynamics: true,
+    };
+    let before = arena.cast_rays([query(pad_pos.x, pad_pos.y)]);
+    assert!(before[0].is_some_and(|hit| hit.user_info == rocketsim::UserInfoType::Car));
+
+    mutators.boost_pads_enabled = false;
+    arena.set_mutator_config(mutators);
+    arena.remove_cars();
+    let pad_state = arena.get_boost_pad_state(pad_idx);
+    assert!(pad_state.touching_car_idxs.is_empty());
+    assert_eq!(pad_state.cooldown, cooldown);
+    let after = arena.cast_rays([query(pad_pos.x, pad_pos.y)]);
+    assert!(after[0].is_some_and(|hit| hit.user_info == rocketsim::UserInfoType::None));
+    let ball_pos = arena.get_ball_state().phys.pos;
+    let ball_hit = arena.cast_rays([query(ball_pos.x, ball_pos.y)]);
+    assert!(ball_hit[0].is_some_and(|hit| hit.user_info == rocketsim::UserInfoType::Ball));
+
+    mutators.boost_pads_enabled = true;
+    arena.set_mutator_config(mutators);
+    arena.edit_boost_pad_state(pad_idx, |state| state.cooldown = 0.0);
+    let replacement = arena.add_car(Team::Orange, CarBodyConfig::OCTANE);
+    assert_eq!(replacement, 0);
+    place(
+        &mut arena,
+        replacement,
+        pad_pos + Vec3A::new(0.0, 0.0, 17.01),
+        0.0,
+    );
+    let events = arena.step_tick();
+    assert!(events.iter().any(|event| matches!(event,
+        rocketsim::ArenaEvent::CarPickupBoost(pickup)
+            if pickup.car_idx == replacement && pickup.boost_pad_idx == pad_idx
+    )));
+}

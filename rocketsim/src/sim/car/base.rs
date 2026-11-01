@@ -557,7 +557,7 @@ impl Car {
 
             let retain = (Vec3A::ONE - scaled_inputs.abs()).with_z(1.0);
             let damping = dirs
-                * (dirs.mul_transpose_vec3a(self.state.phys.ang_vel)
+                * (dirs.transpose_mul_vec3a(self.state.phys.ang_vel)
                     * air_control::DAMPING
                     * retain);
 

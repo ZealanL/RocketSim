@@ -127,6 +127,17 @@ impl OverlappingPairCache {
     pub(super) fn remove_handle(&mut self, handles: &[BroadphaseProxy], handle: usize) {
         self.overlapping_pair_array
             .retain(|pair| pair.proxy0 != handle && pair.proxy1 != handle);
+        self.rebuild_pair_indices(handles);
+    }
+
+    pub(super) fn retain_live_handles(&mut self, handles: &[BroadphaseProxy]) {
+        self.overlapping_pair_array.retain(|pair| {
+            handles[pair.proxy0].unique_id != 0 && handles[pair.proxy1].unique_id != 0
+        });
+        self.rebuild_pair_indices(handles);
+    }
+
+    fn rebuild_pair_indices(&mut self, handles: &[BroadphaseProxy]) {
         self.pair_indices.fill(0);
         for (index, pair) in self.overlapping_pair_array.iter().enumerate() {
             let key = Self::table_index(
