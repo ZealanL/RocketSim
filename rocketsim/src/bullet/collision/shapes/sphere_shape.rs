@@ -110,22 +110,16 @@ impl SphereShape {
             return;
         }
 
+        // The entry root is the smaller root.
         let sqrt_disc = discriminant.sqrt();
-        let mut t0 = (-b - sqrt_disc) / 2.0;
-        let mut t1 = (-b + sqrt_disc) / 2.0;
+        let t = ((-b - sqrt_disc) / 2.0).min((-b + sqrt_disc) / 2.0);
 
-        let swap_mask = t0.cmpgt(t1);
-        t0 = Vec4::select(swap_mask, t1, t0);
-        t1 = Vec4::select(swap_mask, t0, t1);
-
-        let t0_nearest_mask = t0.cmpge(Vec4::ZERO) & t0.cmple(dist);
-        let t1_nearest_mask = t1.cmpge(Vec4::ZERO) & t1.cmple(dist) & !t0_nearest_mask;
-        let nearest_mask = valid_mask & (t0_nearest_mask | t1_nearest_mask);
-        if !nearest_mask.any() {
+        // A ray that starts inside the sphere has no convex-cast hit
+        let t_mask = t.cmpge(Vec4::ZERO) & t.cmple(dist);
+        let hit_mask = valid_mask & t_mask;
+        if !hit_mask.any() {
             return;
         }
-
-        let t = Vec4::select(t0_nearest_mask, t0, t1);
 
         let hit_point_x = source_x + dir_x * t;
         let hit_point_y = source_y + dir_y * t;
@@ -135,10 +129,10 @@ impl SphereShape {
         let normal_y = (hit_point_y / radius).to_array();
         let normal_z = (hit_point_z / radius).to_array();
 
-        let hit_mask = nearest_mask.bitmask();
+        let hits: [bool; 4] = hit_mask.into();
         let hit_fraction = t / dist;
         for (i, hit_fraction) in hit_fraction.to_array().into_iter().enumerate() {
-            if (hit_mask & (1 << i)) == 0 {
+            if !hits[i] {
                 continue;
             }
 

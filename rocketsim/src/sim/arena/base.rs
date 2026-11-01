@@ -64,6 +64,24 @@ pub trait Vis: Send + Sync + Any {
     fn update(&mut self, arena_state: &ArenaState, dt: f32);
 }
 
+/// Combine per-world-object contact normal sums into the world-contact normal.
+///
+/// Each object sum is normalized. The object normals are added. The total is
+/// normalized. An object whose sum is near zero is skipped. Returns `None`
+/// when no object sum or the total is usable.
+fn combine_world_contact_normal_sums(sums: impl IntoIterator<Item = Vec3A>) -> Option<Vec3A> {
+    const MIN_LEN_SQ: f32 = 1e-8;
+    let mut total = Vec3A::ZERO;
+    for sum in sums {
+        let len_sq = sum.length_squared();
+        if len_sq >= MIN_LEN_SQ {
+            total += sum / len_sq.sqrt();
+        }
+    }
+    let len_sq = total.length_squared();
+    (len_sq >= MIN_LEN_SQ).then(|| total / len_sq.sqrt())
+}
+
 /// A full Rocket League game: ball, cars, boost pads/tiles, and physics.
 ///
 /// Create with [`Arena::new`] (Soccar defaults) or
@@ -826,6 +844,8 @@ impl Arena {
                     _ => {}
                 }
             }
+
+            self.update_world_contact_normal();
         }
 
         self.contact_tracker.clear_records();
@@ -1502,7 +1522,8 @@ impl Arena {
     /// Short rays use the broadphase grid; rays longer than one grid cell
     /// (`ArenaConfig::max_aabb_len`, scaled by the memory-weight mode) fall
     /// back to testing every body, so any length works. Coordinates are in
-    /// uu, like the rest of the API.
+    /// uu, like the rest of the API. A ray that starts inside a sphere does
+    /// not report the sphere's exit point as a hit.
     ///
     /// A query with `include_dynamics: false` ignores cars and the ball
     /// (a dynamic body hiding a wall reports a miss — split the batch if the
@@ -2038,6 +2059,28 @@ impl Arena {
         }));
         self.cars[car_idx].state.cache.world_contact_normal =
             Some(manifold_point.normal_world_on_b);
+    }
+
+    /// Build the game's car world-contact normal for this tick.
+    ///
+    /// Per world object, sum the contact normals and normalize the sum. Then
+    /// sum the object normals and normalize the result. A car whose sums are
+    /// all unusable keeps its last contact normal. No object count limit
+    /// applies.
+    fn update_world_contact_normal(&mut self) {
+        let car_count = self.cars.len();
+        for car_idx in 0..car_count {
+            let combined = combine_world_contact_normal_sums(
+                self.contact_tracker
+                    .world_contact_normal_groups()
+                    .iter()
+                    .filter(|group| group.car_idx == car_idx)
+                    .map(|group| group.sum),
+            );
+            if let Some(normal) = combined {
+                self.cars[car_idx].state.cache.world_contact_normal = Some(normal);
+            }
+        }
     }
 
     fn on_car_car_collision(

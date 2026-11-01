@@ -289,6 +289,20 @@ impl RigidBody {
         self.world_quat
     }
 
+    /// Set the world transform and its matching cached quaternion.
+    ///
+    /// The caller must supply a quaternion that describes the matrix.
+    /// This avoids a matrix conversion when the quaternion is already known.
+    ///
+    /// # Panics
+    ///
+    /// Panics when an inserted static body changes its transform.
+    pub(crate) fn set_world_trans_and_rot(&mut self, world_trans: Affine3A, quat: Quat) {
+        self.assert_static_transform_unchanged(&world_trans);
+        self.world_trans = world_trans;
+        self.world_quat = quat;
+    }
+
     pub const fn get_collision_shape(&self) -> &CollisionShapes {
         &self.shape
     }

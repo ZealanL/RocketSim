@@ -5,7 +5,8 @@ use crate::{
         collision::{
             dispatch::internal_edge_utility::adjust_internal_edge_contacts,
             narrowphase::{
-                manifold_point::ManifoldPoint, persistent_manifold::ContactAddedCallback,
+                manifold_point::ManifoldPoint,
+                persistent_manifold::{ContactAddedCallback, PersistentManifold},
             },
         },
         dynamics::rigid_body::RigidBody,
@@ -30,11 +31,24 @@ pub(crate) struct BallWorldContactRecord {
     pub contact_normal: glam::Vec3A,
 }
 
+/// Sum of one world object's contact normals for one car this tick.
+///
+/// The arena keeps one group per `(car, world object)` pair. The sum is
+/// normalized when the game world-contact normal is built. The buffer is
+/// cleared every tick and keeps its capacity.
+#[derive(Debug, Copy, Clone)]
+pub(crate) struct WorldContactNormalGroup {
+    pub car_idx: usize,
+    pub object_idx: usize,
+    pub sum: glam::Vec3A,
+}
+
 // Track contacts reported by Bullet callbacks.
 #[derive(Clone)]
 pub(crate) struct ArenaContactTracker {
     collision_records: Vec<ContactRecord>,
     ball_world_records: Vec<BallWorldContactRecord>,
+    world_normal_groups: Vec<WorldContactNormalGroup>,
     ball_only: bool,
 }
 
@@ -43,6 +57,7 @@ impl ArenaContactTracker {
         Self {
             collision_records: Vec::with_capacity(4), // Reserve space for common contact counts.
             ball_world_records: Vec::with_capacity(4),
+            world_normal_groups: Vec::with_capacity(4),
             ball_only: false,
         }
     }
@@ -70,6 +85,37 @@ impl ArenaContactTracker {
     pub fn clear_records(&mut self) {
         self.collision_records.clear();
         self.ball_world_records.clear();
+        self.world_normal_groups.clear();
+    }
+
+    /// Add one car-world contact normal to its `(car, object)` group.
+    ///
+    /// The first contact for a pair allocates the group. Later contacts add to
+    /// it. There is no object count limit: the arena has one group per pair
+    /// that occurs in the tick.
+    pub fn add_world_contact_normal(
+        &mut self,
+        car_idx: usize,
+        object_idx: usize,
+        normal: glam::Vec3A,
+    ) {
+        if let Some(group) = self
+            .world_normal_groups
+            .iter_mut()
+            .find(|group| group.car_idx == car_idx && group.object_idx == object_idx)
+        {
+            group.sum += normal;
+        } else {
+            self.world_normal_groups.push(WorldContactNormalGroup {
+                car_idx,
+                object_idx,
+                sum: normal,
+            });
+        }
+    }
+
+    pub fn world_contact_normal_groups(&self) -> &[WorldContactNormalGroup] {
+        &self.world_normal_groups
     }
 }
 
@@ -169,5 +215,40 @@ impl ContactAddedCallback for ArenaContactTracker {
             rb_idx_b: body_b.world_array_idx,
             manifold_point: *manifold_point,
         });
+    }
+
+    // Read the final merged manifold points for the world-contact normal.
+    // Keep the add and retained callbacks unchanged.
+    fn manifold_processed<'a>(
+        &mut self,
+        manifold: &PersistentManifold,
+        mut body_a: &'a RigidBody,
+        mut body_b: &'a RigidBody,
+    ) {
+        let should_swap =
+            if body_a.user_idx != UserInfoType::None && body_b.user_idx != UserInfoType::None {
+                body_a.user_idx > body_b.user_idx
+            } else {
+                body_b.user_idx != UserInfoType::None
+            };
+
+        if should_swap {
+            mem::swap(&mut body_a, &mut body_b);
+        }
+
+        if body_a.user_idx != UserInfoType::Car
+            || body_b.user_idx == UserInfoType::Ball
+            || body_b.user_idx == UserInfoType::Car
+        {
+            return;
+        }
+
+        for point in manifold.point_cache.iter() {
+            self.add_world_contact_normal(
+                body_a.user_pointer,
+                body_b.world_array_idx,
+                point.normal_world_on_b,
+            );
+        }
     }
 }

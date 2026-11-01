@@ -416,14 +416,39 @@ pub mod curves {
         (1750., 0.08507),
         (3000., 0.03454),
     ]);
-    pub const STEER_ANGLE_FROM_SPEED_THREEWHEEL: LinearPieceCurve<2> =
-        LinearPieceCurve::new([(0., 0.342_473), (2300., 0.034_837)]);
+    /// Psyclops steering angle in radians for forward speed in uu/s.
+    ///
+    /// The final point repeats to fill the six-point curve used by car configs.
+    pub const STEER_ANGLE_FROM_SPEED_THREEWHEEL: LinearPieceCurve<6> = LinearPieceCurve::new([
+        (0., 0.342_473),
+        (2300., 0.034_837),
+        (2300., 0.034_837),
+        (2300., 0.034_837),
+        (2300., 0.034_837),
+        (2300., 0.034_837),
+    ]);
+    /// Plank steering angle in radians for forward speed in uu/s.
+    ///
+    /// The knots match recorded wheel steering.
+    pub const PLANK_STEER_ANGLE_FROM_SPEED: LinearPieceCurve<6> = LinearPieceCurve::new([
+        (0., 0.529_582),
+        (500., 0.317_619),
+        (1000., 0.181_425),
+        (1500., 0.105_480),
+        (1750., 0.084_926),
+        (3000., 0.034_519),
+    ]);
     pub const POWERSLIDE_STEER_ANGLE_FROM_SPEED: LinearPieceCurve<2> =
         LinearPieceCurve::new([(0., 0.39235), (2500., 0.12610)]);
+    /// Plank powerslide steering angle in radians for forward speed in uu/s.
+    ///
+    /// The knots match recorded wheel steering.
+    pub const PLANK_POWERSLIDE_STEER_ANGLE_FROM_SPEED: LinearPieceCurve<2> =
+        LinearPieceCurve::new([(0., 0.389_930), (2500., 0.125_785)]);
     pub const DRIVE_SPEED_TORQUE_FACTOR: LinearPieceCurve<3> =
         LinearPieceCurve::new([(0., 1.0), (1400., 0.1), (1410., 0.0)]);
     pub const NON_STICKY_FRICTION_FACTOR: LinearPieceCurve<3> =
-        LinearPieceCurve::new([(0., 0.1), (0.7075, 0.5), (1., 1.0)]);
+        LinearPieceCurve::new([(0., 0.1), (0.707, 0.5), (1., 1.0)]);
     pub const LAT_FRICTION: LinearPieceCurve<2> = LinearPieceCurve::new([(0., 1.0), (1., 0.2)]);
     pub const LAT_FRICTION_THREEWHEEL: LinearPieceCurve<2> =
         LinearPieceCurve::new([(0., 0.30), (1., 0.25)]);

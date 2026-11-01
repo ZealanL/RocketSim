@@ -19,6 +19,7 @@ pub use car::*;
 pub use collision_mesh_file::CollisionMeshFile;
 pub use dropshot_tiles::*;
 pub use game_mode::*;
+pub use linear_piece_curve::LinearPieceCurve;
 pub use mutator_config::*;
 pub use phys_state::*;
 pub use team::*;

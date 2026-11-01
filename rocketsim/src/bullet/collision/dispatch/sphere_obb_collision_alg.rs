@@ -61,14 +61,14 @@ pub fn process_collision<T: ContactAddedCallback>(
 
     let sphere_from_local = new_child_world_trans.inv_x_form(sphere_trans.translation);
 
-    let mut closest = sphere_from_local.clamp(-box_extents, box_extents);
+    let closest = sphere_from_local.clamp(-box_extents, box_extents);
     let mut delta = sphere_from_local - closest;
     let dist_sq = delta.length_squared();
 
     let radius = sphere_shape.get_radius();
     let box_margin = box_shape.get_margin();
 
-    let mut manifold = PersistentManifold::new(sphere_obj, obb_obj);
+    let mut manifold = PersistentManifold::new(obb_obj, sphere_obj);
     let intersection_dist = radius + box_margin;
     let contact_dist = intersection_dist + manifold.contact_breaking_threshold;
     if dist_sq > contact_dist * contact_dist {
@@ -80,26 +80,28 @@ pub fn process_collision<T: ContactAddedCallback>(
         dist = dist_sq.sqrt();
         delta /= dist;
     } else {
-        (dist, closest, delta) = get_sphere_penetration(box_extents, sphere_from_local);
+        (dist, _, delta) = get_sphere_penetration(box_extents, sphere_from_local);
         dist *= -1.0;
     };
 
     let normal_on_box = new_child_world_trans.transform_vector3a(delta);
-    let point_on_box = new_child_world_trans.transform_point3a(closest);
     let depth = dist - intersection_dist;
 
-    // This is the official contact point on the box
-    let point_on_box_plus_margin = point_on_box + (normal_on_box * box_margin);
+    // The compound body is body0. The sphere body is body1. The normal on
+    // body1 points from the ball to the car. The world point on body1 is the
+    // ball surface point nearest the car.
+    let normal_on_ball = -normal_on_box;
+    let point_on_ball = sphere_trans.translation - normal_on_box * radius;
     manifold.add_contact_point(
-        sphere_obj,
         obb_obj,
-        normal_on_box,
-        point_on_box_plus_margin,
+        sphere_obj,
+        normal_on_ball,
+        point_on_ball,
         depth,
         None,
         contact_added_callback,
     );
-    manifold.refresh_contact_points(sphere_obj, obb_obj);
+    manifold.refresh_contact_points(obb_obj, sphere_obj);
 
     if manifold.point_cache.is_empty() {
         return;

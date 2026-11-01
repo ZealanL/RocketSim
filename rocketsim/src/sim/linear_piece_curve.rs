@@ -17,11 +17,26 @@ pub struct LinearPieceCurve<const N: usize> {
     curve: [LinearPiece; N],
 }
 
+impl<const N: usize> PartialEq for LinearPieceCurve<N> {
+    fn eq(&self, other: &Self) -> bool {
+        let mut i = 0;
+        while i < N {
+            if self.curve[i].max_x != other.curve[i].max_x
+                || self.curve[i].max_y != other.curve[i].max_y
+            {
+                return false;
+            }
+            i += 1;
+        }
+        true
+    }
+}
+
 impl<const N: usize> LinearPieceCurve<N> {
     /// Builds a curve from ascending `(x, y)` control points.
     ///
-    /// `x` values should ascend; behavior is linear interpolation between
-    /// neighbors (no validation in `const` context).
+    /// `x` values should ascend. Repeated final points are supported. Behavior
+    /// is linear interpolation between neighbors (no validation in `const` context).
     pub const fn new(value_mappings: [(f32, f32); N]) -> Self {
         let mut curve = [LinearPiece {
             base_x: 0.0,
@@ -90,5 +105,33 @@ impl<const N: usize> LinearPieceCurve<N> {
         let pair = self.curve[i];
         let interp_frac = (input - pair.base_x) / pair.x_diff;
         pair.y_diff * interp_frac + pair.base_y
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<const N: usize> serde::Serialize for LinearPieceCurve<N>
+where
+    [(f32, f32); N]: serde::Serialize,
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let points = self.curve.map(|piece| (piece.max_x, piece.max_y));
+        serde::Serialize::serialize(&points, serializer)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de, const N: usize> serde::Deserialize<'de> for LinearPieceCurve<N>
+where
+    [(f32, f32); N]: serde::Deserialize<'de>,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let points = <[(f32, f32); N] as serde::Deserialize>::deserialize(deserializer)?;
+        Ok(Self::new(points))
     }
 }

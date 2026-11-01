@@ -435,16 +435,16 @@ impl Car {
             wheel.brake = drive_brake_force;
         }
 
-        let mut steer_angle = if self.config.three_wheels {
-            curves::STEER_ANGLE_FROM_SPEED_THREEWHEEL.get_output(abs_forward_speed_uu)
-        } else {
-            curves::STEER_ANGLE_FROM_SPEED.get_output(abs_forward_speed_uu)
-        };
+        let mut steer_angle = self
+            .config
+            .steer_angle_curve
+            .get_output(abs_forward_speed_uu);
         if self.state.handbrake_val != 0.0 {
-            steer_angle += (curves::POWERSLIDE_STEER_ANGLE_FROM_SPEED
-                .get_output(abs_forward_speed_uu)
-                - steer_angle)
-                * self.state.handbrake_val;
+            let powerslide_steer = self
+                .config
+                .powerslide_steer_angle_curve
+                .get_output(abs_forward_speed_uu);
+            steer_angle += (powerslide_steer - steer_angle) * self.state.handbrake_val;
         }
 
         steer_angle *= proc_steer;
@@ -499,7 +499,7 @@ impl Car {
         let allow_air = num_wheels_in_contact == 0;
 
         if self.state.is_flipping && allow_dodge && self.state.flip_rel_torque != Vec3A::ZERO {
-            let mut rel_dodge_torque = self.state.flip_rel_torque;
+            let rel_dodge_torque = self.state.flip_rel_torque;
 
             let mut pitch_scale = 1.0;
             if rel_dodge_torque.y != 0.0
@@ -513,8 +513,14 @@ impl Car {
                         .min(1.0);
             }
 
-            rel_dodge_torque.y *= pitch_scale;
-            let dodge_torque = rel_dodge_torque * flip::TORQUE * TICK_TIME;
+            // Round each torque component to whole units before the pitch-cancel scale.
+            let mut dodge_torque = Vec3A::new(
+                (rel_dodge_torque.x * flip::TORQUE.x).round_ties_even(),
+                (rel_dodge_torque.y * flip::TORQUE.y).round_ties_even(),
+                0.0,
+            );
+            dodge_torque.y *= pitch_scale;
+            dodge_torque *= TICK_TIME;
 
             rb.add_impulse(
                 Impulse::Angular(rb.get_world_trans().matrix3 * dodge_torque),

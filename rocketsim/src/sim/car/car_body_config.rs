@@ -1,5 +1,7 @@
 use glam::Vec3A;
 
+use crate::sim::{consts::curves, linear_piece_curve::LinearPieceCurve};
+
 /// Full hitbox sizes in uu for the 7 presets
 /// (Octane, Dominus, Plank, Breakout, Hybrid, Merc, Psyclops).
 pub const HITBOX_SIZES: [Vec3A; 7] = [
@@ -85,6 +87,10 @@ pub struct CarBodyConfig {
     pub three_wheels: bool,
     /// (|yaw| + |pitch| + |roll|) will need to be >= this in order to flip
     pub dodge_deadzone: f32,
+    /// Steering angle in radians for forward speed in uu/s.
+    pub steer_angle_curve: LinearPieceCurve<6>,
+    /// Steering angle in radians during powerslide for forward speed in uu/s.
+    pub powerslide_steer_angle_curve: LinearPieceCurve<2>,
 }
 
 impl Default for CarBodyConfig {
@@ -110,6 +116,18 @@ impl CarBodyConfig {
             },
             three_wheels,
             dodge_deadzone: 0.5,
+            steer_angle_curve: if idx == 2 {
+                curves::PLANK_STEER_ANGLE_FROM_SPEED
+            } else if idx == 6 {
+                curves::STEER_ANGLE_FROM_SPEED_THREEWHEEL
+            } else {
+                curves::STEER_ANGLE_FROM_SPEED
+            },
+            powerslide_steer_angle_curve: if idx == 2 {
+                curves::PLANK_POWERSLIDE_STEER_ANGLE_FROM_SPEED
+            } else {
+                curves::POWERSLIDE_STEER_ANGLE_FROM_SPEED
+            },
         }
     }
 

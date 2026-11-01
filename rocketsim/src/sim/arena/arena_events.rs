@@ -38,8 +38,10 @@ pub struct CarHitCarEvent {
     pub is_demo: bool,
 }
 
-/// A car touched a static surface; also stored as
-/// `CarState::world_contact_normal` for that tick.
+/// A car touched a static surface.
+///
+/// `contact_normal` belongs to this contact. The car state's
+/// [`crate::CarState::world_contact_normal`] combines all world contacts.
 #[derive(Debug, Copy, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CarHitWorldEvent {

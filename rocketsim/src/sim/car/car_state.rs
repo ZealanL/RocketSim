@@ -535,7 +535,11 @@ impl CarState {
         &self.cache.wheels_with_contact
     }
 
-    /// Return the contact normal for a static world body, if present.
+    /// Return the combined world-contact normal, if present.
+    ///
+    /// Each world object's contact normal sum is normalized. The sum of those
+    /// object normals is normalized again. An unusable total keeps the last
+    /// contact normal. A tick with no world contact returns `None`.
     #[must_use]
     pub const fn world_contact_normal(&self) -> Option<Vec3A> {
         self.cache.world_contact_normal

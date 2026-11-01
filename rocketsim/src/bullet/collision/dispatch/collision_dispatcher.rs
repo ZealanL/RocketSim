@@ -356,7 +356,7 @@ impl CollisionDispatcher {
             col_obj_b.get_collision_shape(),
         ) {
             (Shape::StaticPlane(_), _) => (col_obj_b, col_obj_a),
-            (Shape::Sphere(_), Shape::Compound(_)) => (col_obj_a, col_obj_b),
+            (Shape::Sphere(_), Shape::Compound(_)) => (col_obj_b, col_obj_a),
             (Shape::Sphere(_), Shape::TriangleMesh(_)) => (col_obj_a, col_obj_b),
             (Shape::TriangleMesh(_), Shape::Sphere(_) | Shape::ConvexHull(_)) => {
                 (col_obj_b, col_obj_a)
@@ -364,7 +364,7 @@ impl CollisionDispatcher {
             (Shape::TriangleMesh(_), Shape::Compound(_)) => (col_obj_b, col_obj_a),
             (Shape::ConvexHull(_), Shape::Compound(_)) => (col_obj_b, col_obj_a),
             (Shape::ConvexHull(_), _) => (col_obj_a, col_obj_b),
-            (Shape::Compound(_), Shape::Sphere(_)) => (col_obj_b, col_obj_a),
+            (Shape::Compound(_), Shape::Sphere(_)) => (col_obj_a, col_obj_b),
             _ => (col_obj_a, col_obj_b),
         }
     }
@@ -715,6 +715,12 @@ impl CollisionDispatcher {
                 contact_added_callback,
             );
 
+            contact_added_callback.manifold_processed(
+                &self.persistent_manifolds[persistent_idx],
+                &collision_objs[self.persistent_manifolds[persistent_idx].body0_idx],
+                &collision_objs[self.persistent_manifolds[persistent_idx].body1_idx],
+            );
+
             self.active_manifolds.push(persistent_idx);
             return;
         }
@@ -811,6 +817,15 @@ impl CollisionDispatcher {
                 )
             }
         };
+
+        {
+            let manifold = &self.persistent_manifolds[active_idx];
+            contact_added_callback.manifold_processed(
+                manifold,
+                &collision_objs[manifold.body0_idx],
+                &collision_objs[manifold.body1_idx],
+            );
+        }
 
         self.active_manifolds.push(active_idx);
     }

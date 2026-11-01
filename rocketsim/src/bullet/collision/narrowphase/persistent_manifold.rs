@@ -25,6 +25,18 @@ pub trait ContactAddedCallback {
         _body_b: &'a RigidBody,
     ) {
     }
+
+    /// Called once for each active manifold after refresh and merge.
+    ///
+    /// The point cache is the final merged set. Use it for data that must see
+    /// retained and new points together. The default does nothing.
+    fn manifold_processed<'a>(
+        &mut self,
+        _manifold: &PersistentManifold,
+        _body_a: &'a RigidBody,
+        _body_b: &'a RigidBody,
+    ) {
+    }
 }
 
 pub const CONTACT_BREAKING_THRESHOLD: f32 = 0.02;
@@ -138,6 +150,7 @@ impl PersistentManifold {
     }
 
     fn sort_cached_points(&self, new_contact: &ManifoldPoint) -> usize {
+        let new_local = new_contact.local_point_a;
         let mut max_penetration_idx = MANIFOLD_CACHE_SIZE;
         let mut max_penetration = new_contact.distance_1;
         for (i, contact) in self.point_cache.iter().enumerate() {
@@ -150,33 +163,33 @@ impl PersistentManifold {
         let res = match max_penetration_idx {
             0 => Vec4::new(
                 0.,
-                self.get_res_1(new_contact.local_point_a),
-                self.get_res_2(new_contact.local_point_a),
-                self.get_res_3(new_contact.local_point_a),
+                self.get_res_1(new_local),
+                self.get_res_2(new_local),
+                self.get_res_3(new_local),
             ),
             1 => Vec4::new(
-                self.get_res_0(new_contact.local_point_a),
+                self.get_res_0(new_local),
                 0.,
-                self.get_res_2(new_contact.local_point_a),
-                self.get_res_3(new_contact.local_point_a),
+                self.get_res_2(new_local),
+                self.get_res_3(new_local),
             ),
             2 => Vec4::new(
-                self.get_res_0(new_contact.local_point_a),
-                self.get_res_1(new_contact.local_point_a),
+                self.get_res_0(new_local),
+                self.get_res_1(new_local),
                 0.,
-                self.get_res_3(new_contact.local_point_a),
+                self.get_res_3(new_local),
             ),
             3 => Vec4::new(
-                self.get_res_0(new_contact.local_point_a),
-                self.get_res_1(new_contact.local_point_a),
-                self.get_res_2(new_contact.local_point_a),
+                self.get_res_0(new_local),
+                self.get_res_1(new_local),
+                self.get_res_2(new_local),
                 0.,
             ),
             _ => Vec4::new(
-                self.get_res_0(new_contact.local_point_a),
-                self.get_res_1(new_contact.local_point_a),
-                self.get_res_2(new_contact.local_point_a),
-                self.get_res_3(new_contact.local_point_a),
+                self.get_res_0(new_local),
+                self.get_res_1(new_local),
+                self.get_res_2(new_local),
+                self.get_res_3(new_local),
             ),
         };
 
