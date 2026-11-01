@@ -18,7 +18,10 @@ pub struct RaycastQuery {
 #[derive(Debug, Copy, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct RaycastHitInfo {
-    /// World position of the hit (uu).
+    /// Ray position at `hit_fraction`, in uu.
+    ///
+    /// Sphere casts can stop up to 0.05 uu before the surface. A fraction-zero
+    /// hit inside a sphere reports the ray source, not a surface point.
     pub hit_point: Vec3A,
     /// Surface normal at the hit.
     pub hit_normal: Vec3A,

@@ -83,7 +83,7 @@ impl GjkPairDetector {
         }
 
         let catch_degenerate_penetration_case =
-            degenerate_simplex != 0 && (distance + self.margin) < 0.01;
+            degenerate_simplex != 0 && (distance + self.margin) <= 0.01;
 
         if (!is_valid || catch_degenerate_penetration_case)
             && let Some(result) = calc_pen_depth(shape_a, shape_b, &local_trans_a, &local_trans_b)
@@ -144,7 +144,7 @@ impl GjkPairDetector {
 
         // valid normal
         let len_sqr = self.separating_axis.length_squared();
-        if len_sqr < 0.0001 {
+        if len_sqr <= 0.0001 {
             result.degenerate_simplex = 5;
         }
 

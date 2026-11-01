@@ -29,7 +29,10 @@ use crate::{
         car::{self as car_consts, drive as drive_consts},
         curves,
     },
-    shared::quantize::{quantize_axis_input, quantize_axis_inputs},
+    shared::{
+        quantize::{quantize_axis_input, quantize_axis_inputs},
+        ue3,
+    },
     sim::{RaycastHitInfo, UserInfoType, car::car_info::CarInfo},
 };
 
@@ -98,19 +101,14 @@ fn axis_angle_to_int(a0: f32, a1: f32) -> i32 {
     (v.round_ties_even() as i32) >> 1
 }
 
-/// Sine lookup for a 16384-entry table index.
-fn table_sin(idx: u32) -> f32 {
-    (idx as f64 * std::f64::consts::TAU / 16384.0).sin() as f32
-}
-
 /// Rebuilds the intermediate row vector from the pitch and yaw angles.
 fn rebuild_row1(pitch: i32, yaw: i32) -> Vec3A {
-    let tp = table_sin(((pitch >> 2) & 0x3FFF) as u32);
-    let ty = table_sin(((yaw >> 2) & 0x3FFF) as u32);
-    let tr = table_sin(0);
-    let tpq = table_sin((((pitch + 0x4000) >> 2) & 0x3FFF) as u32);
-    let tyq = table_sin((((yaw + 0x4000) >> 2) & 0x3FFF) as u32);
-    let trq = table_sin(0x1000);
+    let tp = ue3::sin_tab_angle(pitch);
+    let ty = ue3::sin_tab_angle(yaw);
+    let tr = ue3::sin_tab_angle(0);
+    let tpq = ue3::sin_tab_angle(pitch + 0x4000);
+    let tyq = ue3::sin_tab_angle(yaw + 0x4000);
+    let trq = ue3::sin_tab_angle(0x4000);
     let r1x = tp * tr * tyq - trq * ty;
     let r1y = tyq * trq + tp * tr * ty;
     let r1z = -tr * tpq;
@@ -772,8 +770,13 @@ impl Car {
                             initial_dodge_vel.x *= car_consts::flip::BACKWARD_IMPULSE_SCALE_X;
                         }
 
-                        let forward_dir_2d =
-                            self.state.get_forward_dir().with_z(0.0).normalize_or_zero();
+                        let forward = self.state.get_forward_dir();
+                        let dodge_yaw = ue3::dodge_yaw_units(forward.y, forward.x);
+                        let forward_dir_2d = Vec3A::new(
+                            ue3::sin_tab_angle(dodge_yaw + 0x4000),
+                            ue3::sin_tab_angle(dodge_yaw),
+                            0.0,
+                        );
                         let right_dir_2d = Vec3A::new(-forward_dir_2d.y, forward_dir_2d.x, 0.0);
                         let final_delta_vel = initial_dodge_vel.x * forward_dir_2d
                             + initial_dodge_vel.y * right_dir_2d;

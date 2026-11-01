@@ -1561,8 +1561,10 @@ impl Arena {
     /// Short rays use the broadphase grid; rays longer than one grid cell
     /// (`ArenaConfig::max_aabb_len`, scaled by the memory-weight mode) fall
     /// back to testing every body, so any length works. Coordinates are in
-    /// uu, like the rest of the API. A ray that starts inside a sphere does
-    /// not report the sphere's exit point as a hit.
+    /// uu, like the rest of the API. Sphere rays use conservative advancement
+    /// with a stop distance of 0.05 uu. A ray inside a sphere reports fraction
+    /// zero when it moves inward. It does not report an exit hit. A ray at
+    /// the sphere center has no valid normal and reports no hit.
     ///
     /// A query with `include_dynamics: false` ignores cars and the ball
     /// (a dynamic body hiding a wall reports a miss — split the batch if the

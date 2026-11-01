@@ -21,7 +21,7 @@ use crate::{
     },
     consts::{BT_TO_UU, TICK_TIME, UU_TO_BT, dropshot, heatseeker, snowday},
     get_neighbor_indices_1, get_neighbor_indices_2, get_tile_pos,
-    shared::Angle,
+    shared::{Angle, ue3},
     sim::{UserInfoType, consts},
 };
 
@@ -254,7 +254,7 @@ impl Ball {
         tick_count: u64,
         rb: &mut RigidBody,
     ) {
-        let car_forward = car.state.phys.rot_mat.x_axis;
+        let car_forward = ue3::rotator_forward(car.state.phys.rot_mat.x_axis);
         let rel_pos = self.state.phys.pos - car.state.phys.pos;
         let rel_vel = self.state.phys.vel - car.state.phys.vel;
 
