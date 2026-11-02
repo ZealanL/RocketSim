@@ -198,7 +198,9 @@ impl SeqImpulseConstraintSolver {
             let trans1 = body1.get_world_trans().translation;
 
             for cp in &mut manifold.point_cache {
-                assert!(cp.distance_1 <= manifold.contact_processing_threshold);
+                if cp.distance_1 > manifold.contact_processing_threshold {
+                    continue;
+                }
 
                 let rel_pos1 = cp.pos_world_on_a - trans0;
                 let rel_pos2 = cp.pos_world_on_b - trans1;
