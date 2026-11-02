@@ -2,6 +2,7 @@ use glam::{Mat3A, Quat, Vec3A};
 
 use crate::{
     bullet::dynamics::rigid_body::{CollisionFlags, RigidBody},
+    shared::round_ties_even,
     sim::consts::{BT_TO_UU, UU_TO_BT, quantize},
 };
 
@@ -12,6 +13,7 @@ fn vec3a_sign_3(v: Vec3A) -> Vec3A {
     Vec3A::select(v.cmpeq(Vec3A::ZERO), Vec3A::ZERO, signum)
 }
 
+#[derive(Clone, Copy)]
 enum VecQuantizeMode {
     Position,
     Velocity,
@@ -25,18 +27,37 @@ fn quantize_vec_ue3(vec: Vec3A, scale: f32, quantize_mode: VecQuantizeMode) -> V
         VecQuantizeMode::Velocity => {
             let inv_scale = 1.0 / scale;
             let scaled = vec * scale;
-            let scaled_values = scaled.to_array();
-            let mut rounded = Vec3A::ZERO;
-            for i in 0..3 {
-                let i_val = scaled_values[i] as i32;
-                rounded[i] = (i_val as f32) * inv_scale;
-            }
+            let rounded = truncate_scaled_velocity(scaled, inv_scale);
 
             const OFFSET_CORRECT_FRAC: f32 = 0.1;
             let offset_mag = OFFSET_CORRECT_FRAC * inv_scale;
 
             rounded + (vec3a_sign_3(rounded) * offset_mag)
         }
+    }
+}
+
+/// Truncates each scaled velocity component to `i32` and multiplies it by
+/// `inv_scale`.
+///
+/// The vector path applies to values with a magnitude below `2^31`. In that
+/// range, truncation and the saturating `as i32` cast give the same integer.
+/// The scalar path keeps the saturating cast for extreme values, NaN, and
+/// infinities.
+#[inline]
+#[must_use]
+fn truncate_scaled_velocity(scaled: Vec3A, inv_scale: f32) -> Vec3A {
+    const INT_LIMIT: Vec3A = Vec3A::splat(2_147_483_648.0);
+
+    if scaled.abs().cmplt(INT_LIMIT).all() {
+        scaled.trunc() * inv_scale
+    } else {
+        let values = scaled.to_array();
+        Vec3A::new(
+            (values[0] as i32 as f32) * inv_scale,
+            (values[1] as i32 as f32) * inv_scale,
+            (values[2] as i32 as f32) * inv_scale,
+        )
     }
 }
 
@@ -79,7 +100,7 @@ fn game_quat_quantize_component(c: f32) -> f32 {
     let max_f = MAX as f32;
     let mut v = ((c * std::f32::consts::SQRT_2) * 0.5 + 0.5) * max_f;
     v = (v + v) + 0.5;
-    let k = ((v.round_ties_even() as i32) >> 1).clamp(0, MAX);
+    let k = ((round_ties_even(v) as i32) >> 1).clamp(0, MAX);
     let r = k as f32 / max_f - 0.5;
     (r + r) * 0.707_106_77
 }
@@ -88,26 +109,37 @@ fn game_rb_state_quantize_quat(q_in: Quat) -> Quat {
     let q = game_quat_normalize_scalar(q_in, 1e-8);
     let c = [q.x, q.y, q.z, q.w];
     let a = [c[0].abs(), c[1].abs(), c[2].abs(), c[3].abs()];
+
     let i01 = if a[0] < a[1] { 1 } else { 0 };
     let i23 = if a[2] < a[3] { 3 } else { 2 };
     let big = if a[i01] >= a[i23] { i01 } else { i23 };
     let sign = if c[big] < 0.0 { -1.0 } else { 1.0 };
-    let mut d = [0.0; 3];
+
+    let mut d_input = [0.0; 3];
     let mut n = 0;
     for (i, &value) in c.iter().enumerate() {
         if i != big {
-            d[n] = game_quat_quantize_component(value * sign);
+            d_input[n] = value * sign;
             n += 1;
         }
     }
+
+    let d = [
+        game_quat_quantize_component(d_input[0]),
+        game_quat_quantize_component(d_input[1]),
+        game_quat_quantize_component(d_input[2]),
+    ];
+
     let rest = ((1.0 - d[0] * d[0]) - d[1] * d[1]) - d[2] * d[2];
     debug_assert!(
         rest >= 0.0,
         "largest-component decode must have non-negative rest, got {rest}"
     );
+
     let dropped = rest.sqrt();
     let mut o = [0.0; 4];
     n = 0;
+
     for (i, slot) in o.iter_mut().enumerate() {
         *slot = if i == big {
             dropped
@@ -117,6 +149,7 @@ fn game_rb_state_quantize_quat(q_in: Quat) -> Quat {
             value
         };
     }
+
     game_quat_normalize_scalar(Quat::from_xyzw(o[0], o[1], o[2], o[3]), 1e-8)
 }
 

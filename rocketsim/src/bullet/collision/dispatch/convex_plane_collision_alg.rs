@@ -22,6 +22,31 @@ pub fn process_collision<T: ContactAddedCallback>(
         return;
     }
 
+    process_collision_after_gate(
+        convex_obj,
+        plane_obj,
+        plane_shape,
+        contact_added_callback,
+        out,
+    );
+}
+
+/// Process a convex-plane pair after the caller applied the AABB gate.
+///
+/// The caller must test `convex_obj.get_aabb()` against
+/// `plane_shape.aabb_cache`. That is the value that
+/// `CollisionShapes::get_aabb` returns for `CollisionShapes::StaticPlane`, so
+/// this path tests exactly the same bounds as the direct gated path.
+/// The compound path applies this test before it selects the child shape.
+pub(crate) fn process_collision_after_gate<T: ContactAddedCallback>(
+    convex_obj: &RigidBodyWrapper,
+    plane_obj: &RigidBody,
+    plane_shape: &StaticPlaneShape,
+    contact_added_callback: &mut T,
+    out: &mut Option<PersistentManifold>,
+) {
+    debug_assert!(out.is_none());
+
     let plane_normal = plane_shape.get_plane_normal();
 
     let plane_trans = plane_obj.get_world_trans();

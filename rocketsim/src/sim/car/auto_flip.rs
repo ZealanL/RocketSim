@@ -6,6 +6,7 @@ use super::base::Car;
 use crate::{
     bullet::dynamics::rigid_body::{Impulse, RigidBody},
     consts::{TICK_TIME, UU_TO_BT, car as car_consts},
+    shared::round_ties_even,
     sim::ue3,
 };
 
@@ -87,7 +88,7 @@ fn axis_angle_to_int(a0: f32, a1: f32) -> i32 {
     let ang = f64::from(a0).atan2(f64::from(a1));
     let u = (ang as f32 * 32768.0) / PI;
     let v = u * 2.0 + 0.5;
-    (v.round_ties_even() as i32) >> 1
+    (round_ties_even(v) as i32) >> 1
 }
 
 /// Rebuilds the intermediate row vector from the pitch and yaw angles.

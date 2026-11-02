@@ -109,7 +109,7 @@ impl DiscreteDynamicsWorld {
         properties: RigidBodyUpdateInfo,
     ) {
         self.collision_world
-            .update_body_properties(body_idx, properties);
+            .update_body_properties(body_idx, properties, &self.dynamic_body_idcs);
     }
 
     #[inline]
@@ -140,7 +140,7 @@ impl DiscreteDynamicsWorld {
     }
 
     pub fn refresh_aabbs(&mut self) {
-        self.collision_world.update_aabbs();
+        self.collision_world.update_aabbs(&self.dynamic_body_idcs);
     }
 
     pub fn ray_test<T: QuadRayResultCallback>(
@@ -290,7 +290,7 @@ impl DiscreteDynamicsWorld {
         self.predict_unconstraint_motion(time_step);
 
         self.collision_world
-            .perform_discrete_collision_detection(contact_added_callback);
+            .perform_discrete_collision_detection(contact_added_callback, &self.dynamic_body_idcs);
 
         let dynamic_pairs = self
             .collision_world

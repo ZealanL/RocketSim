@@ -30,6 +30,7 @@ use crate::{
         car::{self as car_consts, drive as drive_consts},
         curves,
     },
+    shared::round_ties_even_vec3a,
     sim::{RaycastHitInfo, UserInfoType, car::car_info::CarInfo, ue3},
 };
 
@@ -253,12 +254,13 @@ impl Car {
             return;
         }
 
-        self.sticky_gate_prev = self.bullet_vehicle.refresh_wheel_contacts(
+        // The fused contact refresh sets the sticky gate and the previous
+        // world-wheel count from these records.
+        let _ = self.bullet_vehicle.refresh_wheel_contacts(
             world,
             &world.bodies()[self.rigid_body_idx],
             TICK_TIME,
         );
-        self.state.cache.world_wheels_prev = self.bullet_vehicle.num_world_contacts() as u8;
         self.update_contact_state(world);
         self.state.cache.world_contact_normal = None;
     }
@@ -318,10 +320,27 @@ impl Car {
 
     /////////////////////////////
 
+    /// Quantize the wheel throttle and steer.
+    ///
+    /// The scalar form is cheaper and matches the vector form for finite
+    /// inputs. NaN handling can differ between the forms and targets. Keep
+    /// the original vector result for a NaN axis.
+    #[inline]
+    fn quantize_wheel_inputs(raw_throttle: f32, raw_steer: f32, quant_throttle: f32) -> (f32, f32) {
+        if raw_throttle.is_nan() || raw_steer.is_nan() {
+            let [throttle, steer, _] =
+                quantize_axis_inputs(Vec3A::new(raw_throttle, raw_steer, 0.0)).to_array();
+            (throttle, steer)
+        } else {
+            (quant_throttle, quantize_axis_input(raw_steer))
+        }
+    }
+
     fn update_wheels(
         &mut self,
         rb: &mut RigidBody,
         forward_speed_uu: f32,
+        quant_throttle: f32,
         mutator_config: &MutatorConfig,
         cached_upwards_dir: &mut Option<Vec3A>,
     ) {
@@ -334,9 +353,8 @@ impl Car {
 
         let mut real_brake = 0.0;
         let raw_throttle = self.state.controls.throttle;
-        let [proc_throttle, proc_steer, _] =
-            quantize_axis_inputs(Vec3A::new(raw_throttle, self.state.controls.steer, 0.0))
-                .to_array();
+        let (proc_throttle, proc_steer) =
+            Self::quantize_wheel_inputs(raw_throttle, self.state.controls.steer, quant_throttle);
 
         let all_wheels_contact = self.state.num_wheels_in_contact() == NUM_WHEELS;
         let real_throttle =
@@ -435,6 +453,7 @@ impl Car {
         &mut self,
         rb: &mut RigidBody,
         num_wheels_in_contact: usize,
+        quant_throttle: f32,
         prev_is_flipping: bool,
         prev_flip_time: f32,
     ) {
@@ -459,11 +478,11 @@ impl Car {
             }
 
             // Round each torque component to whole units before the pitch-cancel scale.
-            let mut dodge_torque = Vec3A::new(
-                (rel_dodge_torque.x * flip::TORQUE.x).round_ties_even(),
-                (rel_dodge_torque.y * flip::TORQUE.y).round_ties_even(),
+            let mut dodge_torque = round_ties_even_vec3a(Vec3A::new(
+                rel_dodge_torque.x * flip::TORQUE.x,
+                rel_dodge_torque.y * flip::TORQUE.y,
                 0.0,
-            );
+            ));
             dodge_torque.y *= pitch_scale;
             dodge_torque *= TICK_TIME;
 
@@ -515,7 +534,7 @@ impl Car {
             let throttle_scale = if self.state.is_boosting {
                 1.0
             } else {
-                quantize_axis_input(self.state.controls.throttle)
+                quant_throttle
             };
 
             if throttle_scale != 0.0 {
@@ -891,6 +910,11 @@ impl Car {
         rb.collision_flags &= !(CollisionFlags::NoContactResponse as u8);
         self.state.controls = self.state.controls.clamp();
 
+        // Controls do not change until the next tick. The drive, air-torque,
+        // auto-roll, and wheel-friction consumers quantize the same throttle,
+        // so quantize it once. Keep the raw value for the sticky gate.
+        let quant_throttle = quantize_axis_input(self.state.controls.throttle);
+
         let forward_speed_uu = rb.get_forward_speed() * BT_TO_UU;
         let jump_pressed = self.state.controls.jump && !self.state.cache.prev_controls.jump;
         let num_wheels_in_contact = self.state.num_wheels_in_contact();
@@ -901,6 +925,7 @@ impl Car {
         self.update_wheels(
             rb,
             forward_speed_uu,
+            quant_throttle,
             mutator_config,
             &mut cached_upwards_dir,
         );
@@ -927,10 +952,14 @@ impl Car {
         );
 
         if !self.state.cache.is_on_ground {
-            self.update_air_torque(rb, num_wheels_in_contact, prev_is_flipping, prev_flip_time);
+            self.update_air_torque(
+                rb,
+                num_wheels_in_contact,
+                quant_throttle,
+                prev_is_flipping,
+                prev_flip_time,
+            );
         }
-
-        let quant_throttle = quantize_axis_input(self.state.controls.throttle);
 
         // Skip auto-roll on the tick a flip ends.
         // The car still counts as flipping for auto-roll on its last flip tick.
@@ -963,18 +992,16 @@ impl Car {
         );
 
         self.update_contact_state(collision_world);
-
-        self.sticky_gate_prev = self.bullet_vehicle.wheels.iter().any(|wheel| {
-            wheel
-                .raycast_info
-                .as_ref()
-                .is_some_and(|info| info.is_in_contact_with_world)
-        });
-        self.state.cache.world_wheels_prev = self.bullet_vehicle.num_world_contacts() as u8;
     }
 
+    /// Refresh per-wheel contact reports and the world-contact gates.
+    ///
+    /// One wheel pass fills `wheels_with_contact`, `is_on_ground`,
+    /// `sticky_gate_prev`, and `world_wheels_prev`.
     fn update_contact_state(&mut self, world: &DiscreteDynamicsWorld) {
         let mut num_wheels_in_contact = 0u8;
+        let mut any_world_contact = false;
+        let mut world_contact_count = 0u8;
         for (wheel, contact) in self
             .bullet_vehicle
             .wheels
@@ -982,6 +1009,11 @@ impl Car {
             .zip(&mut self.state.cache.wheels_with_contact)
         {
             let hit = wheel.raycast_info.as_ref().map(|info| {
+                if info.is_in_contact_with_world {
+                    any_world_contact = true;
+                    world_contact_count += 1;
+                }
+
                 // Wheel traces run in Bullet units; report uu like `cast_rays`.
                 // Fraction is unitless, so BT lengths divide out.
                 let trace_len = (wheel.hard_point - info.contact_point).length();
@@ -996,6 +1028,8 @@ impl Car {
             num_wheels_in_contact += u8::from(hit.is_some());
         }
         self.state.cache.is_on_ground = num_wheels_in_contact >= 3;
+        self.sticky_gate_prev = any_world_contact;
+        self.state.cache.world_wheels_prev = world_contact_count;
     }
 
     pub(crate) fn post_tick_update(&mut self, collision_world: &mut DiscreteDynamicsWorld) {

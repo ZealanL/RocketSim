@@ -65,7 +65,12 @@ pub enum CollisionFlags {
     CanSleep = (1 << 2),
     NoContactResponse = (1 << 3),
     NoWorldGravity = (1 << 4),
+    /// Keep the world matrix and quaternion at identity. Keep angular velocity.
+    /// Transform setters ignore supplied rotations when this bit is set.
     NoAngularMotion = (1 << 5),
+    /// The world matrix is identity and its translation is zero.
+    /// Transform setters maintain this bit. Signed zeros compare equal.
+    IdentityTransform = (1 << 6),
 }
 
 impl BitOrAssign<CollisionFlags> for u8 {
@@ -151,6 +156,9 @@ pub struct RigidBody {
     /// Read it via [`get_contact_breaking_threshold`](Self::get_contact_breaking_threshold).
     contact_breaking_threshold: f32,
 
+    /// Preserve `IdentityTransform` when changing collision settings.
+    /// Enable `NoAngularMotion` only with an identity matrix and quaternion.
+    /// Transform setters maintain `IdentityTransform`.
     pub collision_flags: u8,
     pub companion_id: Option<usize>,
     /// The index of this object in `CollisionWorld`
@@ -183,11 +191,21 @@ pub struct RigidBody {
 
 impl RigidBody {
     pub fn new(info: RigidBodyConstructionInfo) -> Self {
-        let (inverse_mass, collision_flags) = if info.mass == 0.0 {
+        let (inverse_mass, mut collision_flags) = if info.mass == 0.0 {
             (0.0, CollisionFlags::StaticObject as u8)
         } else {
             (1.0 / info.mass, 0)
         };
+
+        if info.start_world_trans.matrix3 == Mat3A::IDENTITY {
+            if info.mass == 0.0 {
+                collision_flags |= CollisionFlags::NoAngularMotion;
+            }
+
+            if info.start_world_trans.translation == Vec3A::ZERO {
+                collision_flags |= CollisionFlags::IdentityTransform;
+            }
+        }
 
         let linear_damping = info.linear_damping.clamp(0.0, 1.0);
         let linear_sleeping_threshold = info.linear_sleeping_threshold;
@@ -266,19 +284,40 @@ impl RigidBody {
     }
 
     /// Set the world transform.
+    /// Ignore rotation when `NoAngularMotion` is set. Keep angular velocity.
     ///
     /// # Panics
     ///
     /// Panics when this is a static body with a broadphase handle and the new
     /// transform differs from the cached transform.
-    pub fn set_world_trans(&mut self, world_trans: Affine3A) {
+    pub fn set_world_trans(&mut self, mut world_trans: Affine3A) {
+        let world_quat = if self.collision_flags & CollisionFlags::NoAngularMotion != 0 {
+            world_trans.matrix3 = Mat3A::IDENTITY;
+            Quat::IDENTITY
+        } else {
+            Quat::from_mat3a(&world_trans.matrix3)
+        };
         self.assert_static_transform_unchanged(&world_trans);
 
-        if (self.collision_flags & CollisionFlags::NoAngularMotion) == 0 {
-            self.world_quat = Quat::from_mat3a(&world_trans.matrix3);
-        }
-
+        self.world_quat = world_quat;
         self.world_trans = world_trans;
+        self.update_transform_flags();
+    }
+
+    #[inline]
+    fn update_transform_flags(&mut self) {
+        debug_assert!(
+            self.collision_flags & CollisionFlags::NoAngularMotion == 0
+                || self.world_trans.matrix3 == Mat3A::IDENTITY,
+            "NoAngularMotion requires an identity world matrix"
+        );
+        self.collision_flags &= !CollisionFlags::IdentityTransform;
+        if self.world_trans.translation == Vec3A::ZERO
+            && (self.collision_flags & CollisionFlags::NoAngularMotion != 0
+                || self.world_trans.matrix3 == Mat3A::IDENTITY)
+        {
+            self.collision_flags |= CollisionFlags::IdentityTransform;
+        }
     }
 
     pub const fn get_world_trans(&self) -> &Affine3A {
@@ -293,14 +332,20 @@ impl RigidBody {
     ///
     /// The caller must supply a quaternion that describes the matrix.
     /// This avoids a matrix conversion when the quaternion is already known.
+    /// Ignore both rotations when `NoAngularMotion` is set.
     ///
     /// # Panics
     ///
     /// Panics when an inserted static body changes its transform.
-    pub(crate) fn set_world_trans_and_rot(&mut self, world_trans: Affine3A, quat: Quat) {
+    pub(crate) fn set_world_trans_and_rot(&mut self, mut world_trans: Affine3A, mut quat: Quat) {
+        if self.collision_flags & CollisionFlags::NoAngularMotion != 0 {
+            world_trans.matrix3 = Mat3A::IDENTITY;
+            quat = Quat::IDENTITY;
+        }
         self.assert_static_transform_unchanged(&world_trans);
         self.world_trans = world_trans;
         self.world_quat = quat;
+        self.update_transform_flags();
     }
 
     pub const fn get_collision_shape(&self) -> &CollisionShapes {
@@ -457,8 +502,8 @@ impl RigidBody {
     }
 
     pub fn set_center_of_mass_trans(&mut self, xform: Affine3A) {
-        self.interp_world_trans = xform;
         self.set_world_trans(xform);
+        self.interp_world_trans = self.world_trans;
 
         self.update_inertia_tensor();
     }
@@ -554,6 +599,7 @@ impl RigidBody {
         world_trans.translation = pos;
         self.assert_static_transform_unchanged(&world_trans);
         self.world_trans.translation = pos;
+        self.update_transform_flags();
     }
 
     pub fn limit_vels(&mut self, max_lin_speed: f32, max_ang_speed: f32) {

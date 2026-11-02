@@ -181,7 +181,12 @@ impl BoostPadGrid {
         self.touching_pad_by_car.clear();
     }
 
-    pub fn update_membership(&mut self, cars: &[Car], max_boost: f32) {
+    /// Update pad membership for the current cars.
+    ///
+    /// Returns `true` when at least one car touches a pad. When the result is
+    /// `false`, no car can collect boost this tick, so the caller can skip the
+    /// per-car award check.
+    pub fn update_membership(&mut self, cars: &[Car], max_boost: f32) -> bool {
         self.touching_pad_by_car.resize(cars.len(), None);
         self.touching_pad_by_car.fill(None);
 
@@ -193,6 +198,11 @@ impl BoostPadGrid {
         // Pad order resolves duplicate restored membership deterministically.
         let touching_pad_by_car = &mut self.touching_pad_by_car;
         for (pad_idx, pad) in self.all_pads.iter_mut().enumerate() {
+            // A pad without retained members has no entry to validate.
+            if pad.touching_car_idxs.is_empty() {
+                continue;
+            }
+
             let pad_pos = pad.config().pos;
             let radius = pad.cyl_radius;
             let box_radius = pad.box_radius;
@@ -238,14 +248,24 @@ impl BoostPadGrid {
                 .report_aabb_overlapping_node(&mut processor, &car_aabb);
         }
         self.refresh_winners(cars, max_boost);
+
+        self.touching_pad_by_car
+            .iter()
+            .any(|pad_idx| pad_idx.is_some())
     }
 
     pub fn refresh_winners(&mut self, cars: &[Car], max_boost: f32) {
         for (pad_idx, pad) in self.all_pads.iter().enumerate() {
-            let winner = pad.touching_car_idxs.iter().copied().find(|&idx| {
-                cars.get(idx)
-                    .is_some_and(|car| can_receive_boost(car, max_boost))
-            });
+            let winner = if pad.touching_car_idxs.is_empty() {
+                // An empty pad has no winner. Clear the cached entry so a
+                // stale winner cannot award boost.
+                None
+            } else {
+                pad.touching_car_idxs.iter().copied().find(|&idx| {
+                    cars.get(idx)
+                        .is_some_and(|car| can_receive_boost(car, max_boost))
+                })
+            };
             self.winners[pad_idx] = winner;
         }
     }

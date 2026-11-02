@@ -1,4 +1,4 @@
-use glam::{Mat3A, Vec3A};
+use glam::Vec3A;
 
 use super::{
     collision_dispatcher::CollisionDispatcher,
@@ -10,7 +10,7 @@ use crate::{
             broadphase::GridBroadphase,
             narrowphase::persistent_manifold::{CONTACT_BREAKING_THRESHOLD, ContactAddedCallback},
         },
-        dynamics::rigid_body::{RigidBody, RigidBodyUpdateInfo},
+        dynamics::rigid_body::{CollisionFlags, RigidBody, RigidBodyUpdateInfo},
         linear_math::AffineExt,
     },
     shared::QuadRayInfo,
@@ -67,16 +67,24 @@ impl CollisionWorld {
         &mut self,
         body_idx: usize,
         properties: RigidBodyUpdateInfo,
+        dynamic_body_idcs: &[usize],
     ) {
+        debug_assert!(
+            !self.collision_objs[body_idx].is_static_obj(),
+            "cannot update properties of static collision object {body_idx}: its broadphase AABB is final"
+        );
+
         let invalidate_contacts = properties.invalidate_contacts;
         self.collision_objs[body_idx].update_physical_properties(properties);
         if invalidate_contacts {
             self.dispatcher1.clear_persistent_manifolds();
         }
-        self.update_aabbs();
+
+        self.update_aabbs(dynamic_body_idcs);
     }
 
-    pub fn update_aabbs(&mut self) {
+    /// Update the proxy AABB for each body in `dynamic_body_idcs`.
+    pub fn update_aabbs(&mut self, dynamic_body_idcs: &[usize]) {
         const CBT: Vec3A = Vec3A::splat(CONTACT_BREAKING_THRESHOLD);
 
         let Self {
@@ -85,18 +93,18 @@ impl CollisionWorld {
             broadphase_pair_cache,
         } = self;
 
-        for (i, col_obj) in collision_objs.iter().enumerate() {
-            debug_assert_eq!(col_obj.world_array_idx, i);
+        debug_assert!(
+            dynamic_body_idcs.windows(2).all(|pair| pair[0] < pair[1]),
+            "dynamic body indices must be strictly increasing"
+        );
 
-            // Static arena objects keep the raw creation AABB. They never
-            // receive the 0.02 update expansion.
-            //
-            // Invariant: an inserted static body cannot move. The `RigidBody`
-            // transform setters assert that invariant. The `bullet` module is
-            // private, so no external caller can mutate a static body.
-            if col_obj.is_static_obj() {
-                continue;
-            }
+        for &i in dynamic_body_idcs {
+            let col_obj = &collision_objs[i];
+            debug_assert_eq!(col_obj.world_array_idx, i);
+            debug_assert!(
+                !col_obj.is_static_obj(),
+                "dynamic body index {i} points at a static body"
+            );
 
             let mut aabb = col_obj
                 .get_collision_shape()
@@ -130,8 +138,9 @@ impl CollisionWorld {
     pub fn perform_discrete_collision_detection<T: ContactAddedCallback>(
         &mut self,
         contact_added_callback: &mut T,
+        dynamic_body_idcs: &[usize],
     ) {
-        self.update_aabbs();
+        self.update_aabbs(dynamic_body_idcs);
 
         self.dispatcher1.dispatch_all_collision_pairs(
             &self.collision_objs,
@@ -150,48 +159,64 @@ impl CollisionWorld {
         // Triangle meshes use local vertices. Goal components carry a
         // body translation, so move world rays into mesh-local space.
         // Other shapes use the same inverse-transform path.
+        if co.collision_flags & CollisionFlags::IdentityTransform != 0 {
+            Self::quad_ray_test_local(ray_from, ray_to, co, obj_idx, result_callback);
+            return;
+        }
+
         // Fast path for translation-only bodies: local = world - translation.
         // Bit-identical to the transpose path for identity rotation.
         let co_trans = co.get_world_trans();
-        let (ray_from_local, ray_to_local) = if co_trans.matrix3 == Mat3A::IDENTITY {
-            let t = co_trans.translation;
-            (
-                [
-                    ray_from[0] - t,
-                    ray_from[1] - t,
-                    ray_from[2] - t,
-                    ray_from[3] - t,
-                ],
-                [ray_to[0] - t, ray_to[1] - t, ray_to[2] - t, ray_to[3] - t],
-            )
-        } else {
-            let world_to_co = co_trans.transpose();
-            (
-                [
-                    world_to_co.transform_point3a(ray_from[0]),
-                    world_to_co.transform_point3a(ray_from[1]),
-                    world_to_co.transform_point3a(ray_from[2]),
-                    world_to_co.transform_point3a(ray_from[3]),
-                ],
-                [
-                    world_to_co.transform_point3a(ray_to[0]),
-                    world_to_co.transform_point3a(ray_to[1]),
-                    world_to_co.transform_point3a(ray_to[2]),
-                    world_to_co.transform_point3a(ray_to[3]),
-                ],
-            )
-        };
+        let (ray_from_local, ray_to_local) =
+            if co.collision_flags & CollisionFlags::NoAngularMotion != 0 {
+                let t = co_trans.translation;
+                (
+                    [
+                        ray_from[0] - t,
+                        ray_from[1] - t,
+                        ray_from[2] - t,
+                        ray_from[3] - t,
+                    ],
+                    [ray_to[0] - t, ray_to[1] - t, ray_to[2] - t, ray_to[3] - t],
+                )
+            } else {
+                let world_to_co = co_trans.transpose();
+                (
+                    [
+                        world_to_co.transform_point3a(ray_from[0]),
+                        world_to_co.transform_point3a(ray_from[1]),
+                        world_to_co.transform_point3a(ray_from[2]),
+                        world_to_co.transform_point3a(ray_from[3]),
+                    ],
+                    [
+                        world_to_co.transform_point3a(ray_to[0]),
+                        world_to_co.transform_point3a(ray_to[1]),
+                        world_to_co.transform_point3a(ray_to[2]),
+                        world_to_co.transform_point3a(ray_to[3]),
+                    ],
+                )
+            };
 
+        Self::quad_ray_test_local(&ray_from_local, &ray_to_local, co, obj_idx, result_callback);
+    }
+
+    fn quad_ray_test_local<T: QuadRayResultCallback>(
+        ray_from_local: &[Vec3A; 4],
+        ray_to_local: &[Vec3A; 4],
+        co: &RigidBody,
+        obj_idx: usize,
+        result_callback: &mut T,
+    ) {
         let mut rcb = BridgeTriQuadRayCallback {
-            from: &ray_from_local,
-            to: &ray_to_local,
+            from: ray_from_local,
+            to: ray_to_local,
             hit_fraction: result_callback.get_base().closest_hit_fraction,
             collision_obj: co,
             collision_obj_idx: obj_idx,
             result_callback,
         };
 
-        let mut ray_info = QuadRayInfo::new(&ray_from_local, &ray_to_local);
+        let mut ray_info = QuadRayInfo::new(ray_from_local, ray_to_local);
         ray_info.lambda_max = rcb.hit_fraction;
 
         co.get_collision_shape()

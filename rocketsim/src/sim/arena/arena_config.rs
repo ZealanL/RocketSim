@@ -41,7 +41,8 @@ pub struct ArenaConfig {
     pub max_pos: Vec3A,
     /// Target cell size for the broadphase grid (uu). Smaller = more memory.
     pub max_aabb_len: f32,
-    /// When `true`, the ball never spins (sphere only; useful for debugging).
+    /// Keep the sphere ball's rotation at identity. Ignore supplied rotations.
+    /// Angular velocity still affects contacts. This does not apply to the puck.
     pub no_ball_rot: bool,
     /// Use this boost-pad list instead of the mode's default layout.
     /// Pads are re-sorted to RLBot/RLGym order (Y, then X). Their XY
@@ -120,7 +121,7 @@ impl ArenaConfig {
         self
     }
 
-    /// Disable ball angular motion.
+    /// Keep the sphere ball's rotation at identity without removing angular velocity.
     #[must_use]
     pub fn with_no_ball_rot(mut self, no_ball_rot: bool) -> Self {
         self.no_ball_rot = no_ball_rot;

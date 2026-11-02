@@ -1,5 +1,5 @@
 use glam::{Mat3A, Vec3A};
-use rocketsim::{Arena, BallState, CarBodyConfig, GameMode, Team};
+use rocketsim::{Arena, ArenaConfig, BallState, CarBodyConfig, GameMode, Team};
 
 #[test]
 fn sleep_preserves_pose_and_zero_velocity_state_writes_wake_ball() {
@@ -62,6 +62,43 @@ fn sleep_preserves_pose_and_zero_velocity_state_writes_wake_ball() {
     assert!(arena.get_ball_state().vel.y < -40.0);
     assert!(arena.get_ball_state().vel.z > 10.0);
     assert_ne!(arena.get_ball_state().ang_vel, Vec3A::ZERO);
+}
+
+#[test]
+fn no_ball_rot_keeps_identity_without_removing_angular_velocity() {
+    for no_ball_rot in [false, true] {
+        let mut arena = Arena::new_with_config(
+            ArenaConfig::new(GameMode::TheVoid).with_no_ball_rot(no_ball_rot),
+        );
+        let car_idx = arena.add_car(Team::Blue, CarBodyConfig::OCTANE);
+        let mut car = *arena.get_car_state(car_idx);
+        car.phys.pos = Vec3A::new(1000.0, 1000.0, 1000.0);
+        car.phys.ang_vel = Vec3A::new(1.0, 2.0, 3.0);
+        arena.set_car_state_full(car_idx, car);
+
+        let mut ball = BallState::DEFAULT;
+        ball.phys.pos = Vec3A::new(0.0, 0.0, 1000.0);
+        ball.phys.rot_mat = Mat3A::from_rotation_z(0.7);
+        ball.phys.ang_vel = Vec3A::new(1.0, 2.0, 3.0);
+        arena.set_ball_state(ball);
+        let expected_rotation = if no_ball_rot {
+            Mat3A::IDENTITY
+        } else {
+            ball.phys.rot_mat
+        };
+        assert_eq!(arena.get_ball_state().rot_mat, expected_rotation);
+        assert_eq!(arena.get_ball_state().ang_vel, ball.phys.ang_vel);
+
+        for _ in 0..8 {
+            arena.step_tick();
+            assert_ne!(arena.get_ball_state().ang_vel, Vec3A::ZERO);
+            assert_eq!(
+                arena.get_ball_state().rot_mat == Mat3A::IDENTITY,
+                no_ball_rot
+            );
+        }
+        assert_ne!(arena.get_car_state(car_idx).phys.rot_mat, Mat3A::IDENTITY);
+    }
 }
 
 #[test]

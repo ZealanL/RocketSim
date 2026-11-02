@@ -1,5 +1,7 @@
 use glam::{IVec3, Vec3A};
 
+use crate::shared::round_ties_even;
+
 /// Driver inputs applied on the next [`crate::Arena::step_tick`].
 ///
 /// Analog axes are `-1..1` (clamped by [`CarControls::clamp`]); booleans are
@@ -180,7 +182,7 @@ pub(super) fn quantize_axis_input(x: f32) -> f32 {
         (clamped * 127.0).min(127.0)
     };
     let w = ((y + 128.0) + (y + 128.0)) + 0.5;
-    let eax = w.round_ties_even() as i32;
+    let eax = round_ties_even(w) as i32;
     let byte = ((eax >> 1) & 0xFF) as u8;
     let s = (byte as f32) - 128.0;
     if byte < 0x80 {

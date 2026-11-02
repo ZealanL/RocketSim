@@ -331,6 +331,7 @@ impl CollisionDispatcher {
         compound_obj: &RigidBody,
         compound_shape: &CompoundShape,
         other_idx: usize,
+        other_proxy: &BroadphaseProxy,
         other_obj: &RigidBody,
     ) -> bool {
         let cached = self.compound_child_bounds[compound_idx];
@@ -351,7 +352,14 @@ impl CollisionDispatcher {
             };
             value
         };
-        let other_aabb = self.cached_raw_body_aabb(other_idx, other_obj);
+
+        // A static proxy keeps the raw shape AABB from insertion
+        let other_aabb = if other_obj.is_static_obj() {
+            other_proxy.aabb
+        } else {
+            self.cached_raw_body_aabb(other_idx, other_obj)
+        };
+
         child_bounds.aabb.intersects(&other_aabb)
     }
 
@@ -686,16 +694,17 @@ impl CollisionDispatcher {
 
         let compound_gate = compound_pair.map(|(compound_obj, compound, other_obj)| {
             if USE_CACHED_BOUNDS {
-                let other_idx = if std::ptr::eq(compound_obj, rb0) {
-                    rb1_idx
+                let (other_idx, other_proxy) = if std::ptr::eq(compound_obj, rb0) {
+                    (rb1_idx, proxy1)
                 } else {
-                    rb0_idx
+                    (rb0_idx, proxy0)
                 };
                 self.cached_compound_child_overlaps_other(
                     compound_idx.expect("compound pair has a body index"),
                     compound_obj,
                     compound,
                     other_idx,
+                    other_proxy,
                     other_obj,
                 )
             } else {

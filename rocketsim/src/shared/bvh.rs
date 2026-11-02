@@ -1,4 +1,7 @@
-use std::{iter::repeat_n, mem};
+use std::{
+    iter::repeat_n,
+    mem::{self, MaybeUninit},
+};
 
 use glam::{Vec3A, Vec4};
 
@@ -219,22 +222,28 @@ impl Tree {
             return false;
         }
 
-        let mut stack = [0usize; Self::TRAVERSAL_STACK_SIZE];
+        let mut stack = [MaybeUninit::<WideChild>::uninit(); Self::TRAVERSAL_STACK_SIZE];
+        stack[0].write(WideChild::branch(0));
+
         let mut stack_len = 1;
         while stack_len != 0 {
             stack_len -= 1;
-            let node = &self.wide_nodes[stack[stack_len]];
+
+            // SAFETY: only indices below `stack_len + 1` are read, each written before bump.
+            let work = unsafe { stack[stack_len].assume_init() };
+            if work.leaf_idx().is_some() {
+                return true;
+            }
+
+            let node = &self.wide_nodes[work.branch_idx()];
             let mask = node.intersection_mask(aabb);
-            for lane in 0..node.child_count as usize {
-                if mask & (1 << lane) == 0 {
-                    continue;
+            for lane in (0..node.child_count as usize).rev() {
+                if mask & (1 << lane) != 0 {
+                    std::hint::cold_path();
+                    debug_assert!(stack_len < Self::TRAVERSAL_STACK_SIZE);
+                    stack[stack_len].write(node.children[lane]);
+                    stack_len += 1;
                 }
-                if let Some(child_idx) = node.children[lane].leaf_idx() {
-                    let _ = child_idx;
-                    return true;
-                }
-                stack[stack_len] = node.children[lane].branch_idx();
-                stack_len += 1;
             }
         }
         false
@@ -245,13 +254,13 @@ impl Tree {
             return;
         }
 
-        // Only the pushed prefix is read, so leave the rest uninitialized.
-        use std::mem::MaybeUninit;
         let mut stack = [MaybeUninit::<WideChild>::uninit(); Self::TRAVERSAL_STACK_SIZE];
         stack[0].write(WideChild::branch(0));
+
         let mut stack_len = 1;
         while stack_len != 0 {
             stack_len -= 1;
+
             // SAFETY: only indices below `stack_len + 1` are read, each written before bump.
             let work = unsafe { stack[stack_len].assume_init() };
             if let Some(storage_idx) = work.leaf_idx() {
@@ -281,24 +290,30 @@ impl Tree {
             return;
         }
 
-        let (origins, inv_dirs) = ray_info.calc_pos_dir();
-        let mut stack = [WideChild::default(); Self::TRAVERSAL_STACK_SIZE];
-        stack[0] = WideChild::branch(0);
+        let mut stack = [MaybeUninit::<WideChild>::uninit(); Self::TRAVERSAL_STACK_SIZE];
+        stack[0].write(WideChild::branch(0));
+
         let mut stack_len = 1;
+        let mut origins_inv_dirs: Option<([Vec4; 3], [Vec4; 3])> = None;
         while stack_len != 0 {
             stack_len -= 1;
-            let work = stack[stack_len];
+            // SAFETY: only indices below `stack_len + 1` are read, each written before bump.
+            let work = unsafe { stack[stack_len].assume_init() };
             if let Some(storage_idx) = work.leaf_idx() {
-                let leaf = self.leaves[storage_idx];
+                let leaf = &self.leaves[storage_idx];
+                let (origins, inv_dirs) =
+                    origins_inv_dirs.get_or_insert_with(|| ray_info.calc_pos_dir());
                 let mask = QuadRayInfo::intersect_quad_ray_aabb(
-                    &origins,
-                    &inv_dirs,
+                    origins,
+                    inv_dirs,
                     &leaf.bounds,
                     ray_info.lambda_max,
                 );
+
                 if mask != 0 {
                     node_callback.process_node(leaf.leaf_idx, mask, &mut ray_info.lambda_max);
                 }
+
                 continue;
             }
 
@@ -307,7 +322,8 @@ impl Tree {
             for lane in (0..node.child_count as usize).rev() {
                 if mask & (1 << lane) != 0 {
                     std::hint::cold_path();
-                    stack[stack_len] = node.children[lane];
+                    debug_assert!(stack_len < Self::TRAVERSAL_STACK_SIZE);
+                    stack[stack_len].write(node.children[lane]);
                     stack_len += 1;
                 }
             }

@@ -127,6 +127,7 @@ impl Ball {
             matrix3: self.state.phys.rot_mat,
             translation: self.state.phys.pos * UU_TO_BT,
         });
+        self.state.phys.rot_mat = rb.get_world_trans().matrix3;
         rb.interp_world_trans = *rb.get_world_trans();
 
         rb.set_lin_vel(self.state.phys.vel * UU_TO_BT);

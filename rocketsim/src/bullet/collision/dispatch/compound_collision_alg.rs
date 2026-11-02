@@ -1,4 +1,4 @@
-use glam::{Affine3A, Mat3A, Vec3A};
+use glam::{Affine3A, Vec3A};
 
 use super::{
     collision_obj_wrapper::RigidBodyWrapper, convex_convex_collision_alg,
@@ -16,11 +16,87 @@ use crate::{
                 triangle_callback::ProcessTriangle, triangle_shape::TriangleShape,
             },
         },
-        dynamics::rigid_body::RigidBody,
+        dynamics::rigid_body::{CollisionFlags, RigidBody},
         linear_math::AffineExt,
     },
     shared::Aabb,
 };
+
+/// Cached static-mesh transform facts for one compound/mesh pair.
+///
+/// `NoAngularMotion` and `IdentityTransform` are maintained by the
+/// `RigidBody` transform setters. Do not test the matrix again.
+#[derive(Clone, Copy)]
+struct MeshTransformFlags {
+    no_angular_motion: bool,
+    identity: bool,
+}
+
+impl MeshTransformFlags {
+    fn from_body(body: &RigidBody) -> Self {
+        let flags = body.collision_flags;
+        Self {
+            no_angular_motion: flags & CollisionFlags::NoAngularMotion != 0,
+            identity: flags & CollisionFlags::IdentityTransform != 0,
+        }
+    }
+
+    /// The body matrix is identity. `IdentityTransform` implies this too.
+    const fn is_flat(self) -> bool {
+        self.no_angular_motion || self.identity
+    }
+}
+
+/// Build the box transform in triangle-mesh space.
+///
+/// The generic path is the original expression. The flat paths use the
+/// `NoAngularMotion` matrix guarantee. Only `IdentityTransform` skips the
+/// translation subtraction.
+#[inline]
+fn mesh_pair_transform(
+    mesh_trans: &Affine3A,
+    flags: MeshTransformFlags,
+    child_world_trans: Affine3A,
+) -> Affine3A {
+    if flags.identity {
+        child_world_trans
+    } else if flags.no_angular_motion {
+        Affine3A {
+            matrix3: child_world_trans.matrix3,
+            translation: child_world_trans.translation - mesh_trans.translation,
+        }
+    } else {
+        let mesh_to_local = mesh_trans.transpose();
+        Affine3A {
+            matrix3: mesh_to_local.matrix3 * child_world_trans.matrix3,
+            translation: mesh_to_local.transform_point3a(child_world_trans.translation),
+        }
+    }
+}
+
+/// Build the triangle-mesh to box transform.
+///
+/// Compute `box_to_local` once. The flat path replaces only the
+/// `box_to_local.matrix3 * I` product. The translation keeps the original
+/// `Affine3A` multiply order because it feeds contact geometry.
+#[inline]
+fn mesh_to_box_transform(
+    box_trans: &Affine3A,
+    mesh_trans: &Affine3A,
+    flags: MeshTransformFlags,
+) -> Affine3A {
+    let box_to_local = box_trans.transpose();
+    let matrix3 = if flags.is_flat() {
+        box_to_local.matrix3
+    } else {
+        box_to_local.matrix3 * mesh_trans.matrix3
+    };
+
+    Affine3A {
+        matrix3,
+        translation: box_to_local.transform_point3a(mesh_trans.translation),
+    }
+}
 
 struct ConvexTriangleCallback<'a, T: ContactAddedCallback> {
     manifold: Option<PersistentManifold>,
@@ -31,8 +107,11 @@ struct ConvexTriangleCallback<'a, T: ContactAddedCallback> {
     margin: f32,
     maximum_distance: f32,
     box_trans: Affine3A,
-    mesh_to_box: Affine3A,
-    tri_matrix: Mat3A,
+    tri_trans: &'a Affine3A,
+    tri_flags: MeshTransformFlags,
+    /// Composed on the first triangle that passes the local AABB test.
+    /// A BVH walk with no leaf candidate never pays for the transform.
+    mesh_to_box: Option<Affine3A>,
     contact_added_callback: &'a mut T,
 }
 
@@ -50,10 +129,19 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
             return;
         }
 
+        let mesh_to_box = match self.mesh_to_box {
+            Some(mesh_to_box) => mesh_to_box,
+            None => {
+                let mesh_to_box =
+                    mesh_to_box_transform(&self.box_trans, self.tri_trans, self.tri_flags);
+                self.mesh_to_box = Some(mesh_to_box);
+                mesh_to_box
+            }
+        };
         let q = [
-            self.mesh_to_box.transform_point3a(triangle.points[0]),
-            self.mesh_to_box.transform_point3a(triangle.points[1]),
-            self.mesh_to_box.transform_point3a(triangle.points[2]),
+            mesh_to_box.transform_point3a(triangle.points[0]),
+            mesh_to_box.transform_point3a(triangle.points[1]),
+            mesh_to_box.transform_point3a(triangle.points[2]),
         ];
         let Some(contact) = box_triangle_sat(
             &self.box_trans,
@@ -65,7 +153,7 @@ impl<T: ContactAddedCallback> ProcessTriangle for ConvexTriangleCallback<'_, T> 
             return;
         };
 
-        let emit_normal = self.tri_matrix * triangle.normal;
+        let emit_normal = self.tri_trans.matrix3 * triangle.normal;
         let (convex_obj, tri_obj) = (self.convex_obj, self.tri_obj);
         let manifold = self
             .manifold
@@ -173,17 +261,12 @@ pub(crate) fn process_collision_after_child_gate<T: ContactAddedCallback>(
 
     match other_col_shape {
         CollisionShapes::TriangleMesh(tri_mesh) => {
-            let other_trans = *other_obj.get_world_trans();
-            let xform1 = other_trans.transpose();
-            let xform2 = new_child_world_trans;
-            let convex_in_triangle_space = Affine3A {
-                matrix3: xform1.matrix3 * xform2.matrix3,
-                translation: xform1.transform_point3a(xform2.translation),
-            };
+            let other_trans = other_obj.get_world_trans();
+            let tri_flags = MeshTransformFlags::from_body(other_obj);
+            let convex_in_triangle_space =
+                mesh_pair_transform(other_trans, tri_flags, new_child_world_trans);
             let aabb_in_triangle = box_shape.get_aabb(&convex_in_triangle_space);
 
-            // Mesh-to-box transform, composed once per compound/mesh collision.
-            let mesh_to_box = new_child_world_trans.transpose() * other_trans;
             // Constant for the whole BVH walk; cache here. Direct threshold
             // fields avoid constructing a manifold for empty calls.
             let half = box_shape.get_half_extents();
@@ -192,7 +275,6 @@ pub(crate) fn process_collision_after_child_gate<T: ContactAddedCallback>(
                 .get_contact_breaking_threshold()
                 .min(other_obj.get_contact_breaking_threshold());
             let maximum_distance = margin + breaking;
-            let tri_matrix = other_trans.matrix3;
 
             let mut convex_triangle_callback = ConvexTriangleCallback {
                 manifold: None,
@@ -203,8 +285,9 @@ pub(crate) fn process_collision_after_child_gate<T: ContactAddedCallback>(
                 margin,
                 maximum_distance,
                 box_trans: new_child_world_trans,
-                mesh_to_box,
-                tri_matrix,
+                tri_trans: other_trans,
+                tri_flags,
+                mesh_to_box: None,
                 contact_added_callback,
             };
 
@@ -223,7 +306,9 @@ pub(crate) fn process_collision_after_child_gate<T: ContactAddedCallback>(
                 world_trans: new_child_world_trans,
                 child_shape_override: Some(box_shape),
             };
-            convex_plane_collision_alg::process_collision(
+            // The compound gate above already compared this child AABB with
+            // `plane.aabb_cache`. Do not repeat the identical gate here.
+            convex_plane_collision_alg::process_collision_after_gate(
                 &compound_obj_wrap,
                 other_obj,
                 plane,

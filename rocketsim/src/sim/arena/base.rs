@@ -881,29 +881,34 @@ impl Arena {
             if self.config.mutators.boost_pads_enabled
                 && let Some(grid) = self.boost_pad_grid.as_mut()
             {
-                grid.update_membership(&self.cars, self.config.mutators.car_max_boost_amount);
+                let any_touching =
+                    grid.update_membership(&self.cars, self.config.mutators.car_max_boost_amount);
 
-                for car_idx in 0..self.cars.len() {
-                    let collected = {
-                        let car = &mut self.cars[car_idx];
-                        grid.maybe_give_car_boost(
-                            &mut car.state,
-                            &self.config.mutators,
-                            self.tick_count,
-                            car_idx,
-                        )
-                    };
+                // A car without pad membership cannot collect boost and
+                // changes no state, so skip the per-car award check.
+                if any_touching {
+                    for car_idx in 0..self.cars.len() {
+                        let collected = {
+                            let car = &mut self.cars[car_idx];
+                            grid.maybe_give_car_boost(
+                                &mut car.state,
+                                &self.config.mutators,
+                                self.tick_count,
+                                car_idx,
+                            )
+                        };
 
-                    if let Some(boost_pad_idx) = collected {
-                        self.events.push(CarPickupBoost(CarPickupBoostEvent {
-                            car_idx,
-                            boost_pad_idx,
-                        }));
-                        grid.refresh_winner(
-                            boost_pad_idx,
-                            &self.cars,
-                            self.config.mutators.car_max_boost_amount,
-                        );
+                        if let Some(boost_pad_idx) = collected {
+                            self.events.push(CarPickupBoost(CarPickupBoostEvent {
+                                car_idx,
+                                boost_pad_idx,
+                            }));
+                            grid.refresh_winner(
+                                boost_pad_idx,
+                                &self.cars,
+                                self.config.mutators.car_max_boost_amount,
+                            );
+                        }
                     }
                 }
             }

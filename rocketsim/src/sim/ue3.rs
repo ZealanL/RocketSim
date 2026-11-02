@@ -1,5 +1,7 @@
 use glam::Vec3A;
 
+use crate::shared::round_ties_even;
+
 /// One entry of UE3's 16384-entry sine table
 #[inline]
 #[must_use]
@@ -23,7 +25,7 @@ pub(crate) fn sin_tab_angle(angle: i32) -> f32 {
 #[must_use]
 pub(crate) fn rotator_units(y: f32, x: f32) -> i32 {
     let units = (y.atan2(x) * 32768.0) / std::f32::consts::PI;
-    ((units + units + 0.5).round_ties_even() as i32) >> 1
+    (round_ties_even(units + units + 0.5) as i32) >> 1
 }
 
 /// Yaw in rotator units for the dodge direction.
@@ -33,7 +35,7 @@ pub(crate) fn rotator_units(y: f32, x: f32) -> i32 {
 #[must_use]
 pub(crate) fn dodge_yaw_units(y: f32, x: f32) -> i32 {
     let units = y.atan2(x) * (32768.0 / std::f32::consts::PI);
-    units.round_ties_even() as i32
+    round_ties_even(units) as i32
 }
 
 /// The game's `GetRotatorAxis(QuatToRotator(q), 0)` forward direction.

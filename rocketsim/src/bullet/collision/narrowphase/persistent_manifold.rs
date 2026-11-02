@@ -53,6 +53,50 @@ pub fn pair_key(body_a_idx: usize, body_b_idx: usize) -> u64 {
     (pair_min << 32) | pair_max
 }
 
+// Identity shortcuts assume finite physics state. They can change zero signs.
+#[inline]
+fn point_to_local(body: &RigidBody, point: Vec3A) -> Vec3A {
+    if body.collision_flags & CollisionFlags::IdentityTransform != 0 {
+        point
+    } else if body.collision_flags & CollisionFlags::NoAngularMotion != 0 {
+        point - body.get_world_trans().translation
+    } else {
+        body.get_world_trans().inv_x_form(point)
+    }
+}
+
+#[inline]
+fn project_contact_points(
+    points: &mut [ManifoldPoint],
+    to_world_a: impl Fn(Vec3A) -> Vec3A,
+    to_world_b: impl Fn(Vec3A) -> Vec3A,
+) {
+    // Static dispatch keeps transform selection outside the point loop.
+    for point in points {
+        point.pos_world_on_a = to_world_a(point.local_point_a);
+        point.pos_world_on_b = to_world_b(point.local_point_b);
+        point.distance_1 =
+            (point.pos_world_on_a - point.pos_world_on_b).dot(point.normal_world_on_b);
+    }
+}
+
+#[inline]
+fn project_with_body_b(
+    points: &mut [ManifoldPoint],
+    to_world_a: impl Fn(Vec3A) -> Vec3A,
+    body_b: &RigidBody,
+) {
+    let trans_b = body_b.get_world_trans();
+    if body_b.collision_flags & CollisionFlags::IdentityTransform != 0 {
+        project_contact_points(points, to_world_a, |point| point);
+    } else if body_b.collision_flags & CollisionFlags::NoAngularMotion != 0 {
+        let translation = trans_b.translation;
+        project_contact_points(points, to_world_a, |point| point + translation);
+    } else {
+        project_contact_points(points, to_world_a, |point| trans_b.transform_point3a(point));
+    }
+}
+
 #[derive(Clone)]
 pub struct PersistentManifold {
     pub point_cache: ArrayVec<ManifoldPoint, MANIFOLD_CACHE_SIZE>,
@@ -259,10 +303,8 @@ impl PersistentManifold {
         }
 
         let point_a = point_in_world + normal_on_b_in_world * depth;
-        let (local_a, local_b) = (
-            body0.get_world_trans().inv_x_form(point_a),
-            body1.get_world_trans().inv_x_form(point_in_world),
-        );
+        let local_a = point_to_local(body0, point_a);
+        let local_b = point_to_local(body1, point_in_world);
 
         let mut new_pt = ManifoldPoint::new(local_a, local_b, normal_on_b_in_world, depth);
         new_pt.pos_world_on_a = point_a;
@@ -310,15 +352,18 @@ impl PersistentManifold {
             return;
         }
 
-        let tr_a = body0.get_world_trans();
-        let tr_b = body1.get_world_trans();
-
-        for manifold_point in &mut self.point_cache {
-            manifold_point.pos_world_on_a = tr_a.transform_point3a(manifold_point.local_point_a);
-            manifold_point.pos_world_on_b = tr_b.transform_point3a(manifold_point.local_point_b);
-            manifold_point.distance_1 = (manifold_point.pos_world_on_a
-                - manifold_point.pos_world_on_b)
-                .dot(manifold_point.normal_world_on_b);
+        let trans_a = body0.get_world_trans();
+        if body0.collision_flags & CollisionFlags::IdentityTransform != 0 {
+            project_with_body_b(&mut self.point_cache, |point| point, body1);
+        } else if body0.collision_flags & CollisionFlags::NoAngularMotion != 0 {
+            let translation = trans_a.translation;
+            project_with_body_b(&mut self.point_cache, |point| point + translation, body1);
+        } else {
+            project_with_body_b(
+                &mut self.point_cache,
+                |point| trans_a.transform_point3a(point),
+                body1,
+            );
         }
 
         let contact_breaking_threshold_sq =

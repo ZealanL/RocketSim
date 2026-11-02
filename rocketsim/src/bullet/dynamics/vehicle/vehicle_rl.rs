@@ -350,6 +350,10 @@ impl VehicleRL {
             }
         }
 
+        if num_wheels_in_contact == 0 {
+            return;
+        }
+
         let chassis = &mut collision_world.bodies_mut()[self.chassis_body_idx];
         for wheel in &mut self.wheels {
             wheel.update_suspension(chassis, chassis_translation, time_step);

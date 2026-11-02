@@ -8,31 +8,41 @@ use crate::{
     shared::{Aabb, QuadRayInfo},
 };
 
+/// Compound child shape plus construction-time local AABB cache.
+///
+/// `new` caches the local AABB and its center and half extents. Mutating
+/// `child_shape` or `child_trans` in place does not refresh these caches.
+/// Construct a new value to change the child.
 #[derive(Clone, Copy)]
 pub struct CompoundShape {
     pub child_shape: BoxShape,
     pub child_trans: Affine3A,
     local_aabb: Aabb,
+    /// Local-space AABB center, cached from `local_aabb` at construction.
+    local_center: Vec3A,
+    /// Local-space AABB half extents, cached from `local_aabb` at construction.
+    local_half_extents: Vec3A,
 }
 
 impl CompoundShape {
     pub fn new(child_shape: BoxShape, child_trans: Affine3A) -> Self {
         let local_aabb = child_shape.get_aabb(&child_trans);
+        let local_half_extents = 0.5 * (local_aabb.max - local_aabb.min);
+        let local_center = 0.5 * (local_aabb.max + local_aabb.min);
 
         Self {
             child_shape,
             child_trans,
             local_aabb,
+            local_center,
+            local_half_extents,
         }
     }
 
     pub fn get_aabb(&self, trans: &Affine3A) -> Aabb {
-        let local_half_extents = 0.5 * (self.local_aabb.max - self.local_aabb.min);
-        let local_center = 0.5 * (self.local_aabb.max + self.local_aabb.min);
-
         let abs_b = trans.matrix3.abs();
-        let center = trans.transform_point3a(local_center);
-        let extent = abs_b * local_half_extents;
+        let center = trans.transform_point3a(self.local_center);
+        let extent = abs_b * self.local_half_extents;
 
         Aabb {
             min: center - extent,
