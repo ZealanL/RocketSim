@@ -199,13 +199,12 @@ pub fn box_triangle_sat(
         std::hint::cold_path();
         return None;
     }
-    // Witness by winning axis family; falls back to the overlap centroid, then support.
-    // Depth and normal stay on the min-overlap axis. Fallbacks are cold:
-    // the family rule succeeds for every regular configuration.
-    let pb_local = pen_witness_by_kind(half_unmargined, q, sweep.pen_kind, n_local)
+    // Witness by the winning axis family. If the rule has no point, use the
+    // translated-box patch centroid.
+    let pb_local = pen_witness_by_kind(half_unmargined, q, sweep.pen_kind, n_local, best_overlap)
         .or_else(|| {
             std::hint::cold_path();
-            clipped_tri_box_centroid(half_unmargined, q)
+            clipped_tri_box_centroid(half_unmargined, q, n_local * best_overlap)
         })
         .unwrap_or_else(|| {
             std::hint::cold_path();
@@ -263,6 +262,40 @@ fn orient_pen_axis(a: Vec3A, to_box: Vec3A, face_axis: Vec3A, has_face_axis: boo
         -a
     } else {
         a
+    }
+}
+
+/// Projection exits of the triangle through the box along unit axis `a`.
+/// The first value moves the box along `+a`, the second along `-a`.
+/// The smaller value is the minimum translation along `a`.
+/// Keep these expressions in sync with [`axis_gap_overlap`].
+#[inline]
+fn pen_axis_exits(a: Vec3A, q: &[Vec3A; 3], half: Vec3A) -> (f32, f32) {
+    let r = half.x * a.x.abs() + half.y * a.y.abs() + half.z * a.z.abs();
+    let d0 = q[0].dot(a);
+    let d1 = q[1].dot(a);
+    let d2 = q[2].dot(a);
+    (d0.max(d1).max(d2) + r, r - d0.min(d1).min(d2))
+}
+
+/// Orient the winning axis by the smaller projection exit.
+/// An exact tie keeps the box-center rule.
+/// The exit order swaps sides at the tie, so the result is not continuous.
+#[inline]
+fn orient_pen_axis_by_exit(
+    a: Vec3A,
+    exit_pos: f32,
+    exit_neg: f32,
+    to_box: Vec3A,
+    face_axis: Vec3A,
+    has_face_axis: bool,
+) -> Vec3A {
+    if exit_pos < exit_neg {
+        a
+    } else if exit_neg < exit_pos {
+        -a
+    } else {
+        orient_pen_axis(a, to_box, face_axis, has_face_axis)
     }
 }
 
@@ -471,16 +504,26 @@ fn sat_sweep(
             }
         }
     }
-    // Orient the winning penetrating axis once. Skipped when separated
-    // (penetration data unused) to avoid dots on every candidate.
+    // Orient the winning penetrating axis once by the smaller exit. Skipped
+    // when separated (penetration data unused) to avoid work on every
+    // candidate. The two exit distances are recomputed for the winner only.
     if !out.has_sep && out.pen_kind.is_some() {
-        out.best_pen_axis = orient_pen_axis(out.best_pen_raw, to_box, face_axis, has_face_axis);
+        let (exit_pos, exit_neg) = pen_axis_exits(out.best_pen_raw, q, half);
+        out.best_pen_axis = orient_pen_axis_by_exit(
+            out.best_pen_raw,
+            exit_pos,
+            exit_neg,
+            to_box,
+            face_axis,
+            has_face_axis,
+        );
     }
     Some(out)
 }
 
 /// `(gap, overlap, side)` for a unit axis `a`: `gap > 0` when disjoint,
 /// `side > 0` when the triangle is on the + side, `overlap >= 0` otherwise.
+/// The two exits below must equal [`pen_axis_exits`].
 #[inline]
 fn axis_gap_overlap(a: Vec3A, q: &[Vec3A; 3], half: Vec3A) -> (f32, f32, f32) {
     let r = half.x * a.x.abs() + half.y * a.y.abs() + half.z * a.z.abs();
@@ -519,10 +562,10 @@ fn tri_support_first_max(q: &[Vec3A; 3], dir: Vec3A) -> Vec3A {
     best
 }
 
-/// Centroid of the triangle/box overlap patch. Cold: only the penetrating
-/// witness fallbacks reach here.
+/// Centroid of the triangle patch inside the box translated by `shift`.
+/// The patch is tangent to the translated box, so the bounds carry `TIE_EPS`.
 #[cold]
-fn clipped_tri_box_centroid(half: Vec3A, q: &[Vec3A; 3]) -> Option<Vec3A> {
+fn clipped_tri_box_centroid(half: Vec3A, q: &[Vec3A; 3], shift: Vec3A) -> Option<Vec3A> {
     let mut poly = [Vec3A::ZERO; 9];
     poly[0] = q[0];
     poly[1] = q[1];
@@ -530,12 +573,13 @@ fn clipped_tri_box_centroid(half: Vec3A, q: &[Vec3A; 3]) -> Option<Vec3A> {
     let mut len = 3usize;
     let mut scratch = [Vec3A::ZERO; 9];
     for axis in 0..3 {
-        let h = half[axis];
-        len = clip_halfspace(&poly[..len], &mut scratch, axis, -h, true);
+        let lo = -half[axis] + shift[axis] - TIE_EPS;
+        let hi = half[axis] + shift[axis] + TIE_EPS;
+        len = clip_halfspace(&poly[..len], &mut scratch, axis, lo, true);
         if len == 0 {
             return None;
         }
-        len = clip_halfspace(&scratch[..len], &mut poly, axis, h, false);
+        len = clip_halfspace(&scratch[..len], &mut poly, axis, hi, false);
         if len == 0 {
             return None;
         }
@@ -547,7 +591,8 @@ fn clipped_tri_box_centroid(half: Vec3A, q: &[Vec3A; 3]) -> Option<Vec3A> {
     Some(sum / (len as f32))
 }
 
-/// Sutherland–Hodgman halfspace clip. Cold: see [`clipped_tri_box_centroid`].
+/// Sutherland–Hodgman halfspace clip. Cold: see
+/// [`clipped_tri_box_centroid`].
 #[cold]
 fn clip_halfspace(
     input: &[Vec3A],
@@ -721,18 +766,24 @@ fn point_in_triangle_eps(p: Vec3A, q: &[Vec3A; 3], n: Vec3A) -> bool {
     true
 }
 
-/// Clip segment AB to the centered box `[-half, half]`.
-/// Cold: penetrating-witness only.
+/// Clip segment AB to the box `[-half, half]` translated by `shift`.
+/// The bounds carry `TIE_EPS`, as in [`clipped_tri_box_centroid`].
 #[cold]
-fn clip_segment_to_box(a: Vec3A, b: Vec3A, half: Vec3A) -> Option<(Vec3A, Vec3A)> {
+fn clip_segment_to_box(a: Vec3A, b: Vec3A, half: Vec3A, shift: Vec3A) -> Option<(Vec3A, Vec3A)> {
     let mut t0 = 0.0f32;
     let mut t1 = 1.0f32;
     let d = b - a;
     for axis in 0..3 {
         let h = half[axis];
         for is_min in [true, false] {
-            let p = if is_min { d[axis] } else { -d[axis] };
-            let qv = if is_min { a[axis] + h } else { h - a[axis] };
+            // Liang-Barsky: the lower bound uses `p = -d` and the upper bound
+            // uses `p = +d`, so `p < 0` is the entry and `p > 0` is the exit.
+            let p = if is_min { -d[axis] } else { d[axis] };
+            let qv = if is_min {
+                a[axis] + h - shift[axis] + TIE_EPS
+            } else {
+                h + shift[axis] - a[axis] + TIE_EPS
+            };
             if p.abs() < f32::EPSILON {
                 if qv < 0.0 {
                     return None;
@@ -764,19 +815,22 @@ fn clip_segment_to_box(a: Vec3A, b: Vec3A, half: Vec3A) -> Option<(Vec3A, Vec3A)
 }
 
 /// Penetrating witness by winning axis family (box-local, unmargined).
-/// `n_local` points from the triangle toward the box. All outputs lie on the
-/// triangle; returns `None` when the family rule has no witness (e.g. face
-/// projection outside the triangle), and the caller falls back to the overlap
-/// centroid. Cold: only the penetrating branch reaches here, and true
-/// unmargined overlap is rarer than separated near-contacts.
-/// Note: keep out-of-line so the hot separated path stays compact.
+/// `n_local` points from the triangle toward the box. `overlap` is the core
+/// overlap on that axis.
+///
+/// Each returned point lies on the triangle and reconstructs a point in the
+/// box translated by `n_local * overlap`. That set is not empty for a
+/// minimum-overlap axis. A rule returns `None` when the caller's patch
+/// centroid serves instead.
 #[cold]
 fn pen_witness_by_kind(
     half: Vec3A,
     q: &[Vec3A; 3],
     kind: Option<AxisKind>,
     n_local: Vec3A,
+    overlap: f32,
 ) -> Option<Vec3A> {
+    let shift = n_local * overlap;
     match kind? {
         AxisKind::TriFace => {
             let plane_dist = n_local.dot(q[0]);
@@ -803,27 +857,29 @@ fn pen_witness_by_kind(
             }
             match n_tied {
                 0 => None,
+                // A single support vertex is the touching point: the support
+                // plane and the translated box plane coincide there.
                 1 => Some(tied[0]),
                 2 => {
-                    // Midpoint of the tied edge clipped to the box.
-                    clip_segment_to_box(tied[0], tied[1], half).map(|(a, b)| (a + b) * 0.5)
+                    // Midpoint of the tied edge inside the translated box.
+                    clip_segment_to_box(tied[0], tied[1], half, shift).map(|(a, b)| (a + b) * 0.5)
                 }
-                _ => {
-                    // Whole-triangle tie: centroid of the overlap patch.
-                    clipped_tri_box_centroid(half, q)
-                }
+                // Whole-triangle tie: the caller's patch centroid is the same point.
+                _ => None,
             }
         }
         AxisKind::EdgeEdge { box_axis, tri_edge } => {
-            // Triangle-side closest point to the winning box edge.
+            // The translated box support edge and the triangle edge are the
+            // contact features only when they meet. The caller's patch centroid
+            // applies when they do not.
             let s = (-n_local).signum();
-            let mut start = half * s;
-            let mut end = half * s;
-            start[box_axis] = half[box_axis];
-            end[box_axis] = -half[box_axis];
-            let (_, tri_pt) =
+            let mut start = half * s + shift;
+            let mut end = half * s + shift;
+            start[box_axis] = half[box_axis] + shift[box_axis];
+            end[box_axis] = -half[box_axis] + shift[box_axis];
+            let (box_pt, tri_pt) =
                 segment_segment_closest(start, end, q[tri_edge], q[(tri_edge + 1) % 3]);
-            Some(tri_pt)
+            ((tri_pt - box_pt).length_squared() <= TIE_EPS * TIE_EPS).then_some(tri_pt)
         }
     }
 }
