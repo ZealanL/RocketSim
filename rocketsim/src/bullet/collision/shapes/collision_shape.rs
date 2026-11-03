@@ -104,22 +104,6 @@ impl CollisionShapes {
         }
     }
 
-    /// Bullet `NonVirtual` margined support used by `btGjkEpa2` (sphere
-    /// expansion for boxes). Only the EPA penetration path observes this;
-    /// Voronoi GJK, plane culling, and AABBs keep the virtual per-axis
-    /// convention.
-    pub fn local_get_supporting_vertex_nonvirtual(&self, vec: Vec3A) -> Vec3A {
-        match self {
-            Self::Sphere(shape) => shape.local_get_supporting_vertex(vec),
-            Self::Compound(shape) => shape
-                .child_shape
-                .local_get_supporting_vertex_nonvirtual(vec),
-            Self::ConvexHull(shape) => shape.local_get_supporting_vertex(vec),
-            Self::Triangle(shape) => shape.local_get_supporting_vertex(vec),
-            _ => unreachable!(),
-        }
-    }
-
     pub fn local_get_support_vertex_without_margin(&self, vec: Vec3A) -> Vec3A {
         match self {
             Self::Sphere(_) => Vec3A::ZERO,

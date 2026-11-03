@@ -12,14 +12,13 @@ pub enum EpaStatus {
     OutOfVertices,
     AccuracyReached,
     FallBack,
+    Failed,
 }
 
 #[derive(Clone, Copy, Debug)]
 pub struct EpaVertex {
     pub w: Vec3A,
     pub d: Vec3A,
-    pub support_a: Vec3A,
-    pub support_b: Vec3A,
 }
 
 impl EpaVertex {
@@ -27,8 +26,6 @@ impl EpaVertex {
         Self {
             w: Vec3A::ZERO,
             d: Vec3A::ZERO,
-            support_a: Vec3A::ZERO,
-            support_b: Vec3A::ZERO,
         }
     }
 }
@@ -92,11 +89,13 @@ impl EpaHorizon {
     }
 }
 
+/// Single-use EPA instance. Create one per query; `new` fills the face stock
+/// and `evaluate` assumes no state from an earlier query.
 pub struct Epa2 {
     pub result: GjkSimplex,
     pub normal: Vec3A,
     pub depth: f32,
-    pub sv_store: [EpaVertex; Self::MAX_VERTICES],
+    pub sv_store: [EpaVertex; Self::STORE_VERTICES],
     fc_store: [EpaFace; Self::MAX_FACES],
     next_sv: usize,
     hull: EpaList,
@@ -104,13 +103,16 @@ pub struct Epa2 {
 }
 
 impl Epa2 {
-    const MAX_VERTICES: usize = 128;
-    const MAX_ITERATIONS: u8 = 255;
+    /// This is the expansion budget.
+    pub const MAX_VERTICES: usize = 64;
+    const MAX_ITERATIONS: usize = 255;
 
     const ACCURACY: f32 = 1.0e-4;
     const PLANE_EPS: f32 = 1.0e-5;
 
-    const MAX_FACES: usize = Self::MAX_VERTICES * 2;
+    pub const TETRA_VERTICES: usize = 4;
+    pub const STORE_VERTICES: usize = Self::MAX_VERTICES + Self::TETRA_VERTICES;
+    pub const MAX_FACES: usize = Self::MAX_VERTICES * 2;
 
     pub const fn new() -> Self {
         let mut stock = EpaList::new();
@@ -126,7 +128,7 @@ impl Epa2 {
             result: GjkSimplex::new(),
             normal: Vec3A::ZERO,
             depth: 0.0,
-            sv_store: [EpaVertex::new(); Self::MAX_VERTICES],
+            sv_store: [EpaVertex::new(); Self::STORE_VERTICES],
             fc_store,
             next_sv: 0,
             hull: EpaList::new(),
@@ -172,10 +174,6 @@ impl Epa2 {
         self.fc_store[fa].adj[ea] = Some(fb);
         self.fc_store[fb].edge[eb] = ea as u8;
         self.fc_store[fb].adj[eb] = Some(fa);
-    }
-
-    fn det(a: Vec3A, b: Vec3A, c: Vec3A) -> f32 {
-        Mat3A::from_cols(a, b, c).determinant()
     }
 
     fn get_edge_dist(&self, face_n: Vec3A, a_idx: usize, b_idx: usize, dist: &mut f32) -> bool {
@@ -243,7 +241,7 @@ impl Epa2 {
             face.indices = [a_idx, b_idx, c_idx];
             face.adj = [None, None, None];
             face.edge = [0, 0, 0];
-            face.n = n / l;
+            face.n = n * (1.0 / l);
             face.d = dist;
 
             if face.d >= -Self::PLANE_EPS {
@@ -260,8 +258,9 @@ impl Epa2 {
         None
     }
 
-    fn new_face_forced(&mut self, a_idx: usize, b_idx: usize, c_idx: usize) -> usize {
-        let face_idx = self.stock.root.unwrap();
+    /// `newface(..., true)`. A failure makes the caller use the fallback.
+    fn new_face_forced(&mut self, a_idx: usize, b_idx: usize, c_idx: usize) -> Option<usize> {
+        let face_idx = self.stock.root?;
 
         Self::remove(&mut self.stock, &mut self.fc_store, face_idx);
         Self::append(&mut self.hull, &mut self.fc_store, face_idx);
@@ -272,25 +271,30 @@ impl Epa2 {
 
         let n = (b.w - a.w).cross(c.w - a.w);
         let l = n.length();
-        debug_assert!(l > Self::ACCURACY);
 
-        let mut dist = 0.0;
-        if !(self.get_edge_dist(n, a_idx, b_idx, &mut dist)
-            || self.get_edge_dist(n, b_idx, c_idx, &mut dist)
-            || self.get_edge_dist(n, c_idx, a_idx, &mut dist))
-        {
-            dist = a.w.dot(n) / l;
+        if l > Self::ACCURACY {
+            let mut dist = 0.0;
+            if !(self.get_edge_dist(n, a_idx, b_idx, &mut dist)
+                || self.get_edge_dist(n, b_idx, c_idx, &mut dist)
+                || self.get_edge_dist(n, c_idx, a_idx, &mut dist))
+            {
+                dist = a.w.dot(n) / l;
+            }
+
+            let face = &mut self.fc_store[face_idx];
+            face.pass = 0;
+            face.indices = [a_idx, b_idx, c_idx];
+            face.adj = [None, None, None];
+            face.edge = [0, 0, 0];
+            face.n = n * (1.0 / l);
+            face.d = dist;
+
+            return Some(face_idx);
         }
 
-        let face = &mut self.fc_store[face_idx];
-        face.pass = 0;
-        face.indices = [a_idx, b_idx, c_idx];
-        face.adj = [None, None, None];
-        face.edge = [0, 0, 0];
-        face.n = n / l;
-        face.d = dist;
-
-        face_idx
+        Self::remove(&mut self.hull, &mut self.fc_store, face_idx);
+        Self::append(&mut self.stock, &mut self.fc_store, face_idx);
+        None
     }
 
     fn find_best(&self) -> usize {
@@ -310,6 +314,7 @@ impl Epa2 {
         minf
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn expand(
         &mut self,
         pass: u8,
@@ -318,9 +323,14 @@ impl Epa2 {
         edge: usize,
         horizon: &mut EpaHorizon,
         status: &mut EpaStatus,
+        depth: usize,
     ) -> bool {
         const I1M3: [usize; 3] = [1, 2, 0];
         const I2M3: [usize; 3] = [2, 0, 1];
+
+        if depth >= Self::MAX_FACES {
+            return false;
+        }
 
         let face = self.fc_store[face_idx];
         if face.pass == pass {
@@ -329,90 +339,129 @@ impl Epa2 {
 
         let e1 = I1M3[edge];
         let w = self.sv_store[w_index].w;
-        if (face.n.dot(w) - face.d) < -Self::PLANE_EPS {
+        if face.n.dot(w) - face.d < -Self::PLANE_EPS {
             if let Some(nf) = self.new_face(face.indices[e1], face.indices[edge], w_index, status) {
                 self.bind(nf, 0, face_idx, edge);
+
                 if let Some(cf) = horizon.cf {
                     self.bind(cf, 1, nf, 2);
                 } else {
                     horizon.ff = Some(nf);
                 }
+
                 horizon.cf = Some(nf);
                 horizon.nf += 1;
+
+                return true;
+            }
+            return false;
+        }
+
+        let e2 = I2M3[edge];
+        self.fc_store[face_idx].pass = pass;
+
+        let adj1 = self.fc_store[face_idx].adj[e1];
+        let adj2 = self.fc_store[face_idx].adj[e2];
+        let edge1 = self.fc_store[face_idx].edge[e1] as usize;
+        let edge2 = self.fc_store[face_idx].edge[e2] as usize;
+
+        if let (Some(f1), Some(f2)) = (adj1, adj2) {
+            if self.expand(pass, w_index, f1, edge1, horizon, status, depth + 1)
+                && self.expand(pass, w_index, f2, edge2, horizon, status, depth + 1)
+            {
+                Self::remove(&mut self.hull, &mut self.fc_store, face_idx);
+                Self::append(&mut self.stock, &mut self.fc_store, face_idx);
                 return true;
             }
         } else {
-            let e2 = I2M3[edge];
-            self.fc_store[face_idx].pass = pass;
-
-            let adj1 = self.fc_store[face_idx].adj[e1];
-            let adj2 = self.fc_store[face_idx].adj[e2];
-            let edge1 = self.fc_store[face_idx].edge[e1] as usize;
-            let edge2 = self.fc_store[face_idx].edge[e2] as usize;
-
-            if let (Some(f1), Some(f2)) = (adj1, adj2) {
-                if self.expand(pass, w_index, f1, edge1, horizon, status)
-                    && self.expand(pass, w_index, f2, edge2, horizon, status)
-                {
-                    Self::remove(&mut self.hull, &mut self.fc_store, face_idx);
-                    Self::append(&mut self.stock, &mut self.fc_store, face_idx);
-                    return true;
-                }
-            } else {
-                *status = EpaStatus::InvalidHull;
-            }
+            *status = EpaStatus::InvalidHull;
         }
 
         false
     }
 
-    pub fn evaluate<const ENABLE_MARGIN: bool>(&mut self, mut gjk: Gjk, guess: Vec3A) -> EpaStatus {
-        if gjk.simplex().rank <= 1 || !gjk.enclose_origin::<ENABLE_MARGIN>() {
-            self.normal = -guess;
-            let nl = self.normal.length();
-            if nl > 0.0 {
-                self.normal /= nl;
-            } else {
-                self.normal = Vec3A::X;
-            }
+    fn fallback(&mut self, simplex_c0: usize, guess: Vec3A) -> EpaStatus {
+        self.normal = -guess;
 
-            self.depth = 0.0;
-            self.result.rank = 1;
-            self.result.c[0] = gjk.simplex().c[0];
-            self.result.p[0] = 1.0;
-
-            return EpaStatus::FallBack;
+        let nl = self.normal.length();
+        if nl > 0.0 {
+            self.normal *= 1.0 / nl;
+        } else {
+            self.normal = Vec3A::X;
         }
 
-        let mut status = EpaStatus::Valid;
-        let mut sv_indices = [0usize; 4];
+        self.depth = 0.0;
+        self.result.rank = 1;
+        self.result.c[0] = simplex_c0;
+        self.result.p[0] = 1.0;
 
+        EpaStatus::FallBack
+    }
+
+    pub fn evaluate<const ENABLE_MARGIN: bool>(&mut self, mut gjk: Gjk, guess: Vec3A) -> EpaStatus {
+        let simplex_before = *gjk.simplex();
+        if simplex_before.rank <= 1 || !gjk.enclose_origin::<ENABLE_MARGIN>() {
+            // The GPU fallback keeps the GJK vertex object. Copy that vertex
+            // into EPA slot 0 so the witness reads the right direction.
+            let [w, d] = gjk.vertex_w_d(simplex_before.c[0]);
+            self.sv_store[0].w = w;
+            self.sv_store[0].d = d;
+            return self.fallback(0, guess);
+        }
+
+        let simplex = *gjk.simplex();
+        if simplex.rank != 4 {
+            let [w, d] = gjk.vertex_w_d(simplex.c[0]);
+            self.sv_store[0].w = w;
+            self.sv_store[0].d = d;
+            return self.fallback(0, guess);
+        }
+
+        while let Some(face) = self.hull.root {
+            Self::remove(&mut self.hull, &mut self.fc_store, face);
+            Self::append(&mut self.stock, &mut self.fc_store, face);
+        }
+
+        self.next_sv = 0;
+        let mut sv_indices = [0usize; 4];
         for (i, [w, d]) in gjk.simplex_w_d().enumerate() {
             let sv_index = self.next_sv;
             self.next_sv += 1;
-
             self.sv_store[sv_index].w = w;
             self.sv_store[sv_index].d = d;
-            self.sv_store[sv_index].support_a = Vec3A::ZERO;
-            self.sv_store[sv_index].support_b = Vec3A::ZERO;
-
             sv_indices[i] = sv_index;
         }
+
+        // The tetra slots do not count against the expansion budget.
+        self.next_sv = Self::TETRA_VERTICES;
 
         let w0 = self.sv_store[sv_indices[0]].w - self.sv_store[sv_indices[3]].w;
         let w1 = self.sv_store[sv_indices[1]].w - self.sv_store[sv_indices[3]].w;
         let w2 = self.sv_store[sv_indices[2]].w - self.sv_store[sv_indices[3]].w;
 
-        if Self::det(w0, w1, w2) < 0.0 {
+        if Mat3A::from_cols(w0, w1, w2).determinant() < 0.0 {
             sv_indices.swap(0, 1);
         }
 
-        let tetra = [
-            self.new_face_forced(sv_indices[0], sv_indices[1], sv_indices[2]),
-            self.new_face_forced(sv_indices[1], sv_indices[0], sv_indices[3]),
-            self.new_face_forced(sv_indices[2], sv_indices[1], sv_indices[3]),
-            self.new_face_forced(sv_indices[0], sv_indices[2], sv_indices[3]),
+        let tetra_indices = [
+            (sv_indices[0], sv_indices[1], sv_indices[2]),
+            (sv_indices[1], sv_indices[0], sv_indices[3]),
+            (sv_indices[2], sv_indices[1], sv_indices[3]),
+            (sv_indices[0], sv_indices[2], sv_indices[3]),
         ];
+
+        let mut tetra = [0usize; 4];
+        let mut all_faces = true;
+        for (k, (a, b, c)) in tetra_indices.iter().copied().enumerate() {
+            match self.new_face_forced(a, b, c) {
+                Some(face) => tetra[k] = face,
+                None => all_faces = false,
+            }
+        }
+
+        if !all_faces || self.hull.count != 4 {
+            return self.fallback(sv_indices[0], guess);
+        }
 
         self.bind(tetra[0], 0, tetra[1], 0);
         self.bind(tetra[0], 1, tetra[2], 0);
@@ -421,14 +470,13 @@ impl Epa2 {
         self.bind(tetra[1], 2, tetra[2], 1);
         self.bind(tetra[2], 2, tetra[3], 1);
 
+        let mut status = EpaStatus::Valid;
         let mut best = self.find_best();
         let mut outer = self.fc_store[best];
+        let mut pass: u8 = 0;
 
-        // Bullet numbers EPA passes from 1: new faces are stamped with
-        // pass 0 at creation, so starting at 0 would make every adjacent
-        // face look already-visited and abort expansion on the first pass.
-        'epa_iter: for pass in 1..=Self::MAX_ITERATIONS {
-            if self.next_sv >= Self::MAX_VERTICES {
+        for _ in 0..Self::MAX_ITERATIONS {
+            if self.next_sv >= Self::STORE_VERTICES {
                 status = EpaStatus::OutOfVertices;
                 break;
             }
@@ -436,48 +484,44 @@ impl Epa2 {
             let w_index = self.next_sv;
             self.next_sv += 1;
 
+            pass += 1;
             self.fc_store[best].pass = pass;
 
-            let mut dir = self.fc_store[best].n;
-            let dir_len = dir.length();
-            if dir_len > 0.0 {
-                dir /= dir_len;
-            } else {
-                dir = Vec3A::X;
-            }
-
-            let w = gjk.shape.support::<ENABLE_MARGIN>(dir);
+            let n = self.fc_store[best].n;
+            let dir = n * (1.0 / n.length());
+            let w = gjk.shape.support_with::<ENABLE_MARGIN>(dir);
             self.sv_store[w_index].w = w;
             self.sv_store[w_index].d = dir;
-            self.sv_store[w_index].support_a = Vec3A::ZERO;
-            self.sv_store[w_index].support_b = Vec3A::ZERO;
 
-            let wdist = dir.dot(w) - self.fc_store[best].d;
-            if wdist <= Self::ACCURACY {
+            let wdist = n.dot(w) - self.fc_store[best].d;
+            let above_accuracy = wdist > Self::ACCURACY;
+            if !above_accuracy {
                 status = EpaStatus::AccuracyReached;
                 break;
             }
 
             let mut horizon = EpaHorizon::new();
+            let mut valid = true;
             for j in 0..3 {
                 let adj = self.fc_store[best].adj[j].unwrap();
                 let edge = self.fc_store[best].edge[j] as usize;
-                if !self.expand(pass, w_index, adj, edge, &mut horizon, &mut status) {
-                    break 'epa_iter;
+                if !self.expand(pass, w_index, adj, edge, &mut horizon, &mut status, 0) {
+                    valid = false;
+                    break;
                 }
             }
 
-            if horizon.nf < 3 {
+            if valid && horizon.nf >= 3 {
+                self.bind(horizon.cf.unwrap(), 1, horizon.ff.unwrap(), 2);
+                Self::remove(&mut self.hull, &mut self.fc_store, best);
+                Self::append(&mut self.stock, &mut self.fc_store, best);
+
+                best = self.find_best();
+                outer = self.fc_store[best];
+            } else {
                 status = EpaStatus::InvalidHull;
                 break;
             }
-
-            self.bind(horizon.cf.unwrap(), 1, horizon.ff.unwrap(), 2);
-            Self::remove(&mut self.hull, &mut self.fc_store, best);
-            Self::append(&mut self.stock, &mut self.fc_store, best);
-
-            best = self.find_best();
-            outer = self.fc_store[best];
         }
 
         let projection = outer.n * outer.d;
@@ -505,11 +549,9 @@ impl Epa2 {
             .length();
 
         let sum = self.result.p[0] + self.result.p[1] + self.result.p[2];
-        if sum > 0.0 {
-            self.result.p[0] /= sum;
-            self.result.p[1] /= sum;
-            self.result.p[2] /= sum;
-        }
+        self.result.p[0] /= sum;
+        self.result.p[1] /= sum;
+        self.result.p[2] /= sum;
 
         status
     }

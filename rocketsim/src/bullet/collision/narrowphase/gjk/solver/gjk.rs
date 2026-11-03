@@ -42,6 +42,8 @@ pub enum GjkStatus {
     Failed,
 }
 
+/// Single-use GJK instance. Create one per query;
+/// `evaluate` appends to the free list without clearing it.
 pub struct Gjk<'a> {
     pub shape: &'a MinkowskiDiff<'a>,
     ray: Vec3A,
@@ -81,17 +83,18 @@ impl<'a> Gjk<'a> {
         &self.simplices[self.simplex]
     }
 
-    pub fn simplex_d(&self) -> impl Iterator<Item = Vec3A> + '_ {
-        let simplex = &self.simplices[self.simplex];
-        simplex.c[..simplex.rank].iter().map(|&i| self.store[i].d)
-    }
-
     pub fn simplex_w_d(&self) -> impl Iterator<Item = [Vec3A; 2]> + '_ {
         let simplex = &self.simplices[self.simplex];
         simplex.c[..simplex.rank].iter().map(|&i| {
             let sv = self.store[i];
             [sv.w, sv.d]
         })
+    }
+
+    /// The stored `(w, d)` for one GJK vertex.
+    pub fn vertex_w_d(&self, index: usize) -> [Vec3A; 2] {
+        let sv = self.store[index];
+        [sv.w, sv.d]
     }
 
     pub fn evaluate<const ENABLE_MARGIN: bool>(&mut self, guess: Vec3A) -> GjkStatus {
@@ -302,11 +305,12 @@ impl<'a> Gjk<'a> {
                 let c2 = self.simplices[simplex_index].c[2];
                 let c3 = self.simplices[simplex_index].c[3];
 
-                let det = Self::det(
+                let det = Mat3A::from_cols(
                     self.store[c0].w - self.store[c3].w,
                     self.store[c1].w - self.store[c3].w,
                     self.store[c2].w - self.store[c3].w,
-                );
+                )
+                .determinant();
 
                 if det.abs() > 0.0 {
                     return true;
@@ -317,10 +321,10 @@ impl<'a> Gjk<'a> {
         false
     }
 
-    fn getsupport<const ENABLE_MAGIN: bool>(&mut self, d: Vec3A, sv_index: usize) {
-        let dir = d / d.length();
+    fn getsupport<const ENABLE_MARGIN: bool>(&mut self, d: Vec3A, sv_index: usize) {
+        let dir = d * (1.0 / d.length());
         self.store[sv_index].d = dir;
-        self.store[sv_index].w = self.shape.support::<ENABLE_MAGIN>(dir);
+        self.store[sv_index].w = self.shape.support_with::<ENABLE_MARGIN>(dir);
     }
 
     fn remove_vertex(&mut self, simplex_index: usize) {
@@ -329,11 +333,11 @@ impl<'a> Gjk<'a> {
         self.free.push(simplex.c[simplex.rank]);
     }
 
-    fn append_vertex<const ENABLE_MAGIN: bool>(&mut self, simplex_index: usize, v: Vec3A) {
+    fn append_vertex<const ENABLE_MARGIN: bool>(&mut self, simplex_index: usize, v: Vec3A) {
         let rank = self.simplices[simplex_index].rank;
         self.simplices[simplex_index].p[rank] = 0.0;
         let sv_index = self.free.pop().unwrap();
-        self.getsupport::<ENABLE_MAGIN>(v, sv_index);
+        self.getsupport::<ENABLE_MARGIN>(v, sv_index);
         self.simplices[simplex_index].c[rank] = sv_index;
         self.simplices[simplex_index].rank = rank + 1;
     }
@@ -404,8 +408,8 @@ impl<'a> Gjk<'a> {
                 let p = n * (d / l);
                 mindist = p.length_squared();
                 *m = 7;
-                w[0] = (dl[1].cross(b - p)).length() / s;
-                w[1] = (dl[2].cross(c - p)).length() / s;
+                w[0] = dl[1].cross(b - p).length() / s;
+                w[1] = dl[2].cross(c - p).length() / s;
                 w[2] = 1.0 - (w[0] + w[1]);
             }
 

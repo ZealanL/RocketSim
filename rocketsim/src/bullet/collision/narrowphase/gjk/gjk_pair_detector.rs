@@ -31,6 +31,25 @@ pub struct GjkPairDetector {
     simplex_solver: VoronoiSimplexSolver,
 }
 
+/// Resolve the penetration normal and depth from the EPA witness pair
+fn penetration_normal_and_distance(
+    witness_delta: Vec3A,
+    solver_normal: Vec3A,
+) -> Option<(Vec3A, f32)> {
+    let mut normal = witness_delta;
+    let mut len_sqr = normal.length_squared();
+    if len_sqr <= f32::EPSILON * f32::EPSILON {
+        normal = solver_normal;
+        len_sqr = normal.length_squared();
+    }
+
+    if len_sqr > f32::EPSILON * f32::EPSILON {
+        Some((normal * (1.0 / len_sqr.sqrt()), -witness_delta.length()))
+    } else {
+        None
+    }
+}
+
 impl GjkPairDetector {
     pub const fn new(margin_a: f32, margin_b: f32) -> Self {
         Self {
@@ -91,27 +110,28 @@ impl GjkPairDetector {
             let [tmp_point_on_a, tmp_point_on_b] = result.witnesses;
 
             if result.penetrating {
-                let tmp_normal_in_b = tmp_point_on_b - tmp_point_on_a;
-                let len_sqr = tmp_normal_in_b.length_squared();
-                if len_sqr > f32::EPSILON * f32::EPSILON {
-                    let length = len_sqr.sqrt();
-                    let distance_2 = -length;
-
+                let witness_delta = tmp_point_on_b - tmp_point_on_a;
+                if let Some((normal, distance_2)) =
+                    penetration_normal_and_distance(witness_delta, result.normal)
+                {
                     // only replace valid penetrations when the result is deeper
                     if !is_valid || distance_2 < distance {
                         distance = distance_2;
                         point_on_b = tmp_point_on_b;
-                        normal_in_b = tmp_normal_in_b / length;
+                        normal_in_b = normal;
                         is_valid = true;
                     }
                 }
             } else {
-                let distance_2 = (tmp_point_on_a - tmp_point_on_b).length() - self.margin;
-                if !is_valid || distance_2 < distance {
-                    distance = distance_2;
-                    point_on_b = tmp_point_on_b + result.normal * self.margin_b;
-                    normal_in_b = result.normal.normalize();
-                    is_valid = true;
+                let normal_length_squared = result.normal.length_squared();
+                if normal_length_squared > 0.0 {
+                    let distance_2 = (tmp_point_on_a - tmp_point_on_b).length() - self.margin;
+                    if !is_valid || distance_2 < distance {
+                        distance = distance_2;
+                        point_on_b = tmp_point_on_b + result.normal * self.margin_b;
+                        normal_in_b = result.normal.normalize();
+                        is_valid = true;
+                    }
                 }
             }
         }

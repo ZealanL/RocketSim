@@ -3,6 +3,8 @@ use glam::{Affine3A, Vec3A};
 use super::solver::{Epa2, EpaStatus, Gjk, GjkStatus, MinkowskiDiff};
 use crate::bullet::collision::shapes::collision_shape::CollisionShapes;
 
+const GJK_MIN_DISTANCE: f32 = 1.0e-4;
+
 pub struct GjkEpa2Result {
     pub witnesses: [Vec3A; 2],
     pub normal: Vec3A,
@@ -16,31 +18,60 @@ fn penetration(
     trans_b: &Affine3A,
     guess: Vec3A,
 ) -> Option<GjkEpa2Result> {
+    penetration_with_status(shape_a, trans_a, shape_b, trans_b, guess).map(|(result, _)| result)
+}
+
+fn penetration_with_status(
+    shape_a: &CollisionShapes,
+    trans_a: &Affine3A,
+    shape_b: &CollisionShapes,
+    trans_b: &Affine3A,
+    guess: Vec3A,
+) -> Option<(GjkEpa2Result, EpaStatus)> {
     let shape = MinkowskiDiff::new(shape_a, *trans_a, shape_b, *trans_b);
 
     let mut gjk = Gjk::new(&shape);
     match gjk.evaluate::<true>(-guess) {
-        GjkStatus::Failed | GjkStatus::Valid => return None,
         GjkStatus::Inside => {}
+        GjkStatus::Valid | GjkStatus::Failed => return None,
     }
 
     let mut epa = Epa2::new();
-    let status: EpaStatus = epa.evaluate::<true>(gjk, guess);
-    debug_assert!(status == EpaStatus::Valid || status == EpaStatus::AccuracyReached);
-
-    let mut w0 = Vec3A::ZERO;
-    for i in 0..epa.result.rank {
-        w0 += shape.support0::<true>(epa.sv_store[epa.result.c[i]].d) * epa.result.p[i];
+    let status = epa.evaluate::<true>(gjk, -guess);
+    if status == EpaStatus::Failed {
+        return None;
     }
 
-    // w0 is already in world space: MinkowskiDiff::support0 transforms the
-    // local support point by trans_a. Do not transform it a second time.
-    // This matches the distance fallback below, which returns world witnesses.
-    Some(GjkEpa2Result {
-        witnesses: [w0, w0 - epa.normal * epa.depth],
-        normal: -epa.normal,
-        penetrating: true,
-    })
+    // `Penetration` reconstructs the witness from the marginless support plus
+    // the margin along the stored direction, in shape A local space.
+    let margin_a = shape.margin_a();
+    let mut w0 = Vec3A::ZERO;
+    for i in 0..epa.result.rank {
+        let vertex = epa.sv_store[epa.result.c[i]];
+
+        let mut dir = vertex.d;
+        if dir.length_squared() < f32::EPSILON * f32::EPSILON {
+            dir = Vec3A::NEG_ONE;
+        }
+        dir = dir * (1.0 / dir.length());
+
+        let support0 = shape.support0_without_margin(dir) + margin_a * dir;
+        w0 += support0 * epa.result.p[i];
+    }
+
+    let witness0 = trans_a.transform_point3a(w0);
+    let witness1 = trans_a.transform_point3a(w0 - epa.normal * epa.depth);
+
+    let normal = trans_a.matrix3 * -epa.normal;
+
+    Some((
+        GjkEpa2Result {
+            witnesses: [witness0, witness1],
+            normal,
+            penetrating: true,
+        },
+        status,
+    ))
 }
 
 fn distance(
@@ -54,64 +85,79 @@ fn distance(
 
     let mut gjk = Gjk::new(&shape);
     match gjk.evaluate::<false>(guess) {
-        GjkStatus::Inside | GjkStatus::Failed => return None,
         GjkStatus::Valid => {}
+        GjkStatus::Inside | GjkStatus::Failed => return None,
     }
 
-    let simplex = gjk.simplex();
-    if simplex.rank == 0 {
-        return None;
-    }
-
+    let simplex = *gjk.simplex();
     let mut w0 = Vec3A::ZERO;
     let mut w1 = Vec3A::ZERO;
 
-    for (i, sv_d) in gjk.simplex_d().enumerate() {
+    for (i, [_w, sv_d]) in gjk.simplex_w_d().enumerate() {
         let weight = simplex.p[i];
-        if weight != 0.0 {
-            w0 += shape.support0::<false>(sv_d) * weight;
-            w1 += shape.support1::<false>(-sv_d) * weight;
-        }
+        w0 += shape.support0_without_margin(sv_d) * weight;
+        w1 += shape.support1_without_margin(-sv_d) * weight;
     }
 
-    // Bullet's Distance normal is w0-w1 (shape B toward shape A). Keep the
-    // same direction in world space.
+    let witness0 = trans_a.transform_point3a(w0);
+    let witness1 = trans_a.transform_point3a(w1);
+
+    let normal_local = w0 - w1;
+    let distance = normal_local.length();
+    let normal_scale = 1.0
+        / if distance > GJK_MIN_DISTANCE {
+            distance
+        } else {
+            1.0
+        };
+    let normal_local = normal_local * normal_scale;
+    let normal = trans_a.matrix3 * normal_local;
+
     Some(GjkEpa2Result {
-        witnesses: [w0, w1],
-        normal: (w0 - w1).normalize_or_zero(),
+        witnesses: [witness0, witness1],
+        normal,
         penetrating: false,
     })
 }
 
+pub fn default_guess(trans_a: &Affine3A, trans_b: &Affine3A) -> Vec3A {
+    let delta = trans_b.translation - trans_a.translation;
+    let len2 = delta.length_squared();
+    if len2 > 1.0e-20 {
+        delta * (1.0 / len2.sqrt())
+    } else {
+        Vec3A::ZERO
+    }
+}
+
+/// Penetration first, then distance, with one guess.
 pub fn calc_pen_depth(
     shape_a: &CollisionShapes,
     shape_b: &CollisionShapes,
     trans_a: &Affine3A,
     trans_b: &Affine3A,
 ) -> Option<GjkEpa2Result> {
-    let guess_vectors = [
-        (trans_b.translation - trans_a.translation).normalize_or_zero(),
-        (trans_a.translation - trans_b.translation).normalize_or_zero(),
-        Vec3A::Z,
-        Vec3A::Y,
-        Vec3A::X,
-        Vec3A::ONE.with_z(0.0),
-        Vec3A::ONE,
-        Vec3A::ONE.with_x(0.0),
-        Vec3A::ONE.with_y(0.0),
-    ];
+    calc_pen_depth_with_guess(
+        shape_a,
+        shape_b,
+        trans_a,
+        trans_b,
+        default_guess(trans_a, trans_b),
+    )
+}
 
-    for guess in guess_vectors {
-        let results = penetration(shape_a, trans_a, shape_b, trans_b, guess);
-        if results.is_some() {
-            return results;
-        }
-
-        let results = distance(shape_a, trans_a, shape_b, trans_b, guess);
-        if results.is_some() {
-            return results;
-        }
+/// Explicit-guess form. No current caller uses it. It keeps the one-guess
+/// contract available without changing the `calc_pen_depth` signature.
+pub fn calc_pen_depth_with_guess(
+    shape_a: &CollisionShapes,
+    shape_b: &CollisionShapes,
+    trans_a: &Affine3A,
+    trans_b: &Affine3A,
+    guess: Vec3A,
+) -> Option<GjkEpa2Result> {
+    if let Some(result) = penetration(shape_a, trans_a, shape_b, trans_b, guess) {
+        return Some(result);
     }
 
-    None
+    distance(shape_a, trans_a, shape_b, trans_b, guess)
 }

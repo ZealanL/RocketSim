@@ -54,12 +54,4 @@ impl BoxShape {
         let support_sign = Vec3A::select(vec.cmplt(Vec3A::ZERO), Vec3A::NEG_ONE, Vec3A::ONE);
         (self.get_half_extents() + self.get_margin()) * support_sign
     }
-
-    pub fn local_get_supporting_vertex_nonvirtual(&self, vec: Vec3A) -> Vec3A {
-        const DEFAULT_DIR_NORM: Vec3A = Vec3A::new(-0.57735027, -0.57735027, -0.57735027);
-        let dir_norm = vec.normalize_or(DEFAULT_DIR_NORM);
-        let support = self.local_get_supporting_vertex_without_margin(dir_norm);
-        let margin = self.get_margin();
-        support + margin * dir_norm
-    }
 }
