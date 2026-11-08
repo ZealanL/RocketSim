@@ -51,11 +51,18 @@ impl RigidBodyConstructionInfo {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// Controls whether a body participates in motion integration.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ActivationState {
+    /// The body is active. This is the default state.
+    #[default]
     Active,
+    /// The body is asleep. A collision can activate it.
     Sleeping,
+    /// Motion integration is disabled. Demoed cars use this state.
     DisableSimulation,
+    /// The body remains active while its simulation island waits for sleep.
     WantsDeactivation,
 }
 
@@ -540,6 +547,14 @@ impl RigidBody {
 
     pub(crate) const fn activation_state(&self) -> ActivationState {
         self.activation
+    }
+
+    /// Set the activation state without the `DisableSimulation` guard.
+    ///
+    /// Use this to restore an exact captured state. It does not change the
+    /// velocity or the deactivation timer.
+    pub(crate) fn restore_activation_state(&mut self, state: ActivationState) {
+        self.activation = state;
     }
 
     pub(crate) fn sleep(&mut self) {

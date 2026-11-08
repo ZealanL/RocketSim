@@ -6,7 +6,7 @@ use rustc_hash::FxHashMap;
 /// * `Heatseeker` and `Snowday` reuse the Soccar arena meshes and goals.
 /// * `Hoops` and `Dropshot` have their own meshes and scoring rules.
 /// * [`GameMode::TheVoid`] loads no meshes: no goals, boost pads, or arena
-///   hull — cars and the ball fall forever. Useful for physics unit tests.
+///   hull. Cars and the ball fall without arena collisions.
 ///
 /// See [`crate::MutatorConfig::new`] for the per-mode default physics tweaks.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]

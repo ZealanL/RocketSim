@@ -6,7 +6,7 @@ use glam::{Affine3A, EulerRot, Mat3A, Vec3A};
 
 use super::ArenaContactTracker;
 use crate::{
-    ARENA_COLLISION_SHAPES, ArenaConfig,
+    ARENA_COLLISION_SHAPES, ActivationState, ArenaConfig,
     ArenaEvent::{BallHitWorld, CarPickupBoost},
     ArenaMemWeightMode, ArenaState, BallHitWorldEvent, BoostPadConfig, BoostPadGrid, BoostPadState,
     Car, CarBodyConfig, CarControls, CarCore, CarInfo, CarPickupBoostEvent, CarState, GameMode,
@@ -1010,6 +1010,7 @@ impl Arena {
                     matrix3: Mat3A::IDENTITY,
                     translation: config.hitbox_pos_offset * UU_TO_BT,
                 };
+
                 let shape = CollisionShapes::Compound(CompoundShape::new(child, offset));
                 self.bullet_world.update_body_properties(
                     car.rigid_body_idx,
@@ -1023,6 +1024,7 @@ impl Arena {
                         invalidate_contacts: geometry_changed,
                     },
                 );
+
                 car.refresh_mass_dependent_state(mutators.car_mass);
                 car.vel_impulse_cache = Vec3A::ZERO;
             }
@@ -1036,6 +1038,7 @@ impl Arena {
             } else {
                 crate::sim::consts::ball::COEFS
             };
+
             self.bullet_world.update_body_properties(
                 self.ball.rigid_body_idx,
                 RigidBodyUpdateInfo {
@@ -1048,6 +1051,8 @@ impl Arena {
                     invalidate_contacts: geometry_changed,
                 },
             );
+
+            self.ball.state.wake();
         }
 
         if let Some(grid) = self.boost_pad_grid.as_mut() {
@@ -1057,6 +1062,7 @@ impl Arena {
                 } else {
                     mutators.boost_pad_cooldown_small
                 };
+
                 pad.boost_amount = if pad.config.is_big {
                     mutators.boost_pad_amount_big
                 } else {
@@ -1068,17 +1074,17 @@ impl Arena {
         self.config.mutators = mutators;
     }
 
-    /// Teleports the ball (position/velocity/rotation + mode state).
+    /// Set ball motion, activation, and game-mode state.
     ///
-    /// Use to place kickoffs, restore snapshots, or inject test states.
-    /// For Heatseeker also set `hs_info`; for Dropshot `ds_info`.
-    /// Persistent manifolds auto-cull stale points on the next tick via the
-    /// contact breaking threshold; call `clear_persistent_manifolds` first
-    /// only if you need bit-identical fresh-arena matching for large
-    /// planning jumps.
+    /// This method preserves the supplied activation state and deactivation
+    /// timer without validation. Call [`BallState::wake`] on the snapshot to
+    /// resume motion. It computes the inertia tensor and interpolation transform from the
+    /// supplied pose. Sleeping speed thresholds stay unchanged.
+    /// For Heatseeker, also set `hs_info`. For Dropshot, also set `ds_info`.
     ///
-    /// This operation activates the ball and resets its deactivation timer,
-    /// even when both velocity vectors are zero.
+    /// When the ball is active, stale collision contacts expire on the next
+    /// tick. For a large teleport that needs a fresh contact history, call
+    /// [`Arena::clear_persistent_manifolds`] before the next step.
     pub fn set_ball_state(&mut self, ball_state: BallState) {
         self.ball.set_state(
             &mut self.bullet_world.bodies_mut()[self.ball.rigid_body_idx],
@@ -1086,22 +1092,38 @@ impl Arena {
         );
     }
 
-    /// Set the ball's linear and angular velocity to zero, then put it to sleep.
-    /// The ball remains asleep until a collision or state update activates it.
+    /// Stop the ball and put it to sleep. Keep its deactivation timer.
+    ///
+    /// A collision that changes velocity can wake the ball. Use
+    /// [`Arena::wake_ball`] to wake it without a collision. State edits preserve
+    /// sleep unless you change the activation state.
     pub fn sleep_ball(&mut self) {
         let ball = &mut self.ball;
         let rb = &mut self.bullet_world.bodies_mut()[ball.rigid_body_idx];
+
         ball.state.phys.vel = Vec3A::ZERO;
         ball.state.phys.ang_vel = Vec3A::ZERO;
         rb.set_lin_vel(Vec3A::ZERO);
         rb.set_ang_vel(Vec3A::ZERO);
         rb.clear_accum_vels();
-        rb.set_activation_state(crate::bullet::dynamics::rigid_body::ActivationState::Sleeping);
+
+        rb.restore_activation_state(ActivationState::Sleeping);
+        ball.state.activation_state = ActivationState::Sleeping;
+        ball.state.deactivation_time = rb.deactivation_time;
+    }
+
+    /// Activate the ball and clear its deactivation timer.
+    ///
+    /// Keep its position, rotation, and velocity unchanged.
+    pub fn wake_ball(&mut self) {
+        self.ball.state.wake();
+        self.bullet_world.bodies_mut()[self.ball.rigid_body_idx].force_activate();
     }
 
     /// Edit ball state in place. Synchronize its body as in [`Arena::set_ball_state`].
-    /// This operation activates the ball and resets its deactivation timer,
-    /// even when both velocity vectors are zero.
+    ///
+    /// Keep the activation state and deactivation timer unless you edit them.
+    /// Call [`BallState::wake`] in the callback to resume motion.
     ///
     /// If the callback panics, completed edits remain. The body is synchronized
     /// during unwinding.
@@ -1331,8 +1353,8 @@ impl Arena {
 
     /// Respawns a car at a random team respawn pad with spawn boost.
     ///
-    /// Normally demos auto-respawn after `mutators.respawn_delay`; use this
-    /// to force it (e.g. after [`Arena::reset_to_random_kickoff`] tests).
+    /// Demoed cars normally respawn after `mutators.respawn_delay`. Use this
+    /// method to respawn a car immediately.
     pub fn respawn_car(&mut self, car_idx: usize) {
         let car = &mut self.cars[car_idx];
 
@@ -1547,7 +1569,7 @@ impl Arena {
     ///
     /// Short rays use the broadphase grid; rays longer than one grid cell
     /// (`ArenaConfig::max_aabb_len`, scaled by the memory-weight mode) fall
-    /// back to testing every body, so any length works. Coordinates are in
+    /// back to checking every body, so any length works. Coordinates are in
     /// uu, like the rest of the API. Sphere rays use conservative advancement
     /// with a stop distance of 0.05 uu. A ray inside a sphere reports fraction
     /// zero when it moves inward. It does not report an exit hit. A ray at
@@ -1649,12 +1671,13 @@ impl Arena {
     /// Pass `Some(body_config)` to test a car hitbox, `None` to test the ball
     /// (built from the arena's game mode and mutators, so Snowday pucks
     /// work). Set `include_dynamics` to also test against cars and the ball;
-    /// otherwise only static arena geometry (walls, floor, ceiling) is tested.
+    /// otherwise this method checks only static arena geometry (walls, floor,
+    /// ceiling).
     /// Useful for spawn-point checks and teleport validation without stepping
     /// the sim.
     ///
-    /// Cars are tested by hitbox only — wheels and suspension are ignored, so
-    /// a car at normal rest height (~17 uu) does *not* touch the floor. A
+    /// Car checks use only the hitbox, not the wheels or suspension.
+    /// A car at normal rest height (~17 uu) does *not* touch the floor. A
     /// `false` result means "no contact at this transform", not "the path
     /// here is clear" — use [`Arena::cast_rays`] for swept queries.
     ///

@@ -2,7 +2,7 @@ use std::ops::{Deref, DerefMut};
 
 use glam::{Mat3A, Vec3A};
 
-use crate::{PhysState, consts, consts::heatseeker};
+use crate::{ActivationState, PhysState, consts, consts::heatseeker};
 
 /// Heatseeker targeting state: which goal is targeted and how fast.
 ///
@@ -72,18 +72,41 @@ impl DropshotInfo {
     };
 }
 
-/// Ball physics + mode state.
+/// Ball motion, activation, and game-mode state.
 ///
-/// Derefs to [`crate::PhysState`] so `ball_state.pos` works directly.
-/// `tick_count_since_kickoff` drives the Hoops/Dropshot launch delay.
-/// `DEFAULT` spawns the ball at rest at center (`REST_Z` height).
+/// Dereferences to [`PhysState`] for direct access to position and velocity.
+/// [`Self::DEFAULT`] places an active ball at rest at the arena center.
+/// State setters preserve activation and the deactivation timer. Call
+/// [`Self::wake`] before you apply a snapshot that must resume motion.
+/// The arena computes inertia and interpolation from the supplied pose.
+///
+/// Named-field serialized snapshots default missing activation fields to
+/// `Active` and `0.0`. Sequence formats need the current layout. Rebuild the
+/// simulation and viewer together after a serialized state change.
 #[derive(Clone, Copy, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BallState {
+    /// Position, rotation, and velocity in Unreal units and radians.
     pub phys: PhysState,
+    /// Heatseeker targeting state.
     pub hs_info: HeatseekerInfo,
+    /// Dropshot charge and damage state.
     pub ds_info: DropshotInfo,
+    /// Ticks since kickoff. Controls the Hoops and Dropshot launch delay.
     pub tick_count_since_kickoff: u64,
+    /// Current activation state. The default is [`ActivationState::Active`].
+    ///
+    /// A sleeping snapshot can retain nonzero velocity. State setters preserve
+    /// that velocity without waking the ball. Use [`crate::Arena::sleep_ball`]
+    /// to stop the ball and put it to sleep.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub activation_state: ActivationState,
+    /// Time below the sleeping speed thresholds, in seconds.
+    ///
+    /// Supply a finite, nonnegative value. The default is zero.
+    /// [`Self::wake`] clears this timer.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub deactivation_time: f32,
 }
 
 impl Default for BallState {
@@ -103,7 +126,18 @@ impl BallState {
         hs_info: HeatseekerInfo::DEFAULT,
         ds_info: DropshotInfo::DEFAULT,
         tick_count_since_kickoff: 0,
+        activation_state: ActivationState::Active,
+        deactivation_time: 0.0,
     };
+
+    /// Activate the ball and clear its deactivation timer.
+    ///
+    /// This method keeps the position, rotation, and velocity unchanged.
+    /// Apply the state with [`crate::Arena::set_ball_state`] to update an arena.
+    pub const fn wake(&mut self) {
+        self.activation_state = ActivationState::Active;
+        self.deactivation_time = 0.0;
+    }
 }
 
 impl Deref for BallState {

@@ -25,7 +25,7 @@ pub struct CarHitBallEvent {
     pub extra_hit_vel: Vec3A,
 }
 
-/// Two cars collided this tick (tested both directions).
+/// Two cars collided this tick. Collision checks run in both directions.
 ///
 /// `is_demo == true` means the victim was demolished; otherwise a bump
 /// impulse was cached for the victim. See [`crate::MutatorConfig`] demo rules.

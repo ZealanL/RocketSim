@@ -46,7 +46,10 @@ fn main() -> std::io::Result<()> {
     for _ in 0..ACTION_TICKS {
         let tick = arena.tick_count();
         if tick == LAUNCH_TICK {
-            arena.edit_ball_state(|ball| ball.phys.vel = Vec3A::new(0.0, 2500.0, 900.0));
+            arena.edit_ball_state(|ball| {
+                ball.phys.vel = Vec3A::new(0.0, 2500.0, 900.0);
+                ball.wake();
+            });
         }
         // Single-tick jump presses (edges, not holds).
         drive.jump = tick == JUMP_TICK || tick == DOUBLE_JUMP_TICK;
@@ -60,6 +63,7 @@ fn main() -> std::io::Result<()> {
             arena.edit_ball_state(|ball| {
                 ball.phys.pos = pos;
                 ball.phys.vel = Vec3A::ZERO;
+                ball.wake();
             });
         }
         // Demo boost: pin to full so flames show.

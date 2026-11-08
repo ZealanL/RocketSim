@@ -46,10 +46,14 @@ impl Driver {
             arena.edit_ball_state(|ball| {
                 ball.phys.pos = pos;
                 ball.phys.vel = vel;
+                ball.wake();
             });
         }
         if actions & 4 != 0 {
-            arena.edit_ball_state(|ball| ball.phys.vel += Vec3A::Z * 1000.0);
+            arena.edit_ball_state(|ball| {
+                ball.phys.vel += Vec3A::Z * 1000.0;
+                ball.wake();
+            });
         }
         Mutators::from_mask(self.mutators).apply_pre_tick(arena, target);
         arena.set_car_controls(target, controls);

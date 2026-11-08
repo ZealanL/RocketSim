@@ -151,7 +151,10 @@ pub fn decode_sim(buf: &[u8]) -> Result<Option<(SimMsg, usize)>, ProtocolError> 
                     "frame dt must be finite and in 0..=1",
                 ));
             }
-            if !valid_phys(&frame.state.ball.phys)
+            let ball = &frame.state.ball;
+            if !valid_phys(&ball.phys)
+                || !ball.deactivation_time.is_finite()
+                || ball.deactivation_time < 0.0
                 || frame.state.cars.len() > MAX_FRAME_CARS
                 || frame.state.cars.iter().any(|(_, car)| {
                     !valid_phys(&car.phys)
@@ -309,6 +312,42 @@ mod tests {
             panic!("expected a frame")
         };
         assert_eq!(decoded.scene.unwrap().meshes[0].vertices.len(), 6000);
+    }
+
+    #[test]
+    fn frame_codec_carries_ball_activation_state_and_rejects_bad_timers() {
+        use rocketsim::ActivationState;
+
+        let cases = [
+            (ActivationState::Active, 0.0),
+            (ActivationState::Sleeping, 2.5),
+            (ActivationState::WantsDeactivation, 1.75),
+            (ActivationState::DisableSimulation, 0.5),
+        ];
+        for (activation_state, deactivation_time) in cases {
+            let mut state = rocketsim::Arena::new(rocketsim::GameMode::TheVoid).get_arena_state();
+            state.ball.activation_state = activation_state;
+            state.ball.deactivation_time = deactivation_time;
+            let bytes = encode_sim(&SimMsg::Frame(VisFrame::new(state, 1.0 / 120.0)));
+            let (message, consumed) = decode_sim(&bytes).unwrap().unwrap();
+            assert_eq!(consumed, bytes.len());
+            let SimMsg::Frame(decoded) = message else {
+                panic!("expected a frame")
+            };
+            assert_eq!(decoded.state.ball.activation_state, activation_state);
+            assert_eq!(decoded.state.ball.deactivation_time, deactivation_time);
+        }
+
+        for deactivation_time in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY, -1.0, -0.001] {
+            let mut state = rocketsim::Arena::new(rocketsim::GameMode::TheVoid).get_arena_state();
+            state.ball.activation_state = ActivationState::Sleeping;
+            state.ball.deactivation_time = deactivation_time;
+            let bytes = encode_sim(&SimMsg::Frame(VisFrame::new(state, 1.0 / 120.0)));
+            assert!(
+                matches!(decode_sim(&bytes), Err(ProtocolError::InvalidData(_))),
+                "{deactivation_time}"
+            );
+        }
     }
 
     #[test]

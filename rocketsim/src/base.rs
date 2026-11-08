@@ -42,8 +42,8 @@ pub(crate) static ARENA_COLLISION_MESH_FILES: RwLock<
 
 /// Returns `true` after a successful [`init`]/[`init_from_default`]/[`init_from_mem`] call.
 ///
-/// Useful to guard one-time setup in tests and binaries that may run
-/// initialization from multiple entry points.
+/// Use this function to guard one-time setup in a binary that can start
+/// initialization from more than one entry point.
 pub fn is_initialized() -> bool {
     HAS_INITIALIZED_LOCK.get().is_some()
 }
@@ -76,7 +76,7 @@ pub fn get_arena_collision_mesh_files(game_mode: GameMode) -> Vec<CollisionMeshF
 /// # Arguments
 ///
 /// * `silent` - when `false`, installs the default `stderr` logger; pass
-///   `true` to keep initialization quiet (e.g. in tests).
+///   `true` to load the meshes without log output.
 ///
 /// # Errors
 ///

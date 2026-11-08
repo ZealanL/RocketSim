@@ -135,7 +135,8 @@ impl Ball {
         rb.clear_accum_vels();
         rb.update_inertia_tensor();
 
-        rb.force_activate();
+        rb.restore_activation_state(self.state.activation_state);
+        rb.deactivation_time = self.state.deactivation_time;
     }
 
     pub(crate) fn pre_tick_update(&mut self, rb: &mut RigidBody, game_mode: GameMode) {
@@ -243,6 +244,8 @@ impl Ball {
         let trans = *rb.get_world_trans();
         self.state.phys.pos = trans.translation * BT_TO_UU;
         self.state.phys.rot_mat = trans.matrix3;
+        self.state.activation_state = rb.activation_state();
+        self.state.deactivation_time = rb.deactivation_time;
 
         self.state.tick_count_since_kickoff += 1;
     }

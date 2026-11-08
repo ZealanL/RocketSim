@@ -1,13 +1,16 @@
 mod arena;
 mod ball;
+
 mod boost_pad;
 mod car;
 pub mod collision_mesh_file;
+
 pub mod consts;
 mod dropshot_tiles;
 mod game_mode;
 mod mutator_config;
 mod phys_state;
+pub mod physics;
 mod quantize;
 mod team;
 mod ue3;
@@ -24,3 +27,5 @@ pub use mutator_config::*;
 pub use phys_state::*;
 pub use team::*;
 pub use user_info_types::*;
+
+pub use crate::bullet::dynamics::rigid_body::ActivationState;

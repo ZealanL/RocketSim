@@ -205,6 +205,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 arena.edit_ball_state(|ball| {
                     ball.phys.pos = Vec3A::new(0.0, 0.0, 900.0);
                     ball.phys.vel = Vec3A::ZERO;
+                    ball.wake();
                 });
                 arena.step_tick();
             }

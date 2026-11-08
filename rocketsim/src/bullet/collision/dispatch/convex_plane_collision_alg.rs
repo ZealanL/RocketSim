@@ -36,7 +36,7 @@ pub fn process_collision<T: ContactAddedCallback>(
 /// The caller must test `convex_obj.get_aabb()` against
 /// `plane_shape.aabb_cache`. That is the value that
 /// `CollisionShapes::get_aabb` returns for `CollisionShapes::StaticPlane`, so
-/// this path tests exactly the same bounds as the direct gated path.
+/// this path checks the same bounds as the direct gated path.
 /// The compound path applies this test before it selects the child shape.
 pub(crate) fn process_collision_after_gate<T: ContactAddedCallback>(
     convex_obj: &RigidBodyWrapper,

@@ -10,10 +10,11 @@ use crate::{
         collision::{
             broadphase::{CollisionFilterGroups, GridBroadphase},
             dispatch::{
+                collision_dispatcher::CollisionDispatcher,
                 collision_world::CollisionWorld,
                 quad_ray_callbacks::{QuadRayCallback, QuadRayResultCallback},
             },
-            narrowphase::persistent_manifold::ContactAddedCallback,
+            narrowphase::persistent_manifold::{ContactAddedCallback, PersistentManifold},
         },
         dynamics::rigid_body::Impulse,
     },
@@ -120,6 +121,17 @@ impl DiscreteDynamicsWorld {
     #[inline]
     pub fn bodies(&self) -> &[RigidBody] {
         &self.collision_world.collision_objs
+    }
+
+    /// Retained contact manifolds in dispatcher order.
+    #[inline]
+    pub(crate) fn persistent_manifolds(&self) -> &[PersistentManifold] {
+        &self.collision_world.dispatcher1.persistent_manifolds
+    }
+
+    /// Mutable dispatcher for retained contact updates.
+    pub(crate) fn collision_dispatcher_mut(&mut self) -> &mut CollisionDispatcher {
+        &mut self.collision_world.dispatcher1
     }
 
     #[inline]
