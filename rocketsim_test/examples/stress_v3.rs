@@ -15,14 +15,14 @@ use stress_common::{
 };
 
 #[allow(dead_code)]
-#[path = "rlpr_metric/common.rs"]
+#[path = "rlpr_metric/common/mod.rs"]
 mod common;
 #[allow(dead_code)]
 #[path = "rlpr_replay/mod.rs"]
 mod rlpr_replay;
 mod stress_common;
 #[allow(dead_code)]
-#[path = "rlpr_metric/v3.rs"]
+#[path = "rlpr_metric/v3/mod.rs"]
 mod v3;
 
 impl From<GameModeArg> for GameMode {

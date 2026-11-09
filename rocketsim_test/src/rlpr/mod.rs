@@ -1,5 +1,7 @@
+pub mod collision_snapshot;
 pub mod cpp_records;
 mod data_reader;
+pub mod row_ext;
 pub mod tick_record;
 
 use std::{
@@ -8,17 +10,29 @@ use std::{
     path::Path,
 };
 
+pub use collision_snapshot::{
+    CollisionBody, CollisionBodyRole, CollisionEdge, CollisionEdgeAxis, CollisionEdgesSection,
+    CollisionFreeChainIter, CollisionFreeChainLink, CollisionFreeHandleRun,
+    CollisionFreeHandlesSection, CollisionHandle, CollisionHandlesSection, CollisionLayoutId,
+    CollisionManifold, CollisionManifoldOrder, CollisionManifoldPoint, CollisionManifoldsSection,
+    CollisionPair, CollisionPairsSection, CollisionResolveStage, CollisionResolverTrace,
+    CollisionSectionId, CollisionSectionReport, CollisionSectionStatus, CollisionSnapshot,
+    CollisionSnapshotError, CollisionSourcePath,
+};
 use cpp_records::*;
 use data_reader::DataReader;
+pub use row_ext::{BallExt, CarExt, GlobalExt, PadExt, RowExt, WheelContactExt};
 
 use crate::rlpr::tick_record::TickRecord;
 
 const RLPR_MAGIC_BYTES: [u8; 4] = [82, 76, 80, 82];
 const RLPR_MIN_VERSION: u32 = 2;
-const RLPR_MAX_VERSION: u32 = 11;
+const RLPR_MAX_VERSION: u32 = 12;
 const RLPR_MAX_CARS: usize = 8;
 /// First version carrying explicit per-car physics availability.
 const RLPR_AVAILABILITY_VERSION: u32 = 11;
+/// First version carrying the row extension block.
+const RLPR_REPLAY_STATE_VERSION: u32 = 12;
 /// First version carrying recorded boost latch state.
 const RLPR_BOOST_STATE_VERSION: u32 = 7;
 /// First version carrying recorded handbrake integrator state.
@@ -119,6 +133,14 @@ pub fn recording_has_demolish_frames(version: u32) -> bool {
 /// Older versions default every car and the ball to available.
 pub fn recording_has_availability(version: u32) -> bool {
     version >= RLPR_AVAILABILITY_VERSION
+}
+
+/// True when the recording carries the RLPR v12 row extension block.
+///
+/// This reports block presence only. Each extension field is present only
+/// when its own mask bit is set. Do not infer a field from the version.
+pub fn recording_has_replay_state(version: u32) -> bool {
+    version >= RLPR_REPLAY_STATE_VERSION
 }
 
 #[allow(dead_code)]
@@ -320,6 +342,13 @@ impl Recording {
                 (car_records, ball_record)
             };
 
+            let replay_state = if recording_has_replay_state(version) {
+                let ext_bytes = reader.read_sized_bytes()?;
+                Some(row_ext::read_row_ext(ext_bytes, num_cars)?)
+            } else {
+                None
+            };
+
             let mut car_records = car_records;
             if !recording_has_availability(version) {
                 for record in &mut car_records {
@@ -336,6 +365,7 @@ impl Recording {
                 reserved0,
                 car_records,
                 ball_record,
+                replay_state,
             });
         }
 
@@ -625,7 +655,7 @@ fn read_car_record(bytes: &[u8], version: u32) -> std::io::Result<CarRecord> {
         8 => CAR_RECORD_V8_SIZE,
         9 => CAR_RECORD_V9_SIZE,
         10 => CAR_RECORD_V10_SIZE,
-        11 => CAR_RECORD_V11_SIZE,
+        11 | 12 => CAR_RECORD_V11_SIZE,
         _ => unreachable!(),
     };
     if bytes.len() != expected_size {
@@ -846,7 +876,7 @@ fn read_car_record(bytes: &[u8], version: u32) -> std::io::Result<CarRecord> {
             record._boost_pad = [0; 3];
             Ok(record)
         }
-    } else if version == 11 {
+    } else if version == 11 || version == 12 {
         validate_v11_car_record(bytes)?;
         let mut record: CarRecord = read_record(bytes)?;
         record._touch_pad = [0; 3];
@@ -996,6 +1026,46 @@ mod tests {
         )
     }
 
+    /// One v12 row: `(level_tick, row_flags, cars, ball, ext_block)`.
+    type V12Row = (u64, u32, Vec<Vec<u8>>, Vec<u8>, Vec<u8>);
+
+    /// Build a v12 file. Each row ends with a full extension block that
+    /// includes its leading `u32 ext_size` field.
+    fn v12_file(num_cars: u32, rows: &[V12Row]) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&RLPR_MAGIC_BYTES);
+        bytes.push(0);
+        bytes.extend_from_slice(&12u32.to_le_bytes());
+        let mut info = Vec::new();
+        info.extend_from_slice(&num_cars.to_le_bytes());
+        info.extend_from_slice(&[0u8; 24]);
+        push_sized(&mut bytes, &info);
+        bytes.extend_from_slice(&(rows.len() as u32).to_le_bytes());
+        for (level_tick, row_flags, cars, ball, ext) in rows {
+            bytes.extend_from_slice(&level_tick.to_le_bytes());
+            bytes.extend_from_slice(&row_flags.to_le_bytes());
+            bytes.extend_from_slice(&0u32.to_le_bytes());
+            for car in cars {
+                push_sized(&mut bytes, car);
+            }
+            push_sized(&mut bytes, ball);
+            bytes.extend_from_slice(ext);
+        }
+        bytes
+    }
+
+    /// Extension block with no groups.
+    fn empty_ext_block() -> Vec<u8> {
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&1u16.to_le_bytes());
+        payload.extend_from_slice(&0u16.to_le_bytes());
+        payload.extend_from_slice(&0u32.to_le_bytes());
+        let mut block = Vec::new();
+        block.extend_from_slice(&(payload.len() as u32).to_le_bytes());
+        block.extend_from_slice(&payload);
+        block
+    }
+
     /// Six-car v11 no-physics guard row.
     fn v11_guard_row(level_tick: u64) -> V11Row {
         let cars = (0..6)
@@ -1022,6 +1092,142 @@ mod tests {
         assert!(tick.all_cars_available());
         assert_eq!(tick.availability_mask(), 0b11_1111);
         assert_eq!(tick.car_records[0].phys.physics_frame, 900);
+    }
+
+    #[test]
+    fn v11_has_no_replay_state() {
+        let bytes = v11_file(
+            1,
+            &[(
+                1,
+                ROW_FLAGS_BALL_AVAILABLE,
+                vec![v11_car_bytes(true, 1)],
+                v11_ball_bytes(true),
+            )],
+        );
+        let recording = Recording::from_bytes("v11", &bytes).unwrap();
+        assert!(recording.ticks[0].replay_state.is_none());
+    }
+
+    #[test]
+    fn v12_reads_cpp_writer_extension() {
+        let ext = row_ext::cpp_writer_fixture();
+        let bytes = v12_file(
+            1,
+            &[(
+                100,
+                ROW_FLAGS_BALL_AVAILABLE,
+                vec![v11_car_bytes(true, 100)],
+                v11_ball_bytes(true),
+                ext,
+            )],
+        );
+        let recording = Recording::from_bytes("v12", &bytes).unwrap();
+        assert_eq!(recording.version, 12);
+
+        let tick = &recording.ticks[0];
+        assert_eq!(tick.level_tick, 100);
+        assert!(tick.ball_available());
+        let state = tick.replay_state.as_ref().unwrap();
+        assert_eq!(state.version, 1);
+        assert_eq!(state.group_mask, 0x0f);
+        assert_eq!(state.cars.len(), 1);
+        assert_eq!(state.cars[0].update_tag, Some(-7));
+        assert_eq!(state.ball.as_ref().unwrap().activation_state, Some(2));
+        assert_eq!(state.pads.len(), 1);
+        assert_eq!(state.pads[0].is_touching_vehicle, Some(true));
+        assert_eq!(state.global.as_ref().unwrap().countdown_time, Some(3));
+    }
+
+    #[test]
+    fn v12_reads_cpp_collision_group() {
+        let ext = row_ext::cpp_collision_fixture();
+        let bytes = v12_file(
+            1,
+            &[(
+                100,
+                ROW_FLAGS_BALL_AVAILABLE,
+                vec![v11_car_bytes(true, 100)],
+                v11_ball_bytes(true),
+                ext,
+            )],
+        );
+        let recording = Recording::from_bytes("v12-collision", &bytes).unwrap();
+        let state = recording.ticks[0].replay_state.as_ref().unwrap();
+        assert_eq!(state.group_mask, 1 << row_ext::GROUP_COLLISION);
+        let snapshot = state.collision_snapshot.as_ref().unwrap();
+        assert_eq!(snapshot.section_count, 6);
+        let manifolds = snapshot.manifolds.as_ref().unwrap();
+        assert_eq!(
+            manifolds.order,
+            collision_snapshot::CollisionManifoldOrder::SolveInput
+        );
+        assert_eq!(manifolds.records.len(), 2);
+        assert_eq!(manifolds.records[0].point_count, 4);
+        assert_eq!(manifolds.records[1].point_count, 0);
+    }
+
+    #[test]
+    fn v12_empty_extension_has_no_replay_fields() {
+        let bytes = v12_file(
+            1,
+            &[(
+                1,
+                ROW_FLAGS_BALL_AVAILABLE,
+                vec![v11_car_bytes(true, 1)],
+                v11_ball_bytes(true),
+                empty_ext_block(),
+            )],
+        );
+        let recording = Recording::from_bytes("v12", &bytes).unwrap();
+        let state = recording.ticks[0].replay_state.as_ref().unwrap();
+        assert_eq!(state.group_mask, 0);
+        assert!(state.cars.is_empty());
+        assert!(state.ball.is_none());
+        assert!(state.pads.is_empty());
+        assert!(state.global.is_none());
+    }
+
+    #[test]
+    fn v12_no_physics_row_still_reads_empty_extension() {
+        let bytes = v12_file(
+            1,
+            &[(
+                2,
+                ROW_FLAGS_NO_PHYSICS,
+                vec![v11_car_bytes(false, NATIVE_FRAME_UNKNOWN)],
+                v11_ball_bytes(false),
+                empty_ext_block(),
+            )],
+        );
+        let recording = Recording::from_bytes("v12", &bytes).unwrap();
+        let tick = &recording.ticks[0];
+        assert!(!tick.has_physics());
+        let state = tick.replay_state.as_ref().unwrap();
+        assert_eq!(state.group_mask, 0);
+        assert!(state.cars.is_empty());
+    }
+
+    #[test]
+    fn v12_requires_the_extension_block() {
+        let bytes = v12_file(
+            1,
+            &[(
+                1,
+                ROW_FLAGS_BALL_AVAILABLE,
+                vec![v11_car_bytes(true, 1)],
+                v11_ball_bytes(true),
+                Vec::new(),
+            )],
+        );
+        assert!(Recording::from_bytes("v12", &bytes).is_err());
+    }
+
+    #[test]
+    fn v12_keeps_v11_car_record_layout() {
+        let record = read_car_record(&v11_car_bytes(true, 7), 12).unwrap();
+        assert_eq!(record.phys.physics_frame, 7);
+        assert!(record.is_available());
     }
 
     #[test]
@@ -1377,6 +1583,22 @@ mod tests {
     }
 
     #[test]
+    fn bundled_v12_recording_parses() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("recordings/nexto_1v1_300s.rlpr.zst");
+        let recording = Recording::from_file(&path).unwrap();
+        assert_eq!(recording.version, 12);
+        assert_eq!(recording.info.num_cars, 2);
+        assert_eq!(recording.ticks.len(), 36000);
+        assert!(
+            recording
+                .ticks
+                .iter()
+                .all(|tick| tick.replay_state.is_some())
+        );
+    }
+
+    #[test]
     fn legacy_recordings_keep_events_unknown() {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("tests/rl_comparison_test/test_recordings");
@@ -1397,6 +1619,12 @@ mod tests {
         assert!(!recording_has_touch_frames(2));
         assert!(!recording_has_touch_frames(8));
         assert!(recording_has_touch_frames(9));
+    }
+
+    #[test]
+    fn replay_state_gate_follows_version() {
+        assert!(!recording_has_replay_state(11));
+        assert!(recording_has_replay_state(12));
     }
 
     #[test]

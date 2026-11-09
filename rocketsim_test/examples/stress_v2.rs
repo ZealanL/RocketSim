@@ -19,7 +19,7 @@ use stress_common::{
 };
 
 #[allow(dead_code)]
-#[path = "rlpr_metric/common.rs"]
+#[path = "rlpr_metric/common/mod.rs"]
 mod common;
 #[allow(dead_code)]
 #[path = "rlpr_replay/mod.rs"]

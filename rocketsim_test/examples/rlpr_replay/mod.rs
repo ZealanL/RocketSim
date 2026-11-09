@@ -273,6 +273,7 @@ mod tests {
             reserved0: 0,
             car_records: cars,
             ball_record: ball,
+            replay_state: None,
         }
     }
 

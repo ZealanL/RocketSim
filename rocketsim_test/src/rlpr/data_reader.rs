@@ -15,12 +15,28 @@ impl<'a> DataReader<'a> {
         self.bytes.read_u8()
     }
 
+    pub fn read_u16(&mut self) -> io::Result<u16> {
+        self.bytes.read_u16::<LittleEndian>()
+    }
+
     pub fn read_u32(&mut self) -> io::Result<u32> {
         self.bytes.read_u32::<LittleEndian>()
     }
 
     pub fn read_u64(&mut self) -> io::Result<u64> {
         self.bytes.read_u64::<LittleEndian>()
+    }
+
+    pub fn read_i8(&mut self) -> io::Result<i8> {
+        self.bytes.read_i8()
+    }
+
+    pub fn read_i32(&mut self) -> io::Result<i32> {
+        self.bytes.read_i32::<LittleEndian>()
+    }
+
+    pub fn read_f32(&mut self) -> io::Result<f32> {
+        self.bytes.read_f32::<LittleEndian>()
     }
 
     pub fn read_bool(&mut self) -> io::Result<bool> {

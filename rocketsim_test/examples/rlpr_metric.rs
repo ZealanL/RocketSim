@@ -8,12 +8,14 @@ use std::path::PathBuf;
 use clap::Parser;
 use rocketsim_test::rlpr::Recording;
 
-#[path = "rlpr_metric/common.rs"]
+#[path = "rlpr_metric/common/mod.rs"]
 mod common;
+#[path = "rlpr_metric/metadata.rs"]
+mod metadata;
 #[cfg(feature = "v2")]
 #[path = "rlpr_metric/v2.rs"]
 mod v2;
-#[path = "rlpr_metric/v3.rs"]
+#[path = "rlpr_metric/v3/mod.rs"]
 mod v3;
 
 /// Segmented RocketSim replay metric against RLPR recordings.
@@ -38,11 +40,17 @@ struct Args {
     #[arg(long, value_name = "PRESET,PRESET,...")]
     car_bodies: Option<String>,
 
+    /// Explicit team for each car slot, in recording order.
+    /// Use comma-separated names: blue,orange. The values 0 and 1 are also accepted.
+    /// The list must contain exactly one team per car in every selected recording.
+    #[arg(long, value_name = "TEAM,TEAM,...")]
+    car_teams: Option<String>,
+
     /// Ticks per segment.
     #[arg(long, default_value_t = 120)]
     segment_ticks: usize,
 
-    /// Reset to the prior RL state before each scored tick.
+    /// Reset to the recorded state of the prior tick before each scored tick.
     #[arg(long)]
     reset_each_tick: bool,
 
@@ -121,6 +129,34 @@ fn validate_roster_for_recordings(recordings: &[PathBuf], roster: &[usize]) -> R
     Ok(())
 }
 
+fn validate_teams_len(
+    recording: &std::path::Path,
+    roster_len: usize,
+    car_slots: usize,
+) -> Result<(), String> {
+    if roster_len != car_slots {
+        return Err(format!(
+            "{}: --car-teams has {roster_len} entries but the recording has {car_slots} car slots",
+            recording.display()
+        ));
+    }
+    Ok(())
+}
+
+fn validate_teams_for_recordings(
+    recordings: &[PathBuf],
+    teams: &[rocketsim::Team],
+) -> Result<(), String> {
+    for path in recordings {
+        let recording =
+            Recording::from_file(path).map_err(|err| format!("{}: {err}", path.display()))?;
+        let ticks = common::collapse_duplicate_ticks(&recording.ticks);
+        let car_slots = ticks.first().map(common::tick_car_count).unwrap_or(0);
+        validate_teams_len(path, teams.len(), car_slots)?;
+    }
+    Ok(())
+}
+
 /// Resolve the recordings to evaluate: explicit CLI files as-is, or every
 /// bundled capture that exists on disk.
 fn resolve_recordings(cli_files: &[PathBuf]) -> Result<Vec<PathBuf>, Box<dyn std::error::Error>> {
@@ -161,12 +197,35 @@ const NARROW_RULE: usize = WIDE_RULE - 13;
 
 /// Print skipped-transition counts. Kickoff stasis is stepped but unscored;
 /// see [`common::KICKOFF_STASIS_RULE`].
-fn print_skip_counts(kickoff_stasis: usize) {
-    println!(
-        "Kickoff stasis ({}): {} transitions stepped but unscored.",
+fn print_skip_counts(kickoff_stasis: usize, skipped_car_ticks: usize) {
+    println!("{}", skip_counts_line(kickoff_stasis, skipped_car_ticks));
+}
+
+/// One skip line with transitions and their car-tick cost.
+fn skip_counts_line(kickoff_stasis: usize, skipped_car_ticks: usize) -> String {
+    format!(
+        "Kickoff stasis ({}): {} transitions ({} car-ticks) stepped but unscored.",
         common::KICKOFF_STASIS_RULE,
         kickoff_stasis,
-    );
+        skipped_car_ticks,
+    )
+}
+
+/// One tolerance line. Position uses two decimals so one-tick budgets show
+/// their actual 0.02 uu value.
+fn tolerance_line(mode: common::ResetMode, tol: &common::Tolerances) -> String {
+    format!(
+        "Tolerances: pos {:.2} uu, vel {:.1} uu/s, ang vel {:.2} rad/s, axis {:.2}{}",
+        tol.pos_uu,
+        tol.vel_uu_s,
+        tol.ang_vel_rad_s,
+        tol.axis,
+        if mode != common::ResetMode::Segmented {
+            " (one-tick budgets)"
+        } else {
+            ""
+        },
+    )
 }
 
 /// Print one availability line with an explicit unit name.
@@ -205,6 +264,60 @@ fn print_capture_availability(label: &str, counts: &common::AvailabilityCounts) 
 /// is not the capture coverage.
 fn print_evaluated_availability(label: &str, counts: &common::AvailabilityCounts) {
     print_availability_counts("evaluated", label, counts);
+}
+
+/// Print the v12 field coverage for one recording.
+///
+/// The count line includes zero fields. The applied and skipped lines name
+/// the requested fields that the harness uses or leaves out.
+fn print_v12_restoration(report: &common::V12Report) {
+    if !report.has_extension() {
+        return;
+    }
+    println!("{}", report.coverage_line());
+    if report.collision_unreadable_rows() > 0 {
+        println!(
+            "v3 v12 collision snapshot present but unreadable: {} rows (unknown schema; not restored)",
+            report.collision_unreadable_rows()
+        );
+    }
+    let applied = report.applied_names();
+    println!(
+        "v3 v12 applied: {}",
+        if applied.is_empty() {
+            "none".to_string()
+        } else {
+            applied.join(", ")
+        }
+    );
+    let partial: Vec<_> = common::V12Field::ALL
+        .iter()
+        .filter(|field| field.partially_applied() && report.count(**field) > 0)
+        .map(|field| field.name())
+        .collect();
+    if !partial.is_empty() {
+        println!(
+            "v3 v12 partial or derived: {} (write counts follow evaluation)",
+            partial.join(", ")
+        );
+        println!(
+            "Jump active/time use the base row. Inactive time has no separate core field. Auto-flip timers and airborne clocks need a valid prefix. Pad cooldowns are derived. Collision restoration covers dynamic-body geometry only."
+        );
+    }
+    let not_applied = report.not_applied();
+    if !not_applied.is_empty() {
+        let names: Vec<String> = not_applied
+            .iter()
+            .map(|(name, count)| format!("{name} ({count})"))
+            .collect();
+        println!("v3 v12 recorded but not applied: {}", names.join(", "));
+    }
+    let absent = report.absent_names();
+    if !absent.is_empty() {
+        println!("v3 v12 absent: {}", absent.join(", "));
+    }
+    #[cfg(feature = "v2")]
+    println!("v2 v12 applied: none (v2 mapping not implemented)");
 }
 
 /// Print the table header. `first_fail` adds the "First fail" column, which
@@ -261,6 +374,12 @@ fn print_report(backend: &str, report: &common::EvalReport, first_fail: bool) {
             );
         }
     }
+    if report.total.non_finite > 0 {
+        println!(
+            "{backend}: non-finite simulated errors {} (failed samples; mean and maximum are infinite)",
+            report.total.non_finite
+        );
+    }
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -280,6 +399,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .transpose()?;
     if let Some(bodies) = &explicit_bodies {
         validate_roster_for_recordings(&rlpr_files, bodies)?;
+    }
+    let explicit_teams = args
+        .car_teams
+        .as_deref()
+        .map(metadata::parse_teams)
+        .transpose()?;
+    if let Some(teams) = &explicit_teams {
+        validate_teams_for_recordings(&rlpr_files, teams)?;
     }
     println!(
         "Recordings: {} file{}",
@@ -309,39 +436,44 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("Segments: {} ticks", config.segment_ticks,);
         }
     }
+    if reset_mode == common::ResetMode::ResetMotionEachTick {
+        println!(
+            "The v12 report describes the segment seed. Per-tick motion resets restore motion only; the seed body state does not survive them."
+        );
+    }
+    println!("Checkpoint: partial recorded state, not a full native checkpoint.");
+    println!("History restores use state-row or earlier evidence, never a target outcome.");
     println!("Categories overlap. Support counts car-ticks (cars x ticks).");
+    println!(
+        "no_contact means no labeled contact anywhere in the tick, including the shared ball."
+    );
     println!("Dodge deadzone: {:.2}", args.dodge_deadzone);
     let tol = common::Tolerances::for_reset_mode(reset_mode);
-    println!(
-        "Tolerances: pos {:.1} uu, vel {:.1} uu/s, ang vel {:.2} rad/s, axis {:.2}{}",
-        tol.pos_uu,
-        tol.vel_uu_s,
-        tol.ang_vel_rad_s,
-        tol.axis,
-        if reset_mode != common::ResetMode::Segmented {
-            " (velocity tightened for one-tick replay)"
-        } else {
-            ""
-        },
-    );
+    println!("{}", tolerance_line(reset_mode, &tol));
+    // Mesh loading and settled heights are process-wide. Do this once.
     v3::init();
     let settled_heights = v3::preset_settled_heights();
-    let mut v3_backend = v3::V3Backend::with_dodge_deadzone(args.dodge_deadzone);
     #[cfg(feature = "v2")]
-    let mut v2_backend = {
-        v2::init();
-        v2::V2Backend::with_dodge_deadzone(args.dodge_deadzone)
-    };
+    v2::init();
     let mut combined_v3 = common::EvalReport::default();
     #[cfg(feature = "v2")]
     let mut combined_v2 = common::EvalReport::default();
     let mut skipped_transitions = 0usize;
+    let mut skipped_car_ticks = 0usize;
     let mut combined_availability = common::AvailabilityCounts::default();
     let mut combined_capture_availability = common::AvailabilityCounts::default();
     let mut any_availability = false;
 
     for rlpr_file in rlpr_files.iter() {
         let recording = Recording::from_file(rlpr_file)
+            .map_err(|err| format!("{}: {err}", rlpr_file.display()))?;
+        println!(
+            "{}: RLPR v{} SHA-256 {}",
+            rlpr_file.display(),
+            recording.version,
+            metadata::file_sha256(rlpr_file)?,
+        );
+        common::validation::validate_recorded_state(&recording.ticks)
             .map_err(|err| format!("{}: {err}", rlpr_file.display()))?;
         // Collapse recorder-duplicated rows first: some files repeat a tick
         // verbatim, which shatters runs and voids neighboring transitions
@@ -357,29 +489,84 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .into());
         }
 
-        let bodies = match &explicit_bodies {
-            Some(bodies) => bodies.clone(),
-            None => {
+        let loaded_metadata = metadata::load(rlpr_file, num_cars)
+            .map_err(|err| format!("{}: {err}", rlpr_file.display()))?;
+        let (bodies, body_source, header_body) = match (&explicit_bodies, &loaded_metadata) {
+            (Some(bodies), _) => (bodies.clone(), "cli".to_string(), None),
+            (None, Some(loaded)) => (
+                loaded.car_bodies.clone(),
+                format!("metadata {}", loaded.path.display()),
+                None,
+            ),
+            (None, None) => {
                 // The header carries one hitbox for the whole file, so it only
                 // describes car 0. Settled heights detect wheel geometry but
                 // cannot separate bodies with shared wheel geometry.
                 let header_body = v3::body_preset_index(&recording.info)
                     .map_err(|err| format!("{}: {err}", rlpr_file.display()))?;
-                common::bodies_from_ticks(&ticks, header_body, &settled_heights)
-                    .map_err(|err| format!("{}: {err}", rlpr_file.display()))?
+                let bodies = common::bodies_from_ticks(&ticks, header_body, &settled_heights)
+                    .map_err(|err| format!("{}: {err}", rlpr_file.display()))?;
+                (bodies, "inferred".to_string(), Some(header_body))
             }
         };
+        let (teams, team_source) = match (&explicit_teams, &loaded_metadata) {
+            (Some(teams), _) => (teams.clone(), "cli".to_string()),
+            (None, Some(loaded)) => (
+                loaded.car_teams.clone(),
+                format!("metadata {}", loaded.path.display()),
+            ),
+            (None, None) => (
+                metadata::alternating_teams(num_cars),
+                "alternating fallback".to_string(),
+            ),
+        };
+        // Build the arena from scratch for each recording. A shared arena
+        // would carry boost pads, contact manifolds, and tick history from
+        // the previous file even when the car roster stays the same.
+        let mut v3_backend = v3::V3Backend::with_dodge_deadzone(args.dodge_deadzone);
         v3_backend.set_bodies(&bodies);
+        v3_backend.set_teams(&teams);
         #[cfg(feature = "v2")]
-        v2_backend.set_bodies(&bodies);
+        let mut v2_backend = {
+            let mut backend = v2::V2Backend::with_dodge_deadzone(args.dodge_deadzone);
+            backend.set_bodies(&bodies);
+            backend.set_teams_from_sides(&teams);
+            backend
+        };
         println!(
-            "{}: bodies {:?}",
+            "{}: bodies {:?} (source: {})",
             rlpr_file.display(),
             bodies
                 .iter()
                 .map(|&index| common::BODY_PRESET_NAMES[index])
-                .collect::<Vec<_>>()
+                .collect::<Vec<_>>(),
+            body_source,
         );
+        println!(
+            "{}: teams {:?} (source: {})",
+            rlpr_file.display(),
+            metadata::team_names(&teams),
+            team_source,
+        );
+        if explicit_teams.is_none() && loaded_metadata.is_none() {
+            println!(
+                "{}: WARNING: teams are unverified; using alternating Blue/Orange by slot. Add {} with car_teams or pass --car-teams.",
+                rlpr_file.display(),
+                metadata::metadata_path(rlpr_file).display(),
+            );
+        }
+        if let Some(header_body) = header_body {
+            let fallback = common::header_fallback_slots(&ticks);
+            if !fallback.is_empty() {
+                println!(
+                    "{}: WARNING: car slot(s) {:?} never settled; body {} comes from the car-0 header, not a measured per-car body",
+                    rlpr_file.display(),
+                    fallback,
+                    common::BODY_PRESET_NAMES[header_body],
+                );
+            }
+        }
+        print_v12_restoration(&common::v12_report(&ticks));
         if !ticks
             .iter()
             .all(|tick| common::tick_car_count(tick) == num_cars)
@@ -407,9 +594,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .into());
         }
 
-        // One backend serves every recording. The detected body roster plus
-        // `reset` rebuild the arena when the bodies or the car count change
-        // between recordings.
+        // Reporting only. The counts do not read the backend and do not
+        // change evaluation order or scoring.
+        println!(
+            "{}: {}",
+            rlpr_file.display(),
+            common::transition_report(&ticks, &segments)
+        );
+
         let v3_outcome = if reset_mode == common::ResetMode::ResetMotionEachTick {
             common::evaluate_motion_each_tick(
                 &mut v3_backend,
@@ -432,8 +624,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 rocketsim_test::rlpr::recording_has_touch_frames(recording.version),
             )
         };
+        v3_backend.print_restore_counts();
         combined_v3.merge(&v3_outcome.report);
         skipped_transitions += v3_outcome.skipped_transitions;
+        skipped_car_ticks += v3_outcome.skipped_car_ticks;
         if rocketsim_test::rlpr::recording_has_availability(recording.version) {
             let label = rlpr_file.display().to_string();
             // Raw capture counts: the rows as written, before duplicate
@@ -475,7 +669,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         if args.per_recording {
             println!("\nRecording: {}", rlpr_file.display());
-            print_skip_counts(v3_outcome.skipped_transitions);
+            print_skip_counts(v3_outcome.skipped_transitions, v3_outcome.skipped_car_ticks);
             print_table_header(true);
             print_report("v3", &v3_outcome.report, true);
             #[cfg(feature = "v2")]
@@ -490,7 +684,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if args.per_recording {
         println!("Combined recordings:");
     }
-    print_skip_counts(skipped_transitions);
+    print_skip_counts(skipped_transitions, skipped_car_ticks);
     if any_availability {
         print_capture_availability("Combined", &combined_capture_availability);
         print_evaluated_availability("Combined", &combined_availability);
@@ -503,6 +697,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         print_report("v2", &combined_v2, false);
     }
 
+    if combined_v3.total.non_finite > 0 {
+        return Err("v3 produced non-finite simulated errors; see failed-sample counts".into());
+    }
+    #[cfg(feature = "v2")]
+    if combined_v2.total.non_finite > 0 {
+        return Err("v2 produced non-finite simulated errors; see failed-sample counts".into());
+    }
     Ok(())
 }
 
@@ -655,5 +856,43 @@ mod tests {
             message.contains("--reset-each-tick") && message.contains("--reset-motion-each-tick"),
             "conflict error names both flags: {message}"
         );
+    }
+
+    #[test]
+    fn tolerance_line_shows_the_actual_one_tick_position_budget() {
+        let reset = tolerance_line(
+            common::ResetMode::ResetEachTick,
+            &common::Tolerances::RESET_EACH_TICK,
+        );
+        assert!(reset.contains("pos 0.02 uu"), "{reset}");
+        assert!(reset.contains("one-tick budgets"), "{reset}");
+
+        let segmented = tolerance_line(common::ResetMode::Segmented, &common::Tolerances::SEGMENT);
+        assert!(segmented.contains("pos 2.00 uu"), "{segmented}");
+        assert!(!segmented.contains("one-tick budgets"), "{segmented}");
+    }
+
+    #[test]
+    fn skip_line_reports_stasis_car_ticks() {
+        let line = skip_counts_line(3, 9);
+        assert!(line.contains("3 transitions"), "{line}");
+        assert!(line.contains("9 car-ticks"), "{line}");
+        assert!(line.contains("stepped but unscored"), "{line}");
+    }
+
+    #[test]
+    fn car_teams_parse_and_require_exact_slots() {
+        assert_eq!(
+            metadata::parse_teams("blue,ORANGE,1,0").unwrap(),
+            vec![
+                rocketsim::Team::Blue,
+                rocketsim::Team::Orange,
+                rocketsim::Team::Orange,
+                rocketsim::Team::Blue,
+            ]
+        );
+        let error = validate_teams_len(std::path::Path::new("x.rlpr"), 3, 4).unwrap_err();
+        assert!(error.contains("--car-teams"), "{error}");
+        assert!(error.contains("4 car slots"), "{error}");
     }
 }

@@ -67,8 +67,12 @@ pub struct V2Backend {
     arena_mask: Option<Vec<bool>>,
     /// Body preset index per car slot, in [`BODY_PRESET_NAMES`] order.
     bodies: Vec<usize>,
+    /// Team per car slot, in frozen recording order.
+    teams: Vec<Team>,
     /// Presets the current arena was built with, to detect roster changes.
     arena_body: Option<Vec<usize>>,
+    /// Teams the current arena was built with, to detect team changes.
+    arena_teams: Option<Vec<Team>>,
     dodge_deadzone: f32,
     mem_weight_mode: ArenaMemWeightMode,
     capture_events: bool,
@@ -111,6 +115,7 @@ impl V2Backend {
         let (arena, car_ids) = fresh_arena(
             &[true],
             &[OCTANE_PRESET],
+            &[],
             dodge_deadzone,
             mem_weight_mode,
             capture_events,
@@ -121,7 +126,9 @@ impl V2Backend {
             car_ids,
             arena_mask: None,
             bodies: vec![OCTANE_PRESET],
+            teams: Vec::new(),
             arena_body: None,
+            arena_teams: None,
             dodge_deadzone,
             mem_weight_mode,
             capture_events,
@@ -151,6 +158,34 @@ impl V2Backend {
     /// per-car detection. A short roster pads with Octane.
     pub fn set_bodies(&mut self, bodies: &[usize]) {
         self.bodies = bodies.to_vec();
+    }
+
+    /// Select the team for every car slot, in recording order.
+    ///
+    /// Missing slots use the old alternating fallback. A team change rebuilds
+    /// the arena even when the car count and bodies stay the same.
+    pub fn set_teams(&mut self, teams: &[Team]) {
+        self.teams = teams.to_vec();
+    }
+
+    /// Select the team for every car slot from RocketSim team values.
+    pub fn set_teams_from_sides(&mut self, teams: &[rocketsim::Team]) {
+        let teams: Vec<Team> = teams
+            .iter()
+            .map(|team| match team {
+                rocketsim::Team::Blue => Team::Blue,
+                rocketsim::Team::Orange => Team::Orange,
+            })
+            .collect();
+        self.set_teams(&teams);
+    }
+
+    /// Team per slot. Missing metadata keeps the old alternating behavior.
+    fn team_for_slot(&self, slot: usize) -> Team {
+        self.teams
+            .get(slot)
+            .copied()
+            .unwrap_or_else(|| default_team_for_slot(slot))
     }
 
     /// Preset index for one car slot. Missing slots fall back to Octane so a
@@ -183,15 +218,6 @@ impl V2Backend {
             .position(|stored| *stored == Some(arena_car))
     }
 
-    /// Team per frozen recording slot: Blue first, then alternating.
-    fn team_for_slot(slot: usize) -> Team {
-        if slot.is_multiple_of(2) {
-            Team::Blue
-        } else {
-            Team::Orange
-        }
-    }
-
     /// Availability mask for a tick, one bit per frozen car slot.
     fn tick_mask(tick: &TickRecord) -> Vec<bool> {
         (0..tick.car_records.len())
@@ -211,14 +237,19 @@ impl V2Backend {
         let roster: Vec<usize> = (0..mask.len())
             .map(|slot| self.preset_for_slot(slot))
             .collect();
+        let teams: Vec<Team> = (0..mask.len())
+            .map(|slot| self.team_for_slot(slot))
+            .collect();
         let mask_vec = mask.to_vec();
         if self.car_ids.len() != mask.len()
             || self.arena_body.as_ref() != Some(&roster)
+            || self.arena_teams.as_ref() != Some(&teams)
             || self.arena_mask.as_ref() != Some(&mask_vec)
         {
             let (arena, car_ids) = fresh_arena(
                 mask,
                 &roster,
+                &teams,
                 self.dodge_deadzone,
                 self.mem_weight_mode,
                 self.capture_events,
@@ -226,6 +257,7 @@ impl V2Backend {
             self.arena = arena;
             self.car_ids = car_ids;
             self.arena_body = Some(roster);
+            self.arena_teams = Some(teams);
             self.arena_mask = Some(mask_vec);
             self.last_ball_hit = vec![0; mask.len()];
         }
@@ -488,6 +520,7 @@ fn v2_preset_bounds() -> [HitboxBounds; NUM_BODY_PRESETS] {
 fn fresh_arena(
     mask: &[bool],
     roster: &[usize],
+    teams: &[Team],
     dodge_deadzone: f32,
     mem_weight_mode: ArenaMemWeightMode,
     capture_events: bool,
@@ -508,13 +541,26 @@ fn fresh_arena(
             available.then(|| {
                 let mut car_config = *v2_preset(roster.get(slot).copied().unwrap_or(OCTANE_PRESET));
                 car_config.dodge_deadzone = dodge_deadzone;
-                arena
-                    .pin_mut()
-                    .add_car(V2Backend::team_for_slot(slot), &car_config)
+                arena.pin_mut().add_car(
+                    teams
+                        .get(slot)
+                        .copied()
+                        .unwrap_or_else(|| default_team_for_slot(slot)),
+                    &car_config,
+                )
             })
         })
         .collect();
     (arena, car_ids)
+}
+
+/// Old fallback: Blue first, then alternating by frozen car slot.
+fn default_team_for_slot(slot: usize) -> Team {
+    if slot.is_multiple_of(2) {
+        Team::Blue
+    } else {
+        Team::Orange
+    }
 }
 
 /// Copy one recorded car into a v2 car state.
@@ -993,6 +1039,7 @@ mod tests {
                 motion_car(car1, (10.0, 0.0, 0.0), (0.1, 0.0, 0.0)),
             ],
             ball_record: motion_phys(ball, (0.0, 0.0, 0.0), (0.0, 0.0, 0.0)),
+            replay_state: None,
         }
     }
 
@@ -1017,6 +1064,7 @@ mod tests {
             reserved0: 0,
             car_records,
             ball_record: motion_phys((0.0, 0.0, 200.0), (0.0, 0.0, 0.0), (0.0, 0.0, 0.0)),
+            replay_state: None,
         }
     }
 
@@ -1025,9 +1073,10 @@ mod tests {
             let Some(id) = id else {
                 continue;
             };
+            let expected = backend.team_for_slot(slot);
             assert_eq!(
                 backend.arena.pin_mut().get_car_info(*id).team,
-                V2Backend::team_for_slot(slot),
+                expected,
                 "slot {slot} team"
             );
         }
@@ -1194,5 +1243,49 @@ mod tests {
             );
         }
         assert!(!events[1].car_ball && !events[3].car_ball);
+    }
+
+    #[test]
+    fn nonalternating_teams_rebuild_and_follow_sparse_slots() {
+        init();
+        let mut backend = V2Backend::new();
+        backend.set_bodies(&[2; 4]);
+        backend.set_teams(&[Team::Blue, Team::Orange, Team::Orange, Team::Blue]);
+        backend.ensure_cars(&[true, false, true, true]);
+        assert!(backend.car_ids[0].is_some());
+        assert!(backend.car_ids[1].is_none());
+        assert!(backend.car_ids[2].is_some());
+        assert!(backend.car_ids[3].is_some());
+        let teams: Vec<Team> = backend
+            .car_ids
+            .iter()
+            .flatten()
+            .map(|&car_id| backend.arena.pin_mut().get_car_info(car_id).team)
+            .collect();
+        assert_eq!(teams, vec![Team::Blue, Team::Orange, Team::Blue]);
+
+        let car_id = backend.car_ids[0].unwrap();
+        let mut planted = backend.arena.pin_mut().get_car(car_id);
+        planted.pos = Vec3::new(1234.0, 567.0, 89.0);
+        backend.arena.pin_mut().set_car(car_id, planted).unwrap();
+
+        backend.set_teams(&[Team::Orange, Team::Blue, Team::Blue, Team::Orange]);
+        backend.ensure_cars(&[true, false, true, true]);
+        let teams: Vec<Team> = backend
+            .car_ids
+            .iter()
+            .flatten()
+            .map(|&car_id| backend.arena.pin_mut().get_car_info(car_id).team)
+            .collect();
+        assert_eq!(teams, vec![Team::Orange, Team::Blue, Team::Orange]);
+        assert_ne!(
+            backend
+                .arena
+                .pin_mut()
+                .get_car(backend.car_ids[0].unwrap())
+                .pos,
+            Vec3::new(1234.0, 567.0, 89.0),
+            "team change must rebuild the arena"
+        );
     }
 }

@@ -1,6 +1,6 @@
-use super::{CarRecord, PhysRecord, ROW_FLAGS_BALL_AVAILABLE, ROW_FLAGS_NO_PHYSICS};
+use super::{CarRecord, PhysRecord, ROW_FLAGS_BALL_AVAILABLE, ROW_FLAGS_NO_PHYSICS, RowExt};
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct TickRecord {
     /// RLPR v11 plugin level tick. Zero for v2-v10.
     pub level_tick: u64,
@@ -10,6 +10,11 @@ pub struct TickRecord {
     pub reserved0: u32,
     pub car_records: Vec<CarRecord>,
     pub ball_record: PhysRecord,
+    /// RLPR v12 native hidden state. `None` for v2-v11.
+    ///
+    /// Each field is present only when its own mask bit is set. A mask bit
+    /// never implies availability from the recording version.
+    pub replay_state: Option<RowExt>,
 }
 
 impl TickRecord {
