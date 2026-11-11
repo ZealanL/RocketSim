@@ -6,10 +6,9 @@ use std::mem;
 use cone::is_within_forward_cone;
 use sweep::get_time_of_impact_poses;
 
-use super::Arena;
+use super::{Arena, ContactGeometry};
 use crate::{
     CarBodyConfig, CarState, DemoMode,
-    bullet::collision::narrowphase::manifold_point::ManifoldPoint,
     consts::{self, BT_TO_UU, TICK_TIME, UU_TO_BT},
     sim::{ArenaEvent, CarHitCarEvent},
 };
@@ -95,7 +94,7 @@ impl Arena {
         &mut self,
         car_1_idx: usize,
         car_2_idx: usize,
-        manifold_point: &ManifoldPoint,
+        geometry: &ContactGeometry,
     ) {
         let Ok(both_cars) = self.cars.get_disjoint_mut([car_1_idx, car_2_idx]) else {
             panic!(
@@ -174,9 +173,9 @@ impl Arena {
             }
 
             let contact_point = if is_swapped {
-                manifold_point.pos_world_on_b
+                geometry.pos_world_on_b
             } else {
-                manifold_point.pos_world_on_a
+                geometry.pos_world_on_a
             } * BT_TO_UU;
 
             if is_demo {

@@ -4,7 +4,7 @@ use arrayvec::ArrayVec;
 use fastrand::Rng;
 use glam::{Affine3A, EulerRot, Mat3A, Vec3A};
 
-use super::ArenaContactTracker;
+use super::{ArenaContactTracker, ContactGeometry};
 use crate::{
     ARENA_COLLISION_SHAPES, ActivationState, ArenaConfig,
     ArenaEvent::{BallHitWorld, CarPickupBoost},
@@ -33,7 +33,7 @@ use crate::{
             },
         },
     },
-    consts::{self, BT_TO_UU, TICK_RATE, TICK_TIME, UU_TO_BT},
+    consts::{self, BT_TO_UU, TICK_TIME, UU_TO_BT},
     make_tile_shapes,
     shared::Aabb,
     sim::{
@@ -101,6 +101,7 @@ impl Clone for Arena {
     ///
     /// This clones all physics state. The clone steps the same as the original.
     /// Static collision meshes stay shared. Static meshes never change. Sharing them does not change physics.
+    /// Default boost-pad geometry stays shared. Pad timers and membership stay independent.
     /// This clones the random generator state. Random kickoffs stay in sync if you make the same calls on both arenas.
     /// This clones contact history and pending events. The clone reports the same last-step events.
     ///
@@ -174,31 +175,10 @@ impl Arena {
 
         let boost_pad_grid =
             if config.game_mode != GameMode::TheVoid && config.game_mode != GameMode::Dropshot {
-                let mut boost_pad_configs = Vec::new();
-
-                if let Some(custom_boost_pads) = config.custom_boost_pads.as_ref() {
-                    boost_pad_configs.extend_from_slice(custom_boost_pads);
-                } else {
-                    let small_pad_locs = consts::boost_pads::get_locations(config.game_mode, false);
-                    let big_pad_locs = consts::boost_pads::get_locations(config.game_mode, true);
-                    boost_pad_configs.reserve(small_pad_locs.len() + big_pad_locs.len());
-
-                    for small_pos in small_pad_locs {
-                        boost_pad_configs.push(BoostPadConfig {
-                            pos: *small_pos,
-                            is_big: false,
-                        });
-                    }
-
-                    for big_pos in big_pad_locs {
-                        boost_pad_configs.push(BoostPadConfig {
-                            pos: *big_pos,
-                            is_big: true,
-                        });
-                    }
-                }
-
-                Some(BoostPadGrid::new(&boost_pad_configs, &config.mutators))
+                Some(config.custom_boost_pads.as_ref().map_or_else(
+                    || BoostPadGrid::new_default(config.game_mode, &config.mutators),
+                    |custom_boost_pads| BoostPadGrid::new(custom_boost_pads, &config.mutators),
+                ))
             } else {
                 None
             };
@@ -841,7 +821,7 @@ impl Arena {
                         UserInfoType::Ball => {
                             self.on_car_ball_collision(
                                 user_pointer_a,
-                                &contact.manifold_point,
+                                &contact.geometry,
                                 contact.is_swap,
                             );
                         }
@@ -849,17 +829,17 @@ impl Arena {
                             self.on_car_car_collision(
                                 user_pointer_a,
                                 user_pointer_b,
-                                &contact.manifold_point,
+                                &contact.geometry,
                             );
                         }
-                        _ => self.on_car_world_collision(user_pointer_a, &contact.manifold_point),
+                        _ => self.on_car_world_collision(user_pointer_a, &contact.geometry),
                     },
                     UserInfoType::Ball => match user_idx_b {
                         UserInfoType::DropshotTile => {
                             self.on_ball_tile_collision(user_pointer_b);
                         }
                         UserInfoType::None => {
-                            self.on_ball_world_collision(&contact.manifold_point, contact.rb_idx_a);
+                            self.on_ball_world_collision(&contact.geometry, contact.rb_idx_a);
                         }
                         _ => {}
                     },
@@ -1057,19 +1037,7 @@ impl Arena {
         }
 
         if let Some(grid) = self.boost_pad_grid.as_mut() {
-            for pad in &mut grid.all_pads {
-                pad.max_cooldown = if pad.config.is_big {
-                    mutators.boost_pad_cooldown_big
-                } else {
-                    mutators.boost_pad_cooldown_small
-                };
-
-                pad.boost_amount = if pad.config.is_big {
-                    mutators.boost_pad_amount_big
-                } else {
-                    mutators.boost_pad_amount_small
-                };
-            }
+            grid.set_mutators(&mutators);
         }
 
         self.config.mutators = mutators;
@@ -1386,16 +1354,18 @@ impl Arena {
     /// Panics in `TheVoid`/`Dropshot` (no pads) or for an OOB index.
     #[must_use]
     pub fn get_boost_pad_state(&self, idx: usize) -> BoostPadState {
-        let pad = &self.boost_pads()[idx];
-        let cooldown = pad.gave_boost_tick_count.map_or(0.0, |gave_boost_tick| {
-            let max_cooldown = pad.max_cooldown;
-            let time_since = ((self.tick_count() as i64 - gave_boost_tick) as f32) * TICK_TIME;
-            (max_cooldown - time_since).max(0.0)
-        });
+        let grid = self.boost_pad_grid.as_ref().unwrap();
+        let cooldown = grid
+            .gave_boost_tick_count(idx)
+            .map_or(0.0, |gave_boost_tick| {
+                let max_cooldown = grid.max_cooldown(idx);
+                let time_since = ((self.tick_count() as i64 - gave_boost_tick) as f32) * TICK_TIME;
+                (max_cooldown - time_since).max(0.0)
+            });
 
         BoostPadState {
             cooldown,
-            touching_car_idxs: pad.touching_car_idxs.clone(),
+            touching_car_idxs: grid.touching_car_idxs(idx).to_vec(),
         }
     }
 
@@ -1405,24 +1375,12 @@ impl Arena {
     /// If restored data does so, the next tick keeps that car on the lowest-index pad that still
     /// retains it. Membership changes take effect on the next tick.
     pub fn set_boost_pad_state(&mut self, idx: usize, state: BoostPadState) {
-        let boost_pad_grid = self.boost_pad_grid.as_mut().unwrap();
+        let car_count = self.cars.len();
         let tick_count = self.tick_count;
-        let pad = &mut boost_pad_grid.all_pads[idx];
-        pad.touching_car_idxs.clear();
-
-        for car_idx in state.touching_car_idxs.iter().copied() {
-            if car_idx < self.cars.len() && !pad.touching_car_idxs.contains(&car_idx) {
-                pad.touching_car_idxs.push(car_idx);
-            }
-        }
-
-        if state.cooldown > 0.0 {
-            let time_since_pickup = (pad.max_cooldown - state.cooldown).max(0.0);
-            let ticks_since_pickup = (time_since_pickup * TICK_RATE).round() as i64;
-            pad.gave_boost_tick_count = Some(tick_count as i64 - ticks_since_pickup);
-        } else {
-            boost_pad_grid.all_pads[idx].gave_boost_tick_count = None;
-        }
+        self.boost_pad_grid
+            .as_mut()
+            .unwrap()
+            .set_pad_state(idx, &state, car_count, tick_count);
     }
 
     /// Edit a local pad snapshot, then apply it with [`Arena::set_boost_pad_state`].
@@ -1444,7 +1402,7 @@ impl Arena {
     }
 
     pub(crate) fn boost_pads(&self) -> &[BoostPad] {
-        &self.boost_pad_grid.as_ref().unwrap().all_pads
+        self.boost_pad_grid.as_ref().unwrap().pads()
     }
 
     /// Number of pads (`0` in `TheVoid`/`Dropshot`; 34 Soccar, 20 Hoops).
@@ -1452,7 +1410,7 @@ impl Arena {
     pub fn num_boost_pads(&self) -> usize {
         self.boost_pad_grid
             .as_ref()
-            .map_or(0, |grid| grid.all_pads.len())
+            .map_or(0, BoostPadGrid::num_pads)
     }
 
     /// All pad cooldowns and ordered memberships in pad order.
@@ -1790,11 +1748,11 @@ impl Arena {
         );
     }
 
-    fn on_ball_world_collision(&mut self, manifold_point: &ManifoldPoint, rb_index: usize) {
+    fn on_ball_world_collision(&mut self, geometry: &ContactGeometry, rb_index: usize) {
         self.on_ball_world_collision_parts(
             rb_index,
-            manifold_point.pos_world_on_b,
-            manifold_point.normal_world_on_b,
+            geometry.pos_world_on_b,
+            geometry.normal_world_on_b,
         );
     }
 
@@ -1819,7 +1777,7 @@ impl Arena {
     fn on_car_ball_collision(
         &mut self,
         car_idx: usize,
-        manifold_point: &ManifoldPoint,
+        geometry: &ContactGeometry,
         ball_is_body_a: bool,
     ) {
         let ball_rb = &mut self.bullet_world.bodies_mut()[self.ball.rigid_body_idx];
@@ -1833,9 +1791,9 @@ impl Arena {
         );
 
         let contact_point = if ball_is_body_a {
-            manifold_point.pos_world_on_a
+            geometry.pos_world_on_a
         } else {
-            manifold_point.pos_world_on_b
+            geometry.pos_world_on_b
         } * BT_TO_UU;
 
         let extra_hit_vel = (ball_rb.lin_vel - ball_lin_vel_before) * BT_TO_UU;
@@ -1846,13 +1804,12 @@ impl Arena {
         }));
     }
 
-    fn on_car_world_collision(&mut self, car_idx: usize, manifold_point: &ManifoldPoint) {
+    fn on_car_world_collision(&mut self, car_idx: usize, geometry: &ContactGeometry) {
         self.events.push(ArenaEvent::CarHitWorld(CarHitWorldEvent {
             car_idx,
-            contact_point: manifold_point.pos_world_on_b * BT_TO_UU,
-            contact_normal: manifold_point.normal_world_on_b,
+            contact_point: geometry.pos_world_on_b * BT_TO_UU,
+            contact_normal: geometry.normal_world_on_b,
         }));
-        self.cars[car_idx].state.cache.world_contact_normal =
-            Some(manifold_point.normal_world_on_b);
+        self.cars[car_idx].state.cache.world_contact_normal = Some(geometry.normal_world_on_b);
     }
 }

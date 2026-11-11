@@ -15,13 +15,34 @@ use crate::{
     sim::UserInfoType,
 };
 
+/// Contact geometry that the arena handlers read.
+///
+/// A handler reads only these three vectors. The vectors are copied before
+/// internal-edge adjustment changes the manifold point.
+#[derive(Debug, Default, Copy, Clone)]
+pub(crate) struct ContactGeometry {
+    pub pos_world_on_a: glam::Vec3A,
+    pub pos_world_on_b: glam::Vec3A,
+    pub normal_world_on_b: glam::Vec3A,
+}
+
+impl ContactGeometry {
+    fn from_point(point: &ManifoldPoint) -> Self {
+        Self {
+            pos_world_on_a: point.pos_world_on_a,
+            pos_world_on_b: point.pos_world_on_b,
+            normal_world_on_b: point.normal_world_on_b,
+        }
+    }
+}
+
 // Store one contact event.
 #[derive(Debug, Copy, Clone)]
 pub(crate) struct ContactRecord {
     pub is_swap: bool,
     pub rb_idx_a: usize,
     pub rb_idx_b: usize,
-    pub manifold_point: ManifoldPoint,
+    pub geometry: ContactGeometry,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -174,7 +195,7 @@ impl ContactAddedCallback for ArenaContactTracker {
                 is_swap: should_swap,
                 rb_idx_a: body_a.world_array_idx,
                 rb_idx_b: body_b.world_array_idx,
-                manifold_point: *manifold_point,
+                geometry: ContactGeometry::from_point(manifold_point),
             });
         }
 
@@ -213,7 +234,7 @@ impl ContactAddedCallback for ArenaContactTracker {
             is_swap: should_swap,
             rb_idx_a: body_a.world_array_idx,
             rb_idx_b: body_b.world_array_idx,
-            manifold_point: *manifold_point,
+            geometry: ContactGeometry::from_point(manifold_point),
         });
     }
 
