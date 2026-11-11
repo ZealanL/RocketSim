@@ -8,8 +8,9 @@ use crate::{
             narrowphase::persistent_manifold::CONTACT_BREAKING_THRESHOLD,
             shapes::collision_shape::CollisionShapes,
         },
-        linear_math::{integrate_trans, integrate_trans_no_rot},
+        linear_math::{bullet_quat_from_basis_columns, integrate_trans, integrate_trans_no_rot},
     },
+    shared::math::powf,
     sim::UserInfoType,
 };
 
@@ -234,7 +235,11 @@ impl RigidBody {
 
         Self {
             world_trans: info.start_world_trans,
-            world_quat: Quat::from_mat3a(&info.start_world_trans.matrix3),
+            world_quat: bullet_quat_from_basis_columns(
+                info.start_world_trans.matrix3.x_axis,
+                info.start_world_trans.matrix3.y_axis,
+                info.start_world_trans.matrix3.z_axis,
+            ),
             interp_world_trans: info.start_world_trans,
             contact_processing_threshold: f32::MAX,
             contact_breaking_threshold,
@@ -302,7 +307,11 @@ impl RigidBody {
             world_trans.matrix3 = Mat3A::IDENTITY;
             Quat::IDENTITY
         } else {
-            Quat::from_mat3a(&world_trans.matrix3)
+            bullet_quat_from_basis_columns(
+                world_trans.matrix3.x_axis,
+                world_trans.matrix3.y_axis,
+                world_trans.matrix3.z_axis,
+            )
         };
         self.assert_static_transform_unchanged(&world_trans);
 
@@ -486,16 +495,27 @@ impl RigidBody {
             if self.cached_damping_time_step != time_step
                 || self.cached_linear_damping_value != self.linear_damping
             {
-                self.cached_linear_damping = (1.0 - self.linear_damping).powf(time_step);
+                self.cached_linear_damping = powf((1.0 - self.linear_damping).max(0.0), time_step);
                 self.cached_damping_time_step = time_step;
                 self.cached_linear_damping_value = self.linear_damping;
             }
+
             self.lin_vel *= self.cached_linear_damping;
         }
     }
 
     #[inline]
     pub fn predict_integration_trans(&self, time_step: f32) -> Affine3A {
+        self.predict_integration_trans_and_rot(time_step).0
+    }
+
+    /// Predict the transform and the matching orientation.
+    ///
+    /// `time_step` is in seconds. Keep the returned values together.
+    /// Converting the matrix back to a quaternion can discard low bits of
+    /// the integrated orientation.
+    #[inline]
+    pub(crate) fn predict_integration_trans_and_rot(&self, time_step: f32) -> (Affine3A, Quat) {
         let mut trans = self.world_trans;
         let mut quat = self.world_quat;
 
@@ -505,11 +525,15 @@ impl RigidBody {
             integrate_trans(&mut trans, &mut quat, self.lin_vel, self.ang_vel, time_step);
         }
 
-        trans
+        (trans, quat)
     }
 
-    pub fn set_center_of_mass_trans(&mut self, xform: Affine3A) {
-        self.set_world_trans(xform);
+    /// Set the center-of-mass transform and its matching orientation.
+    ///
+    /// Use this form when the caller already has the exact integrated
+    /// quaternion. It keeps the quaternion and the matrix coherent.
+    pub(crate) fn set_center_of_mass_trans_and_rot(&mut self, xform: Affine3A, quat: Quat) {
+        self.set_world_trans_and_rot(xform, quat);
         self.interp_world_trans = self.world_trans;
 
         self.update_inertia_tensor();

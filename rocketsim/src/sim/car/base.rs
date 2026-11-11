@@ -25,12 +25,8 @@ use crate::{
             vehicle::{NUM_WHEELS, VehicleRL, WheelInfo},
         },
     },
-    consts::{
-        BT_TO_UU, TICK_TIME, UU_TO_BT, bullet_vehicle as vehicle_consts,
-        car::{self as car_consts, drive as drive_consts},
-        curves,
-    },
-    shared::round_ties_even_vec3a,
+    consts::{BT_TO_UU, TICK_TIME, UU_TO_BT, bullet_vehicle as vehicle_consts, car as car_consts},
+    shared::{round_ties_even, round_ties_even_vec3a},
     sim::{RaycastHitInfo, UserInfoType, car::car_info::CarInfo, ue3},
 };
 
@@ -57,6 +53,7 @@ impl Deref for Car {
         &self.info
     }
 }
+
 impl DerefMut for Car {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.info
@@ -145,42 +142,6 @@ impl Car {
                 state.cache.is_on_ground = true;
                 state
             },
-        }
-    }
-
-    /// Refresh wheel suspension scales after the chassis mass changes.
-    pub(crate) fn refresh_mass_dependent_state(&mut self, mass: f32) {
-        let config = self.info.config;
-        let inv_mass = 1.0 / mass;
-        let strengths = Self::suspension_strengths(
-            inv_mass,
-            config.front_wheels.connection_point_offset.x * UU_TO_BT,
-            config.back_wheels.connection_point_offset.x * UU_TO_BT,
-        );
-        for (wheel, strength) in self.bullet_vehicle.wheels.iter_mut().zip(strengths) {
-            wheel.suspension_force_scale = strength;
-        }
-    }
-
-    /// Keep the target's `f32` operation order to preserve rounding.
-    /// Only negative axle distances use the equal split.
-    /// Zero and NaN use the normal path.
-    fn suspension_strengths(inv_mass: f32, front_x_bt: f32, rear_x_bt: f32) -> [f32; 4] {
-        let mass = 1.0 / inv_mass;
-        let front_dist = front_x_bt;
-        let rear_dist = -rear_x_bt;
-        if front_dist < 0.0 || rear_dist < 0.0 {
-            let half = mass * 0.5;
-            let quarter = half * 0.5;
-            [quarter, quarter, quarter, quarter]
-        } else {
-            let total = rear_dist + front_dist;
-            let front_frac = front_dist / total;
-            let front_axle = front_frac * mass;
-            let rear_axle = mass - front_axle;
-            let front_wheel = rear_axle * 0.5;
-            let rear_wheel = front_axle * 0.5;
-            [front_wheel, front_wheel, rear_wheel, rear_wheel]
         }
     }
 
@@ -320,138 +281,10 @@ impl Car {
 
     /////////////////////////////
 
-    /// Quantize the wheel throttle and steer.
-    ///
-    /// The scalar form is cheaper and matches the vector form for finite
-    /// inputs. NaN handling can differ between the forms and targets. Keep
-    /// the original vector result for a NaN axis.
-    #[inline]
-    fn quantize_wheel_inputs(raw_throttle: f32, raw_steer: f32, quant_throttle: f32) -> (f32, f32) {
-        if raw_throttle.is_nan() || raw_steer.is_nan() {
-            let [throttle, steer, _] =
-                quantize_axis_inputs(Vec3A::new(raw_throttle, raw_steer, 0.0)).to_array();
-            (throttle, steer)
-        } else {
-            (quant_throttle, quantize_axis_input(raw_steer))
-        }
-    }
-
-    fn update_wheels(
-        &mut self,
-        rb: &mut RigidBody,
-        forward_speed_uu: f32,
-        quant_throttle: f32,
-        mutator_config: &MutatorConfig,
-        cached_upwards_dir: &mut Option<Vec3A>,
-    ) {
-        let handbrake_delta = if self.state.controls.handbrake {
-            drive_consts::POWERSLIDE_RISE_RATE
-        } else {
-            -drive_consts::POWERSLIDE_FALL_RATE
-        } * TICK_TIME;
-        self.state.handbrake_val = (self.state.handbrake_val + handbrake_delta).clamp(0.0, 1.0);
-
-        let mut real_brake = 0.0;
-        let raw_throttle = self.state.controls.throttle;
-        let (proc_throttle, proc_steer) =
-            Self::quantize_wheel_inputs(raw_throttle, self.state.controls.steer, quant_throttle);
-
-        let all_wheels_contact = self.state.num_wheels_in_contact() == NUM_WHEELS;
-        let real_throttle =
-            if self.state.controls.boost && self.state.boost > 0.0 && all_wheels_contact {
-                1.0
-            } else {
-                proc_throttle
-            };
-
-        let abs_forward_speed_uu = forward_speed_uu.abs();
-        let mut engine_throttle = real_throttle;
-        if !self.state.controls.handbrake {
-            if real_throttle.abs() > drive_consts::THROTTLE_DEADZONE {
-                if abs_forward_speed_uu > drive_consts::STOPPING_FORWARD_VEL
-                    && real_throttle.signum() != forward_speed_uu.signum()
-                {
-                    real_brake = 1.0;
-
-                    if abs_forward_speed_uu > drive_consts::BRAKING_NO_THROTTLE_SPEED_THRESH {
-                        engine_throttle = 0.0;
-                    }
-                }
-            } else {
-                engine_throttle = 0.0;
-                real_brake = if abs_forward_speed_uu < drive_consts::STOPPING_FORWARD_VEL {
-                    1.0
-                } else {
-                    drive_consts::COASTING_BRAKE_FACTOR
-                };
-            }
-        }
-
-        let drive_speed_scale = curves::DRIVE_SPEED_TORQUE_FACTOR.get_output(abs_forward_speed_uu);
-
-        let drive_engine_force = engine_throttle
-            * const { drive_consts::THROTTLE_TORQUE_AMOUNT * UU_TO_BT }
-            * drive_speed_scale;
-        let drive_brake_force = real_brake * const { drive_consts::BRAKE_TORQUE_AMOUNT * UU_TO_BT };
-        for wheel in &mut self.bullet_vehicle.wheels {
-            wheel.engine_force = drive_engine_force;
-            wheel.brake = drive_brake_force;
-        }
-
-        let mut steer_angle = self
-            .config
-            .steer_angle_curve
-            .get_output(abs_forward_speed_uu);
-        if self.state.handbrake_val != 0.0 {
-            let powerslide_steer = self
-                .config
-                .powerslide_steer_angle_curve
-                .get_output(abs_forward_speed_uu);
-            steer_angle += (powerslide_steer - steer_angle) * self.state.handbrake_val;
-        }
-
-        steer_angle *= proc_steer;
-        self.bullet_vehicle.wheels[0].steer_angle = steer_angle;
-        self.bullet_vehicle.wheels[1].steer_angle = steer_angle;
-
-        // fresh raycast contact must not produce sticky force within its own tick
-        if self.sticky_gate_prev {
-            // The wheel contacts are unchanged between the sticky force and
-            // auto-roll in one tick, so share one cached upwards direction.
-            let upwards_dir = match *cached_upwards_dir {
-                Some(dir) => dir,
-                None => {
-                    let dir = self.bullet_vehicle.get_upwards_dir_from_wheel_contacts(rb);
-                    *cached_upwards_dir = Some(dir);
-                    dir
-                }
-            };
-
-            // Sticky keeps raw throttle
-            let full_stick = raw_throttle != 0.0
-                || abs_forward_speed_uu > car_consts::drive::STOPPING_FORWARD_VEL;
-            let mut sticky_force_scale = f32::from(!self.config.three_wheels) * 0.5;
-            if full_stick {
-                sticky_force_scale += 1.0 - upwards_dir.z.abs();
-            }
-
-            rb.add_impulse(
-                Impulse::Linear(
-                    upwards_dir
-                        * sticky_force_scale
-                        * -mutator_config.gravity.z.abs()
-                        * TICK_TIME
-                        * UU_TO_BT,
-                ),
-                false,
-                true,
-            );
-        }
-    }
-
     fn update_air_torque(
         &mut self,
         rb: &mut RigidBody,
+        mutator_config: &MutatorConfig,
         num_wheels_in_contact: usize,
         quant_throttle: f32,
         prev_is_flipping: bool,
@@ -459,6 +292,7 @@ impl Car {
     ) {
         use car_consts::{air_control, flip};
 
+        let (forward_dir, right_dir, up_dir) = ue3::quat_axes(rb.get_world_rot());
         let allow_dodge = num_wheels_in_contact < 3;
         let allow_air = num_wheels_in_contact == 0;
 
@@ -486,11 +320,15 @@ impl Car {
             dodge_torque.y *= pitch_scale;
             dodge_torque *= TICK_TIME;
 
-            rb.add_impulse(
-                Impulse::Angular(rb.get_world_trans().matrix3 * dodge_torque),
-                false,
-                true,
+            let world_torque = Vec3A::new(
+                (dodge_torque.y * right_dir.x + dodge_torque.x * forward_dir.x)
+                    + dodge_torque.z * up_dir.x,
+                (dodge_torque.y * right_dir.y + dodge_torque.x * forward_dir.y)
+                    + dodge_torque.z * up_dir.y,
+                (dodge_torque.y * right_dir.z + dodge_torque.x * forward_dir.z)
+                    + dodge_torque.z * up_dir.z,
             );
+            rb.add_impulse(Impulse::Angular(world_torque), false, true);
         }
 
         let do_air_control = allow_air;
@@ -507,9 +345,9 @@ impl Car {
             }
 
             let dirs = Mat3A::from_cols(
-                -self.state.get_right_dir(),   // pitch
-                self.state.get_up_dir(),       // yaw
-                -self.state.get_forward_dir(), // roll
+                -right_dir,   // pitch
+                up_dir,       // yaw
+                -forward_dir, // roll
             );
 
             let scaled_inputs = inputs * Vec3A::new(pitch_torque_scale, 1.0, 1.0);
@@ -538,12 +376,15 @@ impl Car {
             };
 
             if throttle_scale != 0.0 {
-                let throttle_force = self.state.get_forward_dir()
-                    * throttle_scale
-                    * car_consts::drive::THROTTLE_AIR_ACCEL
-                    * UU_TO_BT
-                    * TICK_TIME;
-                rb.add_impulse(Impulse::Linear(throttle_force), false, true);
+                // Target force grouping: ((forward * (accel * mass)) * input)
+                // * UU_TO_BT, then the official force path applies
+                // (force * inv_mass) * dt.
+                let mass = mutator_config.car_mass;
+                let inv_mass = 1.0 / mass;
+                let force = ((forward_dir * (car_consts::drive::THROTTLE_AIR_ACCEL * mass))
+                    * throttle_scale)
+                    * UU_TO_BT;
+                rb.add_impulse(Impulse::Linear((force * inv_mass) * TICK_TIME), false, true);
             }
         }
     }
@@ -556,7 +397,11 @@ impl Car {
     ) {
         use car_consts::jump;
 
-        let up_dir = self.state.get_up_dir();
+        // The target uses the tick-start quantized body quaternion for the
+        // jump up axis.
+        let (_, _, up_dir) = ue3::quat_axes(rb.get_world_rot());
+        let mass = mutator_config.car_mass;
+        let inv_mass = 1.0 / mass;
 
         // Check jump activation
         if !self.state.has_jumped && self.state.cache.is_on_ground && jump_pressed {
@@ -588,15 +433,23 @@ impl Car {
         // Apply forces (only if still jumping)
         if self.state.is_jumping {
             if self.state.jump_ticks == 1 {
-                // First tick of jumping: apply initial impulse.
-                let jump_start_force = up_dir * mutator_config.jump_immediate_force * UU_TO_BT;
-                rb.add_impulse(Impulse::Linear(jump_start_force), false, false);
+                // First tick of jumping: apply the target immediate impulse
+                // grouping: ((jump_speed * mass) * up) * UU_TO_BT * inv_mass.
+                let jump_impulse =
+                    (up_dir * (mutator_config.jump_immediate_force * mass)) * UU_TO_BT;
+                rb.add_impulse(Impulse::Linear(jump_impulse * inv_mass), false, false);
                 // Clamp speed after the impulse, as after a dodge impulse.
                 rb.limit_vels(car_consts::MAX_SPEED * UU_TO_BT, car_consts::MAX_ANG_SPEED);
             }
 
-            let jump_force = up_dir * mutator_config.jump_accel * const { UU_TO_BT * TICK_TIME };
-            rb.add_impulse(Impulse::Linear(jump_force), false, true);
+            // Target force grouping: ((jump_accel * mass) * up) * UU_TO_BT,
+            // then the official force path applies (force * inv_mass) * dt.
+            let jump_force = (up_dir * (mutator_config.jump_accel * mass)) * UU_TO_BT;
+            rb.add_impulse(
+                Impulse::Linear((jump_force * inv_mass) * TICK_TIME),
+                false,
+                true,
+            );
         }
     }
 
@@ -681,36 +534,46 @@ impl Car {
 
                         let forward_speed_ratio = forward_speed_uu.abs() / car_consts::MAX_SPEED;
 
-                        let mut initial_dodge_vel =
-                            deadzone_dodge_dir * car_consts::flip::INITIAL_VEL_SCALE;
+                        // Target dodge grouping. The initial velocity is
+                        // mass-scaled, the backward X scale is rounded before
+                        // the speed ratio, and the official impulse path
+                        // divides by the same mass.
+                        let mass = mutator_config.car_mass;
+                        let inv_mass = 1.0 / mass;
+                        let dodge_imp = car_consts::flip::INITIAL_VEL_SCALE * mass;
+                        let dodge_imp_x = if should_dodge_backwards {
+                            round_ties_even(dodge_imp * car_consts::flip::BACKWARD_IMPULSE_SCALE_X)
+                        } else {
+                            dodge_imp
+                        };
+                        let mut initial_dodge_vel = Vec3A::new(
+                            deadzone_dodge_dir.x * dodge_imp_x,
+                            deadzone_dodge_dir.y * dodge_imp,
+                            0.0,
+                        );
                         initial_dodge_vel.x *=
                             ((max_speed_scale_x - 1.) * forward_speed_ratio) + 1.0;
                         initial_dodge_vel.y *= ((car_consts::flip::SIDE_IMPULSE_MAX_SPEED_SCALE
                             - 1.)
                             * forward_speed_ratio)
                             + 1.0;
-                        if should_dodge_backwards {
-                            initial_dodge_vel.x *= car_consts::flip::BACKWARD_IMPULSE_SCALE_X;
-                        }
 
-                        let forward = self.state.get_forward_dir();
-                        let dodge_yaw = ue3::dodge_yaw_units(forward.y, forward.x);
-                        let forward_dir_2d = Vec3A::new(
-                            ue3::sin_tab_angle(dodge_yaw + 0x4000),
-                            ue3::sin_tab_angle(dodge_yaw),
-                            0.0,
-                        );
+                        let (forward, _, _) = ue3::quat_axes(rb.get_world_rot());
+                        let forward_dir_2d = ue3::dodge_direction(forward);
                         let right_dir_2d = Vec3A::new(-forward_dir_2d.y, forward_dir_2d.x, 0.0);
                         let final_delta_vel = initial_dodge_vel.x * forward_dir_2d
                             + initial_dodge_vel.y * right_dir_2d;
 
-                        rb.add_impulse(Impulse::Linear(final_delta_vel * UU_TO_BT), false, false);
+                        let impulse_bt = final_delta_vel * UU_TO_BT;
+                        rb.add_impulse(Impulse::Linear(impulse_bt * inv_mass), false, false);
                         rb.limit_vels(car_consts::MAX_SPEED * UU_TO_BT, car_consts::MAX_ANG_SPEED);
                     }
                 } else {
-                    let jump_start_force =
-                        self.state.get_up_dir() * mutator_config.jump_immediate_force * UU_TO_BT;
-                    rb.add_impulse(Impulse::Linear(jump_start_force), false, false);
+                    let (_, _, up_dir) = ue3::quat_axes(rb.get_world_rot());
+                    let mass = mutator_config.car_mass;
+                    let jump_impulse =
+                        (up_dir * (mutator_config.jump_immediate_force * mass)) * UU_TO_BT;
+                    rb.add_impulse(Impulse::Linear(jump_impulse * (1.0 / mass)), false, false);
                     // Clamp speed after the impulse, as after a dodge impulse.
                     rb.limit_vels(car_consts::MAX_SPEED * UU_TO_BT, car_consts::MAX_ANG_SPEED);
                     self.state.has_double_jumped = true;
@@ -796,6 +659,18 @@ impl Car {
         );
     }
 
+    /// Apply one target boost force.
+    ///
+    /// The target rotates `(1, 0, 0)` by the tick-start quantized body
+    /// quaternion and always uses `boost_accel_ground`.
+    fn apply_boost_force(&self, rb: &mut RigidBody, mutator_config: &MutatorConfig) {
+        let mass = mutator_config.car_mass;
+        let inv_mass = 1.0 / mass;
+        let boost_dir = ue3::quat_rotate(rb.get_world_rot(), Vec3A::X);
+        let force = (boost_dir * (mutator_config.boost_accel_ground * mass)) * UU_TO_BT;
+        rb.add_impulse(Impulse::Linear((force * inv_mass) * TICK_TIME), false, true);
+    }
+
     fn update_boost(&mut self, rb: &mut RigidBody, mutator_config: &MutatorConfig) {
         if self.state.is_boosting {
             let cost = mutator_config.boost_used_per_second * TICK_TIME;
@@ -817,33 +692,13 @@ impl Car {
                 self.state.is_boosting = true;
                 self.state.boosting_time += TICK_TIME;
                 self.state.time_since_boosted = 0.0;
-                let accel = if self.state.cache.is_on_ground {
-                    mutator_config.boost_accel_ground
-                } else {
-                    mutator_config.boost_accel_air
-                };
-
-                rb.add_impulse(
-                    Impulse::Linear(accel * self.state.get_forward_dir() * (UU_TO_BT * TICK_TIME)),
-                    false,
-                    true,
-                );
+                self.apply_boost_force(rb, mutator_config);
             }
         } else if self.state.controls.boost && self.state.boost > 0.0 {
             self.state.is_boosting = true;
             self.state.boosting_time += TICK_TIME;
             self.state.time_since_boosted = 0.0;
-            let accel = if self.state.cache.is_on_ground {
-                mutator_config.boost_accel_ground
-            } else {
-                mutator_config.boost_accel_air
-            };
-
-            rb.add_impulse(
-                Impulse::Linear(accel * self.state.get_forward_dir() * (UU_TO_BT * TICK_TIME)),
-                false,
-                true,
-            );
+            self.apply_boost_force(rb, mutator_config);
         } else {
             self.state.is_boosting = false;
             self.state.boosting_time = 0.0;
@@ -910,9 +765,9 @@ impl Car {
         rb.collision_flags &= !(CollisionFlags::NoContactResponse as u8);
         self.state.controls = self.state.controls.clamp();
 
-        // Controls do not change until the next tick. The drive, air-torque,
-        // auto-roll, and wheel-friction consumers quantize the same throttle,
-        // so quantize it once. Keep the raw value for the sticky gate.
+        // Controls do not change until the next tick. The drive, sticky,
+        // auto-roll, and wheel-friction consumers use the same quantized
+        // throttle, so quantize it once.
         let quant_throttle = quantize_axis_input(self.state.controls.throttle);
 
         let forward_speed_uu = rb.get_forward_speed() * BT_TO_UU;
@@ -940,7 +795,7 @@ impl Car {
 
         let was_is_jumping = self.state.is_jumping;
         self.update_jump(rb, mutator_config, jump_pressed);
-        self.update_auto_flip(rb, jump_pressed);
+        self.update_auto_flip(rb, mutator_config, jump_pressed);
         let prev_is_flipping = self.state.is_flipping;
         let prev_flip_time = self.state.flip_time;
         let flip_ended = self.update_double_jump_or_flip(
@@ -954,6 +809,7 @@ impl Car {
         if !self.state.cache.is_on_ground {
             self.update_air_torque(
                 rb,
+                mutator_config,
                 num_wheels_in_contact,
                 quant_throttle,
                 prev_is_flipping,
@@ -978,16 +834,13 @@ impl Car {
 
         self.update_boost(rb, mutator_config);
 
-        let real_throttle = if self.state.controls.boost && self.state.boost > 0.0 {
-            1.0
-        } else {
-            quant_throttle
-        };
+        // The target uses the quantized throttle for wheel friction too.
+        // Boost remains its own force (and air boost-to-throttle stays).
         self.bullet_vehicle.update(
             collision_world,
             TICK_TIME,
             self.state.handbrake_val,
-            real_throttle,
+            quant_throttle,
             self.info.config.three_wheels,
         );
 

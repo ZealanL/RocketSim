@@ -261,8 +261,9 @@ impl DiscreteDynamicsWorld {
                 return;
             }
 
-            let predicted_trans = body.predict_integration_trans(time_step);
-            body.set_center_of_mass_trans(predicted_trans);
+            let (predicted_trans, predicted_rot) =
+                body.predict_integration_trans_and_rot(time_step);
+            body.set_center_of_mass_trans_and_rot(predicted_trans, predicted_rot);
         });
     }
 

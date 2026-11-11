@@ -582,6 +582,7 @@ impl SeqImpulseConstraintSolver {
 
             if solver.push_vel.length_squared() != 0.0 || solver.turn_vel.length_squared() != 0.0 {
                 let mut world_trans = *body.get_world_trans();
+                let mut world_rot = body.get_world_rot();
                 if body.collision_flags & CollisionFlags::NoAngularMotion != 0 {
                     integrate_trans_no_rot(
                         &mut world_trans.translation,
@@ -589,7 +590,6 @@ impl SeqImpulseConstraintSolver {
                         time_step,
                     );
                 } else {
-                    let mut world_rot = body.get_world_rot();
                     integrate_trans(
                         &mut world_trans,
                         &mut world_rot,
@@ -599,7 +599,7 @@ impl SeqImpulseConstraintSolver {
                     );
                 }
 
-                body.set_world_trans(world_trans);
+                body.set_world_trans_and_rot(world_trans, world_rot);
             }
 
             let lin_vel = solver.lin_vel + solver.external_force_impulse;

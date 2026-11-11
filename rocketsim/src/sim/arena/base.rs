@@ -762,7 +762,8 @@ impl Arena {
                         &mut self.bullet_world.bodies_mut()[self.cars[car_idx].rigid_body_idx];
                     car_rb.limit_vels(car::MAX_SPEED * UU_TO_BT, car::MAX_ANG_SPEED);
                     quantize::quantize(car_rb);
-                    // Sync the cached state after rigid-body limits.
+                    // Component forces use the tick-start quantized orientation.
+                    self.cars[car_idx].state.phys.rot_mat = car_rb.get_world_trans().matrix3;
                     self.cars[car_idx].state.phys.vel = car_rb.lin_vel * BT_TO_UU;
                     self.cars[car_idx].state.phys.ang_vel = car_rb.ang_vel;
                 }

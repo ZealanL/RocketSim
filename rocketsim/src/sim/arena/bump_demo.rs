@@ -1,6 +1,10 @@
+mod cone;
+mod sweep;
+
 use std::mem;
 
-use glam::{Mat3A, Vec3A};
+use cone::is_within_forward_cone;
+use sweep::get_time_of_impact_poses;
 
 use super::Arena;
 use crate::{
@@ -9,62 +13,6 @@ use crate::{
     consts::{self, BT_TO_UU, TICK_TIME, UU_TO_BT},
     sim::{ArenaEvent, CarHitCarEvent},
 };
-
-/// Keep a vector whose squared length is already 1 bit-exact,
-/// and use a zero vector below the small guard.
-fn normalize_unless_one(v: Vec3A) -> Vec3A {
-    let len_sq = v.length_squared();
-    if len_sq != 1.0 {
-        if len_sq < 1e-8 {
-            Vec3A::ZERO
-        } else {
-            v * (1.0 / len_sq.sqrt())
-        }
-    } else {
-        v
-    }
-}
-
-fn hitbox_center(state: &CarState, config: &CarBodyConfig) -> Vec3A {
-    let rot_mat = state.phys.rot_mat;
-    let offset = config.hitbox_pos_offset;
-    state.phys.pos + rot_mat.transpose_mul_vec3a(offset)
-}
-
-/// The victim's hitbox center direction is measured in the attacker's frame.
-/// Each angle removes the other axis component scaled by 1/1.01 (1.01 when negative).
-///
-/// Pitch is the angle off the forward/up plane;
-/// yaw is the angle off the forward/right plane.
-/// The caller supplies both limits so the bump and demo gates cannot drift apart.
-fn is_within_forward_cone(
-    attacker: &CarState,
-    attacker_config: &CarBodyConfig,
-    victim: &CarState,
-    victim_config: &CarBodyConfig,
-    reverse: bool,
-    max_yaw_deg: f32,
-    max_pitch_deg: f32,
-) -> bool {
-    let fwd = attacker.phys.get_forward_dir();
-    let delta = normalize_unless_one(
-        hitbox_center(victim, victim_config) - hitbox_center(attacker, attacker_config),
-    );
-    let fwd = if reverse { -fwd } else { fwd };
-
-    let angle_deg = |axis: Vec3A| {
-        let mut k = delta.dot(axis);
-        k = if k >= 0.0 { k / 1.01 } else { k * 1.01 };
-        let projected = normalize_unless_one(delta - axis * k);
-        fwd.dot(projected).clamp(-1.0, 1.0).acos() * 57.29578
-    };
-
-    // Pitch first: the PR helper rejects on pitch before it reads yaw.
-    if angle_deg(attacker.phys.get_right_dir()) > max_pitch_deg {
-        return false;
-    }
-    angle_deg(attacker.phys.get_up_dir()) <= max_yaw_deg
-}
 
 /// Result of the same-tick demolition gate for one contact direction.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -100,131 +48,6 @@ fn demo_gate(
     }
 }
 
-/// Integrate a car pose over `t` seconds with a constant velocity and
-/// angular velocity.
-fn integrate_pose(state: &mut CarState, vel: Vec3A, t: f32) {
-    state.phys.pos += vel * t;
-
-    let ang_vel = state.phys.ang_vel;
-    let ang_speed = ang_vel.length();
-    let theta = ang_speed * t;
-    if ang_speed > 0.0 && theta != 0.0 {
-        let axis = ang_vel / ang_speed;
-        let c = theta.cos();
-        let s = theta.sin();
-        let rot = |x: Vec3A| x * c + axis.cross(x) * s + axis * (axis.dot(x) * (1.0 - c));
-        let rot_mat = state.phys.rot_mat;
-        state.phys.rot_mat = Mat3A::from_cols(
-            rot(rot_mat.x_axis),
-            rot(rot_mat.y_axis),
-            rot(rot_mat.z_axis),
-        );
-    }
-}
-
-/// Separating-axis depth of two oriented hitboxes, in uu.
-/// Positive values are separated;
-/// the depth is the largest gap over the 15 candidate axes.
-fn hitbox_separation(
-    a: &CarState,
-    a_config: &CarBodyConfig,
-    b: &CarState,
-    b_config: &CarBodyConfig,
-) -> f32 {
-    let a_rot = a.phys.rot_mat;
-    let b_rot = b.phys.rot_mat;
-    let a_half = a_config.hitbox_size * 0.5;
-    let b_half = b_config.hitbox_size * 0.5;
-
-    let a_center = a.phys.pos + a_rot * a_config.hitbox_pos_offset;
-    let b_center = b.phys.pos + b_rot * b_config.hitbox_pos_offset;
-    let delta = b_center - a_center;
-
-    let mut best = -1e30f32;
-    let mut test = |axis: Vec3A| {
-        // Reach of each box along `axis`:
-        // the row-dot projections onto its own axes,
-        // scaled by the half extents.
-        let a_reach = a_rot.transpose_mul_vec3a(axis).abs();
-        let b_reach = b_rot.transpose_mul_vec3a(axis).abs();
-
-        let mut depth = delta.dot(axis).abs();
-        for i in 0..3 {
-            depth -= a_reach[i] * a_half[i] + b_reach[i] * b_half[i];
-        }
-
-        best = best.max(depth);
-    };
-
-    let a_cols = [a_rot.x_axis, a_rot.y_axis, a_rot.z_axis];
-    let b_cols = [b_rot.x_axis, b_rot.y_axis, b_rot.z_axis];
-    for col in a_cols.into_iter().chain(b_cols) {
-        test(col);
-    }
-
-    for a_col in a_cols {
-        for b_col in b_cols {
-            let axis = a_col.cross(b_col);
-            let len = axis.length();
-            if len > 1e-6 {
-                test(axis / len);
-            }
-        }
-    }
-
-    best
-}
-
-/// Replace both poses with the time-of-impact poses that the game uses for
-/// the demolition cone.
-///
-/// Both hitboxes are swept from one tick before to one tick after their
-/// start-of-tick poses. The hit is where they overlap by the allowed
-/// penetration. With no hit, the start-of-tick poses stay.
-fn get_time_of_impact_poses(
-    a: &mut CarState,
-    a_config: &CarBodyConfig,
-    a_vel: Vec3A,
-    b: &mut CarState,
-    b_config: &CarBodyConfig,
-    b_vel: Vec3A,
-    tick_time: f32,
-) {
-    /// Allowed penetration 0.04 BT minus btContinuousConvexCollision's 0.001 BT.
-    const PENETRATION: f32 = 0.039 * 50.0;
-
-    let separation = |lambda: f32| {
-        let t = (2.0 * lambda - 1.0) * tick_time;
-        let mut ai = *a;
-        let mut bi = *b;
-        integrate_pose(&mut ai, a_vel, t);
-        integrate_pose(&mut bi, b_vel, t);
-        hitbox_separation(&ai, a_config, &bi, b_config) + PENETRATION
-    };
-
-    let lambda = if separation(0.0) <= 0.0 {
-        0.0
-    } else if separation(1.0) > 0.0 {
-        return;
-    } else {
-        let mut lo = 0.0f32;
-        let mut hi = 1.0f32;
-        for _ in 0..24 {
-            let mid = (lo + hi) * 0.5;
-            if separation(mid) > 0.0 {
-                lo = mid;
-            } else {
-                hi = mid;
-            }
-        }
-        hi
-    };
-
-    let t = (2.0 * lambda - 1.0) * tick_time;
-    integrate_pose(a, a_vel, t);
-    integrate_pose(b, b_vel, t);
-}
-
 fn should_demolish(
     attacker: &CarState,
     attacker_config: &CarBodyConfig,
@@ -239,7 +62,7 @@ fn should_demolish(
     }
 
     let start_vel = attacker.phys.vel;
-    let forward_speed = start_vel.dot(attacker.phys.get_forward_dir());
+    let forward_speed = start_vel.dot(cone::forward_axis(attacker));
     if forward_speed.abs() < supersonic::MAINTAIN_MIN_SPEED {
         return false;
     }
@@ -360,12 +183,14 @@ impl Arena {
                 victim.demolish(self.config.mutators.respawn_delay);
                 victim.state.cache.demo_tick = self.tick_count;
                 victim.state.cache.demoer_idx = Some(attacker_idx);
+
                 self.events.push(ArenaEvent::CarHitCar(CarHitCarEvent {
                     bumper_car_idx: attacker_idx,
                     victim_car_idx: victim_idx,
                     contact_point,
                     is_demo: true,
                 }));
+
                 continue;
             }
             if !gate.may_bump() {

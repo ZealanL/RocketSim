@@ -4,6 +4,7 @@ mod car_body_config;
 mod car_controls;
 mod car_info;
 mod car_state;
+mod wheels;
 
 pub use base::*;
 pub use car_body_config::*;

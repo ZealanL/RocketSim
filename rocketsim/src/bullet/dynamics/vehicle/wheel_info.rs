@@ -87,7 +87,7 @@ impl WheelInfo {
 
         let suspension_travel = bullet_vehicle::MAX_SUSPENSION_TRAVEL * UU_TO_BT;
         self.real_ray_length =
-            self.suspension_rest_length_1 + suspension_travel + self.wheels_radius;
+            (self.suspension_rest_length_1 + self.wheels_radius) + suspension_travel;
     }
 
     pub fn prepare_for_raycast(&mut self, chassis_trans: &Affine3A) -> (Vec3A, Vec3A) {
@@ -225,6 +225,11 @@ impl WheelInfo {
         self.long_friction = long_friction;
     }
 
+    /// Build the world-space friction force for one wheel.
+    ///
+    /// The result does not include the time step. `apply_friction_impulses`
+    /// multiplies it by `time_step` before it adds the impulse to the chassis.
+    /// `friction_scale` is the chassis mass divided by three.
     pub fn calc_friction_impulses(
         &mut self,
         chassis: &RigidBody,
@@ -330,19 +335,36 @@ impl WheelInfo {
         );
     }
 
+    /// Apply the cached friction impulse to the chassis.
+    ///
+    /// The cached value is a force. This method multiplies it by `time_step`
+    /// and adds it at the contact lever arm. In three-wheel mode it moves the
+    /// lever arm 4 uu down the suspension axis. A zero impulse is skipped
+    /// because a vector add would change a signed zero in the chassis velocity.
     pub fn apply_friction_impulses(
         &self,
         cb: &mut RigidBody,
         chassis_trans: &Affine3A,
         time_step: f32,
+        three_wheels: bool,
     ) {
         let Some(raycast_info) = self.raycast_info.as_ref() else {
             return;
         };
 
+        let impulse = raycast_info.impulse;
+        if (impulse.x * impulse.x + impulse.y * impulse.y) + impulse.z * impulse.z == 0.0 {
+            return;
+        }
+
+        let up = chassis_trans.matrix3.z_axis;
         let wheel_contact_offset = raycast_info.contact_point - chassis_trans.translation;
-        let contact_up_dot = chassis_trans.matrix3.z_axis.dot(wheel_contact_offset);
-        let wheel_rel_pos = wheel_contact_offset - chassis_trans.matrix3.z_axis * contact_up_dot;
+        let contact_up_dot = up.dot(wheel_contact_offset);
+        let mut wheel_rel_pos = wheel_contact_offset - up * contact_up_dot;
+        if three_wheels {
+            wheel_rel_pos -= up * (4.0 * UU_TO_BT);
+        }
+
         cb.add_impulse(
             Impulse::LinearRelPos(raycast_info.impulse * time_step, wheel_rel_pos),
             true,

@@ -3,8 +3,11 @@ mod angle;
 pub(crate) mod bvh;
 pub mod geometry;
 mod linear_piece_curve;
+pub(crate) mod math;
 mod quad_ray;
 mod round;
+#[cfg(feature = "native-math")]
+pub(crate) mod ucrt_math;
 
 /// Geometry helpers. Use [`geometry`] for new code.
 pub mod rsmath {

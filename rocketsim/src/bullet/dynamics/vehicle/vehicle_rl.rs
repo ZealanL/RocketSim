@@ -1,4 +1,8 @@
-use glam::{Quat, Vec3A};
+//! Wheel raycast update and chassis impulse phases.
+
+mod steering;
+
+use glam::{Affine3A, Vec3A};
 
 use super::{
     NUM_WHEELS,
@@ -12,11 +16,16 @@ use crate::{
             discrete_dynamics_world::DiscreteDynamicsWorld,
             rigid_body::{Impulse, RigidBody},
         },
-        linear_math::QuatExt,
     },
     consts::BT_TO_UU,
     sim::UserInfoType,
 };
+
+/// Wheel order for every impulse combine pass.
+///
+/// Add wheels 1, 0, 3, and 2 in that order. Changing the order can change
+/// the floating-point sum.
+const COMBINE_ORDER: [usize; NUM_WHEELS] = [1, 0, 3, 2];
 
 #[derive(Clone, Copy)]
 pub struct VehicleRL {
@@ -148,10 +157,11 @@ impl VehicleRL {
                             cached_axle
                         }
                         _ => {
-                            let axle = Quat::from_axis_angle_simd(
+                            let axle = steering::steered_right_column(
                                 chassis_trans.matrix3.z_axis,
+                                chassis_trans.matrix3.y_axis,
                                 steer_angle,
-                            ) * chassis_trans.matrix3.y_axis;
+                            );
                             front_axle_cache = Some((steer_angle, axle));
                             axle
                         }
@@ -200,6 +210,10 @@ impl VehicleRL {
 
     /// Apply victim impulses before the next wheel reads the victim velocity.
     /// Keep chassis suspension and friction deferred.
+    ///
+    /// The car-victim pushback comes first. The non-world ground stick comes
+    /// second. World-body pushback is a separate write. The order changes the
+    /// two adds into the victim velocity, so keep this order.
     fn apply_single_wheel_dynamic_effects(
         wheel: &WheelInfo,
         collision_world: &mut DiscreteDynamicsWorld,
@@ -207,6 +221,19 @@ impl VehicleRL {
         let Some(info) = wheel.raycast_info.as_ref() else {
             return;
         };
+
+        if wheel.extra_pushback > 0.0 {
+            let victim = &mut collision_world.bodies_mut()[info.ground_body_idx];
+            if victim.user_idx == UserInfoType::Car {
+                let full_pushback = wheel.extra_pushback * NUM_WHEELS as f32;
+                let victim_offset = info.contact_point - victim.get_world_trans().translation;
+                victim.add_impulse(
+                    Impulse::LinearRelPos(-info.contact_normal * full_pushback, victim_offset),
+                    true,
+                    false,
+                );
+            }
+        }
 
         if let Some(ground_stick) = info.ground_stick {
             let ground = &mut collision_world.bodies_mut()[info.ground_body_idx];
@@ -217,23 +244,6 @@ impl VehicleRL {
                 false,
             );
         }
-
-        if wheel.extra_pushback <= 0.0 {
-            return;
-        }
-
-        let victim = &mut collision_world.bodies_mut()[info.ground_body_idx];
-        if victim.user_idx != UserInfoType::Car {
-            return;
-        }
-
-        let full_pushback = wheel.extra_pushback * NUM_WHEELS as f32;
-        let victim_offset = info.contact_point - victim.get_world_trans().translation;
-        victim.add_impulse(
-            Impulse::LinearRelPos(-info.contact_normal * full_pushback, victim_offset),
-            true,
-            false,
-        );
     }
 
     pub fn update(
@@ -301,10 +311,11 @@ impl VehicleRL {
                             cached_axle
                         }
                         _ => {
-                            let axle = Quat::from_axis_angle_simd(
+                            let axle = steering::steered_right_column(
                                 chassis_trans.matrix3.z_axis,
+                                chassis_trans.matrix3.y_axis,
                                 steer_angle,
-                            ) * chassis_trans.matrix3.y_axis;
+                            );
                             front_axle_cache = Some((steer_angle, axle));
                             axle
                         }
@@ -355,19 +366,44 @@ impl VehicleRL {
         }
 
         let chassis = &mut collision_world.bodies_mut()[self.chassis_body_idx];
-        for wheel in &mut self.wheels {
-            wheel.update_suspension(chassis, chassis_translation, time_step);
+        Self::apply_wheel_impulses(
+            chassis,
+            &mut self.wheels,
+            &chassis_trans,
+            chassis_translation,
+            time_step,
+            friction_scale,
+            three_wheels,
+        );
+    }
+
+    /// Apply the wheel suspension and friction impulses to the chassis.
+    ///
+    /// All four suspension impulses resolve from the same snapshot. Then all
+    /// four friction impulses resolve from the post-suspension state. Both
+    /// combine passes use [`COMBINE_ORDER`]. The friction apply pass receives
+    /// `time_step` because `calc_friction_impulses` does not include the time
+    /// step in the cached impulse.
+    fn apply_wheel_impulses(
+        chassis: &mut RigidBody,
+        wheels: &mut [WheelInfo; NUM_WHEELS],
+        chassis_trans: &Affine3A,
+        chassis_translation: Vec3A,
+        time_step: f32,
+        friction_scale: f32,
+        three_wheels: bool,
+    ) {
+        for i in COMBINE_ORDER {
+            wheels[i].update_suspension(chassis, chassis_translation, time_step);
         }
 
-        let chassis = &collision_world.bodies()[self.chassis_body_idx];
-        for wheel in &mut self.wheels {
-            wheel.update_friction_impulse(chassis, time_step, friction_scale);
+        for i in COMBINE_ORDER {
+            wheels[i].update_friction_impulse(chassis, time_step, friction_scale);
         }
 
-        // note: all suspension MUST be updated before impulses are applied
-        let chassis = &mut collision_world.bodies_mut()[self.chassis_body_idx];
-        for wheel in &mut self.wheels {
-            wheel.apply_friction_impulses(chassis, &chassis_trans, time_step);
+        // Note: all suspension must be applied before any friction impulse.
+        for i in COMBINE_ORDER {
+            wheels[i].apply_friction_impulses(chassis, chassis_trans, time_step, three_wheels);
         }
     }
 }

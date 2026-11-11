@@ -1,7 +1,12 @@
-use glam::{Mat3A, Quat, Vec3A};
+use glam::{Quat, Vec3A};
 
 use crate::{
-    bullet::dynamics::rigid_body::{CollisionFlags, RigidBody},
+    bullet::{
+        dynamics::rigid_body::{CollisionFlags, RigidBody},
+        linear_math::{
+            game_get_rotation_scalar, game_quat_normalize_scalar, game_set_rotation_scalar_columns,
+        },
+    },
     shared::round_ties_even,
     sim::consts::{BT_TO_UU, UU_TO_BT, quantize},
 };
@@ -59,40 +64,6 @@ fn truncate_scaled_velocity(scaled: Vec3A, inv_scale: f32) -> Vec3A {
             (values[2] as i32 as f32) * inv_scale,
         )
     }
-}
-
-// Recorded-state model of the replicated-rigid-body quaternion
-// representation. These are the scalar Bullet forms. This model reproduces
-// the recorded representation; it is not a recovered native routine.
-fn game_set_rotation_scalar(q: Quat) -> Mat3A {
-    let d = ((q.x * q.x + q.y * q.y) + q.z * q.z) + q.w * q.w;
-    let s = 2.0 / d;
-    let xs = q.x * s;
-    let ys = q.y * s;
-    let zs = q.z * s;
-    let wx = q.w * xs;
-    let wy = q.w * ys;
-    let wz = q.w * zs;
-    let xx = q.x * xs;
-    let xy = q.x * ys;
-    let xz = q.x * zs;
-    let yy = q.y * ys;
-    let yz = q.y * zs;
-    let zz = q.z * zs;
-    Mat3A::from_cols(
-        Vec3A::new(1.0 - (yy + zz), xy + wz, xz - wy),
-        Vec3A::new(xy - wz, 1.0 - (xx + zz), yz + wx),
-        Vec3A::new(xz + wy, yz - wx, 1.0 - (xx + yy)),
-    )
-}
-
-fn game_quat_normalize_scalar(q: Quat, min_len_sq: f32) -> Quat {
-    let len_sq = ((q.x * q.x + q.y * q.y) + q.z * q.z) + q.w * q.w;
-    if len_sq.partial_cmp(&min_len_sq) != Some(std::cmp::Ordering::Greater) {
-        return Quat::IDENTITY;
-    }
-    let s = 1.0 / len_sq.sqrt();
-    Quat::from_xyzw(q.x * s, q.y * s, q.z * s, q.w * s)
 }
 
 fn game_quat_quantize_component(c: f32) -> f32 {
@@ -180,8 +151,13 @@ pub(super) fn quantize(body: &mut RigidBody) {
         return;
     }
 
-    let rot = game_rb_state_quantize_quat(body.get_world_rot());
     let mut trans = *body.get_world_trans();
-    trans.matrix3 = game_set_rotation_scalar(rot);
+    let basis = trans.matrix3;
+    let rot = game_rb_state_quantize_quat(game_get_rotation_scalar(
+        basis.x_axis,
+        basis.y_axis,
+        basis.z_axis,
+    ));
+    trans.matrix3 = game_set_rotation_scalar_columns(rot);
     body.set_world_trans_and_rot(trans, rot);
 }

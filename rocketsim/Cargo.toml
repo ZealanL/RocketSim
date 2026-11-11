@@ -22,7 +22,10 @@ rustc-hash.workspace = true
 serde = { version = "1", features = ["derive"], optional = true }
 
 [features]
-default = []
+# Use GJK for arena triangle contacts and car/car impact-pose queries.
+box-triangle-gjk = []
+# Use engine-style scalar math and UE3 rotator conversions.
+native-math = []
 serde = ["dep:serde", "glam/serde"]
 
 [lints.clippy]

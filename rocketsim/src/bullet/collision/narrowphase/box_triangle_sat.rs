@@ -19,7 +19,7 @@ pub struct BoxTriangleSatContact {
 
 /// Isolated box-vs-triangle SAT/closest-feature kernel.
 ///
-/// Inputs mirror the per-triangle compound leaf in `compound_collision_alg.rs`:
+/// Inputs match the per-triangle query in `box_mesh_collision_alg.rs`:
 /// `box_trans` is the world transform of the (unmargined) box center,
 /// `half_unmargined` is the implicit box half extents (full half minus
 /// margin), `margin` is the box margin, the triangle `q` is given in the

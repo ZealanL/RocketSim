@@ -42,6 +42,7 @@ jobs:
           shared-key: quality
       - run: cargo fmt --all -- --check
       - run: cargo clippy --locked --workspace --all-targets -- -D warnings
+      - run: cargo clippy --locked -p rocketsim --all-targets --all-features -- -D warnings
       - run: python -m unittest discover -s tools/ci -v
       - run: python tools/ci/release.py check
       - name: Verify the core source package
@@ -67,6 +68,7 @@ jobs:
           shared-key: msrv
       - run: cargo check --locked --workspace --all-targets
       - run: cargo check --locked -p rocketsim --no-default-features
+      - run: cargo check --locked -p rocketsim --all-targets --all-features
 
   test:
     name: Tests (${{ matrix.os }})
@@ -117,6 +119,12 @@ jobs:
       # The optional C++ comparison backend uses process-global state.
       - name: Test workspace
         run: cargo test --locked --workspace --all-targets -- ${{ matrix.test-args }}
+
+      - name: Test core math and collision features
+        run: |
+          cargo test --locked -p rocketsim --lib --features native-math -- ${{ matrix.test-args }}
+          cargo test --locked -p rocketsim --lib --features box-triangle-gjk -- ${{ matrix.test-args }}
+          cargo test --locked -p rocketsim --lib --features native-math,box-triangle-gjk -- ${{ matrix.test-args }}
 
       - run: cargo test --locked --workspace --doc
       - run: cargo run --locked --profile test -p rocketsim_viewer --bin rocketsim-viewer -- --help
