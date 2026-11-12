@@ -103,21 +103,20 @@ Use the same initial state, seed, and inputs for repeatable runs.
 `Heavy` uses smaller ray-query cells and reserves more handles per cell.
 It does not guarantee higher speed. Compare modes on your workload.
 
-Memory values are approximate Linux RSS measurements. After `init_from_default()`,
-create 100 Soccar arenas with the listed roster. Run 100 episodes of 10,000 ticks
-per arena with generated `stress_v3` input on two worker threads. Subtract the
-initial RSS and divide by 100. RSS rose slowly in the final 10 episodes, so these
-are end-of-run estimates, not a fixed upper bound. The 1v1 workload uses two cars.
-The 3v3 workload uses six cars. Speed columns compare median TPS in the
-generated-input release `stress_v3` workload. Run-to-run ranges overlapped. In a separate
-`wisp_3v3_300s` replay comparison, `Heavy` was about 4% slower than `Balanced`.
-Results depend on the platform and workload.
+The following values are approximate Linux RSS measurements on a Ryzen 9
+7940HS. After mesh initialization and worker startup, create 100 Soccar arenas
+with Octane cars and default mutators. Run 100 episodes of 10,000 ticks per
+arena with generated `stress_v3` input on 16 workers, one per logical CPU.
+Use platform math (the default) and SAT. Subtract the initial RSS and divide
+by 100 while the arenas are still alive. The 1v1 workload uses two cars per
+arena. The 3v3 workload uses six.
 
 | Mode | 1v1 memory per arena | 1v1 speed | 3v3 memory per arena | 3v3 speed |
-| --- | ---: | ---: | ---: | ---: |
-| `Heavy` | 1,106 KiB | Similar | 1,119 KiB | Similar |
-| `Balanced` | 133 KiB | Baseline | 147 KiB | Baseline |
-| `Light` | 95 KiB | About 1% slower | 108 KiB | About 1% slower |
+| --- | ---: | --- | ---: | --- |
+| `Heavy` | 1,107 KiB | Similar | 1,121 KiB | Similar |
+| `Balanced` | 135 KiB | Baseline | 154 KiB | Baseline |
+| `Light` | 98 KiB | Similar | 110 KiB | Similar |
+
 
 Use `MutatorConfig` to change rules and physics settings. `ArenaConfig` also
 accepts a custom boost-pad layout. See the

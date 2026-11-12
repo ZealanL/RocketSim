@@ -4,9 +4,10 @@ use crate::{BoostPadConfig, GameMode, MutatorConfig};
 
 /// Broadphase memory/performance tradeoff for [`crate::Arena`].
 ///
-/// Approximate Linux RSS per 1v1 Soccar arena after a 100-episode `stress_v3`
-/// workload, measured across 100 arenas: `Heavy` ~1,106 KiB,
-/// `Balanced` (default) ~133 KiB, and `Light` ~95 KiB.
+/// Approximate Linux RSS per Soccar arena after 100 episodes of 10,000 ticks,
+/// measured across 100 arenas:
+/// `Heavy` ~1,107 KiB, `Balanced` (default) ~135 KiB, and `Light` ~98 KiB for
+/// 1v1. The 3v3 values are ~1,121 KiB, ~154 KiB, and ~110 KiB, respectively.
 #[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ArenaMemWeightMode {
