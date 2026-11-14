@@ -588,9 +588,25 @@ mod tests {
 
     use super::*;
 
-    /// Roof-rest orientation. The core roll is exactly PI.
+    /// Roof-rest orientation. The core roll is PI.
+    ///
+    /// Platform `atan2` can return one ULP from PI, so derive durations from
+    /// `core_autoflip_duration` instead of the nominal 0.4 s.
     fn roof_rot() -> Mat3A {
         Mat3A::from_cols(Vec3A::X, -Vec3A::Y, -Vec3A::Z)
+    }
+
+    /// Nominal roof-flip duration, derived from the pose.
+    ///
+    /// The exact bits depend on the platform `atan2`. Check the nominal value
+    /// and use the derived bits for exact timer comparisons.
+    fn roof_duration() -> f32 {
+        let duration = core_autoflip_duration(roof_rot()).expect("roof pose has a duration");
+        assert!(
+            (duration - 0.4).abs() < 1e-6,
+            "roof duration must be about 0.4 s, got {duration}"
+        );
+        duration
     }
 
     fn row(
@@ -642,14 +658,15 @@ mod tests {
 
         let (state, report) = apply(&rows, 14, &ext);
 
-        let remaining = 0.4f32 - 3.0 * t;
+        let duration = roof_duration();
+        let remaining = duration - 3.0 * t;
         assert!(state.is_auto_flipping);
         assert_eq!(state.auto_flip_timer.to_bits(), remaining.to_bits());
         assert_eq!(state.auto_flip_torque_scale, 1.0);
         assert_eq!(
             report.autoflip,
             AutoFlipApply::Timed {
-                duration: 0.4,
+                duration,
                 remaining,
             }
         );
@@ -915,13 +932,14 @@ mod tests {
 
         let report = apply_car_replay_history(&mut state, &ext, &table, frame);
 
-        let remaining = 0.4f32 - step as f32 * t;
+        let duration = roof_duration();
+        let remaining = duration - step as f32 * t;
         assert!(state.is_auto_flipping);
         assert_eq!(state.auto_flip_timer.to_bits(), remaining.to_bits());
         assert_eq!(
             report.autoflip,
             AutoFlipApply::Timed {
-                duration: 0.4,
+                duration,
                 remaining,
             }
         );
