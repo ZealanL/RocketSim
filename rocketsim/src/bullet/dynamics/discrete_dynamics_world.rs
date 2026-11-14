@@ -47,6 +47,16 @@ impl DiscreteDynamicsWorld {
         self.gravity = gravity;
     }
 
+    /// Build the frozen packed static table for a single-cell broadphase.
+    ///
+    /// Call this after the static bodies exist and before the first dynamic
+    /// body. The table holds shared immutable geometry only.
+    pub(crate) fn finalize_static_broadphase(&mut self) {
+        self.collision_world
+            .broadphase_pair_cache
+            .freeze_static_packed();
+    }
+
     pub(crate) fn remove_rigid_body(&mut self, body_idx: usize) {
         assert!(body_idx < self.collision_world.collision_objs.len());
 
@@ -137,6 +147,15 @@ impl DiscreteDynamicsWorld {
     #[inline]
     pub(crate) fn set_ball_only(&mut self, ball_only: bool) {
         self.ball_only = ball_only;
+    }
+
+    /// Exchange the transient solver storage with `other`.
+    ///
+    /// The solver holds temporary buffers between steps. The caller must
+    /// exchange it back before the next step. Use this method for
+    /// caller-owned scratch storage.
+    pub(crate) fn swap_solver(&mut self, other: &mut SeqImpulseConstraintSolver) {
+        core::mem::swap(&mut self.solver, other);
     }
 
     #[inline]

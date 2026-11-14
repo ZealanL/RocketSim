@@ -1,8 +1,11 @@
+use std::sync::Arc;
+
 use glam::{IVec3, USizeVec3, Vec3A};
 
 use super::{
     axis_sweep::AxisSweep3,
     broadphase_proxy::{BroadphaseAabbCallback, BroadphaseProxy},
+    packed_static::PackedStatic,
 };
 use crate::{
     bullet::{
@@ -165,6 +168,11 @@ impl CellGrid {
     }
 }
 
+#[inline]
+fn is_static_proxy(proxy: &BroadphaseProxy) -> bool {
+    (proxy.collision_filter_group & CollisionFilterGroups::Static as u8) != 0
+}
+
 /// Grid broadphase for ray queries plus the axis-sweep pair cache.
 ///
 /// The grid keeps the cell data used by `ray_test`.
@@ -174,6 +182,8 @@ pub struct GridBroadphase {
     cell_grid: CellGrid,
     axis_sweep: AxisSweep3,
     island_dynamic_pairs: Vec<(usize, usize)>,
+    /// Frozen packed static bounds for the single-cell `Light` layout.
+    packed_static: Option<Arc<PackedStatic>>,
 }
 
 impl GridBroadphase {
@@ -206,7 +216,26 @@ impl GridBroadphase {
             },
             axis_sweep: AxisSweep3::new(),
             island_dynamic_pairs: Vec::with_capacity(16),
+            packed_static: None,
         }
+    }
+
+    /// Build the shared packed static table for the single-cell `Light` layout.
+    ///
+    /// Call this after all static proxies exist and before the first dynamic
+    /// proxy. A later static add, update, or removal clears the table. The
+    /// table only covers a grid with one cell. A larger grid keeps the original
+    /// query path.
+    pub(crate) fn freeze_static_packed(&mut self) {
+        if self.cell_grid.cells.len() != 1 {
+            self.packed_static = None;
+            return;
+        }
+
+        let handles = self.axis_sweep.handles();
+        let cell = &self.cell_grid.cells[0];
+        let packed = PackedStatic::build_shared(&cell.static_handles, handles);
+        self.packed_static = Some(packed);
     }
 
     /// Update the ray-query cells and the native axis-sweep edges.
@@ -223,6 +252,7 @@ impl GridBroadphase {
         let Self {
             cell_grid,
             axis_sweep,
+            packed_static,
             ..
         } = self;
 
@@ -234,6 +264,8 @@ impl GridBroadphase {
             != 0;
 
         if is_static {
+            // A changed static AABB makes the packed table stale.
+            *packed_static = None;
             let proxy = *axis_sweep.proxy(proxy_idx);
             cell_grid.update_cells_static(&proxy, col_obj, proxy_idx);
         } else {
@@ -285,6 +317,8 @@ impl GridBroadphase {
         let new_handle_idx = self.axis_sweep.add_handle(proxy, dispatcher);
 
         if is_static {
+            // A new static proxy makes the packed table stale.
+            self.packed_static = None;
             let proxy = *self.axis_sweep.proxy(new_handle_idx);
             self.cell_grid
                 .update_cells_static(&proxy, co, new_handle_idx);
@@ -304,6 +338,10 @@ impl GridBroadphase {
     }
 
     pub(crate) fn remove_proxy(&mut self, proxy_idx: usize) {
+        if is_static_proxy(self.axis_sweep.proxy(proxy_idx)) {
+            // A removed static proxy makes the packed table stale.
+            self.packed_static = None;
+        }
         for cell in &mut self.cell_grid.cells {
             cell.remove_dyn(proxy_idx);
             cell.static_handles.retain(|&handle| handle != proxy_idx);
@@ -313,6 +351,15 @@ impl GridBroadphase {
     }
 
     pub(crate) fn remove_proxies(&mut self, bodies: &[RigidBody]) {
+        // Only a static removal makes the packed table stale. Dynamic removals
+        // keep the table valid.
+        if bodies
+            .iter()
+            .any(|body| is_static_proxy(self.axis_sweep.proxy(body.get_broadphase_handle())))
+        {
+            self.packed_static = None;
+        }
+
         self.axis_sweep.remove_handles(bodies);
         let handles = self.axis_sweep.handles();
         for cell in &mut self.cell_grid.cells {
@@ -393,6 +440,26 @@ impl GridBroadphase {
         // Avoid entering the cross-cell de-duplication loop in that common case.
         if num_cells == 1 {
             let cell = &self.cell_grid.cells[cell_idxs[0]];
+
+            // A frozen table covers every static handle in this cell. The
+            // table keeps the insertion order and the inclusive AABB test.
+            // Dynamic candidates keep their mutable AABBs and the original
+            // order after the static candidates.
+            if let Some(packed) = self.packed_static.as_deref() {
+                packed.for_each_hit(&ray_aabb, |other_proxy_idx| {
+                    ray_callback.process(&handles[other_proxy_idx as usize]);
+                });
+
+                for &other_proxy_idx in &cell.dyn_handles {
+                    let other_proxy = &handles[other_proxy_idx];
+                    if ray_aabb.intersects(&other_proxy.aabb) {
+                        ray_callback.process(other_proxy);
+                    }
+                }
+
+                return;
+            }
+
             for &other_proxy_idx in cell.static_handles.iter().chain(&cell.dyn_handles) {
                 let other_proxy = &handles[other_proxy_idx];
                 if ray_aabb.intersects(&other_proxy.aabb) {

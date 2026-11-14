@@ -104,6 +104,21 @@ impl Default for SeqImpulseConstraintSolver {
 }
 
 impl SeqImpulseConstraintSolver {
+    /// Clear the temporary step storage and reset the per-step scalars.
+    ///
+    /// Keep vector capacity for the next step. Use this method on a
+    /// caller-owned scratch solver after each step and after panic unwinding.
+    pub(crate) fn reset_transient(&mut self) {
+        self.tmp_solver_body_pool.clear();
+        self.tmp_solver_contact_constraint_pool.clear();
+        self.tmp_solver_contact_friction_constraint_pool.clear();
+        self.tmp_special_accumulators.clear();
+        self.tmp_split_should_run.clear();
+        self.fixed_body_id = None;
+        self.least_squares_residual = 0.0;
+        self.skip_separated_special_rows = false;
+    }
+
     fn get_or_init_solver_body(&mut self, rb: &mut RigidBody) -> usize {
         if rb.is_static_obj() {
             return if let Some(fixed_body_id) = self.fixed_body_id {

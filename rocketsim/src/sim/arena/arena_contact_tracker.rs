@@ -83,6 +83,19 @@ impl ArenaContactTracker {
         }
     }
 
+    /// Create empty storage with no reserved capacity.
+    ///
+    /// Use this method only for reusable step scratch. Arena construction uses
+    /// [`ArenaContactTracker::new`].
+    pub(super) fn new_empty() -> Self {
+        Self {
+            collision_records: Vec::new(),
+            ball_world_records: Vec::new(),
+            world_normal_groups: Vec::new(),
+            ball_only: false,
+        }
+    }
+
     pub fn set_ball_only(&mut self, ball_only: bool) {
         self.ball_only = ball_only;
     }
@@ -107,6 +120,15 @@ impl ArenaContactTracker {
         self.collision_records.clear();
         self.ball_world_records.clear();
         self.world_normal_groups.clear();
+    }
+
+    /// Remove all records and reset the per-step ball-only flag.
+    ///
+    /// Keep vector capacity for the next step. Use this method on a
+    /// caller-owned scratch tracker after each step and after panic unwinding.
+    pub(crate) fn reset_transient(&mut self) {
+        self.clear_records();
+        self.ball_only = false;
     }
 
     /// Add one car-world contact normal to its `(car, object)` group.

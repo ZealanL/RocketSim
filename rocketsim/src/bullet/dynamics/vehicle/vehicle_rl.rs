@@ -235,11 +235,13 @@ impl VehicleRL {
             }
         }
 
-        if let Some(ground_stick) = info.ground_stick {
+        // The ground-stick vector is the inverted contact normal for a
+        // non-world hit. Derive it here so the wheel record does not store a copy.
+        if !info.is_in_contact_with_world {
             let ground = &mut collision_world.bodies_mut()[info.ground_body_idx];
             let ground_offset = info.contact_point - ground.get_world_trans().translation;
             ground.add_impulse(
-                Impulse::LinearRelPos(ground_stick, ground_offset),
+                Impulse::LinearRelPos(-info.contact_normal, ground_offset),
                 true,
                 false,
             );

@@ -4,7 +4,7 @@ use arrayvec::ArrayVec;
 use fastrand::Rng;
 use glam::{Affine3A, EulerRot, Mat3A, Vec3A};
 
-use super::{ArenaContactTracker, ContactGeometry};
+use super::{ArenaContactTracker, ArenaStepBuffers, ContactGeometry};
 use crate::{
     ARENA_COLLISION_SHAPES, ActivationState, ArenaConfig,
     ArenaEvent::{BallHitWorld, CarPickupBoost},
@@ -51,6 +51,37 @@ struct StateEditGuard<'a, T, F: FnMut(&mut T)> {
 impl<T, F: FnMut(&mut T)> Drop for StateEditGuard<'_, T, F> {
     fn drop(&mut self) {
         (self.sync)(self.target);
+    }
+}
+
+// Exchange caller-owned step storage for one tick.
+// Restore the arena storage and clear the reuse storage on normal return and
+// panic unwinding.
+struct ArenaBuffersGuard<'a> {
+    arena: &'a mut Arena,
+    buffers: &'a mut ArenaStepBuffers,
+}
+
+impl<'a> ArenaBuffersGuard<'a> {
+    fn swap_in(arena: &'a mut Arena, buffers: &'a mut ArenaStepBuffers) -> Self {
+        arena.bullet_world.swap_solver(&mut buffers.solver);
+        std::mem::swap(&mut arena.contact_tracker, &mut buffers.contact_tracker);
+        Self { arena, buffers }
+    }
+}
+
+impl Drop for ArenaBuffersGuard<'_> {
+    fn drop(&mut self) {
+        // Put the arena storage back first. The buffer set then holds the
+        // storage that this step used.
+        self.arena
+            .bullet_world
+            .swap_solver(&mut self.buffers.solver);
+        std::mem::swap(
+            &mut self.arena.contact_tracker,
+            &mut self.buffers.contact_tracker,
+        );
+        self.buffers.reset();
     }
 }
 
@@ -164,6 +195,13 @@ impl Arena {
 
         if config.game_mode != GameMode::TheVoid {
             Self::setup_arena_collision_shapes(&mut bullet_world, config.game_mode);
+        }
+
+        // The `Light` layout has one ray cell. Freeze the static set before the
+        // ball and car proxies exist. Other memory modes keep the original ray
+        // query path.
+        if config.mem_weight_mode == ArenaMemWeightMode::Light {
+            bullet_world.finalize_static_broadphase();
         }
 
         let ball = Ball::new(
@@ -913,6 +951,48 @@ impl Arena {
             }
         };
 
+        self.get_last_step_events()
+    }
+
+    /// Advances the game one tick with reusable caller-owned buffers.
+    ///
+    /// This method gives the same physics result and the same events as
+    /// [`Arena::step_tick`]. It exchanges the temporary solver and contact
+    /// buffers with `buffers` for one tick.
+    ///
+    /// Use one [`ArenaStepBuffers`] for each worker thread that steps many
+    /// arenas. Reuse it between those arenas. Use [`Arena::step_tick`] for a
+    /// single arena to avoid the storage exchange. Measure both methods with
+    /// your arena count and worker count.
+    ///
+    /// The step sets the per-step solver flags and the contact-tracker flag for
+    /// this arena before it uses them. The buffer set keeps no arena state,
+    /// contact history, world state, or random-generator state.
+    ///
+    /// A successful step clears the buffers and keeps their capacity. If a panic
+    /// occurs, the restore guard runs during unwinding. It returns the arena
+    /// storage and clears the buffers before another arena can use them.
+    ///
+    /// The returned slice is only valid until the next step. Copy the events
+    /// that you need to keep.
+    ///
+    /// ```no_run
+    /// use rocketsim::{Arena, ArenaStepBuffers, CarBodyConfig, GameMode, Team};
+    ///
+    /// let mut arena = Arena::new(GameMode::TheVoid);
+    /// arena.add_car(Team::Blue, CarBodyConfig::OCTANE);
+    ///
+    /// let mut buffers = ArenaStepBuffers::new();
+    /// for _ in 0..120 {
+    ///     for event in arena.step_tick_with_buffers(&mut buffers) {
+    ///         println!("{event:?}");
+    ///     }
+    /// }
+    /// ```
+    pub fn step_tick_with_buffers(&mut self, buffers: &mut ArenaStepBuffers) -> &[ArenaEvent] {
+        let guard = ArenaBuffersGuard::swap_in(self, buffers);
+        let _ = guard.arena.step_tick();
+        drop(guard);
         self.get_last_step_events()
     }
 
