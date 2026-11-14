@@ -250,7 +250,7 @@ fn pump(mut stream: TcpStream, shared: &SenderState) {
     if stream.set_nonblocking(true).is_err() {
         return;
     }
-    let _ = stream.set_write_timeout(Some(Duration::from_millis(250)));
+    let _ = stream.set_write_timeout(Some(crate::transport::socket::WRITE_STALL_TIMEOUT));
     let peer = stream
         .peer_addr()
         .map(|a| a.to_string())

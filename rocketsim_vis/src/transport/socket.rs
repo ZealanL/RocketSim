@@ -3,6 +3,14 @@ use std::{
     time::{Duration, Instant},
 };
 
+/// Close a connection after this long without a successful write.
+///
+/// A viewer stops reading while it decodes, validates, and applies a near-limit
+/// retained publication. That work can exceed 250 ms in an unoptimized build.
+/// A shorter limit closes the socket during the apply, so the viewer resets its
+/// session and never keeps the scene.
+pub(crate) const WRITE_STALL_TIMEOUT: Duration = Duration::from_secs(5);
+
 #[derive(Default)]
 pub(crate) struct OutgoingBuffer {
     bytes: Vec<u8>,
@@ -34,7 +42,7 @@ impl OutgoingBuffer {
                 Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
                     if self
                         .last_progress
-                        .is_some_and(|at| at.elapsed() >= Duration::from_millis(250))
+                        .is_some_and(|at| at.elapsed() >= WRITE_STALL_TIMEOUT)
                     {
                         return Err(std::io::ErrorKind::TimedOut.into());
                     }
@@ -96,7 +104,8 @@ mod tests {
     fn outgoing_buffer_closes_after_a_stalled_write_deadline() {
         let mut buffer = OutgoingBuffer::default();
         buffer.queue(vec![1, 2, 3]);
-        buffer.last_progress = Some(Instant::now() - Duration::from_millis(300));
+        buffer.last_progress =
+            Some(Instant::now() - (WRITE_STALL_TIMEOUT + Duration::from_millis(50)));
         let mut writer = ScriptedWriter {
             steps: vec![Err(std::io::ErrorKind::WouldBlock.into())],
             bytes: Vec::new(),
