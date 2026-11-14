@@ -18,7 +18,7 @@ fastrand = "2.3.0"
 fern = "0.7.1"
 glam.workspace = true
 log = "0.4.29"
-rayon = { version = "=1.11.0", optional = true }
+rayon = { version = "1.11.0", optional = true }
 rustc-hash.workspace = true
 serde = { version = "1", features = ["derive"], optional = true }
 
