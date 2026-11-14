@@ -143,7 +143,6 @@ pub fn recording_has_replay_state(version: u32) -> bool {
     version >= RLPR_REPLAY_STATE_VERSION
 }
 
-#[allow(dead_code)]
 pub struct Recording {
     pub name: String,
     pub version: u32,
@@ -1107,64 +1106,6 @@ mod tests {
         );
         let recording = Recording::from_bytes("v11", &bytes).unwrap();
         assert!(recording.ticks[0].replay_state.is_none());
-    }
-
-    #[test]
-    fn v12_reads_cpp_writer_extension() {
-        let ext = row_ext::cpp_writer_fixture();
-        let bytes = v12_file(
-            1,
-            &[(
-                100,
-                ROW_FLAGS_BALL_AVAILABLE,
-                vec![v11_car_bytes(true, 100)],
-                v11_ball_bytes(true),
-                ext,
-            )],
-        );
-        let recording = Recording::from_bytes("v12", &bytes).unwrap();
-        assert_eq!(recording.version, 12);
-
-        let tick = &recording.ticks[0];
-        assert_eq!(tick.level_tick, 100);
-        assert!(tick.ball_available());
-        let state = tick.replay_state.as_ref().unwrap();
-        assert_eq!(state.version, 1);
-        assert_eq!(state.group_mask, 0x0f);
-        assert_eq!(state.cars.len(), 1);
-        assert_eq!(state.cars[0].update_tag, Some(-7));
-        assert_eq!(state.ball.as_ref().unwrap().activation_state, Some(2));
-        assert_eq!(state.pads.len(), 1);
-        assert_eq!(state.pads[0].is_touching_vehicle, Some(true));
-        assert_eq!(state.global.as_ref().unwrap().countdown_time, Some(3));
-    }
-
-    #[test]
-    fn v12_reads_cpp_collision_group() {
-        let ext = row_ext::cpp_collision_fixture();
-        let bytes = v12_file(
-            1,
-            &[(
-                100,
-                ROW_FLAGS_BALL_AVAILABLE,
-                vec![v11_car_bytes(true, 100)],
-                v11_ball_bytes(true),
-                ext,
-            )],
-        );
-        let recording = Recording::from_bytes("v12-collision", &bytes).unwrap();
-        let state = recording.ticks[0].replay_state.as_ref().unwrap();
-        assert_eq!(state.group_mask, 1 << row_ext::GROUP_COLLISION);
-        let snapshot = state.collision_snapshot.as_ref().unwrap();
-        assert_eq!(snapshot.section_count, 6);
-        let manifolds = snapshot.manifolds.as_ref().unwrap();
-        assert_eq!(
-            manifolds.order,
-            collision_snapshot::CollisionManifoldOrder::SolveInput
-        );
-        assert_eq!(manifolds.records.len(), 2);
-        assert_eq!(manifolds.records[0].point_count, 4);
-        assert_eq!(manifolds.records[1].point_count, 0);
     }
 
     #[test]

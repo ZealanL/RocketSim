@@ -22,6 +22,15 @@ fn ensure_init() {
 }
 
 fn sticky_delta(body: CarBodyConfig, gravity_z: f32) -> (Vec3A, Vec3A, usize) {
+    sticky_delta_with(body, gravity_z, -8.81, 0.0)
+}
+
+fn sticky_delta_with(
+    body: CarBodyConfig,
+    gravity_z: f32,
+    tilt_deg: f32,
+    throttle: f32,
+) -> (Vec3A, Vec3A, usize) {
     ensure_init();
     let mut config = ArenaConfig::new(GameMode::Soccar);
     config.mutators.gravity = Vec3A::new(0.0, 0.0, gravity_z);
@@ -30,7 +39,8 @@ fn sticky_delta(body: CarBodyConfig, gravity_z: f32) -> (Vec3A, Vec3A, usize) {
 
     let mut state = CarState::DEFAULT;
     state.phys.pos = Vec3A::new(-1125.4, 5010.0, 20.1);
-    state.phys.rot_mat = Mat3A::from_quat(Quat::from_rotation_x(-8.81_f32.to_radians()));
+    state.phys.rot_mat = Mat3A::from_quat(Quat::from_rotation_x(tilt_deg.to_radians()));
+    state.controls.throttle = throttle;
     arena.set_car_state_full(car, state);
     arena.step_tick();
 
@@ -100,4 +110,122 @@ fn sticky_vertical_gravity_sign_matches_native_algebra() {
     }
 
     println!("maximum sticky-delta vector error: {maximum_error:.9} uu/s");
+}
+
+/// Warm one tick without gravity, then apply gravity and one measured tick.
+///
+/// Both runs start from the same pose and forward speed above the full-stick
+/// threshold. The warm tick at zero gravity produces identical contact state
+/// for the three-wheel and four-wheel configs, so the measured velocity
+/// difference isolates the sticky scale difference.
+fn full_stick_velocity(body: CarBodyConfig, gravity_z: f32) -> (Vec3A, Vec3A) {
+    ensure_init();
+    let mut config = ArenaConfig::new(GameMode::Soccar);
+    config.mutators.gravity = Vec3A::ZERO;
+    let mut arena = Arena::new_with_config(config);
+    let car = arena.add_car(Team::Blue, body);
+
+    let mut state = CarState::DEFAULT;
+    state.phys.pos = Vec3A::new(-1125.4, 5010.0, 20.1);
+    // Pitch tilt. The contact normals tilt in X, so a pure forward speed
+    // keeps the lateral wheel velocity at zero and the three-wheel lateral
+    // friction curve cannot affect the comparison.
+    state.phys.rot_mat = Mat3A::from_quat(Quat::from_rotation_y(15.0_f32.to_radians()));
+    state.phys.vel = Vec3A::new(100.0, 0.0, 0.0);
+    arena.set_car_state_full(car, state);
+    arena.step_tick();
+
+    // Keep the two configs on the same linear and angular state. The
+    // contact cache is preserved.
+    arena.edit_car_state_full(car, |state| {
+        let forward = state.get_forward_dir();
+        state.phys.vel = forward * 100.0;
+        state.phys.ang_vel = Vec3A::ZERO;
+    });
+
+    let warmed = *arena.get_car_state(car);
+    let normal_dir = warmed
+        .wheels_with_contact()
+        .iter()
+        .filter_map(|contact| contact.map(|hit| hit.hit_normal))
+        .sum::<Vec3A>()
+        .normalize();
+
+    let mut mutators = ArenaConfig::new(GameMode::Soccar).mutators;
+    mutators.gravity = Vec3A::new(0.0, 0.0, gravity_z);
+    arena.set_mutator_config(mutators);
+    arena.step_tick();
+
+    (arena.get_car_state(car).vel, normal_dir)
+}
+
+/// Full stick uses the target's folded scale.
+///
+/// Three-wheel cars use `1.5 * (1 - |up.z|)`; four-wheel cars use
+/// `1.5 - |up.z|`. The same Psyclops body with only `three_wheels` changed
+/// gives a measured difference that isolates the folded expression.
+#[test]
+fn three_wheel_full_stick_uses_one_point_five_scale() {
+    const FULL_STICK_TOLERANCE: f32 = 0.05;
+    let mut four_wheel = CarBodyConfig::PSYCLOPS;
+    four_wheel.three_wheels = false;
+    let three_wheel = CarBodyConfig::PSYCLOPS;
+    let mut maximum_error = 0.0_f32;
+
+    for gravity_z in [-650.0, -325.0, 325.0, 650.0] {
+        let (three_vel, three_normal) = full_stick_velocity(three_wheel, gravity_z);
+        let (four_vel, four_normal) = full_stick_velocity(four_wheel, gravity_z);
+
+        assert!(
+            (three_normal - four_normal).length() < 1e-6,
+            "gravity_z={gravity_z} campaign normals diverged: {three_normal:?} vs {four_normal:?}"
+        );
+        assert!(
+            three_normal.z.abs() < 0.995,
+            "gravity_z={gravity_z} did not produce tilted wheel normals: {three_normal:?}"
+        );
+
+        let z = three_normal.z.abs();
+        let scale_three = 1.5 * (1.0 - z);
+        let scale_four = 1.5 - z;
+        // Compare the component along the contact normal. The small
+        // perpendicular difference is wheel-friction coupling and is not
+        // the sticky scale under test.
+        let expected = -(NATIVE_STICKY_DELTA_BT_PER_SECOND / UU_TO_BT)
+            * (gravity_z.abs() / NATIVE_GRAVITY_REFERENCE)
+            * ((scale_three - scale_four) / NATIVE_BASE_SCALE);
+        let actual = (three_vel - four_vel).dot(three_normal);
+        let error = (actual - expected).abs();
+        maximum_error = maximum_error.max(error);
+
+        assert!(
+            error < FULL_STICK_TOLERANCE,
+            "gravity_z={gravity_z} three-minus-four delta={actual:?}, expected={expected:?}, error={error}, normal={three_normal:?}"
+        );
+    }
+
+    println!("maximum three-minus-four full-stick delta error: {maximum_error:.9} uu/s");
+}
+
+/// The full-stick gate reads the quantized throttle, not the raw axis.
+///
+/// `0.002` quantizes to zero, so it must produce the same sticky force as a
+/// zero throttle at the same speed. A raw-input gate would open full stick.
+#[test]
+fn tiny_throttle_does_not_open_the_full_stick_gate() {
+    let zero = sticky_delta_with(CarBodyConfig::OCTANE, -650.0, -8.81, 0.0);
+    let tiny = sticky_delta_with(CarBodyConfig::OCTANE, -650.0, -8.81, 0.002);
+
+    assert!(zero.2 > 0, "tilted pose produced no wheel contacts");
+    assert!(
+        zero.1.z.abs() < 0.995,
+        "tilted pose did not produce a usable normal: {:?}",
+        zero.1
+    );
+    assert!(
+        (zero.0 - tiny.0).length() < 1e-3,
+        "tiny throttle changed the sticky force: zero={:?}, tiny={:?}",
+        zero.0,
+        tiny.0
+    );
 }

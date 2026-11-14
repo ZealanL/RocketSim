@@ -2,7 +2,8 @@
 //!
 //! Compare independent arenas only.
 //! Keep controls raw. Quantize only at force consumers.
-//! Keep sticky and auto-roll gates raw. Avoid gate effects in force tests.
+//! Sticky and auto-roll gates use the quantized throttle. Avoid gate effects
+//! in force tests.
 
 use std::sync::Once;
 
@@ -279,8 +280,8 @@ fn air_nonzero_throttle_matches_quantized_level() {
 #[test]
 fn ground_tiny_throttle_rounds_to_zero_when_moving() {
     // Grounded drive and brake paths. Use forward speed above the
-    // stopping threshold. Then sticky stays active for both zero
-    // and tiny inputs. This isolates force from gate effects.
+    // stopping threshold. The speed keeps full stick active for both
+    // zero and tiny inputs. This isolates force from gate effects.
     // Auto-roll stays off with four-wheel contact.
     let start = ground_start(Vec3A::new(0.0, 0.0, 17.0), Vec3A::new(800.0, 0.0, 0.0));
 
@@ -449,10 +450,10 @@ fn boost_overrides_tiny_throttle_in_air() {
 }
 
 #[test]
-fn boost_overrides_tiny_throttle_on_ground_when_moving() {
-    // Grounded friction and drive paths force real throttle to 1.0
-    // with boost held and fuel left. Use speed above the stopping
-    // threshold so sticky gates match for zero and tiny inputs.
+fn boost_does_not_override_ground_throttle() {
+    // The target ground drive uses the quantized throttle only. Boost is a
+    // separate force and does not force the ground throttle to 1.0.
+    // Use speed above the stopping threshold so sticky gates match.
     let start = ground_start(Vec3A::new(0.0, 0.0, 17.0), Vec3A::new(800.0, 0.0, 0.0));
 
     let mk = |throttle: f32| CarControls {
@@ -467,10 +468,10 @@ fn boost_overrides_tiny_throttle_on_ground_when_moving() {
 
     assert!(
         pos_diff(&tiny, &zero) < 1e-3 && vel_diff(&tiny, &zero) < 1e-3,
-        "boost must override tiny vs zero throttle on ground"
+        "a tiny throttle must quantize to the zero-throttle ground drive"
     );
     assert!(
-        pos_diff(&full, &zero) < 1e-3 && vel_diff(&full, &zero) < 1e-3,
-        "boost must override full vs zero throttle on ground"
+        pos_diff(&full, &zero) > 10.0 && vel_diff(&full, &zero) > 50.0,
+        "boost must not replace the ground throttle input"
     );
 }

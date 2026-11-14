@@ -55,7 +55,7 @@
 //!
 //! # Pad history start
 //!
-//! [`PadReplay::pad_history_start`] finds the first row whose pad clock is
+//! The test helper `pad_history_start` finds the first row whose pad clock is
 //! still usable at the query row. The build precomputes it with a forward
 //! scan. The scan starts a new epoch only at a proven pad reset or a proven
 //! discontinuity:
@@ -118,10 +118,6 @@
 //! - The event timeline is built in one forward pass. Classification uses
 //!   only events at or before the query row. The only forward lookup is the
 //!   immutable pad position map.
-
-// The replay backend call site is added by the coordinator. Until then this
-// module has no caller in the example binary.
-#![allow(dead_code)]
 
 use std::fmt::{self, Display, Formatter};
 
@@ -760,12 +756,13 @@ impl PadReplay {
 
 /// First row whose pad clock is usable at `row`.
 ///
-/// This helper recomputes the history starts from the recording. The
+/// This test-only helper recomputes the history starts from the recording. The
 /// [`PadReplay`] hot path uses the precomputed vector from the build pass. Walk
 /// forward and start a new epoch only at a proven reset or discontinuity. A car
 /// availability change, a car teleport, a frame gap, or a missing ball is not
 /// a pad reset. A ball teleport, a non-increasing ball frame, or a round flag
 /// change is a pad reset candidate.
+#[cfg(test)]
 #[must_use]
 pub fn pad_history_start(ticks: &[TickRecord], row: usize) -> usize {
     let starts = build_history_starts(ticks);
@@ -1030,13 +1027,6 @@ mod tests {
         record.physics_available = u8::from(available);
         record.phys.physics_frame = if available { 0 } else { NATIVE_FRAME_UNKNOWN };
         record
-    }
-
-    fn tick_with_cars(frame: u32, pads: Vec<PadExt>, cars: Vec<CarRecord>) -> TickRecord {
-        TickRecord {
-            car_records: cars,
-            ..tick(frame, pads)
-        }
     }
 
     fn tick_with_ball(frame: u32, pads: Vec<PadExt>, pos: [f32; 3]) -> TickRecord {

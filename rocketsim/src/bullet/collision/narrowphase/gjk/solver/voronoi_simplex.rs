@@ -130,14 +130,9 @@ impl VoronoiSimplexSolver {
     }
 
     pub fn in_simplex(&self, w: Vec3A) -> bool {
-        let mut found = false;
-        for i in 0..self.num_vertices {
-            let dist2 = (self.simplex_vector_w[i] - w).length_squared();
-            if dist2 <= Self::EQUAL_VERTEX_THRESHOLD {
-                found = true;
-                break;
-            }
-        }
+        let found = self.simplex_vector_w[..self.num_vertices]
+            .iter()
+            .any(|vertex| (vertex - w).length_squared() <= Self::EQUAL_VERTEX_THRESHOLD);
 
         if w == self.last_w {
             return true;

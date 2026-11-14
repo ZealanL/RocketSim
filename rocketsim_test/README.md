@@ -26,9 +26,6 @@ loader supports `.rlpr` files and Zstandard-compressed `.rlpr.zst` files.
 - `examples/rlpr_metric/common/` owns segmentation, scoring, history gates,
   field coverage, and transition reports.
 - `examples/rlpr_metric/v3/` maps supported recorded state to the Rust backend.
-- `tests/fixtures/rlpr/` holds small synthetic outputs from the C++ recorder.
-  These files verify wire compatibility. They contain no game data. The
-  generator sources stay in `rl_phys_record`, not this crate.
 
 ## Run the tests
 
@@ -44,6 +41,24 @@ Run the workspace checks before you submit a change:
 cargo test --locked --workspace --all-targets -- --test-threads=1
 cargo test --locked --workspace --doc
 ```
+
+These commands use the core crate's default math backend. The current default
+enables `native-math`. Select it explicitly to test the engine-style scalar
+math and retained regressions:
+
+```sh
+cargo test --locked -p rocketsim --lib --features native-math
+cargo test --locked -p rocketsim_test --test mod --features native-math -- --test-threads=1
+```
+
+`rocketsim_test` forwards this feature to the core crate. It does not enable
+`box-triangle-gjk`. That flag selects GJK/EPA for both arena triangle contacts
+and car/car demolition impact-pose queries. Without it, both queries use SAT.
+Test the two flags together when you use both.
+
+Use `cargo test --locked -p rocketsim --lib --no-default-features` to test the
+core platform-math build. Disabling the test package's default features does
+not disable default features on its core dependency.
 
 These commands use the Rust simulator. To include the optional C++ RocketSim
 comparison implementation, enable `v2`:
@@ -64,6 +79,10 @@ Run the replay metric against the available bundled match recordings:
 ```sh
 cargo run --release -p rocketsim_test --example rlpr_metric -- --per-recording
 ```
+
+Add `--features native-math` before `--` to select the engine-style math
+backend. Run both segmented and reset modes with the same math and collision
+features. The current defaults are native math with SAT.
 
 The metric creates a fresh arena for each recording. It restores supported
 recorded state at the start of each segment. It then applies recorded inputs
@@ -217,6 +236,10 @@ cargo run --release -p rocketsim_test --example stress_v3
 The tool reports elapsed time, ticks per second (`TPS`), and ball hits. Use
 `--num-cars` and `--game-mode` to select a workload. Use `--num-arenas` to step
 several arenas in the same run. This option does not create worker threads.
+`Arena ticks` counts the ticks stepped across all arenas. `TPS` is that
+count divided by the elapsed time. Earlier generated-control output from
+`stress_v2` and `stress_v3` omitted the arena multiplier when `--num-arenas`
+was greater than one. The ball-only and RLPR replay paths already included it.
 
 `stress_v3` uses the simulator default memory mode, `Balanced`. `stress_v2`
 keeps `Heavy` as its default because the C++ backend does not support `Balanced`.

@@ -200,10 +200,12 @@ pub fn calc_bot_controls(
     controls.clamp()
 }
 
-pub fn print_results(elapsed: f32, total_ball_touches: usize) {
-    let tps = (TOTAL_TICKS as f32) / elapsed;
+pub fn print_results(elapsed: f32, total_ball_touches: usize, num_arenas: usize) {
+    let total_ticks = TOTAL_TICKS as u64 * num_arenas as u64;
+    let tps = total_ticks as f64 / f64::from(elapsed);
     println!(
         "Elapsed: {elapsed}\
+        \nArena ticks: {total_ticks}\
         \nTPS: {tps:.0}\
         \nBall hits: {total_ball_touches}"
     );

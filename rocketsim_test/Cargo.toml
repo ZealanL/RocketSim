@@ -11,16 +11,24 @@ required-features = ["v2"]
 
 [dependencies]
 byteorder = "1.5.0"
-clap = { version = "4.6.0", features = ["derive"] }
 fastrand = "2.3.0"
 glam.workspace = true
 rocketsim = { path = "../rocketsim", features = ["serde"] }
+# Only the `stress_v2` example uses this C++ backend, and only with `v2`.
+# Cargo rejects optional dev-dependencies, so keep this here as optional.
+# The `unused_dependencies` cargo lint does not analyze examples and warns.
 rocketsim_rs = { version = "=0.37.0", default-features = false, optional = true }
 serde = { version = "1.0.229", features = ["derive"] }
 serde-value = "0.7"
-serde_json = "1.0.154"
-sha2 = "0.10.9"
 zstd = "0.14"
 
+[dev-dependencies]
+clap = { version = "4.6.0", features = ["derive"] }
+serde_json = "1.0.154"
+sha2 = "0.10.9"
+
 [features]
+box-triangle-gjk = ["rocketsim/box-triangle-gjk"]
+native-math = ["rocketsim/native-math"]
+parallel = ["rocketsim/parallel"]
 v2 = ["dep:rocketsim_rs"]

@@ -283,6 +283,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     print_results(
         Instant::now().duration_since(start).as_secs_f32(),
         total_ball_touches,
+        cli.num_arenas,
     );
     Ok(())
 }
