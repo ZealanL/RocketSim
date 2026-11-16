@@ -405,6 +405,10 @@ pub const MUT_KNOWN_MASK: u8 =
 /// latest controls and pending actions through [`crate::ArenaVisExt`]. It
 /// does not apply them automatically.
 ///
+/// `car_index` selects the driven car. `spectated_car` reports the car the
+/// viewer is watching. They can differ: the Director camera can watch a car
+/// that is not driven, and spectate-only mode sends no driven car at all.
+///
 /// `seq` is a sender-supplied sequence number. The current transport does not
 /// reject messages based on that number. Use
 /// [`crate::transport::viewer::ViewerListener::send_controls_for_generation`]
@@ -448,11 +452,22 @@ pub struct ControlMsg {
     /// Connection generation. The combined listener starts at generation one.
     #[serde(default)]
     pub generation: u64,
+    /// Car the viewer is currently spectating, if any.
+    ///
+    /// `Some` index when the viewer follows a car in the manual or Director
+    /// camera. `None` for a free camera or a wide overview. This value is
+    /// independent of `car_index` and is still sent in spectate-only mode.
+    /// Read it with [`crate::ArenaVisExt::latest_vis_controls`] or
+    /// [`crate::ArenaVisExt::latest_vis_spectated_car`].
+    #[serde(default)]
+    pub spectated_car: Option<u32>,
 }
 
 impl ControlMsg {
     /// Builds message `seq` for `car_index` with `controls` and `buttons`.
-    /// Mutators default to off; set them with [`with_mutators`](Self::with_mutators).
+    /// Mutators and the spectated car default to off; set them with
+    /// [`with_mutators`](Self::with_mutators) and
+    /// [`with_spectated_car`](Self::with_spectated_car).
     pub fn new(car_index: u32, controls: CarControls, buttons: u8, seq: u64) -> Self {
         Self {
             car_index,
@@ -461,6 +476,7 @@ impl ControlMsg {
             mutators: 0,
             seq,
             generation: 0,
+            spectated_car: None,
         }
     }
 
@@ -468,6 +484,15 @@ impl ControlMsg {
     #[must_use]
     pub fn with_mutators(mut self, mutators: u8) -> Self {
         self.mutators = mutators;
+        self
+    }
+
+    /// Sets the car the viewer is spectating.
+    ///
+    /// Pass `None` for a free camera or an overview with no followed car.
+    #[must_use]
+    pub fn with_spectated_car(mut self, car: Option<u32>) -> Self {
+        self.spectated_car = car;
         self
     }
 }

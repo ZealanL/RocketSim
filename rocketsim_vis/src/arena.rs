@@ -65,8 +65,22 @@ pub trait ArenaVisExt {
     ///
     /// Return `None` when input is absent, the connection is lost, or input is
     /// more than 250 milliseconds old. Check `car_index` before use. Apply
-    /// neutral controls when this returns `None`.
+    /// neutral controls when this returns `None`. The message also carries
+    /// [`ControlMsg::spectated_car`](crate::proto::ControlMsg::spectated_car),
+    /// the car the viewer is watching.
     fn latest_vis_controls(&self) -> Option<crate::proto::ControlMsg>;
+
+    /// Return the car the viewer is currently spectating.
+    ///
+    /// Return `Some` index when the viewer follows a car in the manual or
+    /// Director camera, or `None` for a free camera or a wide overview. This
+    /// value is independent of the driven car and is reported even in
+    /// spectate-only mode. It uses the same freshness rule as
+    /// [`Self::latest_vis_controls`].
+    fn latest_vis_spectated_car(&self) -> Option<u32> {
+        self.latest_vis_controls()
+            .and_then(|message| message.spectated_car)
+    }
 
     /// Consume pending action requests from the viewer.
     ///
@@ -423,12 +437,12 @@ mod tests {
             1,
             1,
         )));
-        assert!(viewer.send_controls(crate::proto::ControlMsg::new(
-            0,
-            rocketsim::CarControls::default(),
-            4,
-            2,
-        )));
+        assert!(
+            viewer.send_controls(
+                crate::proto::ControlMsg::new(0, rocketsim::CarControls::default(), 4, 2,)
+                    .with_spectated_car(Some(3))
+            )
+        );
         loop {
             if arena
                 .latest_vis_controls()
@@ -439,6 +453,7 @@ mod tests {
             assert!(Instant::now() < deadline, "controls did not reach arena");
             std::thread::sleep(Duration::from_millis(2));
         }
+        assert_eq!(arena.latest_vis_spectated_car(), Some(3));
         assert_eq!(arena.take_vis_actions(), 5);
         assert_eq!(arena.take_vis_actions(), 0);
         arena.set_vis_enabled(false);

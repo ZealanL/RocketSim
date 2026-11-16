@@ -17,6 +17,7 @@ use clap::Parser;
 use effects::EffectState;
 use input_state::*;
 use rocketsim_vis::{
+    debug::DebugScene,
     game_mode_name, parse_game_mode,
     proto::{ControlMsg, DEFAULT_PORT},
     transport::viewer::{ConnStatus, ViewerListener, ViewerSnapshot},
@@ -50,6 +51,8 @@ struct ViewerApp {
     debug_info: Arc<Mutex<DebugStats>>,
     debug_overlay: OverlayCache,
     debug_metrics: Option<debug_metrics::DebugMetrics>,
+    /// Shared empty scene used when retained debug rendering is toggled off.
+    hidden_debug: Arc<DebugScene>,
     hide_ball: bool,
     scene: Arc<Mutex<Option<SceneGl>>>,
     listener: ViewerListener,
@@ -89,6 +92,7 @@ impl ViewerApp {
             debug_info: Arc::new(Mutex::new(DebugStats::default())),
             debug_overlay: OverlayCache::new(),
             debug_metrics: None,
+            hidden_debug: Arc::new(DebugScene::empty()),
             hide_ball: false,
             scene: Arc::new(Mutex::new(None)),
             listener,
@@ -263,6 +267,22 @@ impl eframe::App for ViewerApp {
             nav_held = [false; 4];
         }
 
+        // F3 (or the bound action) toggles retained debug rendering. This is a
+        // display setting, so it also works with the menu open; it is blocked
+        // only while rebinding or typing. The setting is applied after the
+        // action map borrow ends. Suppress until release so a held key cannot
+        // toggle repeatedly.
+        let toggle_debug = !rebinding
+            && !keyboard_editing
+            && self
+                .input
+                .action_values
+                .get(&Action::ToggleDebug)
+                .is_some_and(|value| value.just_pressed);
+        if toggle_debug {
+            self.input.suppress_until_release(&input_snapshot);
+        }
+
         // Mouse use hides the pad highlight again.
         if ctx.input(|i| i.pointer.delta() != egui::Vec2::ZERO) {
             self.ui_state.menu_nav_active = false;
@@ -332,6 +352,7 @@ impl eframe::App for ViewerApp {
             self.lines_info.clone(),
         );
         let (gpu_ms, measure_gpu) = (self.gpu_ms.clone(), self.measure_gpu);
+        let hidden_debug = self.hidden_debug.clone();
         let (soup, welded, indices, fps) = (
             self.session.soup_verts,
             self.session.welded_verts,
@@ -419,6 +440,19 @@ impl eframe::App for ViewerApp {
             ctx.egui_wants_pointer_input(),
             self.ui_state.reset_requested,
         );
+        if toggle_debug {
+            self.settings.show_debug = !self.settings.show_debug;
+            self.settings.mark_dirty();
+        }
+        let show_debug = self.settings.show_debug;
+        // Feed the render path an empty snapshot while debug rendering is off.
+        // The canonical scene keeps receiving updates, so toggling back on
+        // restores it without a reconnect and without changing GL state flow.
+        let render_debug = if show_debug {
+            retained_debug.clone()
+        } else {
+            hidden_debug
+        };
         // Spectate-only messages have no target car. Neutral controls for a
         // valid car would replace its policy controls and stop the bot.
         let (car_index, controls, buttons) = spectate::gate(
@@ -437,20 +471,23 @@ impl eframe::App for ViewerApp {
             buttons
         };
         // The watched car can differ from the driving target in Director mode.
+        // Report it on every control message so the simulation knows which car
+        // the viewer is spectating, even in spectate-only mode.
+        let watched_car = self.camera.watched_car();
         let meter = client_frame
             .as_ref()
-            .and_then(|frame| spectated_boost(&frame.state.cars, self.camera.watched_car()))
+            .and_then(|frame| spectated_boost(&frame.state.cars, watched_car))
             .map(boost_meter);
         self.ctrl_seq += 1;
         self.listener.send_controls_for_generation(
             generation,
-            ControlMsg::new(car_index, controls, buttons, self.ctrl_seq).with_mutators(
-                if self.settings.spectate_only {
+            ControlMsg::new(car_index, controls, buttons, self.ctrl_seq)
+                .with_mutators(if self.settings.spectate_only {
                     0
                 } else {
                     self.settings.mutators_mask()
-                },
-            ),
+                })
+                .with_spectated_car(watched_car),
         );
         // The menu reset fires once, on the next send.
         self.ui_state.reset_requested = false;
@@ -674,8 +711,13 @@ impl eframe::App for ViewerApp {
             ui.label(format!("{fps:.0} fps"));
             if !retained_debug.is_empty() {
                 let stats = self.debug_info.lock().map(|s| *s).unwrap_or_default();
+                let hidden = if show_debug {
+                    ""
+                } else {
+                    " (hidden — F3 to show)"
+                };
                 ui.monospace(format!(
-                    "Debug: {} groups / {} draws / {} lines / {} points / {} triangles",
+                    "Debug: {} groups / {} draws / {} lines / {} points / {} triangles{hidden}",
                     retained_debug.group_count(),
                     stats.draw_calls,
                     stats.segments,
@@ -721,7 +763,7 @@ impl eframe::App for ViewerApp {
                         scene: scene.clone(),
                         mesh: mesh.clone(),
                         frame: client_frame.clone(),
-                        debug: retained_debug.clone(),
+                        debug: render_debug.clone(),
                         pending_segments: pending_segs.clone(),
                         dropshot_mesh: dropshot_mesh.clone(),
                         camera_position: cam_pos,
@@ -752,7 +794,7 @@ impl eframe::App for ViewerApp {
                 self.debug_overlay.paint(
                     ui,
                     rect,
-                    &retained_debug,
+                    &render_debug,
                     client_frame.as_deref().map(|frame| &frame.state),
                     &debug_view,
                     &debug_proj,

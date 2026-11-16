@@ -166,6 +166,12 @@ the current overlay uses vertical center alignment.
 
 ## Example and review tool
 
+The viewer toggles retained debug rendering with `F3` (or **Display → Overlays
+→ Debug rendering**). The setting is on by default and is saved in
+`settings.toml`. While off, the viewer hides debug meshes, lines, labels, and
+overlays. The simulation keeps sending the scene, so turning rendering back on
+restores it without a reconnect.
+
 `examples/debug_render.rs` is the CLI driver. Scene builders live in
 `examples/support/debug_render/`. The example connects to an already running
 viewer with `--addr IP:PORT`. Its modes are `wire`, `solid`, `showcase`, and

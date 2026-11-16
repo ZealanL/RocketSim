@@ -68,8 +68,9 @@ pub enum Action {
     SwivelRight,
     SwivelUp,
     SwivelDown,
+    ToggleDebug,
 }
-pub const ACTIONS: [Action; 56] = [
+pub const ACTIONS: [Action; 57] = [
     Action::ThrottleForward,
     Action::ThrottleBack,
     Action::SteerLeft,
@@ -126,6 +127,7 @@ pub const ACTIONS: [Action; 56] = [
     Action::SwivelRight,
     Action::SwivelUp,
     Action::SwivelDown,
+    Action::ToggleDebug,
 ];
 impl Action {
     pub fn label(self) -> &'static str {
@@ -147,7 +149,7 @@ impl Action {
             | Self::Boost
             | Self::Handbrake
             | Self::AirRoll => "Driving",
-            Self::KickoffReset | Self::Dribble | Self::Launch => "Simulation",
+            Self::KickoffReset | Self::Dribble | Self::Launch | Self::ToggleDebug => "Simulation",
             Self::Follow1
             | Self::Follow2
             | Self::Follow3
@@ -190,7 +192,7 @@ impl Action {
         }
     }
 }
-const ACTION_NAMES: [&str; 56] = [
+const ACTION_NAMES: [&str; 57] = [
     "Throttle forward",
     "Throttle back",
     "Steer left",
@@ -247,6 +249,7 @@ const ACTION_NAMES: [&str; 56] = [
     "Swivel right",
     "Swivel up",
     "Swivel down",
+    "Toggle debug rendering",
 ];
 /// Sparse action-keyed bindings. Missing actions deserialize as unbound.
 /// [`ActionMap::default`] provides the viewer defaults; use [`ActionMap::unbound`] for a blank map.
@@ -329,6 +332,7 @@ impl Default for ActionMap {
             (Action::FreeRight, Key::D),
             (Action::FreeUp, Key::Space),
             (Action::FreeDown, Key::Shift),
+            (Action::ToggleDebug, Key::F3),
         ] {
             m.set(a, 0, InputSource::Key(k));
         }

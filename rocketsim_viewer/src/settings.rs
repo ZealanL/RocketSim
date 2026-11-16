@@ -117,7 +117,7 @@ const SAVE_DEBOUNCE_SECS: f32 = 1.0;
 ///
 /// Shape: `[camera]` tuning (FOV, follow distance/height/angle, stiffness,
 /// transition) plus overlay flags (`show_trail`, `show_boost`,
-/// `show_ground_line`, `show_pads`), `fps_limit_hz` (0 = uncapped),
+/// `show_ground_line`, `show_pads`, `show_debug`), `fps_limit_hz` (0 = uncapped),
 /// `ui_scale`, `vsync`/`msaa` (apply on relaunch), and `[bindings]`
 /// key/mouse/gamepad tables (all defaulted, old files still parse).
 /// Loading never fails (missing/corrupt files give defaults); every field
@@ -150,6 +150,8 @@ pub struct ViewerSettings {
     pub show_ground_line: bool,
     /// Boost pads (instanced draws).
     pub show_pads: bool,
+    /// Retained debug rendering from the simulation. On by default.
+    pub show_debug: bool,
     /// Frame-rate cap in Hz (0 = uncapped).
     pub fps_limit_hz: u32,
     /// UI scale multiplier.
@@ -192,6 +194,7 @@ struct ViewerSettingsData {
     show_boost: bool,
     show_ground_line: bool,
     show_pads: bool,
+    show_debug: bool,
     fps_limit_hz: u32,
     ui_scale: f32,
     vsync: bool,
@@ -214,6 +217,7 @@ impl Default for ViewerSettingsData {
             show_boost: settings.show_boost,
             show_ground_line: settings.show_ground_line,
             show_pads: settings.show_pads,
+            show_debug: settings.show_debug,
             fps_limit_hz: settings.fps_limit_hz,
             ui_scale: settings.ui_scale,
             vsync: settings.vsync,
@@ -246,6 +250,7 @@ impl<'de> Deserialize<'de> for ViewerSettings {
             show_boost: data.show_boost,
             show_ground_line: data.show_ground_line,
             show_pads: data.show_pads,
+            show_debug: data.show_debug,
             fps_limit_hz: data.fps_limit_hz,
             ui_scale: data.ui_scale,
             vsync: data.vsync,
@@ -273,6 +278,7 @@ impl Default for ViewerSettings {
             show_boost: true,
             show_ground_line: true,
             show_pads: true,
+            show_debug: true,
             fps_limit_hz: DEFAULT_FPS_LIMIT,
             ui_scale: DEFAULT_UI_SCALE,
             vsync: true,
@@ -637,10 +643,12 @@ mod tests {
         let mut s = ViewerSettings::default();
         s.camera.car_cam.distance = 300.0;
         s.show_boost = false;
+        s.show_debug = false;
         let text = toml::to_string(&s).unwrap();
         let back: ViewerSettings = toml::from_str(&text).unwrap();
         assert_eq!(back.camera.car_cam.distance, 300.0);
         assert!(!back.show_boost);
+        assert!(!back.show_debug);
         assert!(back.show_trail);
     }
 
@@ -659,7 +667,7 @@ mod tests {
         assert_eq!(back.camera.fov_degrees, 100.0);
         assert_eq!(back.camera.car_cam.distance, 300.0);
         assert_eq!(back.camera.car_cam.stiffness, 0.45);
-        assert!(back.show_trail && back.show_pads);
+        assert!(back.show_trail && back.show_pads && back.show_debug);
         assert_eq!(back.fps_limit_hz, DEFAULT_FPS_LIMIT);
     }
 

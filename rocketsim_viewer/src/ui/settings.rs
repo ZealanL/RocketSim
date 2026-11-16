@@ -245,6 +245,7 @@ pub(crate) fn show_settings(view: SettingsView<'_>) -> Vec<UiAction> {
                             ("ov.boost", "Boost flames"),
                             ("ov.ground", "Ground line"),
                             ("ov.pads", "Boost pads"),
+                            ("ov.debug", "Debug rendering (F3)"),
                         ] {
                             let r = match id {
                                 "ov.trail" => ui.checkbox(&mut settings.show_trail, label),
@@ -252,7 +253,8 @@ pub(crate) fn show_settings(view: SettingsView<'_>) -> Vec<UiAction> {
                                 "ov.ground" => {
                                     ui.checkbox(&mut settings.show_ground_line, label)
                                 }
-                                _ => ui.checkbox(&mut settings.show_pads, label),
+                                "ov.pads" => ui.checkbox(&mut settings.show_pads, label),
+                                _ => ui.checkbox(&mut settings.show_debug, label),
                             };
                             if r.changed() {
                                 settings.mark_dirty();

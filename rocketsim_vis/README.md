@@ -144,6 +144,18 @@ more than 250 ms old. The example sends neutral controls in that case.
 For several cars, use the message's `car_index` to select the target. Release
 the previous car's controls when the target changes.
 
+The same message reports `spectated_car`: the index of the car the viewer is
+watching, or `None` in a free camera or wide overview. It is independent of
+`car_index` and is sent even in spectate-only mode, so a simulation can show
+or log the watched car. Use `arena.latest_vis_spectated_car()` as a shortcut.
+For example:
+
+```rust
+if let Some(car) = arena.latest_vis_spectated_car() {
+    // The viewer is currently spectating `car`.
+}
+```
+
 `take_vis_actions` consumes pending requests: bit 0 requests a reset, bit 1
 a dribble, and bit 2 a ball launch. Your application must implement those
 requests. See [`examples/drive.rs`](examples/drive.rs) for a complete loop that

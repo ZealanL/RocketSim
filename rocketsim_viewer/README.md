@@ -111,6 +111,7 @@ simulation must accept viewer controls. The `drive` example does this; the
 | Move the free camera forward / backward | Mouse wheel |
 | Reset the free camera | `R` |
 | Open or close settings | `Escape` |
+| Toggle debug rendering | `F3` |
 | Reset play / set up a dribble / launch the ball | `Backspace` / `F2` / `F4` |
 
 The last row sends requests to the simulation. Your simulation decides what
@@ -241,6 +242,13 @@ The `debug_render` example shows the retained drawing API. Build and run it
 with a viewer from the same checkout. See
 [`rocketsim_vis/DEBUG_RENDERING.md`](../rocketsim_vis/DEBUG_RENDERING.md) for
 its modes, local OBJ input, built-in debug assets, API limits, and review tool.
+
+Press `F3` to toggle retained debug rendering on or off. The **Display →
+Overlays → Debug rendering** checkbox sets the same option. Debug rendering is
+on by default. Turning it off hides debug meshes, lines, labels, and overlays
+without stopping the simulation or changing its state. The debug scene keeps
+receiving updates while hidden, so turning it back on restores the current
+scene. The setting is saved in `settings.toml`.
 
 Pass `--debug-stats PATH` to write CPU timing and asynchronous GPU query
 statistics to a file. Pass `--no-menu` to start with the menu closed. Pass

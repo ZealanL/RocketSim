@@ -285,11 +285,12 @@ mod tests {
 
     #[test]
     fn control_codec_round_trips_and_rejects_truncation() {
-        let message = ControlMsg::new(2, CarControls::default(), 5, 42);
+        let message = ControlMsg::new(2, CarControls::default(), 5, 42).with_spectated_car(Some(7));
         let bytes = encode_control(&message);
         assert!(decode_control(&bytes[..2]).unwrap().is_none());
         let (decoded, consumed) = decode_control(&bytes).unwrap().unwrap();
         assert_eq!(decoded, message);
+        assert_eq!(decoded.spectated_car, Some(7));
         assert_eq!(consumed, bytes.len());
     }
 
