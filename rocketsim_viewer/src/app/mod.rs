@@ -41,6 +41,7 @@ use crate::{
     settings::ViewerSettings,
     ui::{
         CameraChoice, RebindTarget, SettingsInput, SettingsView, UiAction, ViewerUiState,
+        action_buttons::show_action_buttons,
         hud::{boost_meter, spectated_boost},
         menu_nav_step, nav_row, show_settings,
     },
@@ -353,6 +354,15 @@ impl eframe::App for ViewerApp {
                 {
                     self.listener.queue_custom_press(index);
                 }
+            }
+        }
+
+        // On-screen action buttons use the same press path as keybinds. Draw
+        // the window every frame, but ignore clicks while rebinding or typing.
+        let button_presses = show_action_buttons(ctx, &self.settings, &self.custom_actions);
+        if !rebinding && !keyboard_editing {
+            for index in button_presses {
+                self.listener.queue_custom_press(index);
             }
         }
 
@@ -796,55 +806,57 @@ impl eframe::App for ViewerApp {
             }
         }
 
-        egui::Window::new("rocketsim viewer").show(ctx, |ui| {
-            ui.label(sim_line);
-            ui.label(format!("Camera: {cam_line}"));
-            ui.label(drive_line);
-            ui.label(format!("{fps:.0} fps"));
-            if !retained_debug.is_empty() {
-                let stats = self.debug_info.lock().map(|s| *s).unwrap_or_default();
-                let hidden = if show_debug {
-                    ""
-                } else {
-                    " (hidden — F3 to show)"
-                };
-                ui.monospace(format!(
-                    "Debug: {} groups / {} draws / {} lines / {} points / {} triangles{hidden}",
-                    retained_debug.group_count(),
-                    stats.draw_calls,
-                    stats.segments,
-                    stats.points,
-                    stats.primitives
-                ));
-            }
-            if cfg!(debug_assertions) {
-                ui.monospace(format!("mesh soup={soup} welded={welded} idx={indices}"));
-                ui.monospace(format!(
-                    "frames={frames} net={received} tick={} fps={fps:.0}",
-                    tick.unwrap_or(0)
-                ));
-                let ms = last_draw_ms.lock().map(|g| *g).unwrap_or(-1.0);
-                ui.monospace(format!("draw: {ms:.3} ms cpu: {:.3} ms", self.cpu_ms));
-                if self.measure_gpu {
-                    let gpu = gpu_ms.lock().map(|g| *g).unwrap_or(-1.0);
-                    ui.monospace(format!("gpu (stall): {gpu:.3} ms"));
+        if self.settings.show_viewer_hud {
+            egui::Window::new("rocketsim viewer").show(ctx, |ui| {
+                ui.label(sim_line);
+                ui.label(format!("Camera: {cam_line}"));
+                ui.label(drive_line);
+                ui.label(format!("{fps:.0} fps"));
+                if !retained_debug.is_empty() {
+                    let stats = self.debug_info.lock().map(|s| *s).unwrap_or_default();
+                    let hidden = if show_debug {
+                        ""
+                    } else {
+                        " (hidden — F3 to show)"
+                    };
+                    ui.monospace(format!(
+                        "Debug: {} groups / {} draws / {} lines / {} points / {} triangles{hidden}",
+                        retained_debug.group_count(),
+                        stats.draw_calls,
+                        stats.segments,
+                        stats.points,
+                        stats.primitives
+                    ));
                 }
-                ui.monospace(format!(
-                    "seq: {} connected: {}",
-                    self.ctrl_seq,
-                    matches!(&status, ConnStatus::Connected { .. })
-                ));
-                ui.monospace(format!("roof: {}", if enclosed { "on" } else { "off" }));
-                let (drawn, culled) = pads_info.lock().map(|g| *g).unwrap_or((0, 0));
-                ui.monospace(format!("pads: {drawn} drawn, {culled} culled"));
-                let (nlines, ltrunc) = lines_info.lock().map(|g| *g).unwrap_or((0, 0));
-                ui.monospace(format!("lines: {nlines} ({ltrunc} truncated)"));
-                ui.monospace(format!(
-                    "cam: {:.0},{:.0},{:.0}",
-                    cam_pos.x, cam_pos.y, cam_pos.z
-                ));
-            }
-        });
+                if cfg!(debug_assertions) {
+                    ui.monospace(format!("mesh soup={soup} welded={welded} idx={indices}"));
+                    ui.monospace(format!(
+                        "frames={frames} net={received} tick={} fps={fps:.0}",
+                        tick.unwrap_or(0)
+                    ));
+                    let ms = last_draw_ms.lock().map(|g| *g).unwrap_or(-1.0);
+                    ui.monospace(format!("draw: {ms:.3} ms cpu: {:.3} ms", self.cpu_ms));
+                    if self.measure_gpu {
+                        let gpu = gpu_ms.lock().map(|g| *g).unwrap_or(-1.0);
+                        ui.monospace(format!("gpu (stall): {gpu:.3} ms"));
+                    }
+                    ui.monospace(format!(
+                        "seq: {} connected: {}",
+                        self.ctrl_seq,
+                        matches!(&status, ConnStatus::Connected { .. })
+                    ));
+                    ui.monospace(format!("roof: {}", if enclosed { "on" } else { "off" }));
+                    let (drawn, culled) = pads_info.lock().map(|g| *g).unwrap_or((0, 0));
+                    ui.monospace(format!("pads: {drawn} drawn, {culled} culled"));
+                    let (nlines, ltrunc) = lines_info.lock().map(|g| *g).unwrap_or((0, 0));
+                    ui.monospace(format!("lines: {nlines} ({ltrunc} truncated)"));
+                    ui.monospace(format!(
+                        "cam: {:.0},{:.0},{:.0}",
+                        cam_pos.x, cam_pos.y, cam_pos.z
+                    ));
+                }
+            });
+        }
 
         egui::CentralPanel::default().show(ui, |ui| {
             let (rect, _) = ui.allocate_exact_size(ui.available_size(), egui::Sense::hover());

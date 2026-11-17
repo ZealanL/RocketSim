@@ -308,10 +308,14 @@ mod tests {
                 CustomActionDef {
                     name: "show_route".into(),
                     default_keys: vec!["F5".into(), "Space".into()],
+                    button: None,
                 },
                 CustomActionDef {
                     name: "ping".into(),
                     default_keys: vec!["V".into()],
+                    button: Some(crate::proto::CustomActionButtonDef {
+                        label: "Send ping".into(),
+                    }),
                 },
             ],
         };
@@ -366,10 +370,12 @@ mod tests {
                 CustomActionDef {
                     name: "same".into(),
                     default_keys: vec!["F5".into()],
+                    button: None,
                 },
                 CustomActionDef {
                     name: "same".into(),
                     default_keys: Vec::new(),
+                    button: None,
                 },
             ],
         };
@@ -382,10 +388,25 @@ mod tests {
             actions: vec![CustomActionDef {
                 name: "too_many".into(),
                 default_keys: vec!["A".into(), "B".into(), "C".into()],
+                button: None,
             }],
         };
         assert!(matches!(
             decode_sim(&encode_sim(&SimMsg::CustomActions(too_many_keys))),
+            Err(ProtocolError::InvalidData(_))
+        ));
+        let bad_label = CustomActionDecl {
+            rev: 1,
+            actions: vec![CustomActionDef {
+                name: "bad_label".into(),
+                default_keys: Vec::new(),
+                button: Some(crate::proto::CustomActionButtonDef {
+                    label: " padded ".into(),
+                }),
+            }],
+        };
+        assert!(matches!(
+            decode_sim(&encode_sim(&SimMsg::CustomActions(bad_label))),
             Err(ProtocolError::InvalidData(_))
         ));
     }

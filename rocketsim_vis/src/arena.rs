@@ -94,9 +94,13 @@ pub trait ArenaVisExt {
 
     /// Declare custom actions that the viewer shows as rebindable.
     ///
-    /// Each action has a stable name and up to two default keyboard keys. The
-    /// viewer sends the declaration on connect and whenever the set changes.
-    /// Invalid or duplicate names and malformed key names are rejected.
+    /// Each action has a stable name, up to two default keyboard keys, and an
+    /// optional on-screen button. An action may have a button with no keybind;
+    /// both may also be empty, in which case the viewer only lists the name.
+    /// The viewer sends the declaration on connect and whenever the set
+    /// changes. Presses from keybinds and buttons share one event stream.
+    /// Invalid or duplicate names and malformed key or button labels are
+    /// rejected.
     ///
     /// # Errors
     ///
@@ -522,6 +526,48 @@ mod tests {
     }
 
     #[test]
+    fn button_only_custom_action_round_trips_and_reports_press() {
+        let viewer = ViewerListener::try_bind("127.0.0.1:0").unwrap();
+        let addr = viewer.local_addr().to_string();
+        let mut arena = Arena::new(GameMode::TheVoid);
+        arena.try_set_net_vis(Some(&addr)).unwrap();
+        arena
+            .set_vis_custom_actions(vec![CustomActionDef::new("toggle_slow_mo").with_button("")])
+            .unwrap();
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            arena.step_tick();
+            let snapshot = viewer.snapshot();
+            if snapshot.custom_actions.actions.len() == 1 {
+                let action = &snapshot.custom_actions.actions[0];
+                assert_eq!(action.name, "toggle_slow_mo");
+                assert!(action.default_keys.is_empty());
+                assert_eq!(action.button.as_ref().unwrap().label, "");
+                break;
+            }
+            assert!(Instant::now() < deadline, "declaration did not arrive");
+            std::thread::sleep(Duration::from_millis(2));
+        }
+
+        assert!(viewer.queue_custom_press(0));
+        assert!(viewer.send_controls(crate::proto::ControlMsg::new(
+            0,
+            rocketsim::CarControls::default(),
+            0,
+            1,
+        )));
+        loop {
+            arena.step_tick();
+            if arena.take_vis_custom_actions() == vec!["toggle_slow_mo".to_string()] {
+                break;
+            }
+            assert!(Instant::now() < deadline, "button press did not arrive");
+            std::thread::sleep(Duration::from_millis(2));
+        }
+    }
+
+    #[test]
     fn car_names_arrive_replace_and_survive_reconnect() {
         let reservation = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = reservation.local_addr().unwrap().to_string();
@@ -595,6 +641,7 @@ mod tests {
             .set_vis_custom_actions(vec![CustomActionDef {
                 name: "ping".into(),
                 default_keys: vec!["F5".into()],
+                button: None,
             }])
             .unwrap();
         let deadline = Instant::now() + Duration::from_secs(3);
@@ -639,10 +686,12 @@ mod tests {
                 CustomActionDef {
                     name: "show_route".into(),
                     default_keys: vec!["F5".into(), "Space".into()],
+                    button: None,
                 },
                 CustomActionDef {
                     name: "ping".into(),
                     default_keys: vec!["V".into()],
+                    button: None,
                 },
             ])
             .unwrap();
@@ -695,6 +744,7 @@ mod tests {
             .set_vis_custom_actions(vec![CustomActionDef {
                 name: "reconnected".into(),
                 default_keys: vec!["F6".into()],
+                button: None,
             }])
             .unwrap();
         let redeclare_deadline = Instant::now() + Duration::from_secs(5);

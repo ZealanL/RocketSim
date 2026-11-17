@@ -154,7 +154,8 @@ const SAVE_DEBOUNCE_SECS: f32 = 1.0;
 /// Shape: `[camera]` tuning (FOV, follow distance/height/angle, stiffness,
 /// transition), a `[ui]` table with the settings window state and the initial
 /// spectator view, overlay flags (`show_trail`, `show_boost`,
-/// `show_ground_line`, `show_pads`, `show_debug`, `show_name_tags`),
+/// `show_ground_line`, `show_pads`, `show_debug`, `show_name_tags`,
+/// `show_action_buttons`, `show_viewer_hud`),
 /// `fps_limit_hz` (0 = uncapped),
 /// `ui_scale`, `vsync`/`msaa` (apply on relaunch), and `[bindings]`
 /// key/mouse/gamepad tables (all defaulted, old files still parse).
@@ -194,6 +195,10 @@ pub struct ViewerSettings {
     pub show_debug: bool,
     /// Car name tags from the simulation. On by default.
     pub show_name_tags: bool,
+    /// On-screen buttons for simulation-defined custom actions. On by default.
+    pub show_action_buttons: bool,
+    /// Viewer info window with FPS, camera, and debug counts. On by default.
+    pub show_viewer_hud: bool,
     /// Frame-rate cap in Hz (0 = uncapped).
     pub fps_limit_hz: u32,
     /// UI scale multiplier.
@@ -244,6 +249,8 @@ struct ViewerSettingsData {
     show_pads: bool,
     show_debug: bool,
     show_name_tags: bool,
+    show_action_buttons: bool,
+    show_viewer_hud: bool,
     fps_limit_hz: u32,
     ui_scale: f32,
     vsync: bool,
@@ -270,6 +277,8 @@ impl Default for ViewerSettingsData {
             show_pads: settings.show_pads,
             show_debug: settings.show_debug,
             show_name_tags: settings.show_name_tags,
+            show_action_buttons: settings.show_action_buttons,
+            show_viewer_hud: settings.show_viewer_hud,
             fps_limit_hz: settings.fps_limit_hz,
             ui_scale: settings.ui_scale,
             vsync: settings.vsync,
@@ -306,6 +315,8 @@ impl<'de> Deserialize<'de> for ViewerSettings {
             show_pads: data.show_pads,
             show_debug: data.show_debug,
             show_name_tags: data.show_name_tags,
+            show_action_buttons: data.show_action_buttons,
+            show_viewer_hud: data.show_viewer_hud,
             fps_limit_hz: data.fps_limit_hz,
             ui_scale: data.ui_scale,
             vsync: data.vsync,
@@ -338,6 +349,8 @@ impl Default for ViewerSettings {
             show_pads: true,
             show_debug: true,
             show_name_tags: true,
+            show_action_buttons: true,
+            show_viewer_hud: true,
             fps_limit_hz: DEFAULT_FPS_LIMIT,
             ui_scale: DEFAULT_UI_SCALE,
             vsync: true,
@@ -734,6 +747,8 @@ mod tests {
         s.show_boost = false;
         s.show_debug = false;
         s.show_name_tags = false;
+        s.show_action_buttons = false;
+        s.show_viewer_hud = false;
         s.ui.menu_open = true;
         s.ui.settings_tab = 2;
         s.ui.start_camera = "follow3".into();
@@ -752,6 +767,8 @@ mod tests {
         assert!(!back.show_boost);
         assert!(!back.show_debug);
         assert!(!back.show_name_tags);
+        assert!(!back.show_action_buttons);
+        assert!(!back.show_viewer_hud);
         assert!(back.show_trail);
     }
 
@@ -764,6 +781,7 @@ mod tests {
             actions: vec![CustomActionDef {
                 name: "ping".into(),
                 default_keys: vec!["F5".into(), "Space".into()],
+                button: None,
             }],
         };
         let registry = CustomActionRegistry::from_decl(&decl);
@@ -814,7 +832,14 @@ mod tests {
         assert_eq!(back.camera.fov_degrees, 100.0);
         assert_eq!(back.camera.car_cam.distance, 300.0);
         assert_eq!(back.camera.car_cam.stiffness, 0.45);
-        assert!(back.show_trail && back.show_pads && back.show_debug && back.show_name_tags);
+        assert!(
+            back.show_trail
+                && back.show_pads
+                && back.show_debug
+                && back.show_name_tags
+                && back.show_action_buttons
+                && back.show_viewer_hud
+        );
         assert!(!back.ui.menu_open);
         assert_eq!(back.ui.start_camera, "birds");
         assert_eq!(back.fps_limit_hz, DEFAULT_FPS_LIMIT);

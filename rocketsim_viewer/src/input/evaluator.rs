@@ -249,6 +249,7 @@ mod tests {
             actions: vec![CustomActionDef {
                 name: "ping".into(),
                 default_keys: vec!["F5".into()],
+                button: None,
             }],
         };
         let registry = CustomActionRegistry::from_decl(&decl);

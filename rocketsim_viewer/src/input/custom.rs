@@ -22,6 +22,10 @@ pub struct CustomAction {
     pub name: String,
     /// Parsed default keyboard binds. Unknown key names are dropped.
     pub default_sources: Vec<InputSource>,
+    /// Resolved on-screen button label, if the action declared a button.
+    ///
+    /// An empty declared label falls back to [`name`](Self::name).
+    pub button_label: Option<String>,
 }
 
 /// Ordered custom actions from the current simulation declaration.
@@ -46,6 +50,13 @@ impl CustomActionRegistry {
                     .iter()
                     .filter_map(|key| Key::from_name(key).map(InputSource::Key))
                     .collect(),
+                button_label: action.button.as_ref().map(|button| {
+                    if button.label.is_empty() {
+                        action.name.clone()
+                    } else {
+                        button.label.clone()
+                    }
+                }),
             })
             .collect();
         Self {
@@ -67,6 +78,16 @@ impl CustomActionRegistry {
     /// Return `true` when no actions are declared.
     pub fn is_empty(&self) -> bool {
         self.actions.is_empty()
+    }
+
+    /// Return the declaration index and action for each on-screen button.
+    ///
+    /// The index is the bit position in `ControlMsg::custom_presses`.
+    pub fn button_actions(&self) -> impl Iterator<Item = (usize, &CustomAction)> {
+        self.actions
+            .iter()
+            .enumerate()
+            .filter(|(_, action)| action.button_label.is_some())
     }
 }
 
@@ -205,10 +226,14 @@ mod tests {
                 CustomActionDef {
                     name: "show_route".into(),
                     default_keys: vec!["F5".into(), "Space".into()],
+                    button: None,
                 },
                 CustomActionDef {
                     name: "ping".into(),
                     default_keys: vec!["V".into(), "NotAKey".into()],
+                    button: Some(rocketsim_vis::proto::CustomActionButtonDef {
+                        label: "Ping!".into(),
+                    }),
                 },
             ],
         }
@@ -238,11 +263,44 @@ mod tests {
     }
 
     #[test]
+    fn button_only_actions_need_no_keybind_and_use_name_as_label() {
+        let decl = CustomActionDecl {
+            rev: 1,
+            actions: vec![
+                CustomActionDef::new("keybind_only").with_default_keys(["F5"]),
+                CustomActionDef::new("button_only").with_button(""),
+                CustomActionDef::new("both")
+                    .with_default_keys(["V"])
+                    .with_button("Press me"),
+            ],
+        };
+        let registry = CustomActionRegistry::from_decl(&decl);
+
+        assert_eq!(registry.actions[0].button_label, None);
+        assert_eq!(
+            registry.actions[1].button_label.as_deref(),
+            Some("button_only")
+        );
+        assert!(registry.actions[1].default_sources.is_empty());
+        assert_eq!(
+            registry.actions[2].button_label.as_deref(),
+            Some("Press me")
+        );
+
+        let targets: Vec<_> = registry
+            .button_actions()
+            .map(|(index, action)| (index, action.name.as_str()))
+            .collect();
+        assert_eq!(targets, vec![(1, "button_only"), (2, "both")]);
+    }
+
+    #[test]
     fn conflicts_report_shared_custom_bindings() {
         let mut registry = CustomActionRegistry::from_decl(&declaration());
         registry.actions.push(CustomAction {
             name: "duplicate".into(),
             default_sources: vec![InputSource::Key(Key::F5)],
+            button_label: None,
         });
         let mut map = CustomActionMap::unbound();
         map.merge_defaults(&registry);

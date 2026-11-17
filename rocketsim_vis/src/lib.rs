@@ -53,8 +53,11 @@
 //! Use [`ArenaVisExt::set_vis_custom_actions`] to publish named actions with
 //! default keyboard keys. The viewer lists them under **Bindings → Custom**,
 //! where each action can be rebound to any keyboard, mouse, or controller
-//! input. Read presses with [`ArenaVisExt::take_vis_custom_actions`]. Bindings
-//! persist in the viewer keyed by action name.
+//! input. An action may also declare an on-screen button with
+//! [`proto::CustomActionDef::with_button`]; a button-only action needs no keybind.
+//! Read presses with [`ArenaVisExt::take_vis_custom_actions`]. A keybind press
+//! and a button press use the same event. Bindings persist in the viewer keyed
+//! by action name.
 //!
 //! # Draw retained scene data
 //!

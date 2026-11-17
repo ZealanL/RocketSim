@@ -207,6 +207,14 @@ pub(super) fn menu_pad_action(id: String, dx: i32, a: bool, cx: &mut MenuPadCtx)
             cx.settings.show_name_tags = !cx.settings.show_name_tags;
             cx.settings.mark_dirty();
         }
+        "ov.buttons" if a || dx != 0 => {
+            cx.settings.show_action_buttons = !cx.settings.show_action_buttons;
+            cx.settings.mark_dirty();
+        }
+        "ov.hud" if a || dx != 0 => {
+            cx.settings.show_viewer_hud = !cx.settings.show_viewer_hud;
+            cx.settings.mark_dirty();
+        }
         "disp.vsync" if a || dx != 0 => {
             cx.settings.vsync = !cx.settings.vsync;
             cx.settings.mark_dirty();

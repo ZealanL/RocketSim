@@ -1,3 +1,4 @@
+pub(crate) mod action_buttons;
 pub(crate) mod hud;
 pub(crate) mod name_tags;
 

@@ -191,6 +191,14 @@ can rebind a slot to any keyboard, mouse, or controller input. Custom bindings
 are stored in `settings.toml` under `[custom_action_bindings]`, keyed by action
 name, and are kept when the simulation changes its declaration.
 
+A simulation can also declare an on-screen button for an action. The viewer
+draws these as clickable buttons in the **Actions** window. A click sends the
+same custom action press as a keybind, and a button-only action needs no
+keybind. Use **Display → Overlays → Action buttons** to hide them. Use
+**Display → Overlays → Viewer info window (FPS, camera)** to hide the default
+"rocketsim viewer" HUD window. That window only reports information; hiding it
+does not change simulation behavior.
+
 ## Settings file
 
 The viewer saves changes automatically after a short delay. It saves pending

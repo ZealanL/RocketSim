@@ -169,6 +169,10 @@ slots to a keyboard key, mouse button or motion, or controller button or axis.
 Bindings are saved in the viewer's `settings.toml` under `custom_action_bindings`
 and keyed by action name, so they survive restarts and reconnects.
 
+An action can also declare an on-screen button. The viewer draws these in its
+**Actions** window. A button press uses the same event as a keybind press. A
+button-only action needs no keybind: an empty button label uses the action name.
+
 ```rust
 use rocketsim_vis::{ArenaVisExt, proto::CustomActionDef};
 
@@ -176,17 +180,23 @@ arena.set_vis_custom_actions(vec![
     CustomActionDef {
         name: "show_route".into(),
         default_keys: vec!["F5".into(), "Space".into()],
+        button: None,
     },
     CustomActionDef {
         name: "ping".into(),
         default_keys: vec!["V".into()],
+        button: Some(rocketsim_vis::proto::CustomActionButtonDef {
+            label: "Send ping".into(),
+        }),
     },
+    CustomActionDef::new("toggle_slow_mo").with_button(""),
 ])?;
 ```
 
 Names must be unique, non-empty, and at most 64 bytes. Supply at most two key
 names. The viewer parses key names with its own key table; an unknown name
-leaves that slot unassigned.
+leaves that slot unassigned. Button labels must be at most 64 bytes; an empty
+label falls back to the action name.
 
 Read presses in your simulation loop:
 
@@ -200,8 +210,10 @@ for name in arena.take_vis_custom_actions() {
 }
 ```
 
-Presses are edge events and accumulate until read. The viewer reports them on
-every control message, including in spectate-only mode. Declare actions after
+Presses are edge events and accumulate until read. Keybind presses and
+on-screen button presses arrive in the same list, so the simulation does not
+need to know which control fired. The viewer reports them on every control
+message, including in spectate-only mode. Declare actions after
 you attach a viewer. A network reconnect re-sends the current declaration; a
 detach and reattach creates a fresh connection, so declare again after
 reattaching. At most 64 custom actions are supported.

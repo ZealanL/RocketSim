@@ -31,6 +31,8 @@ pub const MAX_CUSTOM_ACTION_NAME_BYTES: usize = 64;
 pub const MAX_CUSTOM_ACTION_KEY_BYTES: usize = 32;
 /// Maximum default keyboard keys per custom action (the viewer has two slots).
 pub const MAX_CUSTOM_ACTION_DEFAULT_KEYS: usize = 2;
+/// Maximum UTF-8 bytes in an on-screen action button label.
+pub const MAX_CUSTOM_BUTTON_LABEL_BYTES: usize = 64;
 /// Maximum number of named cars in one declaration.
 pub const MAX_CAR_NAMES: usize = 256;
 /// Maximum UTF-8 bytes in a car name tag.
@@ -117,11 +119,13 @@ pub enum SimMsg {
     Frame(VisFrame),
     /// One chunk of a `DebugSyncMsg` transfer (atomic on reassembly).
     DebugChunk(DebugChunk),
-    /// Simulation-defined custom actions and their default keyboard binds.
+    /// Simulation-defined custom actions, their default keyboard binds, and
+    /// optional on-screen buttons.
     ///
     /// The sender publishes the current declaration on every new connection
     /// and whenever the simulation replaces it. The viewer uses it to show
-    /// rebindable actions and to map reported press indices back to names.
+    /// rebindable actions, draw opted-in action buttons, and map reported press
+    /// indices back to names.
     CustomActions(CustomActionDecl),
     /// Optional name tags for cars on the field.
     ///
@@ -194,24 +198,81 @@ impl CarNameDecl {
     }
 }
 
+/// Optional on-screen button for a simulation-defined custom action.
+///
+/// The viewer shows the button in its Actions window. A click queues one press
+/// for the owning action, exactly like a keybind press. An empty label uses the
+/// action name, so a button-only action needs no extra display text.
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CustomActionButtonDef {
+    /// Text shown on the button. Empty means use the action name.
+    #[serde(default)]
+    pub label: String,
+}
+
+impl CustomActionButtonDef {
+    /// Validate the label length and characters. An empty label is valid.
+    pub fn validate(&self) -> Result<(), ProtocolError> {
+        if self.label.len() > MAX_CUSTOM_BUTTON_LABEL_BYTES
+            || self.label.trim() != self.label
+            || self.label.chars().any(char::is_control)
+        {
+            return Err(ProtocolError::InvalidData(
+                "invalid custom action button label",
+            ));
+        }
+        Ok(())
+    }
+}
+
 /// One simulation-defined custom action.
 ///
 /// The name identifies the action on the wire and in the viewer's saved
 /// bindings. Supply up to two default keyboard key names, such as `"F5"` or
-/// `"Space"`. The viewer parses these with its own key table; an unknown name
-/// leaves that binding slot unassigned. Users can rebind the action to any
-/// keyboard, mouse, or controller input in the viewer's Bindings menu.
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+/// `"Space"`. Both lists may be empty: an action can be triggered by an
+/// on-screen button alone. The viewer parses key names with its own key table;
+/// an unknown name leaves that binding slot unassigned. Users can rebind the
+/// action to any keyboard, mouse, or controller input in the viewer's Bindings
+/// menu. Set [`button`](Self::button) to also show an on-screen button.
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CustomActionDef {
     /// Stable name for this action. Names are unique within one declaration.
     pub name: String,
     /// Default keyboard key names, one per binding slot (at most two).
     #[serde(default)]
     pub default_keys: Vec<String>,
+    /// Optional on-screen button that triggers this action.
+    #[serde(default)]
+    pub button: Option<CustomActionButtonDef>,
 }
 
 impl CustomActionDef {
-    /// Validate the name, key names, and key count. Return the first error.
+    /// Build an action with `name`, no default keys, and no on-screen button.
+    #[must_use]
+    pub fn new(name: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            ..Self::default()
+        }
+    }
+
+    /// Set up to two default keyboard key names for this action.
+    #[must_use]
+    pub fn with_default_keys(mut self, keys: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        self.default_keys = keys.into_iter().map(Into::into).collect();
+        self
+    }
+
+    /// Add an on-screen button with `label`. An empty label uses the action name.
+    #[must_use]
+    pub fn with_button(mut self, label: impl Into<String>) -> Self {
+        self.button = Some(CustomActionButtonDef {
+            label: label.into(),
+        });
+        self
+    }
+
+    /// Validate the name, key names, button, and counts. Return the first error.
     pub fn validate(&self) -> Result<(), ProtocolError> {
         if self.name.is_empty()
             || self.name.len() > MAX_CUSTOM_ACTION_NAME_BYTES
@@ -233,6 +294,9 @@ impl CustomActionDef {
             return Err(ProtocolError::InvalidData(
                 "invalid custom action default key name",
             ));
+        }
+        if let Some(button) = &self.button {
+            button.validate()?;
         }
         Ok(())
     }
@@ -644,7 +708,8 @@ pub struct ControlMsg {
     ///
     /// Bit `i` corresponds to action `i` in the declaration sent in
     /// [`SimMsg::CustomActions`]. Only [`MAX_CUSTOM_ACTIONS`] actions are
-    /// supported, so the mask is a `u64`. The simulation consumes presses with
+    /// supported, so the mask is a `u64`. A keybind press and an on-screen
+    /// button press use the same bit. The simulation consumes presses with
     /// [`crate::ArenaVisExt::take_vis_custom_actions`].
     #[serde(default)]
     pub custom_presses: u64,
