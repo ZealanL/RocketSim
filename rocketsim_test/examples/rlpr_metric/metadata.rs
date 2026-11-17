@@ -170,7 +170,11 @@ pub fn file_sha256(path: &Path) -> Result<String, String> {
         }
         hasher.update(&buffer[..read]);
     }
-    Ok(format!("{:x}", hasher.finalize()))
+    Ok(hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect())
 }
 
 fn parse_body_name(name: &str, slot: usize, path: &Path) -> Result<usize, String> {
