@@ -14,7 +14,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     camera::CameraConfig,
-    input::{Action, ActionMap, InputSource, legacy::Bindings},
+    input::{
+        Action, ActionMap, CustomActionMap, CustomActionRegistry, InputSource, legacy::Bindings,
+    },
 };
 
 /// Device view for the universal action binding table.
@@ -166,6 +168,9 @@ pub struct ViewerSettings {
     /// Action bindings. This table takes precedence over legacy bindings.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub action_bindings: Option<crate::input::ActionMap>,
+    /// User bindings for simulation-defined custom actions, keyed by name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub custom_action_bindings: Option<CustomActionMap>,
     /// Spectate-only mode: watch the followed car, send neutral inputs.
     pub spectate_only: bool,
     /// Drive-demo mutators, sent as ControlMsg mutator bits (all off = RL
@@ -184,6 +189,8 @@ pub struct ViewerSettings {
     explicit_path: Option<PathBuf>,
     #[serde(skip)]
     fallback_action_bindings: ActionMap,
+    #[serde(skip)]
+    fallback_custom_action_bindings: CustomActionMap,
 }
 
 #[derive(Deserialize)]
@@ -201,6 +208,7 @@ struct ViewerSettingsData {
     msaa: u16,
     bindings: Bindings,
     action_bindings: Option<ActionMap>,
+    custom_action_bindings: Option<CustomActionMap>,
     spectate_only: bool,
     mut_unlimited_boost: bool,
     mut_recharge: bool,
@@ -224,6 +232,7 @@ impl Default for ViewerSettingsData {
             msaa: settings.msaa,
             bindings: settings.bindings,
             action_bindings: settings.action_bindings,
+            custom_action_bindings: settings.custom_action_bindings,
             spectate_only: settings.spectate_only,
             mut_unlimited_boost: settings.mut_unlimited_boost,
             mut_recharge: settings.mut_recharge,
@@ -257,6 +266,7 @@ impl<'de> Deserialize<'de> for ViewerSettings {
             msaa: data.msaa,
             bindings: data.bindings,
             action_bindings,
+            custom_action_bindings: data.custom_action_bindings,
             spectate_only: data.spectate_only,
             mut_unlimited_boost: data.mut_unlimited_boost,
             mut_recharge: data.mut_recharge,
@@ -266,6 +276,7 @@ impl<'de> Deserialize<'de> for ViewerSettings {
             dirty: false,
             explicit_path: None,
             fallback_action_bindings,
+            fallback_custom_action_bindings: CustomActionMap::unbound(),
         })
     }
 }
@@ -285,6 +296,7 @@ impl Default for ViewerSettings {
             msaa: DEFAULT_MSAA,
             bindings: Bindings::default(),
             action_bindings: None,
+            custom_action_bindings: None,
             spectate_only: false,
             mut_unlimited_boost: false,
             mut_recharge: false,
@@ -294,6 +306,7 @@ impl Default for ViewerSettings {
             dirty: false,
             explicit_path: None,
             fallback_action_bindings: ActionMap::default(),
+            fallback_custom_action_bindings: CustomActionMap::unbound(),
         }
     }
 }
@@ -309,6 +322,31 @@ impl ViewerSettings {
     /// Return a clone of the canonical action map.
     pub fn input_bindings(&self) -> ActionMap {
         self.action_map().clone()
+    }
+
+    /// Return the canonical custom action bindings without cloning.
+    ///
+    /// Return an empty map when the simulation has not supplied custom
+    /// actions yet. A user rebind stores the map in `custom_action_bindings`.
+    pub fn custom_action_map(&self) -> &CustomActionMap {
+        self.custom_action_bindings
+            .as_ref()
+            .unwrap_or(&self.fallback_custom_action_bindings)
+    }
+
+    /// Add default binds for newly declared custom actions.
+    ///
+    /// Return `true` when an entry was added. Existing entries are kept, so a
+    /// user's rebind is never overwritten by a later declaration.
+    pub fn fill_custom_defaults(&mut self, registry: &CustomActionRegistry) -> bool {
+        let added = self
+            .custom_action_bindings
+            .get_or_insert_with(CustomActionMap::unbound)
+            .merge_defaults(registry);
+        if added {
+            self.mark_dirty();
+        }
+        added
     }
 
     /// Replace legacy bindings and migrate them to the runtime action map.
@@ -650,6 +688,50 @@ mod tests {
         assert!(!back.show_boost);
         assert!(!back.show_debug);
         assert!(back.show_trail);
+    }
+
+    #[test]
+    fn custom_bindings_round_trip_and_keep_rebinds() {
+        use rocketsim_vis::proto::{CustomActionDecl, CustomActionDef};
+
+        let decl = CustomActionDecl {
+            rev: 1,
+            actions: vec![CustomActionDef {
+                name: "ping".into(),
+                default_keys: vec!["F5".into(), "Space".into()],
+            }],
+        };
+        let registry = CustomActionRegistry::from_decl(&decl);
+        let mut s = ViewerSettings::default();
+        assert!(s.fill_custom_defaults(&registry));
+        assert_eq!(
+            s.custom_action_map().sources("ping")[0],
+            InputSource::Key(Key::F5)
+        );
+        s.custom_action_bindings
+            .as_mut()
+            .unwrap()
+            .set("ping", 0, InputSource::Key(Key::V));
+
+        let text = toml::to_string(&s).unwrap();
+        let back: ViewerSettings = toml::from_str(&text).unwrap();
+        assert_eq!(
+            back.custom_action_map().sources("ping")[0],
+            InputSource::Key(Key::V)
+        );
+        assert_eq!(
+            back.custom_action_map().sources("ping")[1],
+            InputSource::Key(Key::Space)
+        );
+
+        let sparse: ViewerSettings = toml::from_str("[camera]\nfov_degrees = 90.0").unwrap();
+        assert!(
+            sparse
+                .custom_action_map()
+                .sources("ping")
+                .iter()
+                .all(|s| *s == InputSource::Unbound)
+        );
     }
 
     #[test]

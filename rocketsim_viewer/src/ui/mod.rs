@@ -22,9 +22,18 @@ pub(crate) enum UiAction {
     SetCamera(CameraChoice),
 }
 
+/// Which action slot is being captured for rebinding.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum RebindTarget {
+    /// A built-in action and its slot index.
+    Builtin(Action, usize),
+    /// A simulation-defined action name and its slot index.
+    Custom(String, usize),
+}
+
 pub(crate) struct ViewerUiState {
     pub(crate) menu_open: bool,
-    pub(crate) rebind_action: Option<(Action, usize)>,
+    pub(crate) rebind_action: Option<RebindTarget>,
     pub(crate) rebind_capture: Option<Capture>,
     pub(crate) capture_cancel_rect: Option<Rect>,
     pub(crate) capture_cancel_hold: f32,

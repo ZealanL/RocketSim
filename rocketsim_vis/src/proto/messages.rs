@@ -23,6 +23,15 @@ pub const DEBUG_CHUNK_SIZE: usize = 16 * 1024;
 /// Maximum chunks per debug transfer (`512 * 16 KiB` = `MAX_DEBUG_SYNC_BYTES`).
 pub const MAX_CHUNKS_PER_TRANSFER: usize = 512;
 
+/// Maximum number of simulation-defined custom actions in one declaration.
+pub const MAX_CUSTOM_ACTIONS: usize = 64;
+/// Maximum UTF-8 bytes in a custom action name.
+pub const MAX_CUSTOM_ACTION_NAME_BYTES: usize = 64;
+/// Maximum UTF-8 bytes in one default key name of a custom action.
+pub const MAX_CUSTOM_ACTION_KEY_BYTES: usize = 32;
+/// Maximum default keyboard keys per custom action (the viewer has two slots).
+pub const MAX_CUSTOM_ACTION_DEFAULT_KEYS: usize = 2;
+
 /// An error while reading or validating a protocol message.
 #[derive(Debug)]
 pub enum ProtocolError {
@@ -104,6 +113,103 @@ pub enum SimMsg {
     Frame(VisFrame),
     /// One chunk of a `DebugSyncMsg` transfer (atomic on reassembly).
     DebugChunk(DebugChunk),
+    /// Simulation-defined custom actions and their default keyboard binds.
+    ///
+    /// The sender publishes the current declaration on every new connection
+    /// and whenever the simulation replaces it. The viewer uses it to show
+    /// rebindable actions and to map reported press indices back to names.
+    CustomActions(CustomActionDecl),
+}
+
+/// One simulation-defined custom action.
+///
+/// The name identifies the action on the wire and in the viewer's saved
+/// bindings. Supply up to two default keyboard key names, such as `"F5"` or
+/// `"Space"`. The viewer parses these with its own key table; an unknown name
+/// leaves that binding slot unassigned. Users can rebind the action to any
+/// keyboard, mouse, or controller input in the viewer's Bindings menu.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CustomActionDef {
+    /// Stable name for this action. Names are unique within one declaration.
+    pub name: String,
+    /// Default keyboard key names, one per binding slot (at most two).
+    #[serde(default)]
+    pub default_keys: Vec<String>,
+}
+
+impl CustomActionDef {
+    /// Validate the name, key names, and key count. Return the first error.
+    pub fn validate(&self) -> Result<(), ProtocolError> {
+        if self.name.is_empty()
+            || self.name.len() > MAX_CUSTOM_ACTION_NAME_BYTES
+            || self.name.trim() != self.name
+            || self.name.chars().any(char::is_control)
+        {
+            return Err(ProtocolError::InvalidData("invalid custom action name"));
+        }
+        if self.default_keys.len() > MAX_CUSTOM_ACTION_DEFAULT_KEYS {
+            return Err(ProtocolError::InvalidData(
+                "too many custom action default keys",
+            ));
+        }
+        if self.default_keys.iter().any(|key| {
+            key.is_empty()
+                || key.len() > MAX_CUSTOM_ACTION_KEY_BYTES
+                || key.chars().any(char::is_control)
+        }) {
+            return Err(ProtocolError::InvalidData(
+                "invalid custom action default key name",
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// Complete set of simulation-defined custom actions.
+///
+/// The revision increases each time the simulation replaces the declaration.
+/// The viewer keeps the newest revision seen on the current connection.
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CustomActionDecl {
+    /// Monotonic revision assigned by the sender.
+    #[serde(default)]
+    pub rev: u64,
+    /// Custom actions in display order.
+    #[serde(default)]
+    pub actions: Vec<CustomActionDef>,
+}
+
+impl CustomActionDecl {
+    /// Return a declaration with no actions at revision zero.
+    #[must_use]
+    pub fn empty() -> Self {
+        Self::default()
+    }
+
+    /// Return `true` when no custom actions are declared.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.actions.is_empty()
+    }
+
+    /// Validate action count, unique names, and each action.
+    pub fn validate(&self) -> Result<(), ProtocolError> {
+        if self.actions.len() > MAX_CUSTOM_ACTIONS {
+            return Err(ProtocolError::InvalidData("too many custom actions"));
+        }
+        for action in &self.actions {
+            action.validate()?;
+        }
+        for (index, action) in self.actions.iter().enumerate() {
+            if self.actions[..index]
+                .iter()
+                .any(|other| other.name == action.name)
+            {
+                return Err(ProtocolError::InvalidData("duplicate custom action name"));
+            }
+        }
+        Ok(())
+    }
 }
 
 /// One chunk of an encoded [`DebugSyncMsg`].
@@ -461,6 +567,14 @@ pub struct ControlMsg {
     /// [`crate::ArenaVisExt::latest_vis_spectated_car`].
     #[serde(default)]
     pub spectated_car: Option<u32>,
+    /// Bitmask of custom actions pressed since the last control message.
+    ///
+    /// Bit `i` corresponds to action `i` in the declaration sent in
+    /// [`SimMsg::CustomActions`]. Only [`MAX_CUSTOM_ACTIONS`] actions are
+    /// supported, so the mask is a `u64`. The simulation consumes presses with
+    /// [`crate::ArenaVisExt::take_vis_custom_actions`].
+    #[serde(default)]
+    pub custom_presses: u64,
 }
 
 impl ControlMsg {
@@ -477,6 +591,7 @@ impl ControlMsg {
             seq,
             generation: 0,
             spectated_car: None,
+            custom_presses: 0,
         }
     }
 
@@ -493,6 +608,15 @@ impl ControlMsg {
     #[must_use]
     pub fn with_spectated_car(mut self, car: Option<u32>) -> Self {
         self.spectated_car = car;
+        self
+    }
+
+    /// Sets the bitmask of custom actions pressed by the viewer.
+    ///
+    /// Bit `i` refers to action `i` in the simulation's declaration.
+    #[must_use]
+    pub fn with_custom_presses(mut self, presses: u64) -> Self {
+        self.custom_presses = presses;
         self
     }
 }

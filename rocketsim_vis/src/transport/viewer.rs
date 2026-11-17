@@ -64,7 +64,8 @@ use super::socket::OutgoingBuffer;
 use crate::{
     debug::{DebugScene, Lifetime},
     proto::{
-        ControlMsg, DebugSyncMsg, SceneMetadata, SimMsg, VisFrame, decode_sim, encode_control,
+        ControlMsg, CustomActionDecl, DebugSyncMsg, MAX_CUSTOM_ACTIONS, SceneMetadata, SimMsg,
+        VisFrame, decode_sim, encode_control,
     },
     sync::{ChunkAssembler, SyncError, apply_sync},
 };
@@ -98,6 +99,8 @@ pub struct ViewerSnapshot {
     pub scene: Option<Arc<SceneMetadata>>,
     /// Retained scene filtered against this snapshot's frame and time.
     pub debug: Arc<DebugScene>,
+    /// Custom actions declared by the simulation for this session.
+    pub custom_actions: Arc<CustomActionDecl>,
     /// Total frames decoded since this listener started.
     pub received: u64,
     /// Retained-scene transfers applied in this session.
@@ -123,6 +126,8 @@ struct ClientSession {
     debug_transfers: u64,
     controls: Option<ControlMsg>,
     pending_buttons: u8,
+    pending_custom_presses: u64,
+    custom_actions: Arc<CustomActionDecl>,
     received: u64,
     display_cache: Option<DisplayCache>,
 }
@@ -138,6 +143,8 @@ impl ClientSession {
             debug_transfers: 0,
             controls: None,
             pending_buttons: 0,
+            pending_custom_presses: 0,
+            custom_actions: Arc::new(CustomActionDecl::empty()),
             received: 0,
             display_cache: None,
         }
@@ -152,6 +159,8 @@ impl ClientSession {
         self.debug_transfers = 0;
         self.controls = None;
         self.pending_buttons = 0;
+        self.pending_custom_presses = 0;
+        self.custom_actions = Arc::new(CustomActionDecl::empty());
         self.display_cache = None;
     }
 }
@@ -306,6 +315,7 @@ impl ViewerListener {
                     frame: session.frame.clone(),
                     scene: session.scene.clone(),
                     debug,
+                    custom_actions: session.custom_actions.clone(),
                     received: session.received,
                     debug_transfers: session.debug_transfers,
                 }
@@ -316,6 +326,7 @@ impl ViewerListener {
                 frame: None,
                 scene: None,
                 debug: Arc::new(DebugScene::empty()),
+                custom_actions: Arc::new(CustomActionDecl::empty()),
                 received: 0,
                 debug_transfers: 0,
             })
@@ -324,7 +335,8 @@ impl ViewerListener {
     /// Queue controls for the current connection.
     ///
     /// Return `false` if no simulation is connected. This method combines
-    /// action bits with pending requests and replaces pending analog controls.
+    /// action bits and custom action presses with pending requests and replaces
+    /// pending analog controls.
     pub fn send_controls(&self, msg: ControlMsg) -> bool {
         let generation = self
             .session
@@ -336,8 +348,9 @@ impl ViewerListener {
 
     /// Queue controls only for the specified connection generation.
     ///
-    /// Replace pending analog controls and combine action bits. The method
-    /// writes the active generation into the message. Return `true` when the
+    /// Replace pending analog controls and combine action bits and custom
+    /// action presses. The method writes the active generation into the
+    /// message. Return `true` when the
     /// listener accepts the message. This does not confirm delivery.
     pub fn send_controls_for_generation(&self, generation: u64, mut msg: ControlMsg) -> bool {
         let Ok(mut session) = self.session.lock() else {
@@ -350,9 +363,33 @@ impl ViewerListener {
         }
         session.pending_buttons |= msg.buttons & 7;
         msg.buttons = 0;
+        session.pending_custom_presses |= msg.custom_presses;
+        msg.custom_presses = 0;
         msg.generation = generation;
         session.controls = Some(msg);
         true
+    }
+
+    /// Queue one custom action press for the current connection.
+    ///
+    /// The index refers to the declaration in [`ViewerSnapshot::custom_actions`].
+    /// Presses accumulate until the next control message is sent. Calls with
+    /// an out-of-range index or with no connected simulation are ignored.
+    /// This does not confirm delivery.
+    pub fn queue_custom_press(&self, index: usize) -> bool {
+        if index >= MAX_CUSTOM_ACTIONS {
+            return false;
+        }
+        self.session
+            .lock()
+            .map(|mut session| {
+                if !matches!(session.status, ConnStatus::Connected { .. }) {
+                    return false;
+                }
+                session.pending_custom_presses |= 1u64 << index;
+                true
+            })
+            .unwrap_or(false)
     }
 
     /// Return the address bound by this listener.
@@ -461,6 +498,8 @@ fn pump(
                     msg.generation = state.generation;
                     msg.buttons = state.pending_buttons;
                     state.pending_buttons = 0;
+                    msg.custom_presses = state.pending_custom_presses;
+                    state.pending_custom_presses = 0;
                     msg
                 })
             });
@@ -504,6 +543,13 @@ fn pump(
                                         return;
                                     }
                                 },
+                                SimMsg::CustomActions(decl) => {
+                                    if let Ok(mut state) = session.lock()
+                                        && decl.rev >= state.custom_actions.rev
+                                    {
+                                        state.custom_actions = Arc::new(decl);
+                                    }
+                                }
                             }
                             input.drain(..consumed);
                         }

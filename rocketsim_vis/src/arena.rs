@@ -7,7 +7,10 @@ use std::{any::Any, io, net::SocketAddr};
 
 use rocketsim::Arena;
 
-use crate::{NetVis, proto::SceneMetadata};
+use crate::{
+    NetVis,
+    proto::{CustomActionDef, SceneMetadata},
+};
 
 /// Attach a viewer to an [`Arena`] and read its optional input requests.
 ///
@@ -89,6 +92,25 @@ pub trait ArenaVisExt {
     /// must perform each action.
     fn take_vis_actions(&mut self) -> u8;
 
+    /// Declare custom actions that the viewer shows as rebindable.
+    ///
+    /// Each action has a stable name and up to two default keyboard keys. The
+    /// viewer sends the declaration on connect and whenever the set changes.
+    /// Invalid or duplicate names and malformed key names are rejected.
+    ///
+    /// # Errors
+    ///
+    /// Return `NotConnected` when no viewer is attached and `InvalidInput`
+    /// when the declaration fails validation.
+    fn set_vis_custom_actions(&self, actions: Vec<CustomActionDef>) -> io::Result<()>;
+
+    /// Consume custom actions pressed by the viewer since the last call.
+    ///
+    /// Return the names declared with [`Self::set_vis_custom_actions`]. An
+    /// empty list means no custom action was pressed. The application decides
+    /// what each name does.
+    fn take_vis_custom_actions(&mut self) -> Vec<String>;
+
     /// Return a shared retained-scene renderer for this arena.
     ///
     /// Return `None` when no [`NetVis`] is attached. Updates remain available
@@ -158,6 +180,17 @@ impl ArenaVisExt for Arena {
 
     fn take_vis_actions(&mut self) -> u8 {
         net_vis(self).map_or(0, NetVis::take_actions)
+    }
+
+    fn set_vis_custom_actions(&self, actions: Vec<CustomActionDef>) -> io::Result<()> {
+        let vis = net_vis(self)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotConnected, "no viewer is attached"))?;
+        vis.set_custom_actions(actions)
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error.to_string()))
+    }
+
+    fn take_vis_custom_actions(&mut self) -> Vec<String> {
+        net_vis(self).map_or_else(Vec::new, NetVis::take_named_custom_presses)
     }
 
     fn debug_renderer(&self) -> Option<crate::debug::DebugRenderer> {
@@ -458,5 +491,135 @@ mod tests {
         assert_eq!(arena.take_vis_actions(), 0);
         arena.set_vis_enabled(false);
         assert!(!arena.vis_connected());
+    }
+
+    #[test]
+    fn spectate_style_controls_preserve_requests_mutators_and_custom_presses() {
+        let viewer = ViewerListener::try_bind("127.0.0.1:0").unwrap();
+        let mut arena = Arena::new(GameMode::TheVoid);
+        arena
+            .try_set_net_vis(Some(&viewer.local_addr().to_string()))
+            .unwrap();
+        arena
+            .set_vis_custom_actions(vec![CustomActionDef {
+                name: "ping".into(),
+                default_keys: vec!["F5".into()],
+            }])
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while viewer.snapshot().frame.is_none() {
+            arena.step_tick();
+            assert!(Instant::now() < deadline, "frame did not arrive");
+            std::thread::sleep(Duration::from_millis(2));
+        }
+
+        let message =
+            crate::proto::ControlMsg::new(u32::MAX, rocketsim::CarControls::default(), 0b101, 1)
+                .with_mutators(crate::proto::MUT_UNLIMITED_BOOST)
+                .with_custom_presses(0b1);
+        assert!(viewer.send_controls(message));
+        loop {
+            if arena
+                .latest_vis_controls()
+                .is_some_and(|message| message.seq == 1)
+            {
+                break;
+            }
+            assert!(Instant::now() < deadline, "controls did not reach arena");
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        let control = arena.latest_vis_controls().unwrap();
+        assert_eq!(control.car_index, u32::MAX);
+        assert_eq!(control.controls, rocketsim::CarControls::default());
+        // Action bits move to the dedicated accumulator on the sim side.
+        assert_eq!(arena.take_vis_actions(), 0b101);
+        assert_eq!(control.mutators, crate::proto::MUT_UNLIMITED_BOOST);
+        assert_eq!(arena.take_vis_custom_actions(), vec!["ping".to_string()]);
+    }
+
+    #[test]
+    fn custom_actions_reach_viewer_and_presses_return_to_arena() {
+        let viewer = ViewerListener::try_bind("127.0.0.1:0").unwrap();
+        let addr = viewer.local_addr().to_string();
+        let mut arena = Arena::new(GameMode::TheVoid);
+        arena.try_set_net_vis(Some(&addr)).unwrap();
+        arena
+            .set_vis_custom_actions(vec![
+                CustomActionDef {
+                    name: "show_route".into(),
+                    default_keys: vec!["F5".into(), "Space".into()],
+                },
+                CustomActionDef {
+                    name: "ping".into(),
+                    default_keys: vec!["V".into()],
+                },
+            ])
+            .unwrap();
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            arena.step_tick();
+            let snapshot = viewer.snapshot();
+            if snapshot.custom_actions.actions.len() == 2
+                && snapshot.custom_actions.actions[0].name == "show_route"
+            {
+                break;
+            }
+            assert!(Instant::now() < deadline, "declaration did not arrive");
+            std::thread::sleep(Duration::from_millis(2));
+        }
+
+        assert!(viewer.queue_custom_press(1));
+        assert!(viewer.send_controls(crate::proto::ControlMsg::new(
+            0,
+            rocketsim::CarControls::default(),
+            0,
+            1,
+        )));
+        loop {
+            arena.step_tick();
+            let pressed = arena.take_vis_custom_actions();
+            if !pressed.is_empty() {
+                assert_eq!(pressed, vec!["ping".to_string()]);
+                break;
+            }
+            assert!(Instant::now() < deadline, "custom press did not arrive");
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert!(arena.take_vis_custom_actions().is_empty());
+
+        // A new connection receives the declaration again with a fresh generation.
+        let generation = viewer.snapshot().generation;
+        arena.set_net_vis(None);
+        let disconnect_deadline = Instant::now() + Duration::from_secs(3);
+        while viewer.snapshot().generation <= generation {
+            assert!(
+                Instant::now() < disconnect_deadline,
+                "viewer did not reset on disconnect"
+            );
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        arena.try_set_net_vis(Some(&addr)).unwrap();
+        arena
+            .set_vis_custom_actions(vec![CustomActionDef {
+                name: "reconnected".into(),
+                default_keys: vec!["F6".into()],
+            }])
+            .unwrap();
+        let redeclare_deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            arena.step_tick();
+            let snapshot = viewer.snapshot();
+            if snapshot.custom_actions.actions.len() == 1
+                && snapshot.custom_actions.actions[0].name == "reconnected"
+            {
+                break;
+            }
+            assert!(
+                Instant::now() < redeclare_deadline,
+                "declaration did not arrive after reconnect"
+            );
+            std::thread::sleep(Duration::from_millis(2));
+        }
     }
 }

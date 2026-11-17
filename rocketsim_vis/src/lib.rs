@@ -41,6 +41,14 @@
 //! Use neutral controls when no fresh input is available. Read action requests
 //! with [`ArenaVisExt::take_vis_actions`]. The application performs each action.
 //!
+//! # Declare custom actions
+//!
+//! Use [`ArenaVisExt::set_vis_custom_actions`] to publish named actions with
+//! default keyboard keys. The viewer lists them under **Bindings → Custom**,
+//! where each action can be rebound to any keyboard, mouse, or controller
+//! input. Read presses with [`ArenaVisExt::take_vis_custom_actions`]. Bindings
+//! persist in the viewer keyed by action name.
+//!
 //! # Draw retained scene data
 //!
 //! Get a [`debug::DebugRenderer`] from [`ArenaVisExt::debug_renderer`]. Use

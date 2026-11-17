@@ -4,6 +4,7 @@ use std::collections::{HashMap, HashSet};
 
 use super::{
     actions::{ACTIONS, Action, ActionMap},
+    custom::{CustomActionMap, CustomActionRegistry},
     sources::InputSource,
 };
 
@@ -47,16 +48,22 @@ pub struct ActionValue {
 pub struct Evaluator {
     previous: [bool; ACTIONS.len()],
     previous_map_revision: Option<u64>,
+    previous_custom: HashMap<String, bool>,
+    previous_custom_revision: Option<(u64, u64)>,
     suppressed: HashSet<InputSource>,
     was_focused: bool,
+    was_focused_custom: bool,
 }
 impl Default for Evaluator {
     fn default() -> Self {
         Self {
             previous: [false; ACTIONS.len()],
             previous_map_revision: None,
+            previous_custom: HashMap::new(),
+            previous_custom_revision: None,
             suppressed: HashSet::new(),
             was_focused: true,
+            was_focused_custom: true,
         }
     }
 }
@@ -136,16 +143,7 @@ impl Evaluator {
         }
         out.clear();
         for a in ACTIONS {
-            let mut v: f32 = 0.0;
-            for &src in m.sources(a) {
-                if src == InputSource::Unbound || self.suppressed.contains(&src) {
-                    continue;
-                }
-                let x = self.source_value(s, src, d);
-                if x.abs() > v.abs() {
-                    v = x;
-                }
-            }
+            let v = self.eval_sources(m.sources(a), s, d);
             let down = v.abs() >= 0.5;
             let previous = &mut self.previous[a as usize];
             let old = *previous;
@@ -164,6 +162,64 @@ impl Evaluator {
         }
         self.was_focused = s.focused;
     }
+
+    fn eval_sources(&self, sources: &[InputSource; 2], s: &InputSnapshot, d: f32) -> f32 {
+        let mut v: f32 = 0.0;
+        for &src in sources {
+            if src == InputSource::Unbound || self.suppressed.contains(&src) {
+                continue;
+            }
+            let x = self.source_value(s, src, d);
+            if x.abs() > v.abs() {
+                v = x;
+            }
+        }
+        v
+    }
+
+    /// Evaluate simulation-defined custom actions into a caller-owned map.
+    ///
+    /// Edge state is keyed by action name. A declaration or binding change
+    /// clears old edges so a held key does not appear as a fresh press.
+    pub fn evaluate_custom_into(
+        &mut self,
+        registry: &CustomActionRegistry,
+        map: &CustomActionMap,
+        s: &InputSnapshot,
+        d: f32,
+        out: &mut HashMap<String, ActionValue>,
+    ) {
+        let revision = (registry.rev, map.revision());
+        let changed = self
+            .previous_custom_revision
+            .is_some_and(|previous| previous != revision);
+        if changed {
+            self.previous_custom.clear();
+        }
+        self.previous_custom_revision = Some(revision);
+        let regain = s.focused && !self.was_focused_custom;
+        self.was_focused_custom = s.focused;
+        out.clear();
+        for action in &registry.actions {
+            let v = self.eval_sources(map.sources(&action.name), s, d);
+            let down = v.abs() >= 0.5;
+            let old = self
+                .previous_custom
+                .get(&action.name)
+                .copied()
+                .unwrap_or(false);
+            self.previous_custom.insert(action.name.clone(), down);
+            out.insert(
+                action.name.clone(),
+                ActionValue {
+                    value: v,
+                    pressed: down,
+                    just_pressed: down && !old && !regain,
+                    just_released: !down && old,
+                },
+            );
+        }
+    }
 }
 fn source_release_threshold(source: InputSource) -> f32 {
     if matches!(
@@ -176,5 +232,46 @@ fn source_release_threshold(source: InputSource) -> f32 {
         0.1
     } else {
         0.5
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rocketsim_vis::proto::{CustomActionDecl, CustomActionDef};
+
+    use super::*;
+    use crate::input::sources::Key;
+
+    #[test]
+    fn custom_actions_follow_press_and_release_edges() {
+        let decl = CustomActionDecl {
+            rev: 1,
+            actions: vec![CustomActionDef {
+                name: "ping".into(),
+                default_keys: vec!["F5".into()],
+            }],
+        };
+        let registry = CustomActionRegistry::from_decl(&decl);
+        let mut map = CustomActionMap::unbound();
+        map.merge_defaults(&registry);
+        let source = InputSource::Key(Key::F5);
+        let mut evaluator = Evaluator::default();
+        let mut snapshot = InputSnapshot::new();
+        let mut out = HashMap::new();
+
+        evaluator.evaluate_custom_into(&registry, &map, &snapshot, 0.0, &mut out);
+        assert!(!out["ping"].pressed);
+
+        snapshot.set_down(source, true);
+        evaluator.evaluate_custom_into(&registry, &map, &snapshot, 0.0, &mut out);
+        assert!(out["ping"].just_pressed);
+
+        evaluator.evaluate_custom_into(&registry, &map, &snapshot, 0.0, &mut out);
+        assert!(!out["ping"].just_pressed);
+        assert!(out["ping"].pressed);
+
+        snapshot.set_down(source, false);
+        evaluator.evaluate_custom_into(&registry, &map, &snapshot, 0.0, &mut out);
+        assert!(out["ping"].just_released);
     }
 }

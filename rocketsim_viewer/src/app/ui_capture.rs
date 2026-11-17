@@ -1,7 +1,8 @@
 use super::{ViewerUiState, input_state::InputState};
 use crate::{
-    input::{Action, ActionMap, Axis2, InputSnapshot, InputSource},
+    input::{Action, ActionMap, Axis2, CustomActionMap, InputSnapshot, InputSource},
     settings::ViewerSettings,
+    ui::RebindTarget,
 };
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -33,7 +34,7 @@ pub(super) fn update_capture(context: CaptureContext<'_>) -> CaptureUpdate {
         dt,
     } = context;
     let mut update = CaptureUpdate::default();
-    let Some((action, slot)) = ui.rebind_action else {
+    let Some(target) = ui.rebind_action.clone() else {
         return update;
     };
 
@@ -94,10 +95,20 @@ pub(super) fn update_capture(context: CaptureContext<'_>) -> CaptureUpdate {
         }
     }
     if let Some(source) = capture.poll(&capture_snapshot).or(bind_source) {
-        settings
-            .action_bindings
-            .get_or_insert_with(|| action_map.clone())
-            .set(action, slot, source);
+        match target {
+            RebindTarget::Builtin(action, slot) => {
+                settings
+                    .action_bindings
+                    .get_or_insert_with(|| action_map.clone())
+                    .set(action, slot, source);
+            }
+            RebindTarget::Custom(name, slot) => {
+                settings
+                    .custom_action_bindings
+                    .get_or_insert_with(CustomActionMap::unbound)
+                    .set(name, slot, source);
+            }
+        }
         settings.mark_dirty();
         ui.binding_warning = None;
         ui.rebind_action = None;
@@ -122,7 +133,7 @@ mod tests {
         let mut settings = ViewerSettings::default();
         let mut input = InputState::new();
         let mut ui = ViewerUiState::new(true);
-        ui.rebind_action = Some((Action::Jump, 0));
+        ui.rebind_action = Some(RebindTarget::Builtin(Action::Jump, 0));
         let mut snapshot = InputSnapshot::new();
         ui.rebind_capture = Some(Capture::begin(&snapshot));
         snapshot.set_down(back, true);
@@ -154,7 +165,7 @@ mod tests {
         let mut settings = ViewerSettings::default();
         let mut input = InputState::new();
         let mut ui = ViewerUiState::new(true);
-        ui.rebind_action = Some((Action::Jump, 0));
+        ui.rebind_action = Some(RebindTarget::Builtin(Action::Jump, 0));
         let mut snapshot = InputSnapshot::new();
         ui.rebind_capture = Some(Capture::begin(&snapshot));
         snapshot.set_down(back, true);

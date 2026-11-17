@@ -173,9 +173,18 @@ reset the visible device assignments. A device reset keeps assignments hidden
 by that view. Duplicate bindings are allowed and show a warning.
 
 The **Camera**, **Display**, and **Simulation** tabs contain the other
-settings. Spectate-only mode sends neutral driving controls and no action
-requests. The viewer sends mutator values, but the simulation decides whether
-to apply them.
+settings. Spectate-only mode ("no inputs") blocks only driving controls for the
+spectated car: throttle, steering, jump, boost, and similar car inputs. Camera
+controls keep working, and the viewer still sends action requests, mutator
+values, the spectated car, and custom action presses. The simulation decides
+whether to apply any of them.
+
+When a simulation declares custom actions, they appear in the **Custom** group
+of the Bindings tab. Each uses the same two slots and the same capture flow as
+built-in actions. Defaults come from the simulation and use keyboard keys; you
+can rebind a slot to any keyboard, mouse, or controller input. Custom bindings
+are stored in `settings.toml` under `[custom_action_bindings]`, keyed by action
+name, and are kept when the simulation changes its declaration.
 
 ## Settings file
 

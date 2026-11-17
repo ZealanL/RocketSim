@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
-use super::{CameraChoice, MSAA_LEVELS, UiAction, ViewerUiState, nav_row};
+use super::{CameraChoice, MSAA_LEVELS, RebindTarget, UiAction, ViewerUiState, nav_row};
 use crate::{
     camera::CameraPreset,
     input::{
-        ACTIONS, Action, Capture, Evaluator, InputSnapshot, InputSource,
+        ACTIONS, Action, Capture, CustomActionRegistry, Evaluator, InputSnapshot, InputSource,
         sources::{PadButton, clamp_deadzone},
     },
     settings::{BindingDevice, ViewerSettings},
@@ -30,6 +30,7 @@ pub(crate) struct SettingsView<'a> {
     pub(crate) drive_line: &'a str,
     pub(crate) driven_car: u32,
     pub(crate) rebinding: bool,
+    pub(crate) custom_registry: &'a CustomActionRegistry,
 }
 
 pub(crate) fn show_settings(view: SettingsView<'_>) -> Vec<UiAction> {
@@ -44,11 +45,14 @@ pub(crate) fn show_settings(view: SettingsView<'_>) -> Vec<UiAction> {
         drive_line,
         driven_car,
         rebinding,
+        custom_registry,
     } = view;
     let mut menu_actions = Vec::new();
     if ui_state.menu_open && !rebinding && !ui_state.reset_all_confirm {
         let mut ui_action_map = settings.action_map().clone();
+        let mut ui_custom_map = settings.custom_action_map().clone();
         let mut bindings_dirty = false;
+        let mut custom_bindings_dirty = false;
         let binding_group = &mut ui_state.binding_group;
         let binding_filter = &mut ui_state.binding_filter;
         let binding_device = &mut ui_state.binding_device;
@@ -202,7 +206,8 @@ pub(crate) fn show_settings(view: SettingsView<'_>) -> Vec<UiAction> {
                 if ui_state.settings_tab == 3 {
                 ui.scope(|ui| {
                         ui.label("The simulation must apply controls and mutators. The drive example does this.");
-                        let spectate = ui.checkbox(&mut settings.spectate_only, "Spectate only (no inputs)");
+                        let spectate = ui.checkbox(&mut settings.spectate_only, "Spectate only (no inputs)")
+                            .on_hover_text("Blocks driving the spectated car only. Camera, action requests, mutators, and custom actions still work.");
                         if spectate.changed() { settings.mark_dirty(); }
                         nav_row(ui, &spectate, ids, "input.spectate".into(), focus, active, moved);
                         ui.separator();
@@ -348,7 +353,7 @@ pub(crate) fn show_settings(view: SettingsView<'_>) -> Vec<UiAction> {
                             nav_row(ui, &deadzone, ids, "input.deadzone".into(), focus, active, moved);
                         }
                         ui.label("Two shared slots per action; capture accepts any input type.");
-                        let groups = ["Driving", "Simulation", "Camera", "Free camera", "Menu"];
+                        let groups = ["Driving", "Simulation", "Camera", "Free camera", "Menu", "Custom"];
                         let group_picker = egui::ComboBox::from_id_salt("binding-group")
                             .selected_text(binding_group.as_deref().unwrap_or("All actions"))
                             .show_ui(ui, |ui| {
@@ -364,6 +369,7 @@ pub(crate) fn show_settings(view: SettingsView<'_>) -> Vec<UiAction> {
                             nav_row(ui, &clear_filter, ids, "bind.filter.clear".into(), focus, active, moved);
                         });
                         let action_map = &mut ui_action_map;
+                        let custom_map = &mut ui_custom_map;
                         let mut last_group = "";
                         egui::Grid::new("viewer.binding-grid").striped(true).num_columns(3).show(ui, |ui| {
                             ui.strong("Action");
@@ -397,10 +403,10 @@ pub(crate) fn show_settings(view: SettingsView<'_>) -> Vec<UiAction> {
                                     } else {
                                         for slot in visible {
                                             let source = action_map.sources(action)[slot];
-                                            let text = if *rebind_action == Some((action, slot)) { "Press input…".to_string() } else { source.name() };
+                                            let text = if *rebind_action == Some(RebindTarget::Builtin(action, slot)) { "Press input…".to_string() } else { source.name() };
                                             let bind = ui.add_sized([132.0, 24.0], egui::Button::new(text));
                                             if bind.clicked() {
-                                                *rebind_action = Some((action, slot));
+                                                *rebind_action = Some(RebindTarget::Builtin(action, slot));
                                                 *rebind_capture = Some(Capture::begin(input_snapshot));
                                                 *capture_start_back = action_map.sources(Action::MenuBack).iter().copied().find(|source| *source != InputSource::Unbound && input_snapshot.value(*source).abs() >= 0.5);
                                                 ui_state.capture_pending_back = None;
@@ -419,11 +425,85 @@ pub(crate) fn show_settings(view: SettingsView<'_>) -> Vec<UiAction> {
                                 nav_row(ui, &reset, ids, format!("bind.reset.{action_index}"), focus, active, moved);
                                 ui.end_row();
                             }
+                            if binding_group.as_ref().is_none_or(|g| g == "Custom") {
+                                let mut header = false;
+                                for (custom_index, action) in custom_registry.actions.iter().enumerate() {
+                                    let name = action.name.as_str();
+                                    if !binding_filter.is_empty()
+                                        && !name.to_lowercase().contains(&binding_filter.to_lowercase())
+                                    {
+                                        continue;
+                                    }
+                                    if !header {
+                                        header = true;
+                                        ui.label(egui::RichText::new("Custom").strong());
+                                        ui.label("");
+                                        ui.label("");
+                                        ui.end_row();
+                                    }
+                                    ui.add_sized([150.0, 24.0], egui::Label::new(name));
+                                    let sources = *custom_map.sources(name);
+                                    let visible = binding_device.visible_slots(sources);
+                                    let can_reset = !visible.is_empty();
+                                    let hidden = match binding_device {
+                                        BindingDevice::KeyboardMouse => sources.iter().any(|source| matches!(source, InputSource::PadButton(_) | InputSource::PadAxis { .. } | InputSource::PadRaw { .. })),
+                                        BindingDevice::Controller => sources.iter().any(|source| matches!(source, InputSource::Key(_) | InputSource::Mouse(_) | InputSource::MouseAxis { .. } | InputSource::Wheel { .. })),
+                                        BindingDevice::All => false,
+                                    };
+                                    ui.horizontal(|ui| {
+                                        if visible.is_empty() && hidden {
+                                            let hint = if *binding_device == BindingDevice::Controller { "Assigned on Keyboard & Mouse" } else { "Assigned on Controller" };
+                                            ui.colored_label(egui::Color32::GRAY, hint);
+                                            let show_all = ui.small_button("Show All");
+                                            if show_all.clicked() { *binding_device = BindingDevice::All; }
+                                            nav_row(ui, &show_all, ids, format!("bind.custom.show_all.{custom_index}"), focus, active, moved);
+                                        } else {
+                                            for slot in visible {
+                                                let source = sources[slot];
+                                                let text = if *rebind_action == Some(RebindTarget::Custom(name.to_string(), slot)) { "Press input…".to_string() } else { source.name() };
+                                                let bind = ui.add_sized([132.0, 24.0], egui::Button::new(text));
+                                                if bind.clicked() {
+                                                    *rebind_action = Some(RebindTarget::Custom(name.to_string(), slot));
+                                                    *rebind_capture = Some(Capture::begin(input_snapshot));
+                                                    *capture_start_back = action_map.sources(Action::MenuBack).iter().copied().find(|source| *source != InputSource::Unbound && input_snapshot.value(*source).abs() >= 0.5);
+                                                    ui_state.capture_pending_back = None;
+                                                    ui_state.capture_cancel_hold = 0.0;
+                                                    action_evaluator.suppress_until_release(input_snapshot);
+                                                }
+                                                nav_row(ui, &bind, ids, format!("bind.custom.action.{custom_index}.{slot}"), focus, active, moved);
+                                                let clear = ui.add_enabled(source != InputSource::Unbound, egui::Button::new("×").small()).on_hover_text("Clear this slot");
+                                                if clear.clicked() { custom_map.set(name, slot, InputSource::Unbound); custom_bindings_dirty = true; }
+                                                nav_row(ui, &clear, ids, format!("bind.custom.clear.{custom_index}.{slot}"), focus, active, moved);
+                                            }
+                                        }
+                                    });
+                                    let reset = ui.add_enabled(can_reset, egui::Button::new("Reset").small()).on_hover_text("Restore default bindings in this device view");
+                                    if reset.clicked() {
+                                        match *binding_device {
+                                            BindingDevice::All | BindingDevice::KeyboardMouse => {
+                                                for (slot, source) in action.default_sources.iter().take(2).enumerate() {
+                                                    custom_map.set(name, slot, *source);
+                                                }
+                                            }
+                                            BindingDevice::Controller => {
+                                                for slot in 0..2 {
+                                                    if matches!(custom_map.sources(name)[slot], InputSource::PadButton(_) | InputSource::PadAxis { .. } | InputSource::PadRaw { .. }) {
+                                                        custom_map.set(name, slot, InputSource::Unbound);
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        custom_bindings_dirty = true;
+                                    }
+                                    nav_row(ui, &reset, ids, format!("bind.custom.reset.{custom_index}"), focus, active, moved);
+                                    ui.end_row();
+                                }
+                            }
                         });
 
                         if let Some(warning) = &*binding_warning { ui.colored_label(egui::Color32::YELLOW, warning); }
-                        let conflicts = action_map.conflicts();
-                        if !conflicts.is_empty() { ui.colored_label(egui::Color32::YELLOW, format!("{} shared binding conflict(s); actions may trigger together", conflicts.len())); }
+                        let conflicts = action_map.conflicts().len() + ui_custom_map.conflicts(custom_registry).len();
+                        if conflicts > 0 { ui.colored_label(egui::Color32::YELLOW, format!("{conflicts} shared binding conflict(s); actions may trigger together")); }
                     });
                 }
                 });
@@ -438,6 +518,10 @@ pub(crate) fn show_settings(view: SettingsView<'_>) -> Vec<UiAction> {
             });
         if bindings_dirty {
             settings.action_bindings = Some(ui_action_map);
+            settings.mark_dirty();
+        }
+        if custom_bindings_dirty {
+            settings.custom_action_bindings = Some(ui_custom_map);
             settings.mark_dirty();
         }
     }

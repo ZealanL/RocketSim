@@ -1,9 +1,9 @@
 use super::{CamMode, CameraState, InputState};
 use crate::{
     camera::CameraPreset,
-    input::{ACTIONS, Action, Capture, InputSnapshot, InputSource},
+    input::{ACTIONS, Action, Capture, CustomActionRegistry, InputSnapshot, InputSource},
     settings::{BindingDevice, ViewerSettings},
-    ui::{ViewerUiState, step_msaa, step_stick_deadzone},
+    ui::{RebindTarget, ViewerUiState, step_msaa, step_stick_deadzone},
 };
 
 /// Pad menu action for one focused row: `dx` (±1 from ◀▶) adjusts the
@@ -17,6 +17,7 @@ pub(super) struct MenuPadCtx<'a> {
     ui: &'a mut ViewerUiState,
     input: &'a mut InputState,
     input_snapshot: &'a InputSnapshot,
+    custom_registry: &'a CustomActionRegistry,
 }
 
 impl<'a> MenuPadCtx<'a> {
@@ -26,6 +27,7 @@ impl<'a> MenuPadCtx<'a> {
         ui: &'a mut ViewerUiState,
         input: &'a mut InputState,
         input_snapshot: &'a InputSnapshot,
+        custom_registry: &'a CustomActionRegistry,
     ) -> Self {
         Self {
             settings,
@@ -33,6 +35,7 @@ impl<'a> MenuPadCtx<'a> {
             ui,
             input,
             input_snapshot,
+            custom_registry,
         }
     }
 }
@@ -84,6 +87,7 @@ pub(super) fn menu_pad_action(id: String, dx: i32, a: bool, cx: &mut MenuPadCtx)
                 Some("Camera".to_string()),
                 Some("Free camera".to_string()),
                 Some("Menu".to_string()),
+                Some("Custom".to_string()),
             ];
             let index = groups
                 .iter()
@@ -234,14 +238,60 @@ pub(super) fn menu_pad_action(id: String, dx: i32, a: bool, cx: &mut MenuPadCtx)
 
         _ => {
             if a {
-                if let Some(rest) = id.strip_prefix("bind.action.") {
+                if let Some(rest) = id.strip_prefix("bind.custom.action.") {
+                    let mut parts = rest.split('.');
+                    if let (Some(index), Some(slot)) = (
+                        parts.next().and_then(|x| x.parse::<usize>().ok()),
+                        parts.next().and_then(|x| x.parse::<usize>().ok()),
+                    ) && let Some(action) = cx.custom_registry.get(index)
+                    {
+                        cx.ui.rebind_action = Some(RebindTarget::Custom(action.name.clone(), slot));
+                        cx.ui.rebind_capture = Some(Capture::begin(cx.input_snapshot));
+                        cx.ui.capture_start_back = cx
+                            .settings
+                            .action_map()
+                            .sources(Action::MenuBack)
+                            .iter()
+                            .copied()
+                            .find(|source| {
+                                *source != InputSource::Unbound
+                                    && cx.input_snapshot.value(*source).abs() >= 0.5
+                            });
+                        cx.ui.capture_cancel_hold = 0.0;
+                        cx.ui.capture_pending_back = None;
+                        cx.input.evaluator.suppress_until_release(cx.input_snapshot);
+                    }
+                } else if let Some(rest) = id.strip_prefix("bind.custom.clear.") {
+                    let mut parts = rest.split('.');
+                    if let (Some(index), Some(slot)) = (
+                        parts.next().and_then(|x| x.parse::<usize>().ok()),
+                        parts.next().and_then(|x| x.parse::<usize>().ok()),
+                    ) && let Some(action) = cx.custom_registry.get(index)
+                    {
+                        let mut map = cx.settings.custom_action_map().clone();
+                        map.set(&action.name, slot, InputSource::Unbound);
+                        cx.settings.custom_action_bindings = Some(map);
+                        cx.settings.mark_dirty();
+                    }
+                } else if let Some(action) = id
+                    .strip_prefix("bind.custom.reset.")
+                    .and_then(|x| x.parse::<usize>().ok())
+                    .and_then(|index| cx.custom_registry.get(index))
+                {
+                    let mut map = cx.settings.custom_action_map().clone();
+                    for (slot, source) in action.default_sources.iter().take(2).enumerate() {
+                        map.set(&action.name, slot, *source);
+                    }
+                    cx.settings.custom_action_bindings = Some(map);
+                    cx.settings.mark_dirty();
+                } else if let Some(rest) = id.strip_prefix("bind.action.") {
                     let mut parts = rest.split('.');
                     if let (Some(action_index), Some(slot)) = (
                         parts.next().and_then(|x| x.parse::<usize>().ok()),
                         parts.next().and_then(|x| x.parse::<usize>().ok()),
                     ) && let Some(action) = ACTIONS.get(action_index).copied()
                     {
-                        cx.ui.rebind_action = Some((action, slot));
+                        cx.ui.rebind_action = Some(RebindTarget::Builtin(action, slot));
                         cx.ui.rebind_capture = Some(Capture::begin(cx.input_snapshot));
 
                         cx.ui.capture_start_back = cx
@@ -325,12 +375,14 @@ mod tests {
         ui_state.binding_device = BindingDevice::All;
         let mut input = InputState::new();
         let input_snapshot = InputSnapshot::new();
+        let custom_registry = CustomActionRegistry::default();
         let mut cx = MenuPadCtx::new(
             &mut settings,
             &mut camera,
             &mut ui_state,
             &mut input,
             &input_snapshot,
+            &custom_registry,
         );
 
         menu_pad_action("input.deadzone".into(), 1, false, &mut cx);

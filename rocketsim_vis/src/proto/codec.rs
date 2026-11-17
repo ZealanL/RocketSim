@@ -206,6 +206,9 @@ pub fn decode_sim(buf: &[u8]) -> Result<Option<(SimMsg, usize)>, ProtocolError> 
         SimMsg::DebugChunk(chunk) => {
             chunk.validate_framing()?;
         }
+        SimMsg::CustomActions(decl) => {
+            decl.validate()?;
+        }
     }
     Ok(Some((msg, 4 + len)))
 }
@@ -292,6 +295,69 @@ mod tests {
         assert_eq!(decoded, message);
         assert_eq!(decoded.spectated_car, Some(7));
         assert_eq!(consumed, bytes.len());
+    }
+
+    #[test]
+    fn custom_action_declaration_and_presses_round_trip() {
+        let decl = CustomActionDecl {
+            rev: 3,
+            actions: vec![
+                CustomActionDef {
+                    name: "show_route".into(),
+                    default_keys: vec!["F5".into(), "Space".into()],
+                },
+                CustomActionDef {
+                    name: "ping".into(),
+                    default_keys: vec!["V".into()],
+                },
+            ],
+        };
+        decl.validate().unwrap();
+        let bytes = encode_sim(&SimMsg::CustomActions(decl.clone()));
+        let (message, consumed) = decode_sim(&bytes).unwrap().unwrap();
+        assert_eq!(consumed, bytes.len());
+        let SimMsg::CustomActions(back) = message else {
+            panic!("expected a custom action declaration")
+        };
+        assert_eq!(back, decl);
+
+        let control = ControlMsg::new(0, CarControls::default(), 0, 1).with_custom_presses(0b101);
+        let bytes = encode_control(&control);
+        let (back, consumed) = decode_control(&bytes).unwrap().unwrap();
+        assert_eq!(consumed, bytes.len());
+        assert_eq!(back.custom_presses, 0b101);
+    }
+
+    #[test]
+    fn custom_action_declaration_rejects_invalid_data() {
+        let duplicate = CustomActionDecl {
+            rev: 1,
+            actions: vec![
+                CustomActionDef {
+                    name: "same".into(),
+                    default_keys: vec!["F5".into()],
+                },
+                CustomActionDef {
+                    name: "same".into(),
+                    default_keys: Vec::new(),
+                },
+            ],
+        };
+        assert!(matches!(
+            decode_sim(&encode_sim(&SimMsg::CustomActions(duplicate))),
+            Err(ProtocolError::InvalidData(_))
+        ));
+        let too_many_keys = CustomActionDecl {
+            rev: 1,
+            actions: vec![CustomActionDef {
+                name: "too_many".into(),
+                default_keys: vec!["A".into(), "B".into(), "C".into()],
+            }],
+        };
+        assert!(matches!(
+            decode_sim(&encode_sim(&SimMsg::CustomActions(too_many_keys))),
+            Err(ProtocolError::InvalidData(_))
+        ));
     }
 
     #[test]

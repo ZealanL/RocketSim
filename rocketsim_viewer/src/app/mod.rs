@@ -31,7 +31,7 @@ use crate::{
     debug_metrics,
     effects::dropshot::DropshotTileCache,
     geometry::{lines::Segment, mesh::ArenaMesh},
-    input::{Action, sources::clamp_deadzone, spectate},
+    input::{Action, CustomActionRegistry, sources::clamp_deadzone, spectate},
     render::{
         debug::{DebugStats, overlay::OverlayCache},
         scene::SceneGl,
@@ -40,7 +40,7 @@ use crate::{
     session,
     settings::ViewerSettings,
     ui::{
-        CameraChoice, SettingsInput, SettingsView, UiAction, ViewerUiState,
+        CameraChoice, RebindTarget, SettingsInput, SettingsView, UiAction, ViewerUiState,
         hud::{boost_meter, spectated_boost},
         menu_nav_step, nav_row, show_settings,
     },
@@ -69,6 +69,8 @@ struct ViewerApp {
     camera: CameraState,
     ctrl_seq: u64,
     driven_car: u32,
+    /// Custom actions declared by the connected simulation.
+    custom_actions: CustomActionRegistry,
 
     settings: ViewerSettings,
     ui_state: ViewerUiState,
@@ -109,6 +111,7 @@ impl ViewerApp {
             camera: CameraState::new(init_mode),
             ctrl_seq: 0,
             driven_car: 0,
+            custom_actions: CustomActionRegistry::default(),
 
             settings,
             ui_state: ViewerUiState::new(menu_open),
@@ -163,6 +166,7 @@ impl eframe::App for ViewerApp {
         let capture_map = self
             .ui_state
             .rebind_action
+            .as_ref()
             .map(|_| self.settings.action_map().clone());
 
         let cancel_rect = self.ui_state.capture_cancel_rect;
@@ -202,12 +206,36 @@ impl eframe::App for ViewerApp {
             || capture_update.completed
             || capture_update.cancelled;
         let mut menu_toggled = false;
+        let ViewerSnapshot {
+            generation,
+            status,
+            frame: client_frame,
+            scene: mut scene_metadata,
+            debug: retained_debug,
+            custom_actions: declared_actions,
+            received,
+            debug_transfers,
+        } = self.listener.snapshot();
+        // Rebuild the custom action registry when the declaration changes and
+        // fill in default binds for newly declared names. User rebinds survive.
+        if declared_actions.rev != self.custom_actions.rev {
+            self.custom_actions = CustomActionRegistry::from_decl(&declared_actions);
+            self.settings.fill_custom_defaults(&self.custom_actions);
+        }
         let action_map = self.settings.action_map();
         self.input.evaluator.evaluate_into(
             action_map,
             &input_snapshot,
             clamp_deadzone(self.settings.bindings.pad.stick_deadzone),
             &mut self.input.action_values,
+        );
+        let custom_deadzone = clamp_deadzone(self.settings.bindings.pad.stick_deadzone);
+        self.input.evaluator.evaluate_custom_into(
+            &self.custom_actions,
+            self.settings.custom_action_map(),
+            &input_snapshot,
+            custom_deadzone,
+            &mut self.input.custom_action_values,
         );
         if self
             .input
@@ -267,6 +295,21 @@ impl eframe::App for ViewerApp {
             nav_held = [false; 4];
         }
 
+        // Report freshly pressed custom actions to the simulation. Do not
+        // fire them while capturing a rebind or typing in the settings menu.
+        if !rebinding && !keyboard_editing {
+            for (index, action) in self.custom_actions.actions.iter().enumerate() {
+                if self
+                    .input
+                    .custom_action_values
+                    .get(&action.name)
+                    .is_some_and(|value| value.just_pressed)
+                {
+                    self.listener.queue_custom_press(index);
+                }
+            }
+        }
+
         // F3 (or the bound action) toggles retained debug rendering. This is a
         // display setting, so it also works with the menu open; it is blocked
         // only while rebinding or typing. The setting is applied after the
@@ -316,15 +359,6 @@ impl eframe::App for ViewerApp {
         }
         self.frames += 1;
         let frames = self.frames;
-        let ViewerSnapshot {
-            generation,
-            status,
-            frame: client_frame,
-            scene: mut scene_metadata,
-            debug: retained_debug,
-            received,
-            debug_transfers,
-        } = self.listener.snapshot();
         let scene_update = self.session.update_scene(
             generation,
             client_frame.as_deref(),
@@ -422,8 +456,11 @@ impl eframe::App for ViewerApp {
         if let Some(idx) = spectated {
             self.driven_car = idx;
         }
-        // Unfocused, rebinding, or menu-open: neutral controls, never a
-        // stale key. (The menu's own Reset-play button bypasses this below.)
+        // Driving a car needs a followed car. Action requests only need live
+        // input; they still fire in spectate-only mode and in a free camera.
+        // Unfocused, rebinding, or menu-open input is never trusted. (The
+        // menu's own Reset-play button bypasses this below.)
+        let input_active = focused && !action_suppressed && !self.ui_state.menu_open;
         let driving = can_drive(
             spectated.is_some(),
             focused,
@@ -437,6 +474,7 @@ impl eframe::App for ViewerApp {
             &input_snapshot,
             clamp_deadzone(self.settings.bindings.pad.stick_deadzone),
             driving,
+            input_active,
             ctx.egui_wants_pointer_input(),
             self.ui_state.reset_requested,
         );
@@ -454,7 +492,9 @@ impl eframe::App for ViewerApp {
             hidden_debug
         };
         // Spectate-only messages have no target car. Neutral controls for a
-        // valid car would replace its policy controls and stop the bot.
+        // valid car would replace its policy controls and stop the bot. The
+        // gate keeps action requests; mutators, custom presses, and the
+        // spectated car are added on every message as well.
         let (car_index, controls, buttons) = spectate::gate(
             self.settings.spectate_only,
             driving,
@@ -463,9 +503,9 @@ impl eframe::App for ViewerApp {
             buttons,
         );
         // The menu's Reset-play button is a deliberate click, not a held
-        // movement key: it survives the menu-open neutral above (but never
-        // spectate-only, which zeroes all inputs by definition).
-        let buttons = if !self.settings.spectate_only && self.ui_state.reset_requested {
+        // movement key: it survives the menu-open neutral above, including in
+        // spectate-only mode.
+        let buttons = if self.ui_state.reset_requested {
             buttons | 0b001
         } else {
             buttons
@@ -482,11 +522,7 @@ impl eframe::App for ViewerApp {
         self.listener.send_controls_for_generation(
             generation,
             ControlMsg::new(car_index, controls, buttons, self.ctrl_seq)
-                .with_mutators(if self.settings.spectate_only {
-                    0
-                } else {
-                    self.settings.mutators_mask()
-                })
+                .with_mutators(self.settings.mutators_mask())
                 .with_spectated_car(watched_car),
         );
         // The menu reset fires once, on the next send.
@@ -563,6 +599,7 @@ impl eframe::App for ViewerApp {
             drive_line: &drive_line,
             driven_car: self.driven_car,
             rebinding,
+            custom_registry: &self.custom_actions,
         });
 
         for action in menu_actions {
@@ -587,11 +624,21 @@ impl eframe::App for ViewerApp {
                 ui.set_min_width(300.0);
                 ui.heading("Rebind input");
                 ui.label("Press any key, mouse input, or controller input.");
-                if let Some((action, slot)) = self.ui_state.rebind_action {
-                    let bound = self.settings.action_map().sources(action)[slot];
+                if let Some(target) = self.ui_state.rebind_action.clone() {
+                    let (label, slot, bound) = match target {
+                        RebindTarget::Builtin(action, slot) => (
+                            action.label().to_string(),
+                            slot,
+                            self.settings.action_map().sources(action)[slot],
+                        ),
+                        RebindTarget::Custom(name, slot) => (
+                            name.clone(),
+                            slot,
+                            self.settings.custom_action_map().sources(&name)[slot],
+                        ),
+                    };
                     ui.label(format!(
-                        "{} · slot {} · currently {}",
-                        action.label(),
+                        "{label} · slot {} · currently {}",
                         slot + 1,
                         bound.name()
                     ));
@@ -695,6 +742,7 @@ impl eframe::App for ViewerApp {
                         &mut self.ui_state,
                         &mut self.input,
                         &input_snapshot,
+                        &self.custom_actions,
                     ),
                 );
                 if !confirming_reset && self.ui_state.reset_all_confirm {

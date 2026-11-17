@@ -12,6 +12,7 @@ pub(super) struct InputState {
     pub(super) last_focused: bool,
     pub(super) cursor_grabbed: bool,
     pub(super) action_values: HashMap<Action, ActionValue>,
+    pub(super) custom_action_values: HashMap<String, ActionValue>,
     pub(super) gilrs: Option<gilrs::Gilrs>,
     pub(super) pad_buttons: HashMap<PadButton, f32>,
     pub(super) raw_pad: HashMap<u32, f32>,
@@ -27,6 +28,7 @@ impl InputState {
             last_focused: false,
             cursor_grabbed: false,
             action_values: HashMap::new(),
+            custom_action_values: HashMap::new(),
             gilrs: gilrs::Gilrs::new().ok(),
             pad_buttons: HashMap::new(),
             raw_pad: HashMap::new(),
@@ -527,7 +529,8 @@ pub(super) fn action_controls(
     evaluator: &Evaluator,
     snapshot: &InputSnapshot,
     deadzone: f32,
-    enabled: bool,
+    controls_enabled: bool,
+    actions_enabled: bool,
     pointer_busy: bool,
     reset_requested: bool,
 ) -> (CarControls, u8) {
@@ -536,7 +539,7 @@ pub(super) fn action_controls(
     let just_pressed = |a| values.get(&a).is_some_and(|v| v.just_pressed);
     let mut controls = CarControls::default();
     let mut buttons = 0;
-    if enabled {
+    if controls_enabled {
         controls.throttle =
             (value(Action::ThrottleForward) - value(Action::ThrottleBack)).clamp(-1.0, 1.0);
         controls.steer = (value(Action::SteerLeft) - value(Action::SteerRight)).clamp(-1.0, 1.0);
@@ -561,6 +564,10 @@ pub(super) fn action_controls(
             controls.roll += controls.yaw;
             controls.yaw = 0.0;
         }
+    }
+    // Action requests are separate from driving a car. They still fire in
+    // spectate-only mode and without a followed car, as long as input is live.
+    if actions_enabled {
         if just_pressed(Action::KickoffReset) || reset_requested {
             buttons |= 1;
         }
@@ -712,16 +719,22 @@ mod tests {
         let evaluator = Evaluator::default();
         let snapshot = InputSnapshot::new();
         let (controls, buttons) = action_controls(
-            &values, &map, &evaluator, &snapshot, 0.1, true, false, false,
+            &values, &map, &evaluator, &snapshot, 0.1, true, true, false, false,
         );
         assert!((controls.throttle - 0.4).abs() < 1e-6);
         assert!((controls.steer - 0.7).abs() < 1e-6);
         assert_eq!(buttons, 0b100);
         let (neutral, no_buttons) = action_controls(
-            &values, &map, &evaluator, &snapshot, 0.1, false, false, false,
+            &values, &map, &evaluator, &snapshot, 0.1, false, false, false, false,
         );
         assert_eq!(neutral, CarControls::default());
         assert_eq!(no_buttons, 0);
+        // Spectate-only: car controls blocked, action requests still sent.
+        let (spectator_controls, spectator_buttons) = action_controls(
+            &values, &map, &evaluator, &snapshot, 0.1, false, true, false, false,
+        );
+        assert_eq!(spectator_controls, CarControls::default());
+        assert_eq!(spectator_buttons, 0b100);
 
         let value = |value, pressed| crate::input::ActionValue {
             value,
@@ -734,7 +747,7 @@ mod tests {
         values.insert(Action::RollLeft, value(0.3, true));
         values.insert(Action::AirRoll, value(1.0, true));
         let (air_roll, _) = action_controls(
-            &values, &map, &evaluator, &snapshot, 0.1, true, false, false,
+            &values, &map, &evaluator, &snapshot, 0.1, true, true, false, false,
         );
         assert_eq!(air_roll.yaw, 0.0);
         assert!((air_roll.roll - 0.7).abs() < 1e-6);

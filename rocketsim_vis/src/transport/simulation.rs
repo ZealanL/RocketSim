@@ -17,7 +17,7 @@ use std::{
     net::{SocketAddr, TcpStream},
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, AtomicU8, Ordering},
+        atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering},
     },
     thread::JoinHandle,
     time::Duration,
@@ -28,8 +28,8 @@ use rocketsim::{ArenaState, Vis};
 use crate::{
     debug::{DebugRenderer, DebugScene},
     proto::{
-        ControlMsg, DebugFull, DebugSyncMsg, SceneMetadata, SimMsg, VisFrame, decode_control,
-        encode_sim,
+        ControlMsg, CustomActionDecl, CustomActionDef, DebugFull, DebugSyncMsg, SceneMetadata,
+        SimMsg, VisFrame, decode_control, encode_sim,
     },
     sync::{SentDebug, mark_debug_sent, next_debug_sync},
     transport::OutgoingBuffer,
@@ -46,6 +46,10 @@ pub struct NetVis {
     slot: Arc<Mutex<Option<VisFrame>>>,
     controls: Arc<Mutex<Option<(ControlMsg, std::time::Instant)>>>,
     actions: Arc<AtomicU8>,
+    /// Simulation-defined custom actions, republished on every connection.
+    custom_actions: Arc<Mutex<CustomActionDecl>>,
+    /// Custom action press bits accumulated between `take_*` calls.
+    custom_presses: Arc<AtomicU64>,
 
     scene: Arc<Mutex<Option<SceneMetadata>>>,
     retained: DebugRenderer,
@@ -73,6 +77,8 @@ impl NetVis {
         let stop = Arc::new(AtomicBool::new(false));
         let controls = Arc::new(Mutex::new(None));
         let actions = Arc::new(AtomicU8::new(0));
+        let custom_actions = Arc::new(Mutex::new(CustomActionDecl::empty()));
+        let custom_presses = Arc::new(AtomicU64::new(0));
         let connected = Arc::new(AtomicBool::new(false));
 
         let scene = Arc::new(Mutex::new(None));
@@ -86,6 +92,8 @@ impl NetVis {
                 stop: stop.clone(),
                 controls: controls.clone(),
                 actions: actions.clone(),
+                custom_actions: custom_actions.clone(),
+                custom_presses: custom_presses.clone(),
                 connected: connected.clone(),
                 scene: scene.clone(),
                 retained: retained.clone(),
@@ -96,6 +104,8 @@ impl NetVis {
             slot,
             controls,
             actions,
+            custom_actions,
+            custom_presses,
 
             scene,
             retained,
@@ -132,6 +142,54 @@ impl NetVis {
     /// the requested actions.
     pub fn take_actions(&self) -> u8 {
         self.actions.swap(0, Ordering::AcqRel)
+    }
+
+    /// Publish custom actions to the viewer.
+    ///
+    /// Replaces the previous declaration and increases its revision. The
+    /// sender sends the newest declaration on the current connection and on
+    /// every reconnect. Invalid declarations are ignored. Call this before the
+    /// first frame when possible so the viewer has the names before presses.
+    pub fn set_custom_actions(
+        &self,
+        actions: Vec<CustomActionDef>,
+    ) -> Result<(), crate::proto::ProtocolError> {
+        let mut next = CustomActionDecl { rev: 0, actions };
+        next.validate()?;
+        if let Ok(mut current) = self.custom_actions.lock() {
+            next.rev = current.rev.wrapping_add(1).max(1);
+            *current = next;
+        }
+        Ok(())
+    }
+
+    /// Return and clear the pressed custom action bitmask.
+    ///
+    /// Bit `i` maps to action `i` in the declaration passed to
+    /// [`Self::set_custom_actions`].
+    pub fn take_custom_presses(&self) -> u64 {
+        self.custom_presses.swap(0, Ordering::AcqRel)
+    }
+
+    /// Return and clear pressed custom actions as declared names.
+    ///
+    /// Bits without a declared action are skipped.
+    pub fn take_named_custom_presses(&self) -> Vec<String> {
+        let presses = self.take_custom_presses();
+        let names: Vec<String> = self
+            .custom_actions
+            .lock()
+            .map(|decl| {
+                decl.actions
+                    .iter()
+                    .map(|action| action.name.clone())
+                    .collect()
+            })
+            .unwrap_or_default();
+        (0..crate::proto::MAX_CUSTOM_ACTIONS)
+            .filter(|index| presses & (1u64 << index) != 0)
+            .filter_map(|index| names.get(index).cloned())
+            .collect()
     }
 
     /// Cloneable retained-scene handle. Accepted updates coalesce in bounded
@@ -188,6 +246,8 @@ struct SenderState {
     stop: Arc<AtomicBool>,
     controls: Arc<Mutex<Option<(ControlMsg, std::time::Instant)>>>,
     actions: Arc<AtomicU8>,
+    custom_actions: Arc<Mutex<CustomActionDecl>>,
+    custom_presses: Arc<AtomicU64>,
     connected: Arc<AtomicBool>,
     scene: Arc<Mutex<Option<SceneMetadata>>>,
     retained: DebugRenderer,
@@ -211,6 +271,7 @@ fn sender_loop(addr: &str, shared: SenderState) {
                     *c = None;
                 }
                 shared.actions.store(0, Ordering::Release);
+                shared.custom_presses.store(0, Ordering::Release);
                 // pump returned = connection lost; reconnect with backoff.
             }
             Err(_) => {
@@ -259,6 +320,10 @@ fn pump(mut stream: TcpStream, shared: &SenderState) {
     let mut chunk = [0u8; 2048];
     let mut metadata_sent = false;
     let mut queued_scene = false;
+    // Per-connection declaration state: the first loop sends the current set
+    // and a later replacement is sent when its revision changes.
+    let mut sent_custom_rev = 0u64;
+    let mut queued_custom_rev: Option<u64> = None;
     let mut output = OutgoingBuffer::default();
     let mut sent = SentDebug::default();
     let mut debug_queue: std::collections::VecDeque<Vec<u8>> = std::collections::VecDeque::new();
@@ -276,6 +341,9 @@ fn pump(mut stream: TcpStream, shared: &SenderState) {
                 Ok(true) => {
                     metadata_sent |= queued_scene;
                     queued_scene = false;
+                    if let Some(rev) = queued_custom_rev.take() {
+                        sent_custom_rev = rev;
+                    }
                 }
                 Ok(false) => {}
                 Err(_) => return,
@@ -290,6 +358,9 @@ fn pump(mut stream: TcpStream, shared: &SenderState) {
                         Ok(Some((mut msg, used))) => {
                             shared.actions.fetch_or(msg.buttons & 7, Ordering::AcqRel);
                             msg.buttons = 0;
+                            shared
+                                .custom_presses
+                                .fetch_or(msg.custom_presses, Ordering::AcqRel);
                             if let Ok(mut c) = shared.controls.lock() {
                                 *c = Some((msg, std::time::Instant::now()));
                             }
@@ -315,6 +386,27 @@ fn pump(mut stream: TcpStream, shared: &SenderState) {
         }
         if !output.is_empty() {
             std::thread::sleep(Duration::from_millis(1));
+            continue;
+        }
+        // Publish custom actions before frames and debug data. This runs once
+        // per connection and again whenever the simulation replaces the set.
+        let declared_rev = shared
+            .custom_actions
+            .lock()
+            .map(|decl| decl.rev)
+            .unwrap_or(0);
+        if declared_rev != sent_custom_rev && queued_custom_rev.is_none() {
+            let declared = shared
+                .custom_actions
+                .lock()
+                .map(|decl| decl.clone())
+                .unwrap_or_default();
+            let bytes = encode_sim(&SimMsg::CustomActions(declared));
+            if bytes.len() > crate::proto::MAX_SIM_MSG_BYTES + 4 {
+                return;
+            }
+            output.queue(bytes);
+            queued_custom_rev = Some(declared_rev);
             continue;
         }
         // Fill the debug chunk queue when empty (serialization off tick).

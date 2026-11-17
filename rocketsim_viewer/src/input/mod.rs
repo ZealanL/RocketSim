@@ -2,6 +2,7 @@
 
 mod actions;
 mod capture;
+mod custom;
 mod evaluator;
 pub mod legacy;
 pub mod sources;
@@ -9,6 +10,7 @@ pub(crate) mod spectate;
 
 pub use actions::{ACTIONS, Action, ActionMap};
 pub use capture::Capture;
+pub use custom::{CustomAction, CustomActionMap, CustomActionRegistry};
 pub use evaluator::{ActionValue, Evaluator, InputSnapshot};
 pub use sources::{Axis2, InputSource};
 

@@ -1,17 +1,21 @@
 //! Spectate-only input gate (pure, no IO).
 //!
-//! [`gate`] clears inputs when spectate-only mode is set or driving is blocked.
-//! Spectate-only messages use an invalid car index. Simulations must ignore
-//! that index instead of replacing policy controls with neutral controls.
-//! Messages still send every tick. Camera selection does not change.
+//! "No inputs" blocks only car driving controls. [`gate`] substitutes an
+//! invalid car index and neutral `CarControls`, but keeps action requests.
+//! Mutators, custom action presses, and the spectated car are added by the
+//! caller and also pass through. Simulations must ignore the invalid car index
+//! instead of replacing policy controls with neutral controls. Messages still
+//! send every tick. Camera selection does not change.
 
 use rocketsim::CarControls;
 
-/// Gate driver inputs for one frame.
+/// Gate car driving inputs for one frame.
 ///
-/// Spectate-only mode returns `u32::MAX` as the car index and clears inputs.
-/// A blocked driving frame keeps the car index but clears inputs. This
-/// releases held controls when the window loses focus or a menu opens.
+/// Spectate-only mode returns `u32::MAX` as the car index and neutral driving
+/// controls, but keeps `buttons` so action requests still reach the
+/// simulation. A blocked driving frame keeps the car index and clears both
+/// controls and buttons. This releases held inputs when the window loses focus
+/// or a menu opens.
 pub fn gate(
     spectate_only: bool,
     driving: bool,
@@ -20,7 +24,7 @@ pub fn gate(
     buttons: u8,
 ) -> (u32, CarControls, u8) {
     if spectate_only {
-        (u32::MAX, CarControls::default(), 0)
+        (u32::MAX, CarControls::default(), buttons)
     } else if !driving {
         (car_index, CarControls::default(), 0)
     } else {
@@ -36,7 +40,7 @@ pub fn gate(
 /// no-sim lines; this helper covers only the spectate-vs-drive wording.
 pub fn status_text(spectate_only: bool, driving: bool, driven_car: u32) -> String {
     if spectate_only {
-        format!("Input: spectating car {driven_car} — inputs off")
+        format!("Input: spectating car {driven_car} — car controls off")
     } else if driving {
         format!("Input: driving car {driven_car} · live")
     } else {
@@ -80,8 +84,22 @@ mod tests {
                 buttons,
             ),
             (false, false, controls, 1, CarControls::default(), 0),
-            (true, true, controls, u32::MAX, CarControls::default(), 0),
-            (true, false, controls, u32::MAX, CarControls::default(), 0),
+            (
+                true,
+                true,
+                controls,
+                u32::MAX,
+                CarControls::default(),
+                buttons,
+            ),
+            (
+                true,
+                false,
+                controls,
+                u32::MAX,
+                CarControls::default(),
+                buttons,
+            ),
         ] {
             let (index, gated_controls, gated_buttons) =
                 gate(spectate_only, driving, 1, input, buttons);

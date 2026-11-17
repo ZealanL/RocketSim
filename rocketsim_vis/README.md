@@ -161,6 +161,51 @@ a dribble, and bit 2 a ball launch. Your application must implement those
 requests. See [`examples/drive.rs`](examples/drive.rs) for a complete loop that
 handles controls, actions, mutators, and timing.
 
+## Custom actions
+
+Declare named actions with default keyboard keys. The viewer shows them in
+**Bindings → Custom**, where each action has two slots. Users can rebind those
+slots to a keyboard key, mouse button or motion, or controller button or axis.
+Bindings are saved in the viewer's `settings.toml` under `custom_action_bindings`
+and keyed by action name, so they survive restarts and reconnects.
+
+```rust
+use rocketsim_vis::{ArenaVisExt, proto::CustomActionDef};
+
+arena.set_vis_custom_actions(vec![
+    CustomActionDef {
+        name: "show_route".into(),
+        default_keys: vec!["F5".into(), "Space".into()],
+    },
+    CustomActionDef {
+        name: "ping".into(),
+        default_keys: vec!["V".into()],
+    },
+])?;
+```
+
+Names must be unique, non-empty, and at most 64 bytes. Supply at most two key
+names. The viewer parses key names with its own key table; an unknown name
+leaves that slot unassigned.
+
+Read presses in your simulation loop:
+
+```rust
+for name in arena.take_vis_custom_actions() {
+    match name.as_str() {
+        "show_route" => { /* toggle a route overlay */ }
+        "ping" => { /* respond to a ping */ }
+        _ => {}
+    }
+}
+```
+
+Presses are edge events and accumulate until read. The viewer reports them on
+every control message, including in spectate-only mode. Declare actions after
+you attach a viewer. A network reconnect re-sends the current declaration; a
+detach and reattach creates a fresh connection, so declare again after
+reattaching. At most 64 custom actions are supported.
+
 ## Retained debug rendering
 
 After attaching a viewer, get a cloneable renderer with
