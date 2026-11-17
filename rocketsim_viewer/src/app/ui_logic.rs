@@ -201,6 +201,10 @@ pub(super) fn menu_pad_action(id: String, dx: i32, a: bool, cx: &mut MenuPadCtx)
             cx.settings.show_debug = !cx.settings.show_debug;
             cx.settings.mark_dirty();
         }
+        "ov.names" if a || dx != 0 => {
+            cx.settings.show_name_tags = !cx.settings.show_name_tags;
+            cx.settings.mark_dirty();
+        }
         "disp.vsync" if a || dx != 0 => {
             cx.settings.vsync = !cx.settings.vsync;
             cx.settings.mark_dirty();

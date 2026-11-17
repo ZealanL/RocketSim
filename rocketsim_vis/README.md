@@ -206,6 +206,33 @@ you attach a viewer. A network reconnect re-sends the current declaration; a
 detach and reattach creates a fresh connection, so declare again after
 reattaching. At most 64 custom actions are supported.
 
+## Car name tags
+
+Assign optional name tags to cars with `arena.set_vis_car_names(...)`. Use the
+car index returned by `arena.add_car`:
+
+```rust
+let blue = arena.add_car(Team::Blue, CarBodyConfig::OCTANE);
+let orange = arena.add_car(Team::Orange, CarBodyConfig::OCTANE);
+arena.set_vis_car_names(vec![
+    (blue, "Alice".into()),
+    (orange, "Bob".into()),
+])?;
+```
+
+The viewer draws each tag above its car in world space. The tag keeps a
+constant screen gap above the car as the camera moves closer or farther away.
+No tag is drawn for the car the viewer is spectating. The viewer's
+**Display → Overlays → Car name tags** checkbox turns tags off if needed.
+
+Names arrive on connect and whenever you call `set_vis_car_names` again, so
+they survive reconnects. Pass an empty list to remove all tags. Names are
+limited to 64 bytes and car indices must be unique.
+
+Run `cargo run -p rocketsim_vis --example name_tags` for a small two-car demo.
+It connects to `127.0.0.1:39201` by default; pass `--addr IP:PORT` to use
+another viewer.
+
 ## Retained debug rendering
 
 After attaching a viewer, get a cloneable renderer with

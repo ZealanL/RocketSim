@@ -111,6 +111,18 @@ pub trait ArenaVisExt {
     /// what each name does.
     fn take_vis_custom_actions(&mut self) -> Vec<String>;
 
+    /// Set optional name tags for cars on the field.
+    ///
+    /// Pass car index and display name pairs. The viewer draws a tag above
+    /// each named car and hides the tag for the car it is spectating. The
+    /// declaration is sent on connect and whenever the names change.
+    ///
+    /// # Errors
+    ///
+    /// Return `NotConnected` when no viewer is attached and `InvalidInput`
+    /// when a name is empty, too long, or a car index repeats.
+    fn set_vis_car_names(&self, names: Vec<(usize, String)>) -> io::Result<()>;
+
     /// Return a shared retained-scene renderer for this arena.
     ///
     /// Return `None` when no [`NetVis`] is attached. Updates remain available
@@ -191,6 +203,22 @@ impl ArenaVisExt for Arena {
 
     fn take_vis_custom_actions(&mut self) -> Vec<String> {
         net_vis(self).map_or_else(Vec::new, NetVis::take_named_custom_presses)
+    }
+
+    fn set_vis_car_names(&self, names: Vec<(usize, String)>) -> io::Result<()> {
+        let vis = net_vis(self)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotConnected, "no viewer is attached"))?;
+        let names = names
+            .into_iter()
+            .map(|(index, name)| {
+                let index = u32::try_from(index).map_err(|_| {
+                    io::Error::new(io::ErrorKind::InvalidInput, "car index out of range")
+                })?;
+                Ok((index, name))
+            })
+            .collect::<io::Result<Vec<_>>>()?;
+        vis.set_car_names(names)
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error.to_string()))
     }
 
     fn debug_renderer(&self) -> Option<crate::debug::DebugRenderer> {
@@ -491,6 +519,69 @@ mod tests {
         assert_eq!(arena.take_vis_actions(), 0);
         arena.set_vis_enabled(false);
         assert!(!arena.vis_connected());
+    }
+
+    #[test]
+    fn car_names_arrive_replace_and_survive_reconnect() {
+        let reservation = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = reservation.local_addr().unwrap().to_string();
+        drop(reservation);
+        let viewer = ViewerListener::try_bind(&addr).unwrap();
+        let mut arena = Arena::new(GameMode::TheVoid);
+        arena.try_set_net_vis(Some(&addr)).unwrap();
+        arena
+            .set_vis_car_names(vec![(0, "Alice".into()), (1, "Bob".into())])
+            .unwrap();
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            arena.step_tick();
+            let snapshot = viewer.snapshot();
+            if snapshot.car_names.names.len() == 2 && snapshot.car_names.get(1) == Some("Bob") {
+                break;
+            }
+            assert!(Instant::now() < deadline, "names did not arrive");
+            std::thread::sleep(Duration::from_millis(2));
+        }
+
+        arena.set_vis_car_names(vec![(2, "Carol".into())]).unwrap();
+        loop {
+            arena.step_tick();
+            let snapshot = viewer.snapshot();
+            if snapshot.car_names.names.len() == 1 && snapshot.car_names.get(2) == Some("Carol") {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "replacement names did not arrive"
+            );
+            std::thread::sleep(Duration::from_millis(2));
+        }
+
+        // A new viewer on the same address gets the current names again.
+        drop(viewer);
+        let reconnect_deadline = Instant::now() + Duration::from_secs(10);
+        let viewer = loop {
+            match ViewerListener::try_bind(&addr) {
+                Ok(listener) => break listener,
+                Err(_) => {
+                    assert!(Instant::now() < reconnect_deadline, "cannot rebind viewer");
+                    std::thread::sleep(Duration::from_millis(20));
+                }
+            }
+        };
+        loop {
+            arena.step_tick();
+            let snapshot = viewer.snapshot();
+            if snapshot.car_names.get(2) == Some("Carol") {
+                break;
+            }
+            assert!(
+                Instant::now() < reconnect_deadline,
+                "names did not arrive after reconnect"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
     }
 
     #[test]

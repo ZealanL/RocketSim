@@ -179,6 +179,11 @@ controls keep working, and the viewer still sends action requests, mutator
 values, the spectated car, and custom action presses. The simulation decides
 whether to apply any of them.
 
+When a simulation declares car names, tags appear above those cars in the 3D
+view. The spectated car has no tag, and a tag keeps a steady screen gap above
+its car as the camera moves. Use **Display → Overlays → Car name tags** to hide
+them.
+
 When a simulation declares custom actions, they appear in the **Custom** group
 of the Bindings tab. Each uses the same two slots and the same capture flow as
 built-in actions. Defaults come from the simulation and use keyboard keys; you

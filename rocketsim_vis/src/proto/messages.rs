@@ -31,6 +31,10 @@ pub const MAX_CUSTOM_ACTION_NAME_BYTES: usize = 64;
 pub const MAX_CUSTOM_ACTION_KEY_BYTES: usize = 32;
 /// Maximum default keyboard keys per custom action (the viewer has two slots).
 pub const MAX_CUSTOM_ACTION_DEFAULT_KEYS: usize = 2;
+/// Maximum number of named cars in one declaration.
+pub const MAX_CAR_NAMES: usize = 256;
+/// Maximum UTF-8 bytes in a car name tag.
+pub const MAX_CAR_NAME_BYTES: usize = 64;
 
 /// An error while reading or validating a protocol message.
 #[derive(Debug)]
@@ -119,6 +123,75 @@ pub enum SimMsg {
     /// and whenever the simulation replaces it. The viewer uses it to show
     /// rebindable actions and to map reported press indices back to names.
     CustomActions(CustomActionDecl),
+    /// Optional name tags for cars on the field.
+    ///
+    /// Published on every new connection and whenever the simulation replaces
+    /// the names. The viewer renders a tag above each named car, except the
+    /// car it is currently spectating.
+    CarNames(CarNameDecl),
+}
+
+/// Optional name tag for one car.
+///
+/// The key is the car index used in [`ArenaState::cars`](rocketsim::ArenaState)
+/// and in control messages. The viewer hides the tag for the car it watches.
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CarNameDecl {
+    /// Monotonic revision assigned by the sender.
+    #[serde(default)]
+    pub rev: u64,
+    /// Car index and display name pairs. Indices must be unique.
+    #[serde(default)]
+    pub names: Vec<(u32, String)>,
+}
+
+impl CarNameDecl {
+    /// Return a declaration with no names at revision zero.
+    #[must_use]
+    pub fn empty() -> Self {
+        Self::default()
+    }
+
+    /// Return `true` when no car names are declared.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.names.is_empty()
+    }
+
+    /// Return the name for `car_index`, if one is declared.
+    #[must_use]
+    pub fn get(&self, car_index: u32) -> Option<&str> {
+        self.names
+            .iter()
+            .find(|(index, _)| *index == car_index)
+            .map(|(_, name)| name.as_str())
+    }
+
+    /// Validate name count, unique car indices, and each name.
+    pub fn validate(&self) -> Result<(), ProtocolError> {
+        if self.names.len() > MAX_CAR_NAMES {
+            return Err(ProtocolError::InvalidData("too many car names"));
+        }
+        for (index, name) in &self.names {
+            if name.is_empty()
+                || name.len() > MAX_CAR_NAME_BYTES
+                || name.trim() != name
+                || name.chars().any(char::is_control)
+            {
+                return Err(ProtocolError::InvalidData("invalid car name"));
+            }
+            if self
+                .names
+                .iter()
+                .filter(|(other, _)| other == index)
+                .count()
+                > 1
+            {
+                return Err(ProtocolError::InvalidData("duplicate car name index"));
+            }
+        }
+        Ok(())
+    }
 }
 
 /// One simulation-defined custom action.

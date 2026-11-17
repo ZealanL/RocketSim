@@ -213,6 +213,7 @@ impl eframe::App for ViewerApp {
             scene: mut scene_metadata,
             debug: retained_debug,
             custom_actions: declared_actions,
+            car_names,
             received,
             debug_transfers,
         } = self.listener.snapshot();
@@ -847,6 +848,25 @@ impl eframe::App for ViewerApp {
                     &debug_view,
                     &debug_proj,
                 );
+                if self.settings.show_name_tags {
+                    crate::ui::name_tags::paint(
+                        ui,
+                        rect,
+                        &crate::ui::name_tags::NameTagView {
+                            cars: client_frame
+                                .as_deref()
+                                .map(|frame| frame.state.cars.as_slice())
+                                .unwrap_or(&[]),
+                            names: &car_names,
+                            // The watched car has no tag, like RL spectator view.
+                            hidden_car: watched_car,
+                            camera_position: cam_pos,
+                            camera_fov: cam_fov,
+                            view: &debug_view,
+                            proj: &debug_proj,
+                        },
+                    );
+                }
                 // RL-style boost gauge over the 3D view: dim dial, value
                 // arc clockwise from the top, number in the middle.
                 if let Some(m) = &meter {

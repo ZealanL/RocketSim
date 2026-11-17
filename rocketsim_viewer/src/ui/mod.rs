@@ -1,4 +1,5 @@
 pub(crate) mod hud;
+pub(crate) mod name_tags;
 
 mod settings;
 

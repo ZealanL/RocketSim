@@ -28,8 +28,8 @@ use rocketsim::{ArenaState, Vis};
 use crate::{
     debug::{DebugRenderer, DebugScene},
     proto::{
-        ControlMsg, CustomActionDecl, CustomActionDef, DebugFull, DebugSyncMsg, SceneMetadata,
-        SimMsg, VisFrame, decode_control, encode_sim,
+        CarNameDecl, ControlMsg, CustomActionDecl, CustomActionDef, DebugFull, DebugSyncMsg,
+        SceneMetadata, SimMsg, VisFrame, decode_control, encode_sim,
     },
     sync::{SentDebug, mark_debug_sent, next_debug_sync},
     transport::OutgoingBuffer,
@@ -50,6 +50,8 @@ pub struct NetVis {
     custom_actions: Arc<Mutex<CustomActionDecl>>,
     /// Custom action press bits accumulated between `take_*` calls.
     custom_presses: Arc<AtomicU64>,
+    /// Optional car name tags, republished on every connection.
+    car_names: Arc<Mutex<CarNameDecl>>,
 
     scene: Arc<Mutex<Option<SceneMetadata>>>,
     retained: DebugRenderer,
@@ -79,6 +81,7 @@ impl NetVis {
         let actions = Arc::new(AtomicU8::new(0));
         let custom_actions = Arc::new(Mutex::new(CustomActionDecl::empty()));
         let custom_presses = Arc::new(AtomicU64::new(0));
+        let car_names = Arc::new(Mutex::new(CarNameDecl::empty()));
         let connected = Arc::new(AtomicBool::new(false));
 
         let scene = Arc::new(Mutex::new(None));
@@ -94,6 +97,7 @@ impl NetVis {
                 actions: actions.clone(),
                 custom_actions: custom_actions.clone(),
                 custom_presses: custom_presses.clone(),
+                car_names: car_names.clone(),
                 connected: connected.clone(),
                 scene: scene.clone(),
                 retained: retained.clone(),
@@ -106,6 +110,7 @@ impl NetVis {
             actions,
             custom_actions,
             custom_presses,
+            car_names,
 
             scene,
             retained,
@@ -157,6 +162,24 @@ impl NetVis {
         let mut next = CustomActionDecl { rev: 0, actions };
         next.validate()?;
         if let Ok(mut current) = self.custom_actions.lock() {
+            next.rev = current.rev.wrapping_add(1).max(1);
+            *current = next;
+        }
+        Ok(())
+    }
+
+    /// Publish optional name tags for cars.
+    ///
+    /// Replace the previous names and increase the revision. The sender
+    /// republishes the current names on the current connection and on every
+    /// reconnect. Invalid declarations are ignored.
+    pub fn set_car_names(
+        &self,
+        names: Vec<(u32, String)>,
+    ) -> Result<(), crate::proto::ProtocolError> {
+        let mut next = CarNameDecl { rev: 0, names };
+        next.validate()?;
+        if let Ok(mut current) = self.car_names.lock() {
             next.rev = current.rev.wrapping_add(1).max(1);
             *current = next;
         }
@@ -248,6 +271,7 @@ struct SenderState {
     actions: Arc<AtomicU8>,
     custom_actions: Arc<Mutex<CustomActionDecl>>,
     custom_presses: Arc<AtomicU64>,
+    car_names: Arc<Mutex<CarNameDecl>>,
     connected: Arc<AtomicBool>,
     scene: Arc<Mutex<Option<SceneMetadata>>>,
     retained: DebugRenderer,
@@ -324,6 +348,8 @@ fn pump(mut stream: TcpStream, shared: &SenderState) {
     // and a later replacement is sent when its revision changes.
     let mut sent_custom_rev = 0u64;
     let mut queued_custom_rev: Option<u64> = None;
+    let mut sent_names_rev = 0u64;
+    let mut queued_names_rev: Option<u64> = None;
     let mut output = OutgoingBuffer::default();
     let mut sent = SentDebug::default();
     let mut debug_queue: std::collections::VecDeque<Vec<u8>> = std::collections::VecDeque::new();
@@ -343,6 +369,9 @@ fn pump(mut stream: TcpStream, shared: &SenderState) {
                     queued_scene = false;
                     if let Some(rev) = queued_custom_rev.take() {
                         sent_custom_rev = rev;
+                    }
+                    if let Some(rev) = queued_names_rev.take() {
+                        sent_names_rev = rev;
                     }
                 }
                 Ok(false) => {}
@@ -407,6 +436,22 @@ fn pump(mut stream: TcpStream, shared: &SenderState) {
             }
             output.queue(bytes);
             queued_custom_rev = Some(declared_rev);
+            continue;
+        }
+        // Publish car names before frames and debug data on each connection.
+        let names_rev = shared.car_names.lock().map(|decl| decl.rev).unwrap_or(0);
+        if names_rev != sent_names_rev && queued_names_rev.is_none() {
+            let names = shared
+                .car_names
+                .lock()
+                .map(|decl| decl.clone())
+                .unwrap_or_default();
+            let bytes = encode_sim(&SimMsg::CarNames(names));
+            if bytes.len() > crate::proto::MAX_SIM_MSG_BYTES + 4 {
+                return;
+            }
+            output.queue(bytes);
+            queued_names_rev = Some(names_rev);
             continue;
         }
         // Fill the debug chunk queue when empty (serialization off tick).

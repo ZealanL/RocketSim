@@ -209,6 +209,9 @@ pub fn decode_sim(buf: &[u8]) -> Result<Option<(SimMsg, usize)>, ProtocolError> 
         SimMsg::CustomActions(decl) => {
             decl.validate()?;
         }
+        SimMsg::CarNames(names) => {
+            names.validate()?;
+        }
     }
     Ok(Some((msg, 4 + len)))
 }
@@ -326,6 +329,33 @@ mod tests {
         let (back, consumed) = decode_control(&bytes).unwrap().unwrap();
         assert_eq!(consumed, bytes.len());
         assert_eq!(back.custom_presses, 0b101);
+    }
+
+    #[test]
+    fn car_names_round_trip_and_validation() {
+        let names = CarNameDecl {
+            rev: 2,
+            names: vec![(0, "Alice".into()), (3, "Bob".into())],
+        };
+        names.validate().unwrap();
+        let bytes = encode_sim(&SimMsg::CarNames(names.clone()));
+        let (message, consumed) = decode_sim(&bytes).unwrap().unwrap();
+        assert_eq!(consumed, bytes.len());
+        let SimMsg::CarNames(back) = message else {
+            panic!("expected car names")
+        };
+        assert_eq!(back, names);
+        assert_eq!(back.get(3), Some("Bob"));
+        assert_eq!(back.get(1), None);
+
+        let duplicate = CarNameDecl {
+            rev: 1,
+            names: vec![(0, "A".into()), (0, "B".into())],
+        };
+        assert!(matches!(
+            decode_sim(&encode_sim(&SimMsg::CarNames(duplicate))),
+            Err(ProtocolError::InvalidData(_))
+        ));
     }
 
     #[test]

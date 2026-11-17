@@ -64,8 +64,8 @@ use super::socket::OutgoingBuffer;
 use crate::{
     debug::{DebugScene, Lifetime},
     proto::{
-        ControlMsg, CustomActionDecl, DebugSyncMsg, MAX_CUSTOM_ACTIONS, SceneMetadata, SimMsg,
-        VisFrame, decode_sim, encode_control,
+        CarNameDecl, ControlMsg, CustomActionDecl, DebugSyncMsg, MAX_CUSTOM_ACTIONS, SceneMetadata,
+        SimMsg, VisFrame, decode_sim, encode_control,
     },
     sync::{ChunkAssembler, SyncError, apply_sync},
 };
@@ -101,6 +101,8 @@ pub struct ViewerSnapshot {
     pub debug: Arc<DebugScene>,
     /// Custom actions declared by the simulation for this session.
     pub custom_actions: Arc<CustomActionDecl>,
+    /// Optional car name tags declared for this session.
+    pub car_names: Arc<CarNameDecl>,
     /// Total frames decoded since this listener started.
     pub received: u64,
     /// Retained-scene transfers applied in this session.
@@ -128,6 +130,7 @@ struct ClientSession {
     pending_buttons: u8,
     pending_custom_presses: u64,
     custom_actions: Arc<CustomActionDecl>,
+    car_names: Arc<CarNameDecl>,
     received: u64,
     display_cache: Option<DisplayCache>,
 }
@@ -145,6 +148,7 @@ impl ClientSession {
             pending_buttons: 0,
             pending_custom_presses: 0,
             custom_actions: Arc::new(CustomActionDecl::empty()),
+            car_names: Arc::new(CarNameDecl::empty()),
             received: 0,
             display_cache: None,
         }
@@ -161,6 +165,7 @@ impl ClientSession {
         self.pending_buttons = 0;
         self.pending_custom_presses = 0;
         self.custom_actions = Arc::new(CustomActionDecl::empty());
+        self.car_names = Arc::new(CarNameDecl::empty());
         self.display_cache = None;
     }
 }
@@ -316,6 +321,7 @@ impl ViewerListener {
                     scene: session.scene.clone(),
                     debug,
                     custom_actions: session.custom_actions.clone(),
+                    car_names: session.car_names.clone(),
                     received: session.received,
                     debug_transfers: session.debug_transfers,
                 }
@@ -327,6 +333,7 @@ impl ViewerListener {
                 scene: None,
                 debug: Arc::new(DebugScene::empty()),
                 custom_actions: Arc::new(CustomActionDecl::empty()),
+                car_names: Arc::new(CarNameDecl::empty()),
                 received: 0,
                 debug_transfers: 0,
             })
@@ -548,6 +555,13 @@ fn pump(
                                         && decl.rev >= state.custom_actions.rev
                                     {
                                         state.custom_actions = Arc::new(decl);
+                                    }
+                                }
+                                SimMsg::CarNames(names) => {
+                                    if let Ok(mut state) = session.lock()
+                                        && names.rev >= state.car_names.rev
+                                    {
+                                        state.car_names = Arc::new(names);
                                     }
                                 }
                             }

@@ -41,6 +41,13 @@
 //! Use neutral controls when no fresh input is available. Read action requests
 //! with [`ArenaVisExt::take_vis_actions`]. The application performs each action.
 //!
+//! # Name cars
+//!
+//! Use [`ArenaVisExt::set_vis_car_names`] to assign optional name tags. The
+//! viewer draws each tag above its car in world space and omits the tag for
+//! the car it is spectating. The tag offset compensates for camera distance
+//! so it keeps a steady screen gap above the car.
+//!
 //! # Declare custom actions
 //!
 //! Use [`ArenaVisExt::set_vis_custom_actions`] to publish named actions with
