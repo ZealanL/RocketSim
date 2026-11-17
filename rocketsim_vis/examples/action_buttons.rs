@@ -21,21 +21,32 @@ struct Cli {
     /// Numeric viewer address. This example never launches a viewer.
     #[arg(long, default_value = "127.0.0.1:39201")]
     addr: String,
+    /// Extra button-only actions to declare. Use a large value to see the
+    /// Actions window wrap its buttons into rows.
+    #[arg(long, default_value_t = 0)]
+    extra_buttons: usize,
 }
 
 fn main() -> std::io::Result<()> {
     let cli = Cli::parse();
     init_meshes();
 
-    let mut arena = Arena::new(GameMode::TheVoid);
-    arena.try_set_net_vis(Some(&cli.addr))?;
-    arena.set_vis_custom_actions(vec![
+    let mut actions = vec![
         CustomActionDef::new("show_route").with_default_keys(["F5"]),
         CustomActionDef::new("ping")
             .with_default_keys(["V"])
             .with_button("Send ping"),
         CustomActionDef::new("toggle_slow_mo").with_button(""),
-    ])?;
+    ];
+    for index in 0..cli.extra_buttons {
+        actions.push(
+            CustomActionDef::new(format!("extra_{index}")).with_button(format!("Button {index}")),
+        );
+    }
+
+    let mut arena = Arena::new(GameMode::TheVoid);
+    arena.try_set_net_vis(Some(&cli.addr))?;
+    arena.set_vis_custom_actions(actions)?;
 
     println!("Declared actions. Click buttons in the viewer's Actions window.");
     loop {
