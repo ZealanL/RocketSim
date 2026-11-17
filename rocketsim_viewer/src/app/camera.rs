@@ -22,7 +22,7 @@ pub(super) enum CamMode {
     Free,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum StartMode {
     Birds,
     Follow(usize),
@@ -55,6 +55,17 @@ impl StartMode {
             Self::Director => CamMode::Director,
             Self::Free => CamMode::Free,
             _ => CamMode::Man,
+        }
+    }
+
+    /// Setting-file form of this start mode.
+    pub(super) fn to_setting_string(&self) -> String {
+        match self {
+            Self::Birds => "birds".to_string(),
+            Self::Follow(index) => format!("follow{index}"),
+            Self::Director => "director".to_string(),
+            Self::Auto(index) => format!("auto{index}"),
+            Self::Free => "free".to_string(),
         }
     }
 }
@@ -203,6 +214,35 @@ impl CameraState {
         }
     }
 
+    /// Return the start mode and ball-cam state to persist.
+    ///
+    /// Before a simulation connects there is no live follow view. Use the
+    /// initial mode with the saved ball-cam value, so waiting for a sim leaves
+    /// the saved preference unchanged.
+    ///
+    /// Auto-cam rules own ball-cam while auto-cam is active. In that case the
+    /// returned ball-cam value is the default, so play does not mark settings
+    /// dirty on every rule change.
+    pub(super) fn view_preference(&self, saved_ball_cam: bool) -> (String, bool) {
+        if let Some(auto) = &self.auto_cam {
+            return (StartMode::Auto(auto.car_idx()).to_setting_string(), true);
+        }
+        match self.mode {
+            CamMode::Director => (StartMode::Director.to_setting_string(), true),
+            CamMode::Free => (StartMode::Free.to_setting_string(), true),
+            CamMode::Man => match &self.manager {
+                Some(manager) => match manager.car_cam() {
+                    Some(camera) => (
+                        StartMode::Follow(camera.car_idx).to_setting_string(),
+                        camera.face_ball,
+                    ),
+                    None => (StartMode::Birds.to_setting_string(), true),
+                },
+                None => (self.init_mode.to_setting_string(), saved_ball_cam),
+            },
+        }
+    }
+
     pub(super) fn director_pose(
         &mut self,
         target: DirectorTarget,
@@ -269,9 +309,11 @@ impl CameraState {
                     match self.init_mode {
                         StartMode::Follow(index) if index < state.num_cars() => {
                             manager.follow_car(state, index);
+                            manager.set_follow_face_ball(index, input.settings.ui.ball_cam);
                         }
                         StartMode::Auto(index) if index < state.num_cars() => {
                             manager.follow_car(state, index);
+                            manager.set_follow_face_ball(index, input.settings.ui.ball_cam);
                             self.auto_cam = Some(AutoCam::new(index));
                         }
                         StartMode::Follow(index) | StartMode::Auto(index) => {
@@ -616,6 +658,43 @@ mod tests {
 
     use super::*;
     use crate::input::Action;
+
+    #[test]
+    fn view_preference_follows_runtime_camera_state() {
+        let mut arena = ArenaState::new_empty(GameMode::Soccar);
+        arena
+            .cars
+            .push((rocketsim::CarInfo::default(), rocketsim::CarState::DEFAULT));
+        let mut manager = CameraMan::new(GameMode::Soccar, CameraConfig::default());
+        manager.follow_car(&arena, 0);
+        manager.set_follow_face_ball(0, false);
+        let mut camera = CameraState::new(StartMode::Follow(0));
+        assert_eq!(
+            camera.view_preference(false),
+            ("follow0".to_string(), false),
+            "no live view before a sim"
+        );
+        camera.manager = Some(manager);
+        assert_eq!(
+            camera.view_preference(false),
+            ("follow0".to_string(), false)
+        );
+
+        camera.mode = CamMode::Director;
+        assert_eq!(
+            camera.view_preference(false),
+            ("director".to_string(), true)
+        );
+        camera.mode = CamMode::Free;
+        assert_eq!(camera.view_preference(false), ("free".to_string(), true));
+
+        camera.mode = CamMode::Man;
+        camera.manager.as_mut().unwrap().set_wide_view();
+        assert_eq!(camera.view_preference(false), ("birds".to_string(), true));
+
+        camera.auto_cam = Some(AutoCam::new(0));
+        assert_eq!(camera.view_preference(false), ("auto0".to_string(), true));
+    }
 
     #[test]
     fn boost_meter_tracks_the_watched_car_without_changing_the_driving_target() {

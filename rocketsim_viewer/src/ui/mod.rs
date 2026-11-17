@@ -8,7 +8,7 @@ pub(crate) use settings::{SettingsInput, SettingsView, show_settings};
 
 use crate::{
     input::{Action, Capture, InputSource},
-    settings::BindingDevice,
+    settings::{BindingDevice, ViewerUiSettings},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -79,6 +79,15 @@ impl ViewerUiState {
             nav_ids: Vec::new(),
             applied_ui_scale: 0.0,
         }
+    }
+
+    /// Restore the parts of the settings window state that survive a launch.
+    pub(crate) fn from_settings(menu_open: bool, settings: &ViewerUiSettings) -> Self {
+        let mut state = Self::new(menu_open);
+        state.settings_tab = settings.settings_tab as usize;
+        state.binding_group = settings.binding_group.clone();
+        state.binding_device = settings.binding_device;
+        state
     }
 }
 

@@ -14,8 +14,9 @@ pub(super) struct Cli {
     #[arg(long, default_value = "127.0.0.1", value_parser = clap::value_parser!(std::net::IpAddr))]
     bind: std::net::IpAddr,
     /// Start camera: birds|followN|director|autoN|free.
-    #[arg(default_value = "birds", value_parser = parse_camera)]
-    cam: StartMode,
+    /// Overrides the camera saved in settings.toml.
+    #[arg(value_parser = parse_camera)]
+    cam: Option<StartMode>,
     /// Initial placeholder game mode. Stream metadata replaces it on connect.
     #[arg(short = 'g', long = "game-mode", default_value = "soccar", value_parser = parse_mode)]
     game_mode: GameMode,
@@ -55,6 +56,21 @@ pub(super) fn parse_camera(s: &str) -> Result<StartMode, String> {
         .ok_or_else(|| format!("invalid camera '{s}' (birds|followN|director|autoN|free)"))
 }
 
+/// Choose the start camera and the initial menu state.
+///
+/// An explicit CLI camera wins. An absent or invalid saved value falls back
+/// to birds. `--no-menu` closes the menu even when the saved state is open.
+fn initial_state(
+    settings: &ViewerSettings,
+    cli_cam: Option<StartMode>,
+    no_menu: bool,
+) -> (StartMode, bool) {
+    let camera = cli_cam.unwrap_or_else(|| {
+        StartMode::try_parse(settings.ui.start_camera.trim()).unwrap_or(StartMode::Birds)
+    });
+    (camera, !no_menu && settings.ui.menu_open)
+}
+
 pub(super) fn metadata_changed(
     previous: Option<&Arc<rocketsim_vis::proto::SceneMetadata>>,
     current: &Arc<rocketsim_vis::proto::SceneMetadata>,
@@ -68,13 +84,12 @@ pub(crate) fn run() {
     args.retain(|a| a != "gpushot");
     let cli = Cli::parse_from(args);
     let port = cli.port;
-    // The `CAM` option sets the start camera. Runtime camera and driving
-    // inputs use the remappable action map. The options menu starts open.
-    let init_mode = cli.cam;
-    let menu_open = !cli.no_menu;
+    // The `CAM` option overrides the saved start camera. Runtime camera and
+    // driving inputs use the remappable action map. The menu state is saved.
+    let settings = ViewerSettings::load();
+    let (init_mode, menu_open) = initial_state(&settings, cli.cam, cli.no_menu);
     // `gpushot` also accepted bare (pre-clap usage) anywhere in argv.
     let measure_gpu = cli.gpushot || measure_gpu_compat;
-    let settings = ViewerSettings::load();
     let addr = std::net::SocketAddr::new(cli.bind, port).to_string();
     eprintln!("rocketsim-viewer: listening on {addr} (sim should dial this addr)");
 
@@ -145,7 +160,12 @@ mod tests {
             std::net::SocketAddr::new(cli.bind, cli.port).to_string(),
             "[::1]:1234"
         );
-        assert!(matches!(cli.cam, StartMode::Follow(7)));
+        assert!(matches!(cli.cam, Some(StartMode::Follow(7))));
+
+        assert_eq!(
+            initial_state(&ViewerSettings::default(), cli.cam, cli.no_menu),
+            (StartMode::Follow(7), false)
+        );
 
         for (camera, valid) in [
             ("follow7", true),
@@ -157,5 +177,32 @@ mod tests {
         ] {
             assert_eq!(parse_camera(camera).is_ok(), valid, "{camera}");
         }
+    }
+
+    #[test]
+    fn initial_state_prefers_cli_then_saved_settings() {
+        let mut settings = ViewerSettings::default();
+        assert_eq!(
+            initial_state(&settings, None, false),
+            (StartMode::Birds, false)
+        );
+
+        settings.ui.start_camera = "follow3".into();
+        settings.ui.menu_open = true;
+        assert_eq!(
+            initial_state(&settings, None, false),
+            (StartMode::Follow(3), true)
+        );
+        assert_eq!(
+            initial_state(&settings, Some(StartMode::Free), false),
+            (StartMode::Free, true)
+        );
+        assert_eq!(
+            initial_state(&settings, None, true),
+            (StartMode::Follow(3), false)
+        );
+
+        settings.ui.start_camera = "bad".into();
+        assert_eq!(initial_state(&settings, None, false).0, StartMode::Birds);
     }
 }

@@ -46,6 +46,43 @@ use crate::{
     },
 };
 
+/// Copy runtime UI and camera state into the persisted settings.
+///
+/// Return `true` when a value changed. The caller marks settings dirty once
+/// per frame instead of at each assignment site.
+fn sync_ui_settings(
+    settings: &mut ViewerSettings,
+    ui: &ViewerUiState,
+    camera: (String, bool),
+) -> bool {
+    let mut changed = false;
+    if settings.ui.menu_open != ui.menu_open {
+        settings.ui.menu_open = ui.menu_open;
+        changed = true;
+    }
+    if settings.ui.settings_tab != ui.settings_tab as u8 {
+        settings.ui.settings_tab = ui.settings_tab as u8;
+        changed = true;
+    }
+    if settings.ui.binding_group != ui.binding_group {
+        settings.ui.binding_group = ui.binding_group.clone();
+        changed = true;
+    }
+    if settings.ui.binding_device != ui.binding_device {
+        settings.ui.binding_device = ui.binding_device;
+        changed = true;
+    }
+    if settings.ui.start_camera != camera.0 {
+        settings.ui.start_camera = camera.0;
+        changed = true;
+    }
+    if settings.ui.ball_cam != camera.1 {
+        settings.ui.ball_cam = camera.1;
+        changed = true;
+    }
+    changed
+}
+
 struct ViewerApp {
     frames: u64,
     debug_info: Arc<Mutex<DebugStats>>,
@@ -113,12 +150,20 @@ impl ViewerApp {
             driven_car: 0,
             custom_actions: CustomActionRegistry::default(),
 
+            ui_state: ViewerUiState::from_settings(menu_open, &settings.ui),
             settings,
-            ui_state: ViewerUiState::new(menu_open),
             input: InputState::new(),
             last_frame: Instant::now(),
             frame_limiter: frame_limiter::FrameLimiter::default(),
             fps_ema: 60.0,
+        }
+    }
+
+    /// Save the UI state changed during this frame.
+    fn sync_persisted_state(&mut self) {
+        let camera = self.camera.view_preference(self.settings.ui.ball_cam);
+        if sync_ui_settings(&mut self.settings, &self.ui_state, camera) {
+            self.settings.mark_dirty();
         }
     }
 }
@@ -529,8 +574,6 @@ impl eframe::App for ViewerApp {
         // The menu reset fires once, on the next send.
         self.ui_state.reset_requested = false;
 
-        self.settings.save_if_due();
-
         // Player-facing status lines (all builds).
         let sim_line = match &status {
             ConnStatus::Waiting => "Sim: waiting for a sim…".to_string(),
@@ -890,6 +933,11 @@ impl eframe::App for ViewerApp {
         // The native-frame hook applies the cap to all repaint sources.
         // Always request the next frame so FPS=0 also runs continuously at idle.
         ctx.request_repaint();
+
+        // The UI mutates settings after the earlier frame work. Save here so
+        // a menu toggle or tab change reaches disk on the same frame.
+        self.sync_persisted_state();
+        self.settings.save_if_due();
     }
 }
 
@@ -898,6 +946,29 @@ mod tests {
     use rocketsim::GameMode;
 
     use super::*;
+
+    #[test]
+    fn ui_state_sync_marks_dirty_only_on_change() {
+        let mut settings = ViewerSettings::default();
+        let closed_ui = ViewerUiState::new(false);
+        let camera = ("follow3".to_string(), false);
+
+        assert!(!sync_ui_settings(
+            &mut settings,
+            &closed_ui,
+            ("birds".into(), true)
+        ));
+        assert!(sync_ui_settings(&mut settings, &closed_ui, camera.clone()));
+        assert!(!settings.ui.menu_open);
+        assert_eq!(settings.ui.start_camera, "follow3");
+        assert!(!settings.ui.ball_cam);
+        assert!(!sync_ui_settings(&mut settings, &closed_ui, camera.clone()));
+
+        let open_ui = ViewerUiState::new(true);
+        assert!(sync_ui_settings(&mut settings, &open_ui, camera.clone()));
+        assert!(settings.ui.menu_open);
+        assert!(!sync_ui_settings(&mut settings, &open_ui, camera));
+    }
 
     #[test]
     fn only_dropshot_frames_supply_tile_geometry() {

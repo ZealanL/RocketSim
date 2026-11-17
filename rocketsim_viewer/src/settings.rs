@@ -20,7 +20,7 @@ use crate::{
 };
 
 /// Device view for the universal action binding table.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum BindingDevice {
     #[default]
     All,
@@ -106,6 +106,40 @@ impl BindingDevice {
     }
 }
 
+/// Settings for the settings window and the initial spectator view.
+///
+/// The viewer writes these values from the running UI. The next launch
+/// restores them unless a command-line option overrides them.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ViewerUiSettings {
+    /// Whether the settings window is open at launch. Off by default.
+    pub menu_open: bool,
+    /// Selected settings tab: 0 Camera, 1 Bindings, 2 Display, 3 Simulation.
+    pub settings_tab: u8,
+    /// Initial camera, for example `birds`, `follow3`, `director`, `auto2`, or `free`.
+    pub start_camera: String,
+    /// Ball-cam state for followed-car views.
+    pub ball_cam: bool,
+    /// Visible binding group in the Bindings tab.
+    pub binding_group: Option<String>,
+    /// Visible device view in the Bindings tab.
+    pub binding_device: BindingDevice,
+}
+
+impl Default for ViewerUiSettings {
+    fn default() -> Self {
+        Self {
+            menu_open: false,
+            settings_tab: 0,
+            start_camera: "birds".to_string(),
+            ball_cam: true,
+            binding_group: None,
+            binding_device: BindingDevice::KeyboardMouse,
+        }
+    }
+}
+
 /// Frame-rate limiter (Hz, 0 = uncapped). Default 60.
 pub const DEFAULT_FPS_LIMIT: u32 = 60;
 /// UI scale multiplier. Default 1.0.
@@ -118,7 +152,8 @@ const SAVE_DEBOUNCE_SECS: f32 = 1.0;
 /// Persistent viewer settings (TOML-serializable, all fields defaulted).
 ///
 /// Shape: `[camera]` tuning (FOV, follow distance/height/angle, stiffness,
-/// transition) plus overlay flags (`show_trail`, `show_boost`,
+/// transition), a `[ui]` table with the settings window state and the initial
+/// spectator view, overlay flags (`show_trail`, `show_boost`,
 /// `show_ground_line`, `show_pads`, `show_debug`, `show_name_tags`),
 /// `fps_limit_hz` (0 = uncapped),
 /// `ui_scale`, `vsync`/`msaa` (apply on relaunch), and `[bindings]`
@@ -145,6 +180,8 @@ const SAVE_DEBOUNCE_SECS: f32 = 1.0;
 pub struct ViewerSettings {
     /// Follow-camera + FOV tuning (RL defaults).
     pub camera: CameraConfig,
+    /// Settings window state and initial spectator view.
+    pub ui: ViewerUiSettings,
     /// Ball trail ribbon.
     pub show_trail: bool,
     /// Per-car boost flames.
@@ -200,6 +237,7 @@ pub struct ViewerSettings {
 #[serde(default)]
 struct ViewerSettingsData {
     camera: CameraConfig,
+    ui: ViewerUiSettings,
     show_trail: bool,
     show_boost: bool,
     show_ground_line: bool,
@@ -225,6 +263,7 @@ impl Default for ViewerSettingsData {
         let settings = ViewerSettings::default();
         Self {
             camera: settings.camera,
+            ui: settings.ui,
             show_trail: settings.show_trail,
             show_boost: settings.show_boost,
             show_ground_line: settings.show_ground_line,
@@ -260,6 +299,7 @@ impl<'de> Deserialize<'de> for ViewerSettings {
         );
         Ok(Self {
             camera: data.camera,
+            ui: data.ui,
             show_trail: data.show_trail,
             show_boost: data.show_boost,
             show_ground_line: data.show_ground_line,
@@ -291,6 +331,7 @@ impl Default for ViewerSettings {
     fn default() -> Self {
         Self {
             camera: CameraConfig::default(),
+            ui: ViewerUiSettings::default(),
             show_trail: true,
             show_boost: true,
             show_ground_line: true,
@@ -458,6 +499,9 @@ impl ViewerSettings {
             5.0,
         );
         finite_clamp(&mut self.ui_scale, DEFAULT_UI_SCALE, 0.5, 2.0);
+        if self.ui.settings_tab > 3 {
+            self.ui.settings_tab = 0;
+        }
         if !matches!(self.msaa, 0 | 2 | 4 | 8) {
             self.msaa = DEFAULT_MSAA;
         }
@@ -690,9 +734,21 @@ mod tests {
         s.show_boost = false;
         s.show_debug = false;
         s.show_name_tags = false;
+        s.ui.menu_open = true;
+        s.ui.settings_tab = 2;
+        s.ui.start_camera = "follow3".into();
+        s.ui.ball_cam = false;
+        s.ui.binding_group = Some("Camera".into());
+        s.ui.binding_device = BindingDevice::Controller;
         let text = toml::to_string(&s).unwrap();
         let back: ViewerSettings = toml::from_str(&text).unwrap();
         assert_eq!(back.camera.car_cam.distance, 300.0);
+        assert!(back.ui.menu_open);
+        assert_eq!(back.ui.settings_tab, 2);
+        assert_eq!(back.ui.start_camera, "follow3");
+        assert!(!back.ui.ball_cam);
+        assert_eq!(back.ui.binding_group.as_deref(), Some("Camera"));
+        assert_eq!(back.ui.binding_device, BindingDevice::Controller);
         assert!(!back.show_boost);
         assert!(!back.show_debug);
         assert!(!back.show_name_tags);
@@ -759,6 +815,8 @@ mod tests {
         assert_eq!(back.camera.car_cam.distance, 300.0);
         assert_eq!(back.camera.car_cam.stiffness, 0.45);
         assert!(back.show_trail && back.show_pads && back.show_debug && back.show_name_tags);
+        assert!(!back.ui.menu_open);
+        assert_eq!(back.ui.start_camera, "birds");
         assert_eq!(back.fps_limit_hz, DEFAULT_FPS_LIMIT);
     }
 
@@ -974,8 +1032,9 @@ mod tests {
     #[test]
     fn loaded_values_are_finite_clamped_and_supported() {
         let path = test_path("validate");
-        std::fs::write(&path, "ui_scale = 99.0\nmsaa = 3\n[camera]\nfov_degrees = inf\n[camera.car_cam]\ndistance = 5000.0\nstiffness = nan\n").unwrap();
+        std::fs::write(&path, "ui_scale = 99.0\nmsaa = 3\n[ui]\nsettings_tab = 9\n[camera]\nfov_degrees = inf\n[camera.car_cam]\ndistance = 5000.0\nstiffness = nan\n").unwrap();
         let loaded = ViewerSettings::load_from_path(&path);
+        assert_eq!(loaded.ui.settings_tab, 0);
         assert_eq!(loaded.camera.fov_degrees, 110.0);
         assert_eq!(loaded.camera.car_cam.distance, 1000.0);
         assert_eq!(loaded.camera.car_cam.stiffness, 0.45);

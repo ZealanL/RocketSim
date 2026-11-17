@@ -1,4 +1,4 @@
-use super::{CamMode, CameraState, InputState};
+use super::{CamMode, CameraState, InputState, StartMode};
 use crate::{
     camera::CameraPreset,
     input::{ACTIONS, Action, Capture, CustomActionRegistry, InputSnapshot, InputSource},
@@ -135,6 +135,7 @@ pub(super) fn menu_pad_action(id: String, dx: i32, a: bool, cx: &mut MenuPadCtx)
         "bind.filter.clear" if a => cx.ui.binding_filter.clear(),
         "cam.wide" if a => {
             cx.camera.mode = CamMode::Man;
+            cx.camera.init_mode = StartMode::Birds;
             cx.camera.auto_cam = None;
             if let Some(man) = cx.camera.manager.as_mut() {
                 man.set_wide_view();
@@ -142,6 +143,7 @@ pub(super) fn menu_pad_action(id: String, dx: i32, a: bool, cx: &mut MenuPadCtx)
         }
         "cam.director" if a => {
             cx.camera.mode = CamMode::Director;
+            cx.camera.init_mode = StartMode::Director;
             cx.camera.auto_cam = None;
         }
         "cam.reset_play" if a => {

@@ -208,6 +208,19 @@ file, keep the complete `[action_bindings]` map. An omitted action is unbound;
 it does not inherit a default binding. The old `[bindings]` table is used only
 when `[action_bindings]` is absent.
 
+The `[ui]` table stores the settings window state and the spectator view. The
+`menu_open` value starts the Settings window open or closed. It is `false` by
+default, so the first launch has no menu open. The viewer writes the value when
+you open or close the menu and restores it on the next launch. `settings_tab`
+selects the Camera, Bindings, Display, or Simulation tab. `start_camera` stores
+`birds`, `followN`, `director`, `autoN`, or `free`. `ball_cam` stores the
+ball-cam state for followed-car views. `binding_group` and `binding_device`
+keep the Bindings tab view. An explicit `--cam` argument overrides
+`start_camera`, and `--no-menu` closes the menu for that launch.
+
+The viewer also saves window sizes and positions in separate eframe storage.
+This includes the Settings window. That storage is separate from `settings.toml`.
+
 ## Use another port or machine
 
 Use a separate viewer process and a separate port for each arena. For example:
@@ -265,10 +278,12 @@ receiving updates while hidden, so turning it back on restores the current
 scene. The setting is saved in `settings.toml`.
 
 Pass `--debug-stats PATH` to write CPU timing and asynchronous GPU query
-statistics to a file. Pass `--no-menu` to start with the menu closed. Pass
-`--hide-ball` to hide the simulation ball mesh without changing physics or
-camera tracking. Use this for debug-only model scenes. The viewer accepts
-these options with its normal port and camera arguments.
+statistics to a file. Pass `--no-menu` to close the menu for one launch without
+changing the saved menu state. Pass `--hide-ball` to hide the simulation ball
+mesh without changing physics or camera tracking. Use this for debug-only model
+scenes. The viewer accepts these options with its normal port and camera
+arguments. A camera argument such as `follow3` overrides the saved camera for
+one launch.
 
 ## Troubleshooting
 
