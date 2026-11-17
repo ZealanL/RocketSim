@@ -5,7 +5,7 @@ use super::{
         validate_name,
     },
     style::Color,
-    transform::{DepthMode, Width},
+    transform::{Anchor, DepthMode, Width},
 };
 
 /// Single straight segment.
@@ -21,6 +21,10 @@ pub struct LineItem {
     pub width: Width,
     /// Depth test mode for this item.
     pub depth: DepthMode,
+    /// Anchor for the start point. `None` inherits the group anchor.
+    pub start_anchor: Option<Anchor>,
+    /// Anchor for the end point. `None` inherits the group anchor.
+    pub end_anchor: Option<Anchor>,
 }
 
 impl LineItem {
@@ -28,6 +32,12 @@ impl LineItem {
     pub fn validate(&self) -> DebugResult<()> {
         finite3(&self.start, "line start")?;
         finite3(&self.end, "line end")?;
+        if let Some(anchor) = &self.start_anchor {
+            anchor.validate()?;
+        }
+        if let Some(anchor) = &self.end_anchor {
+            anchor.validate()?;
+        }
         self.color.validate()?;
         self.width.validate()?;
         Ok(())
@@ -406,7 +416,7 @@ impl DebugItem {
     /// Rough byte estimate for budget checks.
     pub fn estimated_bytes(&self) -> usize {
         match self {
-            Self::Line(_) => 64,
+            Self::Line(_) => 112,
             Self::Point(_) => 48,
             Self::Rect(v) => {
                 96usize.saturating_add(v.texture.as_ref().map_or(0, |texture| texture.len()))

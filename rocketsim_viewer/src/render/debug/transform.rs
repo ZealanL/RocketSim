@@ -1,9 +1,31 @@
 use rocketsim::ArenaState;
-use rocketsim_vis::debug::{Anchor, DebugGroup, MeshInstanceItem};
+use rocketsim_vis::debug::{Anchor, DebugGroup, LineItem, MeshInstanceItem};
 
 /// Resolve an anchor from the displayed snapshot. Return `None` when its target is missing.
 pub fn resolve_group_matrix(group: &DebugGroup, state: Option<&ArenaState>) -> Option<glam::Mat4> {
-    Some(anchor_matrix(&group.anchor, state)? * group_matrix(group))
+    Some(resolve_anchor_matrix(&group.anchor, state)? * group_matrix(group))
+}
+
+/// Resolve the world-space endpoints of a line, applying per-endpoint anchors.
+///
+/// An endpoint with no anchor inherits the group anchor. Return `None` when any
+/// required anchor target is missing from the displayed snapshot.
+pub fn resolve_line_endpoints(
+    line: &LineItem,
+    group: &DebugGroup,
+    state: Option<&ArenaState>,
+) -> Option<([f32; 3], [f32; 3])> {
+    let base = group_matrix(group);
+    let start_anchor = line.start_anchor.as_ref().unwrap_or(&group.anchor);
+    let end_anchor = line.end_anchor.as_ref().unwrap_or(&group.anchor);
+    let start = resolve_anchor_matrix(start_anchor, state)? * base;
+    let end = resolve_anchor_matrix(end_anchor, state)? * base;
+    Some((
+        start
+            .transform_point3(glam::Vec3::from(line.start))
+            .to_array(),
+        end.transform_point3(glam::Vec3::from(line.end)).to_array(),
+    ))
 }
 
 pub(super) fn instance_matrix(instance: &MeshInstanceItem) -> glam::Mat4 {
@@ -14,7 +36,7 @@ pub(super) fn instance_matrix(instance: &MeshInstanceItem) -> glam::Mat4 {
     )
 }
 
-fn group_matrix(group: &DebugGroup) -> glam::Mat4 {
+pub(super) fn group_matrix(group: &DebugGroup) -> glam::Mat4 {
     glam::Mat4::from_scale_rotation_translation(
         glam::Vec3::from(group.transform.scale),
         glam::Quat::from_mat3a(&rotation(&group.transform.rotation)),
@@ -22,7 +44,10 @@ fn group_matrix(group: &DebugGroup) -> glam::Mat4 {
     )
 }
 
-fn anchor_matrix(anchor: &Anchor, state: Option<&ArenaState>) -> Option<glam::Mat4> {
+pub(super) fn resolve_anchor_matrix(
+    anchor: &Anchor,
+    state: Option<&ArenaState>,
+) -> Option<glam::Mat4> {
     let (position, rotation) = match anchor {
         Anchor::World => (glam::Vec3A::ZERO, glam::Mat3A::IDENTITY),
         Anchor::Ball { .. } => {
@@ -54,7 +79,8 @@ fn rotation(rotation: &[[f32; 3]; 3]) -> glam::Mat3A {
 
 #[cfg(test)]
 mod tests {
-    use rocketsim_vis::debug::{Color, DebugGroup, DepthMode};
+    use rocketsim::{CarBodyConfig, CarInfo, CarState, Team};
+    use rocketsim_vis::debug::{Color, DebugGroup, DepthMode, DrawList, GroupOptions, Width};
 
     use super::*;
 
@@ -89,5 +115,68 @@ mod tests {
         let anchored = resolve_group_matrix(&group, Some(&state)).unwrap();
         let point = anchored.transform_point3(glam::Vec3::ZERO);
         assert!(point.abs_diff_eq(glam::Vec3::new(7.0, 22.0, 30.0), 1e-5));
+    }
+
+    fn car(idx: usize, x: f32, y: f32) -> (CarInfo, CarState) {
+        let mut state = CarState::DEFAULT;
+        state.phys.pos = glam::Vec3A::new(x, y, 0.0);
+        (
+            CarInfo {
+                idx,
+                team: Team::Blue,
+                config: CarBodyConfig::OCTANE,
+            },
+            state,
+        )
+    }
+
+    #[test]
+    fn line_endpoints_follow_separate_cars() {
+        let mut state = ArenaState::new_empty(rocketsim::GameMode::Soccar);
+        state.cars.push(car(7, 100.0, 200.0));
+        state.cars.push(car(9, -300.0, 400.0));
+        let group = DebugGroup::new("link", DrawList::new(), GroupOptions::new()).unwrap();
+        let line = LineItem {
+            start: [0.0; 3],
+            end: [0.0; 3],
+            color: Color::WHITE,
+            width: Width::pixels(2.0),
+            depth: DepthMode::Test,
+            start_anchor: Some(Anchor::car(7)),
+            end_anchor: Some(Anchor::car(9)),
+        };
+
+        let (start, end) = resolve_line_endpoints(&line, &group, Some(&state)).unwrap();
+        assert_eq!(start, [100.0, 200.0, 0.0]);
+        assert_eq!(end, [-300.0, 400.0, 0.0]);
+
+        // A missing endpoint target removes the whole segment.
+        state.cars.remove(1);
+        assert!(resolve_line_endpoints(&line, &group, Some(&state)).is_none());
+    }
+
+    #[test]
+    fn line_endpoints_inherit_group_anchor_by_default() {
+        let mut state = ArenaState::new_empty(rocketsim::GameMode::Soccar);
+        state.cars.push(car(7, 100.0, 200.0));
+        let group = DebugGroup::new(
+            "link",
+            DrawList::new(),
+            GroupOptions::new().anchor(Anchor::car(7)),
+        )
+        .unwrap();
+        let line = LineItem {
+            start: [0.0; 3],
+            end: [10.0, 0.0, 0.0],
+            color: Color::WHITE,
+            width: Width::pixels(2.0),
+            depth: DepthMode::Test,
+            start_anchor: None,
+            end_anchor: None,
+        };
+
+        let (start, end) = resolve_line_endpoints(&line, &group, Some(&state)).unwrap();
+        assert_eq!(start, [100.0, 200.0, 0.0]);
+        assert_eq!(end, [110.0, 200.0, 0.0]);
     }
 }

@@ -8,7 +8,7 @@ use super::{
     },
     limits::MAX_ITEMS_PER_GROUP,
     style::Color,
-    transform::{DepthMode, Width},
+    transform::{Anchor, DepthMode, Width},
 };
 
 // ---------------------------------------------------------------------------
@@ -99,6 +99,37 @@ impl DrawList {
             color,
             width,
             depth,
+            start_anchor: None,
+            end_anchor: None,
+        }));
+        self
+    }
+
+    /// Append a line whose endpoints follow separate anchors.
+    ///
+    /// The tuple holds the start anchor first and the end anchor second. The
+    /// viewer resolves each endpoint against the latest simulation frame. Use
+    /// this to draw a link between two cars. Both points stay in group-local
+    /// coordinates before each anchor is applied. Pass [`Anchor::world`] for a
+    /// fixed endpoint. If an anchor cannot be resolved, the viewer does not
+    /// draw the line.
+    pub fn anchored_line(
+        &mut self,
+        start: [f32; 3],
+        end: [f32; 3],
+        anchors: (Anchor, Anchor),
+        color: Color,
+        width: Width,
+        depth: DepthMode,
+    ) -> &mut Self {
+        self.items.push(DebugItem::Line(LineItem {
+            start,
+            end,
+            color,
+            width,
+            depth,
+            start_anchor: Some(anchors.0),
+            end_anchor: Some(anchors.1),
         }));
         self
     }

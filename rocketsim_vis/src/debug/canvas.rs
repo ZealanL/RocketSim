@@ -28,7 +28,7 @@
 use super::{
     DebugRenderer, GroupHandle, GroupOptions,
     types::{
-        Color, DebugItem, DebugResult, DepthMode, DrawList, LabelItem, LabelPos, Lifetime,
+        Anchor, Color, DebugItem, DebugResult, DepthMode, DrawList, LabelItem, LabelPos, Lifetime,
         LineItem, PointItem, PolylineItem, RectBorder, RectItem, TextAlign, Width,
     },
 };
@@ -63,6 +63,8 @@ impl Canvas {
             color: Color::WHITE,
             width: Width::Pixels(2.0),
             depth: DepthMode::Test,
+            start_anchor: None,
+            end_anchor: None,
         }));
         match self.list.items.last_mut().unwrap() {
             DebugItem::Line(v) => v,
@@ -220,6 +222,22 @@ impl LineItem {
     /// Set the line depth mode.
     pub fn depth(&mut self, value: DepthMode) -> &mut Self {
         self.depth = value;
+        self
+    }
+    /// Anchor the start point to a moving object instead of the group anchor.
+    ///
+    /// The offset in the anchor is in that object's local frame. Use
+    /// [`Anchor::world`] to keep the start point at fixed world coordinates.
+    pub fn start_anchor(&mut self, value: Anchor) -> &mut Self {
+        self.start_anchor = Some(value);
+        self
+    }
+    /// Anchor the end point to a moving object instead of the group anchor.
+    ///
+    /// The offset in the anchor is in that object's local frame. Use
+    /// [`Anchor::world`] to keep the end point at fixed world coordinates.
+    pub fn end_anchor(&mut self, value: Anchor) -> &mut Self {
+        self.end_anchor = Some(value);
         self
     }
 }

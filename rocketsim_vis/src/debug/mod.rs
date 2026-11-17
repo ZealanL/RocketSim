@@ -61,6 +61,8 @@
 //! use viewport fractions. Transform order is item local, instance, group,
 //! anchor offset, then live anchor frame. Apply scale, then rotation, then
 //! translation at each stage. [`GroupTransform`] stores rotation matrix rows.
+//! A [`LineItem`] can override the group anchor for each endpoint. The viewer
+//! resolves those anchors against the latest simulation frame.
 //!
 //! Use [`DepthMode::Test`] when opaque world geometry must hide a drawing.
 //! [`DepthMode::Always`] draws over the world. Labels and screen rectangles

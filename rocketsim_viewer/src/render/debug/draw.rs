@@ -152,6 +152,24 @@ impl DebugGl {
                 }
             }
         }
+        for batches in self.anchored_line_batches.values() {
+            for batch in batches.iter().filter(|batch| batch.depth == depth) {
+                self.line_program.draw(
+                    gl,
+                    &batch.gpu,
+                    &glam::Mat4::IDENTITY,
+                    &self.view_matrix,
+                    &self.projection_matrix,
+                    self.viewport,
+                    if hidden { 0.22 } else { 1.0 },
+                );
+                self.stats.draw_calls += 1;
+                if !hidden {
+                    self.stats.points += batch.points;
+                    self.stats.segments += batch.gpu.count as u64 - batch.points;
+                }
+            }
+        }
     }
 }
 

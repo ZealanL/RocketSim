@@ -88,6 +88,25 @@ anchor frame. Group rotation matrices use row-major order. `Anchor::World` is
 fixed. `Anchor::Ball` and `Anchor::Car` follow the latest received frame.
 Anchors use stable identifiers, not pointers into simulation state.
 
+A line can anchor each endpoint to a different object. Use `Canvas::line` with
+`start_anchor` and `end_anchor`, or `DrawList::anchored_line`. Set anchors to
+`None` to inherit the group anchor. This keeps existing line behavior. The
+viewer resolves both endpoints against the latest received frame and transforms
+each one into world space. A line is not drawn when an endpoint target is
+missing. Endpoint anchors live on the line item, so changing them replaces
+group geometry. Use `ItemHandle::set` to preserve the group lifetime.
+
+```rust
+use rocketsim_vis::debug::{Anchor, Color};
+
+renderer.group("car/link").draw(|draw| {
+    draw.line([0.0; 3], [0.0; 3])
+        .start_anchor(Anchor::car(car_a as u32))
+        .end_anchor(Anchor::car(car_b as u32))
+        .color(Color::RED);
+})?;
+```
+
 Use `MeshResource` and `TextureResource` for reusable named resources. Insert
 or update a resource once, then refer to it by ID in mesh instances or textured
 items. The transport sends resource bytes separately from group updates. A

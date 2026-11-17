@@ -316,7 +316,10 @@ fn apply_group_patch(group: &mut DebugGroup, patch: DebugGroupPatch) {
 mod tests {
     use super::*;
     use crate::{
-        debug::{Color, DebugGroup, DepthMode, DrawList, GroupOptions, Lifetime, Width},
+        debug::{
+            Anchor, Color, DebugGroup, DebugItem, DepthMode, DrawList, GroupOptions, Lifetime,
+            Width,
+        },
         proto::SimMsg,
     };
 
@@ -352,6 +355,32 @@ mod tests {
         assert!(next.groups.contains_key("new"));
         assert!(!next.groups.contains_key("remove"));
         assert!(first.groups.contains_key("remove"));
+    }
+
+    #[test]
+    fn anchored_line_endpoints_survive_full_sync() {
+        let mut list = DrawList::new();
+        list.anchored_line(
+            [0.0; 3],
+            [1.0, 0.0, 0.0],
+            (Anchor::car(3), Anchor::car(9)),
+            Color::WHITE,
+            Width::pixels(1.0),
+            DepthMode::Test,
+        );
+        let message = DebugSyncMsg::Full(DebugFull {
+            groups: vec![DebugGroup::new("link", list, GroupOptions::default()).unwrap()],
+            rev: 1,
+            ..Default::default()
+        });
+        let bytes = crate::proto::encode_debug_sync(&message).unwrap();
+        let decoded = crate::proto::decode_debug_sync(&bytes).unwrap();
+        let scene = apply_sync(&DebugScene::empty(), decoded).unwrap();
+        let DebugItem::Line(line) = &scene.groups["link"].items[0] else {
+            panic!("expected a line item");
+        };
+        assert_eq!(line.start_anchor, Some(Anchor::car(3)));
+        assert_eq!(line.end_anchor, Some(Anchor::car(9)));
     }
 
     #[test]

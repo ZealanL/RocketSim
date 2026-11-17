@@ -10,7 +10,7 @@ use self::{
     order::{InstanceRun, OrderedInstance},
     prepare::{append_instance, depth_key, depth_mode, pack_segment},
     resources::{delete_mesh, upload_mesh, upload_ordered_instances},
-    transform::instance_matrix,
+    transform::{instance_matrix, resolve_line_endpoints},
 };
 use crate::render::gl_util::{bytes_of, compile_program, uniform_location};
 
@@ -114,6 +114,7 @@ pub struct DebugGl {
     reusable_instance_buffers: Vec<glow::Buffer>,
     geometry_revisions: HashMap<String, u64>,
     line_batches: HashMap<String, Vec<SegmentBatch>>,
+    anchored_line_batches: HashMap<String, Vec<SegmentBatch>>,
     reusable_line_batches: Vec<LineBatch>,
     line_program: LineProgram,
     profiling: bool,
@@ -169,6 +170,7 @@ impl DebugGl {
             reusable_instance_buffers: Vec::new(),
             geometry_revisions: HashMap::new(),
             line_batches: HashMap::new(),
+            anchored_line_batches: HashMap::new(),
             reusable_line_batches: Vec::new(),
             line_program: LineProgram::new(gl),
             profiling: false,
@@ -268,6 +270,11 @@ impl DebugGl {
                             });
                         }
                         DebugItem::Line(line) => {
+                            // Anchored endpoints change with the simulation frame, so
+                            // the per-frame pass owns these segments.
+                            if line.start_anchor.is_some() || line.end_anchor.is_some() {
+                                continue;
+                            }
                             segments
                                 .entry(depth_key(line.depth))
                                 .or_default()
@@ -315,27 +322,12 @@ impl DebugGl {
                         _ => {}
                     }
                 }
-                let mut line_batches = Vec::new();
-                for (depth, data) in segments {
-                    let points = data.iter().filter(|line| line.point).count() as u64;
-                    let (gpu, upload_bytes) =
-                        if let Some(mut gpu) = self.reusable_line_batches.pop() {
-                            let upload_bytes = gpu.update(gl, &data);
-                            (gpu, upload_bytes)
-                        } else {
-                            let gpu = LineBatch::new(gl, &data);
-                            let upload_bytes = gpu.upload_bytes;
-                            (gpu, upload_bytes)
-                        };
-                    self.stats.line_uploads += 1;
-                    self.stats.upload_bytes += upload_bytes as u64;
-                    line_batches.push(SegmentBatch {
-                        gpu,
-                        depth: depth_mode(depth),
-                        points,
-                    });
-                }
-
+                let line_batches = make_line_batches(
+                    gl,
+                    segments,
+                    &mut self.reusable_line_batches,
+                    &mut self.stats,
+                );
                 self.line_batches.insert(group.name.clone(), line_batches);
                 let mut grouped: Vec<_> = grouped.into_iter().collect();
                 grouped.sort_unstable_by_key(|(_, instances)| instances[0].source_index);
@@ -385,6 +377,10 @@ impl DebugGl {
                 self.reusable_line_batches
                     .extend(batches.into_iter().map(|batch| batch.gpu));
             }
+            if let Some(batches) = self.anchored_line_batches.remove(&name) {
+                self.reusable_line_batches
+                    .extend(batches.into_iter().map(|batch| batch.gpu));
+            }
             if let Some(batches) = self.batches.remove(&name) {
                 self.reusable_instance_buffers
                     .extend(batches.into_iter().map(|batch| batch.buffer));
@@ -414,6 +410,49 @@ impl DebugGl {
                 }
             }
         }
+
+        // Per-endpoint anchors resolve against the current frame, so these
+        // segments are packed in world space and re-uploaded every frame.
+        let previous: Vec<_> = self.anchored_line_batches.drain().collect();
+        for (_, batches) in previous {
+            self.reusable_line_batches
+                .extend(batches.into_iter().map(|batch| batch.gpu));
+        }
+        for group in scene.groups.values().filter(|group| group.visible) {
+            let mut segments: HashMap<u8, Vec<PackedLine>> = HashMap::new();
+            for item in group.items.iter() {
+                let DebugItem::Line(line) = item else {
+                    continue;
+                };
+                if line.start_anchor.is_none() && line.end_anchor.is_none() {
+                    continue;
+                }
+                let Some((start, end)) = resolve_line_endpoints(line, group, state) else {
+                    continue;
+                };
+                segments
+                    .entry(depth_key(line.depth))
+                    .or_default()
+                    .push(pack_segment(
+                        start,
+                        end,
+                        line.color.to_array(),
+                        line.width,
+                        false,
+                    ));
+            }
+            if !segments.is_empty() {
+                let batches = make_line_batches(
+                    gl,
+                    segments,
+                    &mut self.reusable_line_batches,
+                    &mut self.stats,
+                );
+                self.anchored_line_batches
+                    .insert(group.name.clone(), batches);
+            }
+        }
+
         self.view_matrix = *view;
         self.projection_matrix = *proj;
         self.viewport = viewport;
@@ -560,6 +599,11 @@ impl DebugGl {
                     batch.gpu.destroy(gl);
                 }
             }
+            for batches in self.anchored_line_batches.values() {
+                for batch in batches {
+                    batch.gpu.destroy(gl);
+                }
+            }
             for batch in &self.reusable_line_batches {
                 batch.destroy(gl);
             }
@@ -576,6 +620,34 @@ impl DebugGl {
             gl.delete_program(self.program);
         }
     }
+}
+
+fn make_line_batches(
+    gl: &glow::Context,
+    segments: HashMap<u8, Vec<PackedLine>>,
+    pool: &mut Vec<LineBatch>,
+    stats: &mut DebugStats,
+) -> Vec<SegmentBatch> {
+    let mut batches = Vec::new();
+    for (depth, data) in segments {
+        let points = data.iter().filter(|line| line.point).count() as u64;
+        let (gpu, upload_bytes) = if let Some(mut gpu) = pool.pop() {
+            let upload_bytes = gpu.update(gl, &data);
+            (gpu, upload_bytes)
+        } else {
+            let gpu = LineBatch::new(gl, &data);
+            let upload_bytes = gpu.upload_bytes;
+            (gpu, upload_bytes)
+        };
+        stats.line_uploads += 1;
+        stats.upload_bytes += upload_bytes as u64;
+        batches.push(SegmentBatch {
+            gpu,
+            depth: depth_mode(depth),
+            points,
+        });
+    }
+    batches
 }
 
 fn inline_resource(id: &str, m: &rocketsim_vis::debug::InlineMeshItem) -> MeshResource {
